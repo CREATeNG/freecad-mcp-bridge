@@ -4,68 +4,56 @@ import sys
 import FreeCAD as App
 import FreeCADGui as Gui
 
+_STATE_KEY = "_freecad_mcp_bridge_state"
 _COMMAND = "FreeCAD_MCP_Bridge_Toggle"
 _WORKBENCH = "FreeCAD_MCP_Bridge_Workbench"
-_UI_SCHEDULED = "_freecad_mcp_bridge_ui_scheduled"
 
-
-def _resolve_mod_dir():
-    """Return the addon folder path.
-
-    FreeCAD loads InitGui.py via exec(), so __file__ is not always defined.
-    """
-    try:
-        return os.path.dirname(os.path.abspath(__file__))
-    except NameError:
-        for mod_root in App.ConfigGet("ModDirs"):
-            if not os.path.isdir(mod_root):
-                continue
-            for entry in os.listdir(mod_root):
-                candidate = os.path.join(mod_root, entry)
-                if os.path.isfile(os.path.join(candidate, "freecad_bridge.py")):
-                    return candidate
-        return os.getcwd()
-
-
-def _ensure_mod_path():
-    mod_dir = _resolve_mod_dir()
-    if mod_dir not in sys.path:
-        sys.path.insert(0, mod_dir)
-    return mod_dir
-
-
-def _icon_path():
-    return os.path.join(_ensure_mod_path(), "icon.svg").replace("\\", "/")
-
-
-def _qt():
-    """Return (QtCore, QtGui, QtWidgets) for the active FreeCAD Qt binding."""
-    for core_name, gui_name, widgets_name in (
-        ("PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets"),
-        ("PySide2.QtCore", "PySide2.QtGui", "PySide2.QtWidgets"),
-        ("PySide.QtCore", "PySide.QtGui", "PySide.QtWidgets"),
-    ):
-        try:
-            QtCore = __import__(core_name, fromlist=["QtCore"])
-            QtGui = __import__(gui_name, fromlist=["QtGui"])
-            QtWidgets = __import__(widgets_name, fromlist=["QtWidgets"])
-            return QtCore, QtGui, QtWidgets
-        except ImportError:
+# FreeCAD exec() runs this file inside a function scope. Class bodies and later
+# callbacks only see true module globals, so persist paths on App.
+_mod_dir = None
+try:
+    _mod_dir = os.path.dirname(os.path.abspath(__file__))
+except NameError:
+    for mod_root in App.ConfigGet("ModDirs"):
+        if not os.path.isdir(mod_root):
             continue
-    raise ImportError("No compatible Qt binding found for AI Agent Bridge")
+        for entry in os.listdir(mod_root):
+            candidate = os.path.join(mod_root, entry)
+            if os.path.isfile(os.path.join(candidate, "freecad_bridge.py")):
+                _mod_dir = candidate
+                break
+        if _mod_dir:
+            break
+if not _mod_dir:
+    _mod_dir = os.getcwd()
+
+if _mod_dir not in sys.path:
+    sys.path.insert(0, _mod_dir)
+
+App.__dict__.setdefault(_STATE_KEY, {})
+App.__dict__[_STATE_KEY].update(
+    {
+        "mod_dir": _mod_dir,
+        "icon_path": os.path.join(_mod_dir, "icon.svg").replace("\\", "/"),
+        "ui_scheduled": App.__dict__[_STATE_KEY].get("ui_scheduled", False),
+    }
+)
 
 
 class AIAgentBridgeCommand:
     def GetResources(self):
+        icon_path = App.__dict__[_STATE_KEY]["icon_path"]
         return {
-            "Pixmap": _icon_path(),
+            "Pixmap": icon_path,
             "MenuText": "Start/Stop AI Agent Bridge",
             "ToolTip": "Toggle the local Named Pipe / UNIX socket bridge for AI agent control",
         }
 
     def Activated(self):
         try:
-            _ensure_mod_path()
+            mod_dir = App.__dict__[_STATE_KEY]["mod_dir"]
+            if mod_dir not in sys.path:
+                sys.path.insert(0, mod_dir)
             import freecad_bridge
 
             inst = getattr(freecad_bridge, "_freecad_bridge_instance", None)
@@ -94,7 +82,7 @@ class AIAgentBridgeCommand:
 class FreeCAD_MCP_Bridge_Workbench(Gui.Workbench):
     MenuText = "AI Agent Bridge"
     ToolTip = "Interface for AI Agent Model Context Protocol Bridge"
-    Icon = _icon_path()
+    Icon = App.__dict__[_STATE_KEY]["icon_path"]
 
     def Initialize(self):
         pass
@@ -104,17 +92,30 @@ class FreeCAD_MCP_Bridge_Workbench(Gui.Workbench):
 
 
 def inject_ui():
-    try:
-        QtCore, QtGui, QtWidgets = _qt()
-    except ImportError as e:
-        App.Console.PrintError(f"[AI Bridge] UI injection skipped: {e}\n")
+    QtCore = None
+    QtGui = None
+    QtWidgets = None
+    for core_name, gui_name, widgets_name in (
+        ("PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets"),
+        ("PySide2.QtCore", "PySide2.QtGui", "PySide2.QtWidgets"),
+        ("PySide.QtCore", "PySide.QtGui", "PySide.QtWidgets"),
+    ):
+        try:
+            QtCore = __import__(core_name, fromlist=["QtCore"])
+            QtGui = __import__(gui_name, fromlist=["QtGui"])
+            QtWidgets = __import__(widgets_name, fromlist=["QtWidgets"])
+            break
+        except ImportError:
+            continue
+    if QtCore is None:
+        App.Console.PrintError("[AI Bridge] UI injection skipped: no Qt binding found\n")
         return
 
     QTimer = QtCore.QTimer
     QMenu = QtWidgets.QMenu
     QToolBar = QtWidgets.QToolBar
     QIcon = QtGui.QIcon
-    icon_path = _icon_path()
+    icon_path = App.__dict__[_STATE_KEY]["icon_path"]
 
     mw = Gui.getMainWindow()
     if not mw:
@@ -163,29 +164,26 @@ def inject_ui():
         action.triggered.connect(lambda: Gui.runCommand(_COMMAND))
 
 
-def _register_command():
-    if _COMMAND in Gui.listCommands():
+if _COMMAND in Gui.listCommands():
+    try:
+        Gui.removeCommand(_COMMAND)
+    except Exception:
+        pass
+Gui.addCommand(_COMMAND, AIAgentBridgeCommand())
+
+if _WORKBENCH not in Gui.listWorkbenches():
+    Gui.addWorkbench(FreeCAD_MCP_Bridge_Workbench())
+
+if not App.__dict__[_STATE_KEY]["ui_scheduled"]:
+    App.__dict__[_STATE_KEY]["ui_scheduled"] = True
+    for core_name, _, _ in (
+        ("PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets"),
+        ("PySide2.QtCore", "PySide2.QtGui", "PySide2.QtWidgets"),
+        ("PySide.QtCore", "PySide.QtGui", "PySide.QtWidgets"),
+    ):
         try:
-            Gui.removeCommand(_COMMAND)
-        except Exception:
-            pass
-    Gui.addCommand(_COMMAND, AIAgentBridgeCommand())
-
-
-def _register_workbench():
-    if _WORKBENCH not in Gui.listWorkbenches():
-        Gui.addWorkbench(FreeCAD_MCP_Bridge_Workbench())
-
-
-def _schedule_ui():
-    if getattr(App, _UI_SCHEDULED, False):
-        return
-    setattr(App, _UI_SCHEDULED, True)
-    QtCore, _, _ = _qt()
-    QtCore.QTimer.singleShot(1000, inject_ui)
-
-
-_ensure_mod_path()
-_register_command()
-_register_workbench()
-_schedule_ui()
+            QtCore = __import__(core_name, fromlist=["QtCore"])
+            QtCore.QTimer.singleShot(1000, inject_ui)
+            break
+        except ImportError:
+            continue
