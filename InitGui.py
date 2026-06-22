@@ -1,8 +1,27 @@
 import os
 import sys
 
-# Dynamic path for the custom SVG icon
-MOD_DIR = os.path.dirname(os.path.abspath(__file__))
+def _resolve_mod_dir():
+    """Return the addon folder path.
+
+    FreeCAD loads InitGui.py via exec(), so __file__ is not always defined.
+    """
+    try:
+        return os.path.dirname(os.path.abspath(__file__))
+    except NameError:
+        import FreeCAD
+        for mod_root in FreeCAD.ConfigGet("ModDirs"):
+            if not os.path.isdir(mod_root):
+                continue
+            for entry in os.listdir(mod_root):
+                candidate = os.path.join(mod_root, entry)
+                if os.path.isfile(os.path.join(candidate, "freecad_bridge.py")):
+                    return candidate
+        return os.getcwd()
+
+MOD_DIR = _resolve_mod_dir()
+if MOD_DIR not in sys.path:
+    sys.path.insert(0, MOD_DIR)
 ICON_PATH = os.path.join(MOD_DIR, "icon.svg").replace("\\", "/")
 
 try:
