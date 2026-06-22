@@ -2,13 +2,13 @@
     <name>freecad_mcp_bridge</name>
     <description>Model Context Protocol (MCP) bridge for FreeCAD. Allows AI coding assistants (like Cursor, Claude Desktop, etc.) to natively script and control FreeCAD using a self-contained local Named Pipe / UNIX Socket server.</description>
     <version>0.1.0</version>
-    <urls>
-        <repository type="git">https://github.com/createng/freecad_mcp_bridge</repository>
-    </urls>
-    <contents>
+    <icon>icon.svg</icon>
+    <url branch="main" type="repository">https://github.com/createng/freecad_mcp_bridge</url>
+    <content>
         <workbench>
+            <classname>FreeCAD_MCP_Bridge_Workbench</classname>
+            <subdirectory>./</subdirectory>
             <name>AI Agent Bridge</name>
-            <classname>InitGui.FreeCAD_MCP_Bridge_Workbench</classname>
         </workbench>
-    </contents>
+    </content>
 </package>
