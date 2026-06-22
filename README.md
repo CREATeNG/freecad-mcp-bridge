@@ -32,6 +32,37 @@ Once restarted, a persistent **AI Bridge** toolbar and a **Tools ➔ Start/Stop 
 
 ---
 
+## Privacy & Connections
+
+This addon is designed for local-only control of FreeCAD. Here is what runs, what connects, and what data leaves your machine.
+
+### Inside FreeCAD
+
+* `freecad_bridge.py` starts a `QLocalServer` on the local socket name `freecad_bridge_socket` **only when you click Start/Stop AI Agent Bridge**.
+* Communication uses Qt local sockets (Windows named pipes / UNIX domain sockets). **No TCP/IP network traffic** is used by the bridge itself.
+* While the bridge is enabled, received Python code is executed inside your running FreeCAD session. Output (stdout, stderr, exceptions) is returned to the caller over the same local socket.
+* The addon does **not** collect telemetry, upload files, or send data to third-party services.
+
+### MCP client (optional, user-configured)
+
+* To connect an AI editor, you separately configure the bundled `freecad-mcp` binary (or the optional Python MCP server in `DEVELOPMENT.md`) in your MCP client settings.
+* That MCP process connects to the local FreeCAD socket and forwards tool calls your AI agent makes. It is not started automatically by FreeCAD.
+* Any data sent to an AI provider happens through your chosen MCP client and AI service, not through this FreeCAD addon.
+
+### Data storage
+
+* The addon does not persist user documents, credentials, or bridge traffic to disk as part of normal operation.
+* MCP client configuration is stored by your AI editor in its own settings files on your system.
+
+### Consent and changes
+
+* Enabling the bridge is an explicit user action each session (toggle on/off).
+* If connection behavior or data handling changes in a future release, this section and the changelog will be updated before index/release publication.
+
+For security reports, see [SECURITY.md](SECURITY.md).
+
+---
+
 ### 2. Configure MCP Integration
 
 To allow AI assistants (like Claude Desktop or Cursor) to natively control FreeCAD:
