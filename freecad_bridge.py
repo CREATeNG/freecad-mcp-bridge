@@ -93,25 +93,21 @@ class FreeCADBridge(QLocalServer):
         socket.write(output_str.encode("utf-8"))
         socket.disconnectFromServer()
 
-# Stop old server or timer if it exists to allow clean reload
-global _freecad_bridge_instance
-try:
-    if "_freecad_bridge_instance" in globals():
-        old_inst = globals()["_freecad_bridge_instance"]
-        if hasattr(old_inst, "close"):
-            old_inst.close()
-        if hasattr(old_inst, "timer"):
-            old_inst.timer.stop()
-        print("[Bridge] Closed/Stopped existing local listener in globals().")
-    import __main__
-    if hasattr(__main__, "_freecad_bridge_instance"):
-        old_inst = getattr(__main__, "_freecad_bridge_instance")
-        if hasattr(old_inst, "close"):
-            old_inst.close()
-        if hasattr(old_inst, "timer"):
-            old_inst.timer.stop()
-        print("[Bridge] Closed/Stopped existing local listener in __main__.")
-except Exception as e:
-    print(f"[Bridge] Error closing old listener: {e}")
+# Initialize the module-level variable to None for module imports
+_freecad_bridge_instance = None
 
-_freecad_bridge_instance = FreeCADBridge()
+if __name__ == "__main__":
+    # Stop old server or timer if it exists to allow clean reload when running as a Macro
+    try:
+        import __main__
+        if hasattr(__main__, "_freecad_bridge_instance"):
+            old_inst = getattr(__main__, "_freecad_bridge_instance")
+            if hasattr(old_inst, "close"):
+                old_inst.close()
+            if hasattr(old_inst, "timer"):
+                old_inst.timer.stop()
+            print("[Bridge] Closed/Stopped existing local listener in __main__.")
+    except Exception as e:
+        print(f"[Bridge] Error closing old listener: {e}")
+
+    _freecad_bridge_instance = FreeCADBridge()
