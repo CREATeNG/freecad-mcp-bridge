@@ -1,8 +1,20 @@
 import os
 import sys
-from PySide6.QtCore import QTimer
-from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QMenu, QToolBar
+
+try:
+    from PySide6.QtCore import QTimer
+    from PySide6.QtGui import QIcon
+    from PySide6.QtWidgets import QMenu, QToolBar
+except ImportError:
+    try:
+        from PySide2.QtCore import QTimer
+        from PySide2.QtGui import QIcon
+        from PySide2.QtWidgets import QMenu, QToolBar
+    except ImportError:
+        from PySide.QtCore import QTimer
+        from PySide.QtGui import QIcon
+        from PySide.QtWidgets import QMenu, QToolBar
+
 import FreeCADGui as Gui
 import FreeCAD as App
 
