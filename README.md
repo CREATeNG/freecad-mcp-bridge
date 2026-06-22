@@ -32,6 +32,35 @@ Once restarted, a persistent **AI Bridge** toolbar and a **Tools ➔ Start/Stop 
 
 ---
 
+### 2. Configure MCP Integration
+
+To allow AI assistants (like Claude Desktop or Cursor) to natively control FreeCAD:
+
+1. Locate your client's MCP configuration file:
+    *   **Claude Desktop**: `%APPDATA%\Claude\claude_desktop_config.json`
+    *   **Cursor**: Add a new local MCP server in **Settings** ➔ **Features** ➔ **MCP**.
+2. Add this server entry, pointing to the precompiled binary inside the installed addon folder:
+
+```json
+{
+  "mcpServers": {
+    "freecad-bridge": {
+      "command": "C:\\Users\\<YourUsername>\\AppData\\Roaming\\FreeCAD\\Mod\\freecad-mcp-bridge\\bin\\win32\\freecad-mcp.exe"
+    }
+  }
+}
+```
+
+*Substitute the path above for your operating system's standard location if you are on macOS or Linux:*
+*   **macOS:** `/Users/<YourUsername>/Library/Application Support/FreeCAD/Mod/freecad-mcp-bridge/bin/macos/freecad-mcp`
+*   **Linux:** `/home/<YourUsername>/.local/share/FreeCAD/Mod/freecad-mcp-bridge/bin/linux/freecad-mcp`
+
+3. Restart your AI editor/client. The AI will now have native access to:
+    *   `execute_python(code)`: Runs Python code inside FreeCAD and returns stdout/stderr/exceptions.
+    *   `execute_python_file(filepath)`: Reads a local Python script file from disk and executes it inside FreeCAD. *(Note: filepath must be an absolute path.)*
+
+---
+
 ## Privacy & Connections
 
 This addon is designed for local-only control of FreeCAD. Here is what runs, what connects, and what data leaves your machine.
@@ -63,42 +92,13 @@ For security reports, see [SECURITY.md](SECURITY.md).
 
 ---
 
-### 2. Configure MCP Integration
-
-To allow AI assistants (like Claude Desktop or Cursor) to natively control FreeCAD:
-
-1. Locate your client's MCP configuration file:
-    *   **Claude Desktop**: `%APPDATA%\Claude\claude_desktop_config.json`
-    *   **Cursor**: Add a new local MCP server in **Settings** ➔ **Features** ➔ **MCP**.
-2. Add this server entry, pointing to the precompiled binary inside the installed addon folder:
-
-```json
-{
-  "mcpServers": {
-    "freecad-bridge": {
-      "command": "C:\\Users\\<YourUsername>\\AppData\\Roaming\\FreeCAD\\Mod\\freecad-mcp-bridge\\bin\\win32\\freecad-mcp.exe"
-    }
-  }
-}
-```
-
-*Substitute the path above for your operating system's standard location if you are on macOS or Linux:*
-*   **macOS:** `/Users/<YourUsername>/Library/Application Support/FreeCAD/Mod/freecad-mcp-bridge/bin/macos/freecad-mcp`
-*   **Linux:** `/home/<YourUsername>/.local/share/FreeCAD/Mod/freecad-mcp-bridge/bin/linux/freecad-mcp`
-
-3. Restart your AI editor/client. The AI will now have native access to:
-    *   `execute_python(code)`: Runs Python code inside FreeCAD and returns stdout/stderr/exceptions.
-    *   `execute_python_file(filepath)`: Reads a local Python script file from disk and executes it inside FreeCAD. *(Note: filepath must be an absolute path.)*
-
----
-
 ## Alternative Installation & Testing Methods
 
 ### Custom/Pre-Release Testing (Via Addon Manager)
 If you want to install from this repository before it is officially listed in the FreeCAD index:
 1. Open FreeCAD and go to **Edit** ➔ **Preferences** ➔ **Addon manager**.
 2. In the **Custom repositories** section, click the **+ (Add)** button.
-3. Enter the Git repository URL: `https://github.com/createng/freecad-mcp-bridge` and specify the branch (e.g., `master`).
+3. Enter the Git repository URL: `https://github.com/CREATeNG/freecad-mcp-bridge` and specify the branch (`main`).
 4. Click **OK**, then open **Tools** ➔ **Addon Manager**. The bridge will appear in your list ready to install with a single click.
 
 ### Manual Installation (Developers / Fallback)
