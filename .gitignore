@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.log
+*.png
+.venv/
+venv/
+.vscode/
+.idea/
+target/
+**/target/

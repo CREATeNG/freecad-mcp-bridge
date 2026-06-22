@@ -1,0 +1,1 @@
+# Console mode initialization (empty)
