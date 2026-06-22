@@ -120,6 +120,6 @@ class FreeCAD_MCP_Bridge_Workbench(Gui.Workbench):
         pass
         
     def GetClassName(self):
-        return "FreeCAD_MCP_Bridge_Workbench"
+        return "Gui::PythonWorkbench"
 
 Gui.addWorkbench(FreeCAD_MCP_Bridge_Workbench())
