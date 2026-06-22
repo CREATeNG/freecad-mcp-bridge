@@ -160,11 +160,54 @@ def inject_ui():
         action.setToolTip("Toggle the local Named Pipe / UNIX socket bridge for AI agent control")
         action.triggered.connect(lambda: Gui.runCommand(command))
 
+    has_button = False
+    for action in target_tb.actions():
+        if action.text() == "Start/Stop AI Agent Bridge":
+            has_button = True
+            break
+
     target_tb.setVisible(True)
     target_tb.show()
     mw.update()
-    App.Console.PrintMessage("[AI Bridge] Toolbar and menu ready.\n")
-    return True
+
+    ready = has_button and target_tb.isVisible() and mw.isVisible()
+    if ready and not getattr(App, "FreeCADMCPBridgeUiReady", False):
+        App.FreeCADMCPBridgeUiReady = True
+        App.Console.PrintMessage("[AI Bridge] Toolbar and menu ready.\n")
+    return ready
+
+
+class MCPBridgeUiManipulator:
+    """Re-inject after each workbench activation once FreeCAD has built the UI."""
+
+    def modifyMenuBar(self):
+        import FreeCAD as App
+        if hasattr(App, "FreeCADMCPBridgeInjectUi"):
+            App.FreeCADMCPBridgeInjectUi()
+        return {}
+
+    def modifyToolBars(self):
+        import FreeCAD as App
+        if hasattr(App, "FreeCADMCPBridgeInjectUi"):
+            App.FreeCADMCPBridgeInjectUi()
+        return {}
+
+
+def schedule_ui_injection():
+    import FreeCAD as App
+
+    QtCore = None
+    for core_name in ("PySide6.QtCore", "PySide2.QtCore", "PySide.QtCore"):
+        try:
+            QtCore = __import__(core_name, fromlist=["QtCore"])
+            break
+        except ImportError:
+            continue
+    if QtCore is None:
+        App.Console.PrintError("[AI Bridge] Could not schedule UI injection: no Qt binding found\n")
+        return
+    for delay in (1000, 2500, 5000):
+        QtCore.QTimer.singleShot(delay, App.FreeCADMCPBridgeInjectUi)
 
 
 # Keep a persistent callback for QTimer under exec() loading.
@@ -180,19 +223,9 @@ Gui.addCommand(App.FreeCADMCPBridgeCommand, AIAgentBridgeCommand())
 if "FreeCAD_MCP_Bridge_Workbench" not in Gui.listWorkbenches():
     Gui.addWorkbench(FreeCAD_MCP_Bridge_Workbench())
 
-if not inject_ui():
-    QtCore = None
-    for core_name, _, _ in (
-        ("PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets"),
-        ("PySide2.QtCore", "PySide2.QtGui", "PySide2.QtWidgets"),
-        ("PySide.QtCore", "PySide.QtGui", "PySide.QtWidgets"),
-    ):
-        try:
-            QtCore = __import__(core_name, fromlist=["QtCore"])
-            break
-        except ImportError:
-            continue
-    if QtCore is None:
-        App.Console.PrintError("[AI Bridge] Could not schedule UI injection: no Qt binding found\n")
-    else:
-        QtCore.QTimer.singleShot(1000, App.FreeCADMCPBridgeInjectUi)
+if not getattr(App, "FreeCADMCPBridgeManipulatorAdded", False):
+    App.FreeCADMCPBridgeManipulatorAdded = True
+    Gui.addWorkbenchManipulator(MCPBridgeUiManipulator())
+
+# Do not inject synchronously here — FreeCAD rebuilds menus/toolbars after InitGui runs.
+schedule_ui_injection()
