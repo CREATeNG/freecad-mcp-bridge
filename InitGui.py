@@ -1,6 +1,10 @@
 import os
 import sys
 
+# Dynamic path for the custom SVG icon
+MOD_DIR = os.path.dirname(os.path.abspath(__file__))
+ICON_PATH = os.path.join(MOD_DIR, "icon.svg").replace("\\", "/")
+
 try:
     from PySide6.QtCore import QTimer
     from PySide6.QtGui import QIcon
@@ -20,9 +24,9 @@ import FreeCAD as App
 
 class AIAgentBridgeCommand:
     def GetResources(self):
-        # Use standard system preferences network icon
+        # Use our custom SVG icon
         return {
-            'Pixmap': "preferences-system-network",
+            'Pixmap': ICON_PATH,
             'MenuText': 'Start/Stop AI Agent Bridge',
             'ToolTip': 'Toggle the local Named Pipe / UNIX socket bridge for AI agent control'
         }
@@ -108,7 +112,7 @@ def inject_ui():
             break
     if not exists:
         action = target_tb.addAction("Start/Stop AI Agent Bridge")
-        action.setIcon(QIcon.fromTheme("preferences-system-network"))
+        action.setIcon(QIcon(ICON_PATH))
         action.setToolTip("Toggle the local Named Pipe / UNIX socket bridge for AI agent control")
         action.triggered.connect(lambda: Gui.runCommand("FreeCAD_MCP_Bridge_Toggle"))
 
@@ -118,7 +122,7 @@ QTimer.singleShot(1000, inject_ui)
 class FreeCAD_MCP_Bridge_Workbench(Gui.Workbench):
     MenuText = "AI Agent Bridge"
     ToolTip = "Interface for AI Agent Model Context Protocol Bridge"
-    Icon = "preferences-system-network"
+    Icon = ICON_PATH
     
     def Initialize(self):
         pass

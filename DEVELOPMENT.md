@@ -37,7 +37,7 @@ If you prefer to run the MCP server using Python rather than the compiled binary
        "freecad-bridge": {
          "command": "python",
          "args": [
-           "C:\\Users\\<YourUsername>\\AppData\\Roaming\\FreeCAD\\Mod\\freecad-mcp-bridge\\freecad_mcp_server.py"
+           "C:\\Users\\<YourUsername>\\AppData\\Roaming\\FreeCAD\\Mod\\freecad_mcp_bridge\\freecad_mcp_server.py"
          ]
        }
      }
