@@ -31,6 +31,16 @@ App.FreeCADMCPBridgeIconPath = os.path.join(_mod_dir, "icon.svg").replace("\\", 
 App.FreeCADMCPBridgeCommand = "FreeCAD_MCP_Bridge_Toggle"
 
 
+class FreeCAD_MCP_Bridge_Loader:
+    """package.xml load stub — not registered as a selectable workbench."""
+
+    MenuText = "AI Agent Bridge"
+    ToolTip = "MCP bridge utility (global toolbar, not a workbench)"
+
+
+FreeCAD_MCP_Bridge_Loader.Icon = App.FreeCADMCPBridgeIconPath
+
+
 class AIAgentBridgeCommand:
     def GetResources(self):
         import FreeCAD as App

@@ -1,7 +1,7 @@
 <package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
     <name>freecad_mcp_bridge</name>
     <description>Model Context Protocol (MCP) bridge for FreeCAD. Allows AI coding assistants (like Cursor, Claude Desktop, etc.) to natively script and control FreeCAD using a self-contained local Named Pipe / UNIX Socket server.</description>
-    <version>0.1.1</version>
+    <version>0.1.2</version>
     <date>2026-06-23</date>
     <maintainer email="chris@createng.com">CREATeNG</maintainer>
     <license file="LICENSE">MIT</license>
@@ -15,5 +15,12 @@
     <url type="bugtracker">https://github.com/CREATeNG/freecad-mcp-bridge/issues</url>
     <content>
         <other/>
+        <!-- FreeCAD 1.1.x only runs InitGui.py when package.xml declares a workbench.
+             This entry is a load trigger only; the addon does not register a workbench. -->
+        <workbench>
+            <classname>FreeCAD_MCP_Bridge_Loader</classname>
+            <subdirectory>./</subdirectory>
+            <name>AI Agent Bridge</name>
+        </workbench>
     </content>
 </package>
