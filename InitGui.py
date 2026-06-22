@@ -4,12 +4,8 @@ import sys
 import FreeCAD as App
 import FreeCADGui as Gui
 
-_STATE_KEY = "_freecad_mcp_bridge_state"
-_COMMAND = "FreeCAD_MCP_Bridge_Toggle"
-_WORKBENCH = "FreeCAD_MCP_Bridge_Workbench"
-
-# FreeCAD exec() runs this file inside a function scope. Class bodies and later
-# callbacks only see true module globals, so persist paths on App.
+# FreeCAD loads this file with exec() inside a function. Only imported modules and
+# App attributes are visible to class bodies and deferred callbacks.
 _mod_dir = None
 try:
     _mod_dir = os.path.dirname(os.path.abspath(__file__))
@@ -30,28 +26,26 @@ if not _mod_dir:
 if _mod_dir not in sys.path:
     sys.path.insert(0, _mod_dir)
 
-App.__dict__.setdefault(_STATE_KEY, {})
-App.__dict__[_STATE_KEY].update(
-    {
-        "mod_dir": _mod_dir,
-        "icon_path": os.path.join(_mod_dir, "icon.svg").replace("\\", "/"),
-        "ui_scheduled": App.__dict__[_STATE_KEY].get("ui_scheduled", False),
-    }
-)
+App.FreeCADMCPBridgeModDir = _mod_dir
+App.FreeCADMCPBridgeIconPath = os.path.join(_mod_dir, "icon.svg").replace("\\", "/")
+App.FreeCADMCPBridgeUiScheduled = getattr(App, "FreeCADMCPBridgeUiScheduled", False)
 
 
 class AIAgentBridgeCommand:
     def GetResources(self):
-        icon_path = App.__dict__[_STATE_KEY]["icon_path"]
+        import FreeCAD as App
         return {
-            "Pixmap": icon_path,
+            "Pixmap": App.FreeCADMCPBridgeIconPath,
             "MenuText": "Start/Stop AI Agent Bridge",
             "ToolTip": "Toggle the local Named Pipe / UNIX socket bridge for AI agent control",
         }
 
     def Activated(self):
+        import FreeCAD as App
+        import FreeCADGui as Gui
+
         try:
-            mod_dir = App.__dict__[_STATE_KEY]["mod_dir"]
+            mod_dir = App.FreeCADMCPBridgeModDir
             if mod_dir not in sys.path:
                 sys.path.insert(0, mod_dir)
             import freecad_bridge
@@ -82,16 +76,19 @@ class AIAgentBridgeCommand:
 class FreeCAD_MCP_Bridge_Workbench(Gui.Workbench):
     MenuText = "AI Agent Bridge"
     ToolTip = "Interface for AI Agent Model Context Protocol Bridge"
-    Icon = App.__dict__[_STATE_KEY]["icon_path"]
 
     def Initialize(self):
-        pass
+        import FreeCAD as App
+        self.Icon = App.FreeCADMCPBridgeIconPath
 
     def GetClassName(self):
         return "Gui::PythonWorkbench"
 
 
 def inject_ui():
+    import FreeCAD as App
+    import FreeCADGui as Gui
+
     QtCore = None
     QtGui = None
     QtWidgets = None
@@ -115,7 +112,8 @@ def inject_ui():
     QMenu = QtWidgets.QMenu
     QToolBar = QtWidgets.QToolBar
     QIcon = QtGui.QIcon
-    icon_path = App.__dict__[_STATE_KEY]["icon_path"]
+    icon_path = App.FreeCADMCPBridgeIconPath
+    command = "FreeCAD_MCP_Bridge_Toggle"
 
     mw = Gui.getMainWindow()
     if not mw:
@@ -138,7 +136,7 @@ def inject_ui():
         if not exists:
             tools_menu.addSeparator()
             action = tools_menu.addAction("Start/Stop AI Agent Bridge")
-            action.triggered.connect(lambda: Gui.runCommand(_COMMAND))
+            action.triggered.connect(lambda: Gui.runCommand(command))
 
     toolbars = mw.findChildren(QToolBar)
     target_tb = None
@@ -161,21 +159,21 @@ def inject_ui():
         action = target_tb.addAction("Start/Stop AI Agent Bridge")
         action.setIcon(QIcon(icon_path))
         action.setToolTip("Toggle the local Named Pipe / UNIX socket bridge for AI agent control")
-        action.triggered.connect(lambda: Gui.runCommand(_COMMAND))
+        action.triggered.connect(lambda: Gui.runCommand(command))
 
 
-if _COMMAND in Gui.listCommands():
+if "FreeCAD_MCP_Bridge_Toggle" in Gui.listCommands():
     try:
-        Gui.removeCommand(_COMMAND)
+        Gui.removeCommand("FreeCAD_MCP_Bridge_Toggle")
     except Exception:
         pass
-Gui.addCommand(_COMMAND, AIAgentBridgeCommand())
+Gui.addCommand("FreeCAD_MCP_Bridge_Toggle", AIAgentBridgeCommand())
 
-if _WORKBENCH not in Gui.listWorkbenches():
+if "FreeCAD_MCP_Bridge_Workbench" not in Gui.listWorkbenches():
     Gui.addWorkbench(FreeCAD_MCP_Bridge_Workbench())
 
-if not App.__dict__[_STATE_KEY]["ui_scheduled"]:
-    App.__dict__[_STATE_KEY]["ui_scheduled"] = True
+if not App.FreeCADMCPBridgeUiScheduled:
+    App.FreeCADMCPBridgeUiScheduled = True
     for core_name, _, _ in (
         ("PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets"),
         ("PySide2.QtCore", "PySide2.QtGui", "PySide2.QtWidgets"),
