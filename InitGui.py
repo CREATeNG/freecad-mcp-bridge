@@ -41,13 +41,17 @@ class AIAgentBridgeCommand:
             if inst and inst.isListening():
                 inst.close()
                 App.Console.PrintMessage("[AI Bridge] Stopped socket listener.\n")
-                Gui.runCommand("StatusBar_Text", "AI Agent Bridge: Offline")
+                mw = Gui.getMainWindow()
+                if mw:
+                    mw.statusBar().showMessage("AI Agent Bridge: Offline")
             else:
                 if inst:
                     inst.close()
                 freecad_bridge._freecad_bridge_instance = freecad_bridge.FreeCADBridge()
                 App.Console.PrintMessage("[AI Bridge] Started socket listener.\n")
-                Gui.runCommand("StatusBar_Text", "AI Agent Bridge: Listening...")
+                mw = Gui.getMainWindow()
+                if mw:
+                    mw.statusBar().showMessage("AI Agent Bridge: Listening...")
         except Exception as e:
             App.Console.PrintError(f"[AI Bridge] Error toggling bridge: {e}\n")
 
