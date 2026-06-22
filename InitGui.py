@@ -28,7 +28,7 @@ if _mod_dir not in sys.path:
 
 App.FreeCADMCPBridgeModDir = _mod_dir
 App.FreeCADMCPBridgeIconPath = os.path.join(_mod_dir, "icon.svg").replace("\\", "/")
-App.FreeCADMCPBridgeUiScheduled = getattr(App, "FreeCADMCPBridgeUiScheduled", False)
+App.FreeCADMCPBridgeCommand = "FreeCAD_MCP_Bridge_Toggle"
 
 
 class AIAgentBridgeCommand:
@@ -106,24 +106,24 @@ def inject_ui():
             continue
     if QtCore is None:
         App.Console.PrintError("[AI Bridge] UI injection skipped: no Qt binding found\n")
-        return
+        return False
 
     QTimer = QtCore.QTimer
     QMenu = QtWidgets.QMenu
     QToolBar = QtWidgets.QToolBar
     QIcon = QtGui.QIcon
     icon_path = App.FreeCADMCPBridgeIconPath
-    command = "FreeCAD_MCP_Bridge_Toggle"
+    command = App.FreeCADMCPBridgeCommand
 
     mw = Gui.getMainWindow()
     if not mw:
-        QTimer.singleShot(500, inject_ui)
-        return
+        QTimer.singleShot(500, App.FreeCADMCPBridgeInjectUi)
+        return False
 
-    menus = mw.menuBar().findChildren(QMenu)
     tools_menu = None
-    for menu in menus:
-        if menu.title().replace("&", "") == "Tools":
+    for menu in mw.menuBar().findChildren(QMenu):
+        title = menu.title().replace("&", "").strip().lower()
+        if title == "tools" or menu.objectName().lower() == "tools":
             tools_menu = menu
             break
 
@@ -138,9 +138,8 @@ def inject_ui():
             action = tools_menu.addAction("Start/Stop AI Agent Bridge")
             action.triggered.connect(lambda: Gui.runCommand(command))
 
-    toolbars = mw.findChildren(QToolBar)
     target_tb = None
-    for tb in toolbars:
+    for tb in mw.findChildren(QToolBar):
         if tb.windowTitle() == "AI Bridge" or tb.objectName() == "AI_Bridge":
             target_tb = tb
             break
@@ -161,19 +160,28 @@ def inject_ui():
         action.setToolTip("Toggle the local Named Pipe / UNIX socket bridge for AI agent control")
         action.triggered.connect(lambda: Gui.runCommand(command))
 
+    target_tb.setVisible(True)
+    target_tb.show()
+    mw.update()
+    App.Console.PrintMessage("[AI Bridge] Toolbar and menu ready.\n")
+    return True
 
-if "FreeCAD_MCP_Bridge_Toggle" in Gui.listCommands():
+
+# Keep a persistent callback for QTimer under exec() loading.
+App.FreeCADMCPBridgeInjectUi = inject_ui
+
+if App.FreeCADMCPBridgeCommand in Gui.listCommands():
     try:
-        Gui.removeCommand("FreeCAD_MCP_Bridge_Toggle")
+        Gui.removeCommand(App.FreeCADMCPBridgeCommand)
     except Exception:
         pass
-Gui.addCommand("FreeCAD_MCP_Bridge_Toggle", AIAgentBridgeCommand())
+Gui.addCommand(App.FreeCADMCPBridgeCommand, AIAgentBridgeCommand())
 
 if "FreeCAD_MCP_Bridge_Workbench" not in Gui.listWorkbenches():
     Gui.addWorkbench(FreeCAD_MCP_Bridge_Workbench())
 
-if not App.FreeCADMCPBridgeUiScheduled:
-    App.FreeCADMCPBridgeUiScheduled = True
+if not inject_ui():
+    QtCore = None
     for core_name, _, _ in (
         ("PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets"),
         ("PySide2.QtCore", "PySide2.QtGui", "PySide2.QtWidgets"),
@@ -181,7 +189,10 @@ if not App.FreeCADMCPBridgeUiScheduled:
     ):
         try:
             QtCore = __import__(core_name, fromlist=["QtCore"])
-            QtCore.QTimer.singleShot(1000, inject_ui)
             break
         except ImportError:
             continue
+    if QtCore is None:
+        App.Console.PrintError("[AI Bridge] Could not schedule UI injection: no Qt binding found\n")
+    else:
+        QtCore.QTimer.singleShot(1000, App.FreeCADMCPBridgeInjectUi)
