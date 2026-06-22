@@ -8,8 +8,8 @@ It operates entirely in-memory using **Windows Named Pipes** (on Windows) or **U
 
 ## Repository Structure
 
-*   `package.xml`: Addon metadata file for FreeCAD Addon Manager compatibility.
-*   `InitGui.py` / `Init.py`: Autoload scripts that initialize the bridge at FreeCAD startup and inject the toolbar toggle.
+*   `package.xml`: Addon metadata (`other` utility type) for FreeCAD Addon Manager compatibility.
+*   `InitGui.py` / `Init.py`: Autoload scripts that register the bridge toggle and add a global toolbar/menu across workbenches.
 *   `freecad_bridge.py`: The core local QLocalServer socket listener running inside FreeCAD.
 *   `bin/`: Precompiled, self-contained binaries for the MCP client.
     *   `win32/freecad-mcp.exe`: Precompiled Windows binary.
@@ -21,14 +21,13 @@ It operates entirely in-memory using **Windows Named Pipes** (on Windows) or **U
 ## Setup Instructions
 
 ### 1. Install the Addon in FreeCAD
-This is the standard, single-click method using FreeCAD's built-in manager.
+This is a **utility extension addon** (not a domain workbench). It adds a global toggle that works across all workbenches.
 
 1. Open FreeCAD and go to **Tools** ➔ **Addon Manager**.
-2. Select the **Workbenches** tab.
-3. Search for `freecad-mcp-bridge` and click **Install**.
-4. Restart FreeCAD.
+2. Search for `freecad-mcp-bridge` (or `freecad_mcp_bridge`) and click **Install**.
+3. Restart FreeCAD.
 
-Once restarted, a persistent **AI Bridge** toolbar and a **Tools ➔ Start/Stop AI Agent Bridge** menu item will automatically appear in your FreeCAD interface. Click either to toggle the bridge on/off in the active window.
+Once restarted, a persistent **AI Bridge** toolbar and a **Tools ➔ Start/Stop AI Agent Bridge** menu item will appear in your FreeCAD interface. Click either to toggle the bridge on/off in the active window.
 
 ---
 

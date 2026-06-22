@@ -73,18 +73,6 @@ class AIAgentBridgeCommand:
             App.Console.PrintError(f"[AI Bridge] Error toggling bridge: {e}\n")
 
 
-class FreeCAD_MCP_Bridge_Workbench(Gui.Workbench):
-    MenuText = "AI Agent Bridge"
-    ToolTip = "Interface for AI Agent Model Context Protocol Bridge"
-
-    def Initialize(self):
-        import FreeCAD as App
-        self.Icon = App.FreeCADMCPBridgeIconPath
-
-    def GetClassName(self):
-        return "Gui::PythonWorkbench"
-
-
 def inject_ui():
     import FreeCAD as App
     import FreeCADGui as Gui
@@ -219,9 +207,6 @@ if App.FreeCADMCPBridgeCommand in Gui.listCommands():
     except Exception:
         pass
 Gui.addCommand(App.FreeCADMCPBridgeCommand, AIAgentBridgeCommand())
-
-if "FreeCAD_MCP_Bridge_Workbench" not in Gui.listWorkbenches():
-    Gui.addWorkbench(FreeCAD_MCP_Bridge_Workbench())
 
 if not getattr(App, "FreeCADMCPBridgeManipulatorAdded", False):
     App.FreeCADMCPBridgeManipulatorAdded = True
