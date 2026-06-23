@@ -27,31 +27,26 @@ jobs:
     name: Verify - ${{ matrix.os-name }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash -l {0}
     env:
       RELEASE_INSTALL_TAG: ${{ github.event.inputs.tag || github.ref_name }}
       RELEASE_INSTALL_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || 'tag' }}
       RELEASE_INSTALL_REPO: https://github.com/CREATeNG/freecad-mcp-bridge
       RELEASE_INSTALL_NAME: freecad-mcp-bridge
+      RELEASE_INSTALL_GUI_DELAY_MS: "5000"
+      RELEASE_INSTALL_TOOLBAR_TIMEOUT_MS: "30000"
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             os-name: linux
-            shell: bash
-            freecad: xvfb-run -a freecad
           - os: windows-latest
             os-name: windows
-            shell: pwsh
-            freecad: freecad
           - os: macos-latest
             os-name: macos
-            shell: bash
-            freecad: freecad
-
-    defaults:
-      run:
-        shell: ${{ matrix.shell }}
 
     steps:
       - name: Checkout repository
@@ -63,24 +58,66 @@ jobs:
           activate-environment: freecad-ci
           python-version: "3.11"
           miniforge-version: latest
+          channels: conda-forge
 
       - name: Install FreeCAD
-        run: conda install -c conda-forge -y "freecad=1.1.0" git
+        run: conda install -y "freecad=1.1.0" git
+
+      - name: Install Linux display dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Resolve FreeCAD launcher
+        run: |
+          set -euo pipefail
+          if command -v freecad >/dev/null 2>&1; then
+            FC_BIN="$(command -v freecad)"
+          elif command -v FreeCAD >/dev/null 2>&1; then
+            FC_BIN="$(command -v FreeCAD)"
+          elif [ -n "${CONDA_PREFIX:-}" ] && [ -x "${CONDA_PREFIX}/bin/freecad" ]; then
+            FC_BIN="${CONDA_PREFIX}/bin/freecad"
+          elif [ -n "${CONDA_PREFIX:-}" ] && [ -x "${CONDA_PREFIX}/Library/bin/FreeCAD.exe" ]; then
+            FC_BIN="${CONDA_PREFIX}/Library/bin/FreeCAD.exe"
+          elif [ -n "${CONDA_PREFIX:-}" ] && [ -x "${CONDA_PREFIX}/bin/FreeCAD" ]; then
+            FC_BIN="${CONDA_PREFIX}/bin/FreeCAD"
+          else
+            echo "FreeCAD binary not found in PATH or conda env"
+            conda list freecad || true
+            ls -la "${CONDA_PREFIX}/bin" 2>/dev/null || true
+            ls -la "${CONDA_PREFIX}/Library/bin" 2>/dev/null || true
+            exit 1
+          fi
+          echo "FREECAD_BIN=${FC_BIN}" >> "${GITHUB_ENV}"
+          echo "Using FreeCAD: ${FC_BIN}"
+          "${FC_BIN}" --version || "${FC_BIN}" -v || true
 
       - name: Prepare isolated FreeCAD profile
-        shell: bash
         run: |
           echo "FC_CI_HOME=${RUNNER_TEMP}/freecad-ci-home" >> "${GITHUB_ENV}"
           mkdir -p "${RUNNER_TEMP}/freecad-ci-home"
 
       - name: Install addon via Addon Manager
-        run: ${{ matrix.freecad }} "${{ github.workspace }}/scripts/test_install.py"
+        run: |
+          set -euo pipefail
+          SCRIPT="${GITHUB_WORKSPACE}/scripts/test_install.py"
+          if [ "${RUNNER_OS}" = "Linux" ]; then
+            xvfb-run -a "${FREECAD_BIN}" "${SCRIPT}"
+          else
+            "${FREECAD_BIN}" "${SCRIPT}"
+          fi
         env:
           HOME: ${{ env.FC_CI_HOME }}
           USERPROFILE: ${{ env.FC_CI_HOME }}
 
       - name: Verify addon after FreeCAD restart
-        run: ${{ matrix.freecad }} "${{ github.workspace }}/scripts/test_verify.py"
+        run: |
+          set -euo pipefail
+          SCRIPT="${GITHUB_WORKSPACE}/scripts/test_verify.py"
+          if [ "${RUNNER_OS}" = "Linux" ]; then
+            xvfb-run -a "${FREECAD_BIN}" "${SCRIPT}"
+          else
+            "${FREECAD_BIN}" "${SCRIPT}"
+          fi
         env:
           HOME: ${{ env.FC_CI_HOME }}
           USERPROFILE: ${{ env.FC_CI_HOME }}

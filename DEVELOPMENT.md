@@ -90,6 +90,10 @@ addon's own startup hooks to inject the toolbar.
 
 Triggers: `workflow_dispatch` (choose tag/mode) or push of a `v*` tag.
 
+The workflow installs FreeCAD via conda-forge, resolves the platform binary into
+`FREECAD_BIN`, and runs both test scripts under `bash -l` so the conda env stays
+on `PATH`.
+
 ---
 
 ## 2. Alternative Python-Based MCP Server
