@@ -34,6 +34,7 @@ jobs:
       RELEASE_INSTALL_NAME: freecad-mcp-bridge
       RELEASE_INSTALL_GUI_DELAY_MS: "5000"
       RELEASE_INSTALL_TOOLBAR_TIMEOUT_MS: "30000"
+      RELEASE_INSTALL_SOCKET_TIMEOUT_MS: "30000"
       RELEASE_INSTALL_WAIT_MS: "180000"
     strategy:
       fail-fast: false
@@ -154,16 +155,19 @@ jobs:
           if (-not (Test-Path -LiteralPath $script)) {
             throw "test_install.py not found: '$script'"
           }
-          $logFile = Join-Path $env:RUNNER_TEMP "freecad-test-install.log"
-          Write-Host "Launching '$freecadBin' with '$script' (log: $logFile)"
+          $logOut = Join-Path $env:RUNNER_TEMP "freecad-test-install.out.log"
+          $logErr = Join-Path $env:RUNNER_TEMP "freecad-test-install.err.log"
+          Write-Host "Launching '$freecadBin' with '$script' (logs: $logOut, $logErr)"
           $proc = Start-Process -FilePath $freecadBin -ArgumentList @($script) -PassThru `
-            -RedirectStandardOutput $logFile -RedirectStandardError $logFile
+            -RedirectStandardOutput $logOut -RedirectStandardError $logErr
           if (-not $proc.WaitForExit(900000)) {
             $proc.Kill($true)
-            if (Test-Path $logFile) { Get-Content $logFile }
+            if (Test-Path $logOut) { Get-Content $logOut }
+            if (Test-Path $logErr) { Get-Content $logErr }
             throw "FreeCAD timed out after 15 minutes running test_install.py"
           }
-          if (Test-Path $logFile) { Get-Content $logFile }
+          if (Test-Path $logOut) { Get-Content $logOut }
+          if (Test-Path $logErr) { Get-Content $logErr }
           if ($proc.ExitCode -ne 0) {
             throw "FreeCAD exited with code $($proc.ExitCode) running test_install.py"
           }
@@ -208,16 +212,19 @@ jobs:
           if (-not (Test-Path -LiteralPath $script)) {
             throw "test_verify.py not found: '$script'"
           }
-          $logFile = Join-Path $env:RUNNER_TEMP "freecad-test-verify.log"
-          Write-Host "Launching '$freecadBin' with '$script' (log: $logFile)"
+          $logOut = Join-Path $env:RUNNER_TEMP "freecad-test-verify.out.log"
+          $logErr = Join-Path $env:RUNNER_TEMP "freecad-test-verify.err.log"
+          Write-Host "Launching '$freecadBin' with '$script' (logs: $logOut, $logErr)"
           $proc = Start-Process -FilePath $freecadBin -ArgumentList @($script) -PassThru `
-            -RedirectStandardOutput $logFile -RedirectStandardError $logFile
+            -RedirectStandardOutput $logOut -RedirectStandardError $logErr
           if (-not $proc.WaitForExit(900000)) {
             $proc.Kill($true)
-            if (Test-Path $logFile) { Get-Content $logFile }
+            if (Test-Path $logOut) { Get-Content $logOut }
+            if (Test-Path $logErr) { Get-Content $logErr }
             throw "FreeCAD timed out after 15 minutes running test_verify.py"
           }
-          if (Test-Path $logFile) { Get-Content $logFile }
+          if (Test-Path $logOut) { Get-Content $logOut }
+          if (Test-Path $logErr) { Get-Content $logErr }
           if ($proc.ExitCode -ne 0) {
             throw "FreeCAD exited with code $($proc.ExitCode) running test_verify.py"
           }

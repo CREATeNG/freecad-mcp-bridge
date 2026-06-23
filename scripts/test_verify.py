@@ -101,6 +101,33 @@ def _start_bridge_listener() -> None:
         common.fail("Bridge listener failed to start after toolbar click")
 
 
+def _read_socket_response(socket, timeout_ms: int) -> str:
+    from PySide.QtCore import QCoreApplication, QThread
+
+    interval_ms = 100
+    elapsed = 0
+    chunks: list[bytes] = []
+
+    while elapsed < timeout_ms:
+        QCoreApplication.processEvents()
+        if socket.bytesAvailable() > 0:
+            chunks.append(socket.readAll().data())
+            for _ in range(10):
+                QCoreApplication.processEvents()
+                if socket.waitForReadyRead(50) and socket.bytesAvailable() > 0:
+                    chunks.append(socket.readAll().data())
+                else:
+                    break
+            break
+        if socket.waitForReadyRead(interval_ms):
+            elapsed += interval_ms
+            continue
+        elapsed += interval_ms
+        QThread.msleep(interval_ms)
+
+    return b"".join(chunks).decode("utf-8")
+
+
 def _verify_socket_round_trip() -> None:
     """Run Python through the local socket (same protocol as send_cmd.py)."""
     from PySide.QtCore import QCoreApplication
@@ -115,6 +142,7 @@ def _verify_socket_round_trip() -> None:
     if not probe.endswith("\n"):
         probe += "\n"
     expected = common.env("RELEASE_INSTALL_PROBE_EXPECT", "test_verify_ok")
+    timeout_ms = int(common.env("RELEASE_INSTALL_SOCKET_TIMEOUT_MS", "30000"))
 
     socket = QLocalSocket()
     socket.connectToServer(SOCKET_NAME)
@@ -127,14 +155,14 @@ def _verify_socket_round_trip() -> None:
     socket.write(probe.encode("utf-8"))
     socket.flush()
     socket.waitForBytesWritten(1000)
+    QCoreApplication.processEvents()
 
-    if not socket.waitForReadyRead(10000):
-        socket.disconnectFromServer()
-        common.fail("Timed out waiting for bridge execution response")
-
-    response = socket.readAll().data().decode("utf-8")
+    response = _read_socket_response(socket, timeout_ms)
     socket.disconnectFromServer()
     QCoreApplication.processEvents()
+
+    if not response:
+        common.fail("Timed out waiting for bridge execution response")
 
     if expected not in response:
         common.fail(

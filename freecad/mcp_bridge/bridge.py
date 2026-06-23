@@ -80,6 +80,8 @@ class FreeCADBridge(QLocalServer):
             FreeCAD.Console.PrintError(f"{LOG_PREFIX} Exception:\n{error}\n")
 
         socket.write(output_str.encode("utf-8"))
+        socket.flush()
+        socket.waitForBytesWritten(5000)
         socket.disconnectFromServer()
 
 
