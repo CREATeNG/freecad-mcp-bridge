@@ -27,8 +27,10 @@ class MCPBridgeCommand:
 
         return {
             "Pixmap": App.MCPBridgeIconPath,
-            "MenuText": f"Start/Stop {DISPLAY_NAME}",
-            "ToolTip": "Toggle the local Named Pipe / UNIX socket bridge for AI agent control",
+            "MenuText": "MCP Bridge On/Off",
+            "ToolTip": (
+                "Start or stop the MCP Bridge listener in this FreeCAD session"
+            ),
         }
 
     def Activated(self):
@@ -71,7 +73,7 @@ def inject_ui():
 
     icon = App.MCPBridgeIconPath
     command = App.MCPBridgeCommand
-    action_label = f"Start/Stop {DISPLAY_NAME}"
+    action_label = "MCP Bridge On/Off"
 
     mw = Gui.getMainWindow()
     if not mw:
@@ -98,7 +100,7 @@ def inject_ui():
         action = target_tb.addAction(action_label)
         action.setIcon(QIcon(icon))
         action.setToolTip(
-            "Toggle the local Named Pipe / UNIX socket bridge for AI agent control"
+            "Start or stop the MCP Bridge listener in this FreeCAD session"
         )
         action.triggered.connect(lambda: Gui.runCommand(command))
 
