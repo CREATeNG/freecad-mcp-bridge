@@ -73,182 +73,39 @@ jobs:
 
       - name: Install FreeCAD (winget)
         if: runner.os == 'Windows'
-        shell: pwsh
+        shell: bash
         run: |
-          winget install --id FreeCAD.FreeCAD --version 1.1.0 `
-            --accept-package-agreements --accept-source-agreements `
+          set -uo pipefail
+          winget install --id FreeCAD.FreeCAD --version 1.1.0 \
+            --accept-package-agreements --accept-source-agreements \
             --disable-interactivity --silent
-          if ($LASTEXITCODE -gt 2) {
-            throw "winget install failed with exit code $LASTEXITCODE"
-          }
+          code=$?
+          if [ "$code" -gt 2 ]; then
+            exit "$code"
+          fi
 
       - name: Install Linux display dependencies
         if: runner.os == 'Linux'
         shell: bash -l {0}
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
-      - name: Resolve FreeCAD launcher (Unix)
-        if: runner.os != 'Windows'
-        shell: bash -l {0}
+      - name: Prepare isolated FreeCAD profile
+        shell: bash
         run: |
           set -euo pipefail
-          if command -v freecad >/dev/null 2>&1; then
-            FC_BIN="$(command -v freecad)"
-          elif command -v FreeCAD >/dev/null 2>&1; then
-            FC_BIN="$(command -v FreeCAD)"
-          elif [ -n "${CONDA_PREFIX:-}" ] && [ -x "${CONDA_PREFIX}/bin/freecad" ]; then
-            FC_BIN="${CONDA_PREFIX}/bin/freecad"
-          elif [ -n "${CONDA_PREFIX:-}" ] && [ -x "${CONDA_PREFIX}/bin/FreeCAD" ]; then
-            FC_BIN="${CONDA_PREFIX}/bin/FreeCAD"
-          else
-            echo "FreeCAD binary not found in PATH or conda env"
-            conda list freecad || true
-            ls -la "${CONDA_PREFIX}/bin" 2>/dev/null || true
-            exit 1
-          fi
-          echo "FREECAD_BIN=${FC_BIN}" >> "${GITHUB_ENV}"
-          echo "Using FreeCAD: ${FC_BIN}"
-
-      - name: Prepare isolated FreeCAD profile
-        shell: bash -l {0}
-        run: |
           echo "FC_CI_HOME=${RUNNER_TEMP}/freecad-ci-home" >> "${GITHUB_ENV}"
           mkdir -p "${RUNNER_TEMP}/freecad-ci-home"
 
-      - name: Install addon via Addon Manager (Unix)
-        if: runner.os != 'Windows'
+      - name: Install addon via Addon Manager
         shell: bash -l {0}
-        run: |
-          set -euo pipefail
-          if [ "${{ matrix.isolate_home }}" = "true" ]; then
-            export HOME="${FC_CI_HOME}"
-            export USERPROFILE="${FC_CI_HOME}"
-          fi
-          SCRIPT="${GITHUB_WORKSPACE}/scripts/test_install.py"
-          export RELEASE_INSTALL_CI_LOG="${RUNNER_TEMP}/freecad-ci-install.log"
-          rm -f "${RELEASE_INSTALL_CI_LOG}"
-          if [ "${RUNNER_OS}" = "Linux" ]; then
-            xvfb-run -a timeout 900 "${FREECAD_BIN}" "${SCRIPT}"
-          else
-            export LIBGL_ALWAYS_SOFTWARE=1
-            perl -e 'alarm shift; exec @ARGV' 900 "${FREECAD_BIN}" "${SCRIPT}"
-          fi
-          bash "${GITHUB_WORKSPACE}/scripts/publish_ci_log.sh" \
-            "${RELEASE_INSTALL_CI_LOG}" \
-            "Install addon via Addon Manager"
+        run: bash "${GITHUB_WORKSPACE}/scripts/ci_run_freecad.sh" install
         env:
+          ISOLATE_HOME: ${{ matrix.isolate_home }}
           QT_QPA_PLATFORM: ${{ matrix.qt_platform }}
 
-      - name: Install addon via Addon Manager (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        env:
-          QT_QPA_PLATFORM: ${{ matrix.qt_platform }}
-        run: |
-          $env:USERPROFILE = $env:FC_CI_HOME
-          $env:HOME = $env:FC_CI_HOME
-          New-Item -ItemType Directory -Force -Path (Join-Path $env:FC_CI_HOME "AppData\Roaming") | Out-Null
-          $script = Join-Path $env:GITHUB_WORKSPACE "scripts\test_install.py"
-          $freecadBin = @(
-            (Join-Path $env:ProgramFiles "FreeCAD 1.1\bin\FreeCAD.exe"),
-            (Join-Path ${env:ProgramFiles(x86)} "FreeCAD 1.1\bin\FreeCAD.exe"),
-            (Join-Path $env:LOCALAPPDATA "Programs\FreeCAD 1.1\bin\FreeCAD.exe")
-          ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-          if (-not $freecadBin) {
-            throw "FreeCAD.exe not found after winget install"
-          }
-          if (-not (Test-Path -LiteralPath $script)) {
-            throw "test_install.py not found: '$script'"
-          }
-          $env:RELEASE_INSTALL_CI_LOG = Join-Path $env:RUNNER_TEMP "freecad-ci-install.log"
-          if (Test-Path -LiteralPath $env:RELEASE_INSTALL_CI_LOG) {
-            Remove-Item -LiteralPath $env:RELEASE_INSTALL_CI_LOG -Force
-          }
-          $logOut = Join-Path $env:RUNNER_TEMP "freecad-test-install.out.log"
-          $logErr = Join-Path $env:RUNNER_TEMP "freecad-test-install.err.log"
-          Write-Host "Launching '$freecadBin' with '$script' (logs: $logOut, $logErr)"
-          $proc = Start-Process -FilePath $freecadBin -ArgumentList @($script) -PassThru `
-            -RedirectStandardOutput $logOut -RedirectStandardError $logErr
-          if (-not $proc.WaitForExit(900000)) {
-            $proc.Kill($true)
-            if (Test-Path $logOut) { Get-Content $logOut }
-            if (Test-Path $logErr) { Get-Content $logErr }
-            throw "FreeCAD timed out after 15 minutes running test_install.py"
-          }
-          if (Test-Path $logOut) { Get-Content $logOut }
-          if (Test-Path $logErr) { Get-Content $logErr }
-          & "${env:GITHUB_WORKSPACE}/scripts/publish_ci_log.ps1" `
-            -LogFile $env:RELEASE_INSTALL_CI_LOG `
-            -GroupTitle "Install addon via Addon Manager"
-          if ($proc.ExitCode -ne 0) {
-            throw "FreeCAD exited with code $($proc.ExitCode) running test_install.py"
-          }
-
-      - name: Verify addon after FreeCAD restart (Unix)
-        if: runner.os != 'Windows'
+      - name: Verify addon after FreeCAD restart
         shell: bash -l {0}
-        run: |
-          set -euo pipefail
-          if [ "${{ matrix.isolate_home }}" = "true" ]; then
-            export HOME="${FC_CI_HOME}"
-            export USERPROFILE="${FC_CI_HOME}"
-          fi
-          SCRIPT="${GITHUB_WORKSPACE}/scripts/test_verify.py"
-          export RELEASE_INSTALL_CI_LOG="${RUNNER_TEMP}/freecad-ci-verify.log"
-          rm -f "${RELEASE_INSTALL_CI_LOG}"
-          if [ "${RUNNER_OS}" = "Linux" ]; then
-            xvfb-run -a timeout 900 "${FREECAD_BIN}" "${SCRIPT}"
-          else
-            export LIBGL_ALWAYS_SOFTWARE=1
-            perl -e 'alarm shift; exec @ARGV' 900 "${FREECAD_BIN}" "${SCRIPT}"
-          fi
-          bash "${GITHUB_WORKSPACE}/scripts/publish_ci_log.sh" \
-            "${RELEASE_INSTALL_CI_LOG}" \
-            "Verify addon after restart"
+        run: bash "${GITHUB_WORKSPACE}/scripts/ci_run_freecad.sh" verify
         env:
+          ISOLATE_HOME: ${{ matrix.isolate_home }}
           QT_QPA_PLATFORM: ${{ matrix.qt_platform }}
-
-      - name: Verify addon after FreeCAD restart (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        env:
-          QT_QPA_PLATFORM: ${{ matrix.qt_platform }}
-        run: |
-          $env:USERPROFILE = $env:FC_CI_HOME
-          $env:HOME = $env:FC_CI_HOME
-          New-Item -ItemType Directory -Force -Path (Join-Path $env:FC_CI_HOME "AppData\Roaming") | Out-Null
-          $script = Join-Path $env:GITHUB_WORKSPACE "scripts\test_verify.py"
-          $freecadBin = @(
-            (Join-Path $env:ProgramFiles "FreeCAD 1.1\bin\FreeCAD.exe"),
-            (Join-Path ${env:ProgramFiles(x86)} "FreeCAD 1.1\bin\FreeCAD.exe"),
-            (Join-Path $env:LOCALAPPDATA "Programs\FreeCAD 1.1\bin\FreeCAD.exe")
-          ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-          if (-not $freecadBin) {
-            throw "FreeCAD.exe not found after winget install"
-          }
-          if (-not (Test-Path -LiteralPath $script)) {
-            throw "test_verify.py not found: '$script'"
-          }
-          $env:RELEASE_INSTALL_CI_LOG = Join-Path $env:RUNNER_TEMP "freecad-ci-verify.log"
-          if (Test-Path -LiteralPath $env:RELEASE_INSTALL_CI_LOG) {
-            Remove-Item -LiteralPath $env:RELEASE_INSTALL_CI_LOG -Force
-          }
-          $logOut = Join-Path $env:RUNNER_TEMP "freecad-test-verify.out.log"
-          $logErr = Join-Path $env:RUNNER_TEMP "freecad-test-verify.err.log"
-          Write-Host "Launching '$freecadBin' with '$script' (logs: $logOut, $logErr)"
-          $proc = Start-Process -FilePath $freecadBin -ArgumentList @($script) -PassThru `
-            -RedirectStandardOutput $logOut -RedirectStandardError $logErr
-          if (-not $proc.WaitForExit(900000)) {
-            $proc.Kill($true)
-            if (Test-Path $logOut) { Get-Content $logOut }
-            if (Test-Path $logErr) { Get-Content $logErr }
-            throw "FreeCAD timed out after 15 minutes running test_verify.py"
-          }
-          if (Test-Path $logOut) { Get-Content $logOut }
-          if (Test-Path $logErr) { Get-Content $logErr }
-          & "${env:GITHUB_WORKSPACE}/scripts/publish_ci_log.ps1" `
-            -LogFile $env:RELEASE_INSTALL_CI_LOG `
-            -GroupTitle "Verify addon after restart"
-          if ($proc.ExitCode -ne 0) {
-            throw "FreeCAD exited with code $($proc.ExitCode) running test_verify.py"
-          }
