@@ -2,7 +2,7 @@ name: Release Build
 
 on:
   release:
-    types: [created]
+    types: [published]
 
 permissions:
   contents: write
@@ -18,14 +18,17 @@ jobs:
             os-name: linux
             target: x86_64-unknown-linux-gnu
             bin-name: freecad-mcp-bridge
+            dest: bin/linux/freecad-mcp-bridge
           - os: macos-latest
             os-name: macos
             target: x86_64-apple-darwin
             bin-name: freecad-mcp-bridge
+            dest: bin/macos/freecad-mcp-bridge
           - os: windows-latest
             os-name: windows
             target: x86_64-pc-windows-msvc
             bin-name: freecad-mcp-bridge.exe
+            dest: bin/win32/freecad-mcp-bridge.exe
 
     steps:
       - name: Checkout code
@@ -41,11 +44,83 @@ jobs:
           cd rust_mcp_server
           cargo build --release --target ${{ matrix.platform.target }}
 
-      - name: Upload binary to Release
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform.os-name }}
+          path: rust_mcp_server/target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin-name }}
+
+  publish:
+    name: Publish binaries
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Download Linux binary
+        uses: actions/download-artifact@v4
+        with:
+          name: linux
+          path: artifacts/linux
+
+      - name: Download macOS binary
+        uses: actions/download-artifact@v4
+        with:
+          name: macos
+          path: artifacts/macos
+
+      - name: Download Windows binary
+        uses: actions/download-artifact@v4
+        with:
+          name: windows
+          path: artifacts/windows
+
+      - name: Install binaries into bin/
+        run: |
+          install -D artifacts/linux/freecad-mcp-bridge bin/linux/freecad-mcp-bridge
+          install -D artifacts/macos/freecad-mcp-bridge bin/macos/freecad-mcp-bridge
+          install -D artifacts/windows/freecad-mcp-bridge.exe bin/win32/freecad-mcp-bridge.exe
+          chmod +x bin/linux/freecad-mcp-bridge bin/macos/freecad-mcp-bridge
+
+      - name: Upload binaries to GitHub Release
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: rust_mcp_server/target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin-name }}
-          asset_name: freecad-mcp-bridge-${{ matrix.platform.os-name }}-${{ matrix.platform.bin-name }}
+          file: bin/linux/freecad-mcp-bridge
+          asset_name: freecad-mcp-bridge-linux-freecad-mcp-bridge
           tag: ${{ github.ref }}
           overwrite: true
+
+      - name: Upload macOS binary to GitHub Release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: bin/macos/freecad-mcp-bridge
+          asset_name: freecad-mcp-bridge-macos-freecad-mcp-bridge
+          tag: ${{ github.ref }}
+          overwrite: true
+
+      - name: Upload Windows binary to GitHub Release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: bin/win32/freecad-mcp-bridge.exe
+          asset_name: freecad-mcp-bridge-windows-freecad-mcp-bridge.exe
+          tag: ${{ github.ref }}
+          overwrite: true
+
+      - name: Commit synced bin/ to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bin/linux bin/macos bin/win32
+          if git diff --staged --quiet; then
+            echo "bin/ already up to date"
+            exit 0
+          fi
+          git commit -m "Sync release binaries for ${{ github.ref_name }}"
+          git push origin main

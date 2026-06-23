@@ -44,19 +44,27 @@ This addon follows the usual FreeCAD GitHub pattern:
 
 * **`main`** is the release branch. `package.xml` points Addon Manager at `branch="main"`.
 * **Version tags** match `package.xml` semver: `v0.1.8` for `<version>0.1.8</version>`.
-* **GitHub Releases** (created from a tag) trigger `.github/workflows/release.yml`, which builds Rust MCP binaries for Windows, Linux, and macOS and attaches them to the release.
+* **GitHub Releases** (published from a tag) trigger `.github/workflows/release.yml`, which builds Rust MCP binaries for Windows, Linux, and macOS, attaches them to the release, and syncs them into `bin/` on `main` so Addon Manager installs include prebuilt clients.
+
+### `bin/` layout (shipped with the addon)
+
+| Path | Platform |
+|------|----------|
+| `bin/win32/freecad-mcp-bridge.exe` | Windows |
+| `bin/linux/freecad-mcp-bridge` | Linux x86_64 |
+| `bin/macos/freecad-mcp-bridge` | macOS x86_64 |
 
 ### Publishing a release
 
 1. Merge finished work into `main` (use short-lived topic branches for larger changes).
 2. Bump `<version>` and `<date>` in `package.xml` on `main`.
-3. Commit, push `main`, then tag and push:
+3. Commit and push `main`, then tag and push:
    ```bash
-   git tag v0.1.8
+   git tag v0.1.9
    git push origin main
-   git push origin v0.1.8
+   git push origin v0.1.9
    ```
-4. On GitHub: **Releases → Draft a new release**, choose tag `v0.1.8`, publish. CI uploads cross-platform binaries to the release assets.
+4. On GitHub: **Releases → Draft a new release**, choose tag `v0.1.9`, click **Publish release** (not draft). CI builds binaries, uploads release assets, and commits updated `bin/` to `main`.
 
 Do not reuse a version number on `main`; Addon Manager treats identical versions as confusing duplicate updates.
 

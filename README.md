@@ -13,8 +13,10 @@ It operates entirely in-memory using **Windows Named Pipes** (on Windows) or **U
     *   `init_gui.py`: Registers the bridge toggle and adds a global toolbar across workbenches.
     *   `bridge.py`: Core local QLocalServer socket listener running inside FreeCAD.
     *   `Resources/Icons/icon.svg` (repo root): Addon Manager listing icon (SVG, cross-platform).
-*   `bin/`: Precompiled, self-contained binaries for the MCP client.
-    *   `win32/freecad-mcp-bridge.exe`: Precompiled Windows binary.
+*   `bin/`: Precompiled, self-contained binaries for the MCP client (updated on each published release).
+    *   `win32/freecad-mcp-bridge.exe`: Windows
+    *   `linux/freecad-mcp-bridge`: Linux x86_64
+    *   `macos/freecad-mcp-bridge`: macOS x86_64
 
 *(For source files, Python MCP scripts, and developer testing tools, see [DEVELOPMENT.md](DEVELOPMENT.md).)*
 
