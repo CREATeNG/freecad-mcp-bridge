@@ -138,10 +138,17 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "${{ steps.version.outputs.tag }}" --title "${{ steps.version.outputs.tag }}" --notes "Release ${{ steps.version.outputs.tag }}"
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" \
-            --title "${{ steps.version.outputs.tag }}" \
-            --notes "Release ${{ steps.version.outputs.tag }}" \
-            bin/linux/freecad-mcp-bridge#freecad-mcp-bridge-linux-freecad-mcp-bridge \
-            bin/macos/freecad-mcp-bridge#freecad-mcp-bridge-macos-freecad-mcp-bridge \
-            bin/win32/freecad-mcp-bridge.exe#freecad-mcp-bridge-windows-freecad-mcp-bridge.exe
+          cp bin/linux/freecad-mcp-bridge freecad-mcp-bridge-linux
+          cp bin/macos/freecad-mcp-bridge freecad-mcp-bridge-macos
+          cp bin/win32/freecad-mcp-bridge.exe freecad-mcp-bridge-windows.exe
+          gh release upload "${{ steps.version.outputs.tag }}" \
+            freecad-mcp-bridge-linux \
+            freecad-mcp-bridge-macos \
+            freecad-mcp-bridge-windows.exe \
+            --clobber
