@@ -8,6 +8,34 @@ import xml.etree.ElementTree as ET
 
 LOG_PREFIX = "[test_install]"
 PACKAGE_NS = "https://wiki.freecad.org/Package_Metadata"
+_active_ci_group: str | None = None
+
+
+def _format_line(message: str) -> str:
+    return f"{LOG_PREFIX} {message}"
+
+
+def _ci_escape(value: str) -> str:
+    return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+
+
+def _emit_stdout(message: str) -> None:
+    print(_format_line(message), flush=True)
+
+
+def log_group_start(title: str) -> None:
+    """Start a collapsible group in GitHub Actions logs."""
+    global _active_ci_group
+    _active_ci_group = title
+    print(f"::group::{title}", flush=True)
+
+
+def log_group_end() -> None:
+    """Close the active GitHub Actions log group."""
+    global _active_ci_group
+    if _active_ci_group is not None:
+        print("::endgroup::", flush=True)
+        _active_ci_group = None
 
 
 def _drain_qt_events(delay_ms: int = 2000) -> None:
@@ -26,7 +54,20 @@ def _drain_qt_events(delay_ms: int = 2000) -> None:
 def log(message: str) -> None:
     import FreeCAD as App
 
-    App.Console.PrintMessage(f"{LOG_PREFIX} {message}\n")
+    line = _format_line(message)
+    App.Console.PrintMessage(f"{line}\n")
+    print(line, flush=True)
+
+
+def log_notice(message: str) -> None:
+    """Log a passing checkpoint; surfaces as a GitHub Actions notice."""
+    import FreeCAD as App
+
+    line = _format_line(message)
+    App.Console.PrintMessage(f"{line}\n")
+    title = _ci_escape(LOG_PREFIX.strip("[]"))
+    print(f"::notice title={title}::{_ci_escape(message)}", flush=True)
+    print(line, flush=True)
 
 
 def quit_freecad(exit_code: int = 0) -> None:
@@ -42,7 +83,12 @@ def quit_freecad(exit_code: int = 0) -> None:
 def fail(message: str) -> None:
     import FreeCAD as App
 
-    App.Console.PrintError(f"{LOG_PREFIX} {message}\n")
+    line = _format_line(message)
+    App.Console.PrintError(f"{line}\n")
+    title = _ci_escape(LOG_PREFIX.strip("[]"))
+    print(f"::error title={title}::{_ci_escape(message)}", flush=True)
+    print(line, flush=True)
+    log_group_end()
     quit_freecad(1)
 
 
@@ -246,7 +292,7 @@ def verify_install_tree(install_dir: str, expected_version: str) -> None:
     if found_version != expected_version:
         fail(f"Expected version {expected_version}, found {found_version}")
 
-    log(f"Install tree OK at {install_dir} (version {expected_version})")
+    log_notice(f"Install tree OK at {install_dir} (version {expected_version})")
 
 
 def build_addon_descriptor(

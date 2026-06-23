@@ -29,6 +29,8 @@ import test_install_common as common
 def _run() -> None:
     import FreeCAD as App
 
+    common.log_group_start("Install addon via Addon Manager")
+
     tag = common.env("RELEASE_INSTALL_TAG", "v0.1.11")
     repo_url = common.env(
         "RELEASE_INSTALL_REPO", "https://github.com/CREATeNG/freecad-mcp-bridge"
@@ -80,7 +82,10 @@ def _run() -> None:
 
     install_dir = common.flatten_install_dir(install_dir)
     common.verify_install_tree(install_dir, expected_version)
-    common.log("Install passed; restart FreeCAD and run scripts/test_verify.py")
+    common.log_notice(
+        "Install passed; restart FreeCAD and run scripts/test_verify.py"
+    )
+    common.log_group_end()
     common.quit_freecad(0)
 
 

@@ -43,7 +43,7 @@ def _verify_addon_startup() -> None:
     if not os.path.isdir(common.installed_addon_dir()):
         common.fail("Installed addon directory is missing after restart")
 
-    common.log(f"Addon command {command_id!r} registered on startup")
+    common.log_notice(f"Addon command {command_id!r} registered on startup")
 
 
 def _find_toolbar_action():
@@ -192,7 +192,9 @@ def _stop_bridge_listener() -> None:
             f"Expected substring {expected_status!r}, got: {status_message!r}"
         )
 
-    common.log(f"Bridge stopped via toolbar toggle (saw {expected!r} in Report view)")
+    common.log_notice(
+        f"Bridge stopped via toolbar toggle (saw {expected!r} in Report view)"
+    )
 
 
 def _read_socket_response(socket, timeout_ms: int) -> str:
@@ -264,12 +266,13 @@ def _verify_socket_round_trip() -> None:
             f"Expected substring {expected!r}, got: {response!r}"
         )
 
-    common.log(f"Socket round-trip OK (saw {expected!r})")
+    common.log_notice(f"Socket round-trip OK (saw {expected!r})")
 
 
 def _run() -> None:
     import FreeCAD as App
 
+    common.log_group_start("Verify addon after restart")
     common.log(
         "Verify phase after restart "
         f"(user_data={App.getUserAppDataDir()})"
@@ -279,7 +282,8 @@ def _run() -> None:
     _start_bridge_listener()
     _verify_socket_round_trip()
     _stop_bridge_listener()
-    common.log("Verify passed")
+    common.log_notice("Verify passed")
+    common.log_group_end()
     common.quit_freecad(0)
 
 
