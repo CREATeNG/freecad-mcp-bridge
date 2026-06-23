@@ -9,7 +9,7 @@ Environment:
   RELEASE_INSTALL_TAG     Git tag to install (default: v0.1.11)
   RELEASE_INSTALL_REPO    Repository URL
   RELEASE_INSTALL_NAME    Installed Mod folder name (default: freecad-mcp-bridge)
-  RELEASE_INSTALL_MODE    tag | index_zip (default: tag)
+  RELEASE_INSTALL_MODE    tag | index_zip | main (default: tag)
   RELEASE_INSTALL_GUI_DELAY_MS  Delay before work starts (default: 3000)
 """
 

@@ -51,11 +51,15 @@ jobs:
             target: x86_64-pc-windows-msvc
             bin-name: freecad-mcp-bridge.exe
 
-  release:
-    name: Tag and publish release
+  prepare:
+    name: Stage release candidate on main
     needs: build
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      commit_sha: ${{ steps.commit_sha.outputs.sha }}
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -127,18 +131,45 @@ jobs:
             git commit -m "Sync release binaries for ${{ steps.version.outputs.tag }}"
           fi
 
-      - name: Create release tag
-        run: git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
+      - name: Push release candidate to main
+        run: git push origin main
 
-      - name: Push main and tag
-        run: |
-          git push origin main
-          git push origin "${{ steps.version.outputs.tag }}"
+      - name: Record release candidate commit
+        id: commit_sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  install_verify:
+    name: Install verify (release gate)
+    needs: prepare
+    uses: ./.github/workflows/install-verify-reusable.yml
+    with:
+      install_mode: main
+      install_tag: ${{ needs.prepare.outputs.tag }}
+      fail_fast: true
+
+  publish:
+    name: Tag and publish release
+    needs: [prepare, install_verify]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout release candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create release tag
+        run: git tag -a "${{ needs.prepare.outputs.tag }}" -m "Release ${{ needs.prepare.outputs.tag }}"
+
+      - name: Push tag
+        run: git push origin "${{ needs.prepare.outputs.tag }}"
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "${{ steps.version.outputs.tag }}" --title "${{ steps.version.outputs.tag }}" --notes "Release ${{ steps.version.outputs.tag }}"
+        run: gh release create "${{ needs.prepare.outputs.tag }}" --title "${{ needs.prepare.outputs.tag }}" --notes "Release ${{ needs.prepare.outputs.tag }}"
 
       - name: Upload release assets
         env:
@@ -147,7 +178,7 @@ jobs:
           cp bin/linux/freecad-mcp-bridge freecad-mcp-bridge-linux
           cp bin/macos/freecad-mcp-bridge freecad-mcp-bridge-macos
           cp bin/win32/freecad-mcp-bridge.exe freecad-mcp-bridge-windows.exe
-          gh release upload "${{ steps.version.outputs.tag }}" \
+          gh release upload "${{ needs.prepare.outputs.tag }}" \
             freecad-mcp-bridge-linux \
             freecad-mcp-bridge-macos \
             freecad-mcp-bridge-windows.exe \

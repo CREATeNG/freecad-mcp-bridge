@@ -77,15 +77,13 @@ flowchart LR
 **Release workflow order** (`.github/workflows/release.yml`):
 
 1. Build Rust MCP binaries (Linux, macOS, Windows) in parallel.
-2. Download artifacts and install into `bin/linux`, `bin/macos`, `bin/win32`.
-3. Read `<version>` from `package.xml` → tag `v{version}`.
-4. **Verify the tag does not already exist** (local or on origin).
-5. Commit `bin/` to `main` if binaries changed.
-6. `git tag -a v{version}` on current `main`.
-7. Push `main` and the tag.
-8. Create GitHub Release and upload per-platform assets.
+2. **Prepare** — download artifacts, install into `bin/`, read `<version>` from `package.xml`, verify the tag does not already exist, commit `bin/` to `main` if changed, **push `main`**.
+3. **Install verify (hard gate)** — run the full Addon Manager install + restart verify suite on all three OSes against `main` (`install_mode: main`). **No tag is created if this fails.**
+4. **Publish** — only after verify passes: `git tag -a v{version}` on the verified commit, push the tag, create GitHub Release, upload per-platform assets.
 
-If Rust sources did not change, step 5 may be a no-op, but the tag still points at current `main`.
+Pushing a `v*` tag still triggers `release-install-verify.yml` as a post-release check (`install_mode: tag`).
+
+If Rust sources did not change, the prepare commit step may be a no-op, but verify and tagging still run against current `main`.
 
 ### `bin/` layout (shipped with the addon)
 

@@ -315,6 +315,8 @@ def build_addon_descriptor(
         return zip_url, tag
     if mode == "tag":
         return repo_url.rstrip("/"), tag
+    if mode == "main":
+        return repo_url.rstrip("/"), "main"
     fail(f"Unsupported RELEASE_INSTALL_MODE: {mode}")
     return "", ""
 

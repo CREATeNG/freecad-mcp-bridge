@@ -1,0 +1,109 @@
+name: Install verify (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      install_mode:
+        description: RELEASE_INSTALL_MODE (tag, index_zip, or main)
+        required: true
+        type: string
+      install_tag:
+        description: Expected release tag (e.g. v0.1.12) for package.xml version checks
+        required: true
+        type: string
+      fail_fast:
+        description: Stop other matrix legs when one OS fails
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify - ${{ matrix.os-name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      RELEASE_INSTALL_TAG: ${{ inputs.install_tag }}
+      RELEASE_INSTALL_MODE: ${{ inputs.install_mode }}
+      RELEASE_INSTALL_REPO: https://github.com/CREATeNG/freecad-mcp-bridge
+      RELEASE_INSTALL_NAME: freecad-mcp-bridge
+      RELEASE_INSTALL_GUI_DELAY_MS: "5000"
+      RELEASE_INSTALL_TOOLBAR_TIMEOUT_MS: "30000"
+      RELEASE_INSTALL_SOCKET_TIMEOUT_MS: "30000"
+      RELEASE_INSTALL_WAIT_MS: "180000"
+    strategy:
+      fail-fast: ${{ inputs.fail_fast }}
+      matrix:
+        include:
+          - os: ubuntu-latest
+            os-name: linux
+            qt_platform: ""
+            isolate_home: true
+          - os: windows-latest
+            os-name: windows
+            qt_platform: ""
+            isolate_home: true
+          - os: macos-latest
+            os-name: macos
+            qt_platform: offscreen
+            isolate_home: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up conda environment
+        if: runner.os != 'Windows'
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: freecad-ci
+          python-version: "3.11"
+          miniforge-version: latest
+          channels: conda-forge
+
+      - name: Install FreeCAD (conda)
+        if: runner.os != 'Windows'
+        shell: bash -l {0}
+        run: conda install -y "freecad=1.1.0" git
+
+      - name: Install FreeCAD (winget)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          set -uo pipefail
+          winget install --id FreeCAD.FreeCAD --version 1.1.0 \
+            --accept-package-agreements --accept-source-agreements \
+            --disable-interactivity --silent
+          code=$?
+          if [ "$code" -gt 2 ]; then
+            exit "$code"
+          fi
+
+      - name: Install Linux display dependencies
+        if: runner.os == 'Linux'
+        shell: bash -l {0}
+        run: sudo apt-get update && sudo apt-get install -y xvfb
+
+      - name: Prepare isolated FreeCAD profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "FC_CI_HOME=${RUNNER_TEMP}/freecad-ci-home" >> "${GITHUB_ENV}"
+          mkdir -p "${RUNNER_TEMP}/freecad-ci-home"
+
+      - name: Install addon via Addon Manager
+        shell: bash -l {0}
+        run: bash "${GITHUB_WORKSPACE}/scripts/ci_run_freecad.sh" install
+        env:
+          ISOLATE_HOME: ${{ matrix.isolate_home }}
+          QT_QPA_PLATFORM: ${{ matrix.qt_platform }}
+
+      - name: Verify addon after FreeCAD restart
+        shell: bash -l {0}
+        run: bash "${GITHUB_WORKSPACE}/scripts/ci_run_freecad.sh" verify
+        env:
+          ISOLATE_HOME: ${{ matrix.isolate_home }}
+          QT_QPA_PLATFORM: ${{ matrix.qt_platform }}

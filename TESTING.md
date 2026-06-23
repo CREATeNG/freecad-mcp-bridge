@@ -61,6 +61,23 @@ Addon Manager installs from the GitHub archive ZIP URL:
 
 Use this mode to validate the same artifact shape the FreeCAD Addon Index serves via `zip_url`. After install, `flatten_install_dir()` still normalizes nested zip layouts to `Mod/freecad-mcp-bridge/`.
 
+### `main`
+
+Addon Manager installs from the repository URL with `branch=main`. Used by the **Release workflow gate**: after `bin/` is pushed to `main` but **before** the release tag is created, install-verify runs against the release candidate on `main`. `RELEASE_INSTALL_TAG` still supplies the expected `package.xml` version for on-disk checks.
+
+---
+
+## Release workflow gate
+
+Install-verify is a **hard prerequisite** for tag creation. In `.github/workflows/release.yml`:
+
+1. **Build** Rust binaries (matrix).
+2. **Prepare** — sync `bin/` to `main`, commit if needed, **push `main`** (no tag yet).
+3. **Install verify** — reusable workflow with `install_mode: main` and `fail_fast: true`. If any OS fails, the workflow stops here.
+4. **Publish** — only after verify passes: create tag, push tag, GitHub Release + assets.
+
+A tag push still triggers `release-install-verify.yml` separately as a post-release sanity check (`install_mode: tag`).
+
 ---
 
 ## Phase 1: `test_install.py`
@@ -192,7 +209,8 @@ bash scripts/publish_ci_log.sh /tmp/freecad-ci-verify.log "Verify addon after re
 
 | File | Role |
 |------|------|
-| `.github/workflows/release-install-verify.yml` | Matrix workflow definition |
+| `.github/workflows/install-verify-reusable.yml` | Reusable verify job (called by Release gate and standalone workflow) |
+| `.github/workflows/release-install-verify.yml` | Standalone dispatch / post-tag verify |
 | `scripts/ci_run_freecad.sh` | FreeCAD launcher + timeout + log path |
 | `scripts/publish_ci_log.sh` | Log file → GitHub annotations |
 | `scripts/test_install.py` | Addon Manager install phase |
