@@ -2,7 +2,7 @@
 # Release publish orchestrator — INTERNAL to .github/workflows/release.yml only.
 #
 # Atomic sequence (install-verify must have already passed):
-#   1. Stamp-only commit: package.xml <version> and <date> only → x.y.z (fixed-point)
+#   1. Stamp-only commit: package.xml <version> and <date> only → x.y.0
 #   2. Annotated tag on stamp commit where tag === version
 #   3. Reset-only commit on main: package.xml → x.(y+1) (two-part dev line)
 #
@@ -17,7 +17,6 @@ fi
 
 VERIFIED_SHA="${RELEASE_VERIFIED_SHA:?RELEASE_VERIFIED_SHA is required}"
 PACKAGE_XML="${RELEASE_PACKAGE_XML:-package.xml}"
-MAX_FIXED_POINT_ATTEMPTS="${RELEASE_STAMP_FIXED_POINT_ATTEMPTS:-64}"
 
 require_clean_tree() {
   if [[ -n "$(git status --porcelain)" ]]; then
@@ -73,10 +72,6 @@ today_utc() {
   date -u +%Y-%m-%d
 }
 
-restore_package_xml() {
-  git checkout -- "$PACKAGE_XML" 2>/dev/null || true
-}
-
 require_clean_tree
 
 current=$(git rev-parse HEAD)
@@ -88,39 +83,9 @@ fi
 line_version=$(read_line_version)
 x="${line_version%%.*}"
 y="${line_version#*.}"
-parent="$current"
+stamp_version="${x}.${y}.0"
+stamp_tag="v${stamp_version}"
 stamp_date=$(today_utc)
-
-candidate_z="0000000"
-stamp_commit=""
-stamp_tag=""
-
-for ((attempt = 1; attempt <= MAX_FIXED_POINT_ATTEMPTS; attempt++)); do
-  stamped_version="${x}.${y}.${candidate_z}"
-  write_manifest_version_date "$stamped_version" "$stamp_date"
-  git add "$PACKAGE_XML"
-  assert_only_package_xml_staged
-
-  tree=$(git write-tree)
-  stamp_commit=$(
-    printf 'Release stamp %s\n' "v${stamped_version}" | git commit-tree "$tree" -p "$parent"
-  )
-  actual_z=$(git rev-parse --short=7 "$stamp_commit")
-
-  if [[ "$actual_z" == "$candidate_z" ]]; then
-    stamp_tag="v${stamped_version}"
-    break
-  fi
-  candidate_z="$actual_z"
-done
-
-if [[ -z "$stamp_tag" ]]; then
-  restore_package_xml
-  echo "Fixed-point stamp failed after ${MAX_FIXED_POINT_ATTEMPTS} attempts." >&2
-  echo "The stamp commit short SHA cannot equal the z embedded in its own package.xml." >&2
-  echo "This limit applies on any branch — not a releases-branch issue." >&2
-  exit 1
-fi
 
 if git rev-parse "$stamp_tag" >/dev/null 2>&1; then
   echo "Tag ${stamp_tag} already exists locally." >&2
@@ -131,8 +96,12 @@ if [[ -n "$(git ls-remote --tags origin "${stamp_tag}")" ]]; then
   exit 1
 fi
 
-git tag -a "$stamp_tag" "$stamp_commit" -m "Release ${stamp_tag}"
-git reset --hard "$stamp_commit"
+write_manifest_version_date "$stamp_version" "$stamp_date"
+git add "$PACKAGE_XML"
+assert_only_package_xml_staged
+git commit -m "Release stamp ${stamp_tag}"
+
+git tag -a "$stamp_tag" -m "Release ${stamp_tag}"
 
 next_y=$((y + 1))
 reset_version="${x}.${next_y}"

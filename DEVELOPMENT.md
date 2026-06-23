@@ -65,12 +65,12 @@ The addon uses a single **SVG** icon at `Resources/Icons/icon.svg` (repo root). 
 
 | Ref | `<version>` | Meaning |
 |-----|-------------|---------|
-| **`main` (development)** | `x.y` (two-part) | Development line — no commit fingerprint in the manifest |
-| **Tagged release** | `x.y.z` where `z` = short SHA of the stamp commit | Stamped only after verify passes; **tag === version** (e.g. `v0.2.a1b2c3d`) |
+| **`main` (development)** | `x.y` (two-part) | Development line — not a stamped release |
+| **Tagged release** | `x.y.0` (three-part; numeric `z`) | Stamped only after verify passes; **tag === version** (e.g. `v0.2.0`) |
 
-Do not hand-edit a stamped `x.y.z` on `main`. The publish orchestrator resets `main` to `x.(y+1)` after tagging.
+Do not hand-edit a stamped release version on `main`. The publish orchestrator resets `main` to `x.(y+1)` after tagging.
 
-**Fixed-point note:** embedding the stamp commit’s own short SHA inside its `package.xml` is a git fixed-point problem (the hash depends on the file contents). The internal orchestrator tries a `git commit-tree` convergence loop; if it fails, release publish aborts. This applies on any branch — not something a `releases` branch avoids.
+`z` is not a commit SHA — it cannot honestly be one inside the same commit. Index `git_ref` is the tag name (`v0.2.0`), which matches `package.xml` by convention.
 
 ### End-to-end release pipeline
 
