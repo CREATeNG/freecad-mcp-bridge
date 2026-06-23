@@ -40,12 +40,52 @@ The addon uses a single **SVG** icon at `Resources/Icons/icon.svg` (repo root). 
 
 ## Releases
 
+### The big rule: never create release tags manually
+
+**Release tags are created only by the Release workflow** (`.github/workflows/release.yml`). Maintainers must not run `git tag` locally or create tags through the GitHub UI.
+
+| Do | Don't |
+|----|-------|
+| Bump `<version>` and `<date>` in `package.xml` on `main`, push, then run **Release** once | Create `v0.1.x` tags by hand |
+| Let Release sync `bin/`, commit if needed, then tag `v{version}` from `package.xml` | Re-run **Release** for a tag that already exists (workflow fails) |
+| Use **Release install verify** (`workflow_dispatch`) to test CI while developing on `main` | Expect install-verify alone to create or move tags |
+
+**Why:** Each release tag must be a complete, installable snapshot — Python sources, `package.xml`, and prebuilt `bin/` clients — with `bin/` committed to `main` *before* the tag is applied. Tags created before this process (before **v0.1.11**) pointed at commits missing synced binaries and are **not** suitable as FreeCAD Index `git_ref` values.
+
+**v0.1.11** is the first complete tag in this model.
+
 ### Branches, tags, and the Index
 
 * **`main`** is the development branch. It may be ahead of the latest shipped release.
-* **Version tags** (`v0.1.11`, etc.) are the authoritative install snapshots. Each tag must contain the full addon: Python sources, `package.xml`, and prebuilt `bin/` clients.
-* **FreeCAD Addon Index** (when listed) will pin a specific tag via `git_ref` in [FreeCAD/Addons](https://github.com/FreeCAD/Addons). Users install tagged releases, not rolling `main`.
-* Tags before **v0.1.11** used a legacy flow (tag before `bin/` sync) and are not suitable as Index install refs.
+* **Version tags** (`v0.1.11`, etc.) are the authoritative install snapshots.
+* This project uses **[Alternative 1: Tagged Releases](https://freecad.github.io/Addon-Academy/Guides/Publishing/Indexed)** for the [FreeCAD Addon Index](https://github.com/FreeCAD/Addons): the Index pins a specific tag via `git_ref`, not rolling `main`.
+* First listing request: [FreeCAD/Addons #70](https://github.com/FreeCAD/Addons/issues/70) (open as of 2026-06-23).
+
+### End-to-end release pipeline
+
+```mermaid
+flowchart LR
+  dev[Develop on main] --> bump[Bump package.xml on main]
+  bump --> release[Run Release workflow]
+  release --> bins[Build and sync bin/ to main]
+  bins --> tag[Create tag v version]
+  tag --> ghrel[GitHub Release + assets]
+  tag --> verify[Install-verify CI auto-runs]
+  verify --> index[Index PR when listed]
+```
+
+**Release workflow order** (`.github/workflows/release.yml`):
+
+1. Build Rust MCP binaries (Linux, macOS, Windows) in parallel.
+2. Download artifacts and install into `bin/linux`, `bin/macos`, `bin/win32`.
+3. Read `<version>` from `package.xml` → tag `v{version}`.
+4. **Verify the tag does not already exist** (local or on origin).
+5. Commit `bin/` to `main` if binaries changed.
+6. `git tag -a v{version}` on current `main`.
+7. Push `main` and the tag.
+8. Create GitHub Release and upload per-platform assets.
+
+If Rust sources did not change, step 5 may be a no-op, but the tag still points at current `main`.
 
 ### `bin/` layout (shipped with the addon)
 
@@ -55,44 +95,46 @@ The addon uses a single **SVG** icon at `Resources/Icons/icon.svg` (repo root). 
 | `bin/linux/freecad-mcp-bridge` | Linux x86_64 |
 | `bin/macos/freecad-mcp-bridge` | macOS x86_64 |
 
-### Publishing a release
+### Publishing a release (maintainer checklist)
 
-1. Merge finished work into `main` (use short-lived topic branches for larger changes).
-2. Bump `<version>` and `<date>` in `package.xml` on `main`, commit, and push `main`.
-3. GitHub → **Actions** → **Release** → **Run workflow** (branch: `main`).
-4. CI builds Rust MCP binaries for Windows, Linux, and macOS, commits `bin/` to `main` if needed, creates tag `v{version}` from `package.xml`, pushes `main` + tag, and publishes a GitHub Release with platform assets.
+1. Merge finished work into `main` (topic branches for larger changes).
+2. Bump `<version>` and `<date>` in `package.xml` on `main`; commit and push.
+3. GitHub → **Actions** → **Release** → **Run workflow** (branch: **`main`** only).
+4. Wait for **Release install verify** to run automatically on the new `v*` tag (or dispatch it manually against the tag while iterating).
+5. When listed in the Index, update the Addons entry (see below).
 
-Do not reuse a version number; the workflow fails if the tag already exists.
+Do not reuse a version number. Do not re-run Release for an existing tag (e.g. **v0.1.11**).
 
-### After the workflow (Index)
+### FreeCAD Addon Index
 
-Once listed in the FreeCAD Addon Index, open a PR on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) bumping your entry's `git_ref` and `zip_url` to the new tag. Helper:
+Guides: [Publishing (Indexed)](https://freecad.github.io/Addon-Academy/Guides/Publishing/Indexed), [Updating](https://freecad.github.io/Addon-Academy/Guides/Maintaining/Updating), [Index Qualities](https://freecad.github.io/Addon-Academy/Topics/Addon-Index/Index/Qualities.html).
+
+#### First listing
+
+1. Ensure a complete tag exists (Release workflow).
+2. Open an issue on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) (label **Addon - Addition**) — see [#70](https://github.com/FreeCAD/Addons/issues/70).
+3. Maintainers review against Index Qualities; they may ask for a proper tagged release if the ref is incomplete.
+4. Entry is added to `Data/Index.json` (maintainer or contributor PR).
+
+#### Updating after a new release
+
+1. Run Release workflow → new `v{version}` tag.
+2. Confirm install-verify passes on that tag.
+3. Open a PR on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) updating your entry's `git_ref`, `zip_url`, and `branch_display_name`.
+
+Helper — prints the three Index fields for a version:
 
 ```bash
 bash scripts/bump-index.sh 0.1.11
 ```
 
-Index cache updates can take up to four hours after the PR merges.
+Index cache refresh can take up to **four hours** after the PR merges.
 
 ### Automated install verification (CI)
 
-GHA workflow `.github/workflows/release-install-verify.yml` runs two FreeCAD
-scripts on Windows, Linux, and macOS (separate processes; shared helpers in
-`scripts/test_install_common.py`):
+See **[TESTING.md](TESTING.md)** for the full CI architecture: workflow triggers, install vs verify phases, `ci_run_freecad.sh`, CI log format, and GitHub annotation behavior.
 
-1. `scripts/test_install.py` — Addon Manager install + on-disk checks
-2. Restart FreeCAD with the same isolated profile
-3. `scripts/test_verify.py` — confirm startup auto-registration/UI,
-   trigger the toolbar button, and run a `send_cmd.py`-style socket probe
-
-`test_verify.py` does not call `App.MCPBridgeInjectUi()`; it waits for the
-addon's own startup hooks to inject the toolbar.
-
-Triggers: `workflow_dispatch` (choose tag/mode) or push of a `v*` tag.
-
-The workflow installs FreeCAD via conda-forge on Linux/macOS (bash + `FREECAD_BIN`)
-and via `winget install FreeCAD.FreeCAD --version 1.1.0` on Windows (pwsh +
-`Start-Process` with a 15-minute timeout).
+Summary: `.github/workflows/release-install-verify.yml` runs `test_install.py` and `test_verify.py` in **two separate FreeCAD processes** per OS (bash launcher on all platforms). Triggers: `workflow_dispatch` (pick tag and `tag` / `index_zip` mode) or push of a `v*` tag.
 
 ---
 
