@@ -22,6 +22,14 @@ If you want to compile the self-contained Rust binary yourself (instead of using
 
 ---
 
+## Qt imports
+
+Code loaded inside FreeCAD (`InitGui.py`, `freecad_bridge.py`) uses FreeCAD's `PySide` shim (`PySide.QtCore`, `PySide.QtNetwork`, etc.), which maps to the Qt binding bundled with your FreeCAD install.
+
+The out-of-process helpers below (`freecad_mcp_server.py`, `send_cmd.py`) run in a normal Python environment and use standalone `PySide6` instead.
+
+---
+
 ## 2. Alternative Python-Based MCP Server
 
 If you prefer to run the MCP server using Python rather than the compiled binary:

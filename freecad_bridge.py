@@ -4,13 +4,7 @@ import traceback
 from io import StringIO
 import FreeCAD
 
-try:
-    from PySide6.QtNetwork import QLocalServer, QLocalSocket
-except ImportError:
-    try:
-        from PySide2.QtNetwork import QLocalServer, QLocalSocket
-    except ImportError:
-        from PySide.QtNetwork import QLocalServer, QLocalSocket
+from PySide.QtNetwork import QLocalServer, QLocalSocket
 
 class FreeCADBridge(QLocalServer):
     def __init__(self, name="freecad_bridge_socket"):
@@ -28,16 +22,11 @@ class FreeCADBridge(QLocalServer):
                 import FreeCADGui as Gui
                 mw = Gui.getMainWindow()
                 if mw:
-                    # Dynamically resolve QtWidgets based on the active Qt binding
-                    for qt_mod in ["PySide6.QtWidgets", "PySide2.QtWidgets", "PySide.QtWidgets"]:
-                        try:
-                            QtWidgets = __import__(qt_mod, fromlist=["QtWidgets"]).QtWidgets
-                            dw = mw.findChild(QtWidgets.QDockWidget, "Report view")
-                            if dw and not dw.isVisible():
-                                dw.show()
-                            break
-                        except (ImportError, AttributeError):
-                            continue
+                    from PySide.QtWidgets import QDockWidget
+
+                    dw = mw.findChild(QDockWidget, "Report view")
+                    if dw and not dw.isVisible():
+                        dw.show()
             except Exception:
                 pass
         else:
