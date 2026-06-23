@@ -74,6 +74,15 @@ bash scripts/bump-index.sh 0.1.11
 
 Index cache updates can take up to four hours after the PR merges.
 
+### Automated install verification (CI)
+
+GHA workflow `.github/workflows/release-install-verify.yml` runs
+`scripts/release_install_verify.py` inside FreeCAD on Windows, Linux, and macOS.
+It uses the Addon Manager installer API to install a release tag into an isolated
+profile, then verifies `package.xml`, platform `bin/`, and Python import.
+
+Triggers: `workflow_dispatch` (choose tag/mode) or push of a `v*` tag.
+
 ---
 
 ## 2. Alternative Python-Based MCP Server

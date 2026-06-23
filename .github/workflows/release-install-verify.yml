@@ -1,0 +1,89 @@
+name: Release install verify
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to install and verify
+        required: true
+        default: v0.1.11
+      mode:
+        description: Install mode (tag or index_zip)
+        required: true
+        default: tag
+        type: choice
+        options:
+          - tag
+          - index_zip
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_INSTALL_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+  RELEASE_INSTALL_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || 'tag' }}
+  RELEASE_INSTALL_REPO: https://github.com/CREATeNG/freecad-mcp-bridge
+  RELEASE_INSTALL_NAME: freecad-mcp-bridge
+  FC_CI_HOME: ${{ runner.temp }}/freecad-ci-home
+
+jobs:
+  verify:
+    name: Verify - ${{ matrix.os-name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            os-name: linux
+            shell: bash
+            launch: >-
+              xvfb-run -a freecad
+              "${GITHUB_WORKSPACE}/scripts/release_install_verify.py"
+          - os: windows-latest
+            os-name: windows
+            shell: pwsh
+            launch: >-
+              freecad
+              "${{ github.workspace }}\scripts\release_install_verify.py"
+          - os: macos-latest
+            os-name: macos
+            shell: bash
+            launch: >-
+              freecad
+              "${GITHUB_WORKSPACE}/scripts/release_install_verify.py"
+
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up conda environment
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: freecad-ci
+          python-version: "3.11"
+          miniforge-version: latest
+
+      - name: Install FreeCAD
+        run: conda install -c conda-forge -y "freecad=1.1.0" git
+
+      - name: Prepare isolated FreeCAD profile
+        shell: bash
+        run: mkdir -p "${FC_CI_HOME}"
+        env:
+          HOME: ${{ env.FC_CI_HOME }}
+          USERPROFILE: ${{ env.FC_CI_HOME }}
+
+      - name: Run release install verification
+        run: ${{ matrix.launch }}
+        env:
+          HOME: ${{ env.FC_CI_HOME }}
+          USERPROFILE: ${{ env.FC_CI_HOME }}
