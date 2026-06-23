@@ -44,8 +44,10 @@ def execute_python(code: str) -> str:
     2. Always check if App.ActiveDocument is None. If None, create one using:
        doc = App.ActiveDocument or App.newDocument("Unnamed")
     3. Always call App.ActiveDocument.recompute() after adding, modifying, or deleting geometry to update the 3D viewer.
-    4. For visual feedback, you can execute screenshot code to save a viewport dump to the temp folder:
-       Gui.activeView().saveImage(r'C:\\Users\\chris\\AppData\\Local\\Temp\\freecad_screenshot.png', 1920, 1080, 'White')
+    4. For visual feedback, save a viewport dump to the system temp folder:
+       import os, tempfile
+       screenshot = os.path.join(tempfile.gettempdir(), "freecad_screenshot.png")
+       Gui.activeView().saveImage(screenshot, 1920, 1080, 'White')
     """
     return send_to_socket(code)
 

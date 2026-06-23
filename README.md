@@ -14,14 +14,14 @@ It operates entirely in-memory using **Windows Named Pipes** (on Windows) or **U
 *   `bin/`: Precompiled, self-contained binaries for the MCP client.
     *   `win32/freecad-mcp.exe`: Precompiled Windows binary.
 
-*(For source files, Python MCP scripts, and developer testing tools, see [DEVELOPMENT.md](file:///C:/Users/chris/.gemini/antigravity/scratch/freecad_local_bridge/DEVELOPMENT.md).)*
+*(For source files, Python MCP scripts, and developer testing tools, see [DEVELOPMENT.md](DEVELOPMENT.md).)*
 
 ---
 
 ## Setup Instructions
 
 ### 1. Install the Addon in FreeCAD
-This is a **utility extension addon** (not a domain workbench). It adds a global toggle that works across all workbenches.
+This is a **utility extension** that adds a global toggle across all workbenches.
 
 1. Open FreeCAD and go to **Tools** ➔ **Addon Manager**.
 2. Search for `freecad-mcp-bridge` (or `freecad_mcp_bridge`) and click **Install**.
@@ -109,4 +109,4 @@ If you prefer to clone or download the files manually:
 2. Download or clone this repository directly into that directory under a folder named `freecad-mcp-bridge`.
 3. Restart FreeCAD.
 
-For alternative Python script configuration, compiling the binary from source, or using direct CLI testing utilities, see [DEVELOPMENT.md](file:///C:/Users/chris/.gemini/antigravity/scratch/freecad_local_bridge/DEVELOPMENT.md).
+For alternative Python script configuration, compiling the binary from source, or using direct CLI testing utilities, see [DEVELOPMENT.md](DEVELOPMENT.md).
