@@ -47,7 +47,7 @@ def execute_python(code: str) -> str:
     4. For visual feedback, save a viewport dump to the system temp folder:
        import os, tempfile
        screenshot = os.path.join(tempfile.gettempdir(), "freecad_screenshot.png")
-       Gui.activeView().saveImage(screenshot, 1920, 1080, 'White')
+       Gui.activeView().saveImage(screenshot, 1920, 1080, 'Current')
     """
     return send_to_socket(code)
 
