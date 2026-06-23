@@ -1,49 +1,17 @@
-import os
-import sys
-
 import FreeCAD as App
 import FreeCADGui as Gui
 
-# FreeCAD loads this file with exec() inside a function. Only imported modules and
-# App attributes are visible to class bodies and deferred callbacks.
-_mod_dir = None
-try:
-    _mod_dir = os.path.dirname(os.path.abspath(__file__))
-except NameError:
-    for mod_root in App.ConfigGet("ModDirs"):
-        if not os.path.isdir(mod_root):
-            continue
-        for entry in os.listdir(mod_root):
-            candidate = os.path.join(mod_root, entry)
-            if os.path.isfile(os.path.join(candidate, "freecad_bridge.py")):
-                _mod_dir = candidate
-                break
-        if _mod_dir:
-            break
-if not _mod_dir:
-    _mod_dir = os.getcwd()
+from freecad.mcp_bridge import bridge
+from freecad.mcp_bridge.resources import icon_path
 
-if _mod_dir not in sys.path:
-    sys.path.insert(0, _mod_dir)
-
-App.FreeCADMCPBridgeModDir = _mod_dir
-App.FreeCADMCPBridgeIconPath = os.path.join(_mod_dir, "icon.svg").replace("\\", "/")
+App.FreeCADMCPBridgeIconPath = icon_path()
 App.FreeCADMCPBridgeCommand = "FreeCAD_MCP_Bridge_Toggle"
-
-
-class FreeCAD_MCP_Bridge_Loader:
-    """package.xml load stub — not registered as a selectable workbench."""
-
-    MenuText = "AI Agent Bridge"
-    ToolTip = "MCP bridge utility (global toolbar, not a workbench)"
-
-
-FreeCAD_MCP_Bridge_Loader.Icon = App.FreeCADMCPBridgeIconPath
 
 
 class AIAgentBridgeCommand:
     def GetResources(self):
         import FreeCAD as App
+
         return {
             "Pixmap": App.FreeCADMCPBridgeIconPath,
             "MenuText": "Start/Stop AI Agent Bridge",
@@ -55,15 +23,13 @@ class AIAgentBridgeCommand:
         import FreeCADGui as Gui
 
         try:
-            mod_dir = App.FreeCADMCPBridgeModDir
-            if mod_dir not in sys.path:
-                sys.path.insert(0, mod_dir)
-            import freecad_bridge
-
-            inst = getattr(freecad_bridge, "_freecad_bridge_instance", None)
+            inst = bridge._bridge_instance
             if not inst:
                 import __main__
+
                 inst = getattr(__main__, "_freecad_bridge_instance", None)
+                if not inst:
+                    inst = getattr(__main__, "_bridge_instance", None)
 
             if inst and inst.isListening():
                 inst.close()
@@ -74,7 +40,7 @@ class AIAgentBridgeCommand:
             else:
                 if inst:
                     inst.close()
-                freecad_bridge._freecad_bridge_instance = freecad_bridge.FreeCADBridge()
+                bridge._bridge_instance = bridge.FreeCADBridge()
                 App.Console.PrintMessage("[AI Bridge] Started socket listener.\n")
                 mw = Gui.getMainWindow()
                 if mw:
@@ -89,7 +55,8 @@ def inject_ui():
     from PySide.QtCore import QTimer
     from PySide.QtGui import QIcon
     from PySide.QtWidgets import QToolBar
-    icon_path = App.FreeCADMCPBridgeIconPath
+
+    icon = App.FreeCADMCPBridgeIconPath
     command = App.FreeCADMCPBridgeCommand
     action_label = "Start/Stop AI Agent Bridge"
 
@@ -116,8 +83,10 @@ def inject_ui():
             break
     if not toolbar_exists:
         action = target_tb.addAction(action_label)
-        action.setIcon(QIcon(icon_path))
-        action.setToolTip("Toggle the local Named Pipe / UNIX socket bridge for AI agent control")
+        action.setIcon(QIcon(icon))
+        action.setToolTip(
+            "Toggle the local Named Pipe / UNIX socket bridge for AI agent control"
+        )
         action.triggered.connect(lambda: Gui.runCommand(command))
 
     target_tb.setVisible(True)
@@ -136,6 +105,7 @@ class MCPBridgeUiManipulator:
 
     def modifyToolBars(self):
         import FreeCAD as App
+
         if hasattr(App, "FreeCADMCPBridgeInjectUi"):
             App.FreeCADMCPBridgeInjectUi()
         return {}
@@ -174,7 +144,6 @@ def schedule_ui_injection():
         QTimer.singleShot(delay, App.FreeCADMCPBridgeInjectUi)
 
 
-# Keep persistent callbacks for QTimer under exec() loading.
 App.FreeCADMCPBridgeInjectUi = inject_ui
 App.FreeCADMCPBridgeEnsureStartupUi = ensure_startup_ui
 
@@ -189,5 +158,4 @@ if not getattr(App, "FreeCADMCPBridgeManipulatorAdded", False):
     App.FreeCADMCPBridgeManipulatorAdded = True
     Gui.addWorkbenchManipulator(MCPBridgeUiManipulator())
 
-# Do not inject synchronously here — FreeCAD rebuilds menus/toolbars after InitGui runs.
 schedule_ui_injection()

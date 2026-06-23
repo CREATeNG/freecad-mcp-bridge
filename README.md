@@ -9,8 +9,10 @@ It operates entirely in-memory using **Windows Named Pipes** (on Windows) or **U
 ## Repository Structure
 
 *   `package.xml`: Addon metadata (`other` utility type) for FreeCAD Addon Manager compatibility.
-*   `InitGui.py` / `Init.py`: Autoload scripts that register the bridge toggle and add a global toolbar across workbenches.
-*   `freecad_bridge.py`: The core local QLocalServer socket listener running inside FreeCAD.
+*   `freecad/mcp_bridge/`: Namespaced Python package (modern layout).
+    *   `init_gui.py`: Registers the bridge toggle and adds a global toolbar across workbenches.
+    *   `bridge.py`: Core local QLocalServer socket listener running inside FreeCAD.
+    *   `Resources/Icons/icon.svg`: Addon and toolbar icon (SVG, cross-platform).
 *   `bin/`: Precompiled, self-contained binaries for the MCP client.
     *   `win32/freecad-mcp.exe`: Precompiled Windows binary.
 
@@ -66,7 +68,7 @@ This addon is designed for local-only control of FreeCAD. Here is what runs, wha
 
 ### Inside FreeCAD
 
-* `freecad_bridge.py` starts a `QLocalServer` on the local socket name `freecad_bridge_socket` **only when you click Start/Stop AI Agent Bridge**.
+* `freecad/mcp_bridge/bridge.py` starts a `QLocalServer` on the local socket name `freecad_bridge_socket` **only when you click Start/Stop AI Agent Bridge**.
 * Communication uses Qt local sockets (Windows named pipes / UNIX domain sockets). **No TCP/IP network traffic** is used by the bridge itself.
 * While the bridge is enabled, received Python code is executed inside your running FreeCAD session. Output (stdout, stderr, exceptions) is returned to the caller over the same local socket.
 * The addon does **not** collect telemetry, upload files, or send data to third-party services.
