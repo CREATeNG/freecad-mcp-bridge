@@ -191,25 +191,57 @@ class MCPBridgeUiManipulator:
         return {}
 
 
-def schedule_ui_injection():
-    import FreeCAD as App
-
-    QtCore = None
+def _load_qt_core():
     for core_name in ("PySide6.QtCore", "PySide2.QtCore", "PySide.QtCore"):
         try:
-            QtCore = __import__(core_name, fromlist=["QtCore"])
-            break
+            return __import__(core_name, fromlist=["QtCore"])
         except ImportError:
             continue
+    return None
+
+
+def ensure_startup_ui():
+    """Wait for the main window, then inject and hook workbench changes."""
+    import FreeCAD as App
+    import FreeCADGui as Gui
+
+    QtCore = _load_qt_core()
     if QtCore is None:
         App.Console.PrintError("[AI Bridge] Could not schedule UI injection: no Qt binding found\n")
         return
+
+    mw = Gui.getMainWindow()
+    if mw is None:
+        QtCore.QTimer.singleShot(250, App.FreeCADMCPBridgeEnsureStartupUi)
+        return
+
+    try:
+        mw.workbenchActivated
+    except AttributeError:
+        QtCore.QTimer.singleShot(250, App.FreeCADMCPBridgeEnsureStartupUi)
+        return
+
+    if not getattr(App, "FreeCADMCPBridgeHooksConnected", False):
+        App.FreeCADMCPBridgeHooksConnected = True
+        mw.workbenchActivated.connect(lambda *_args: App.FreeCADMCPBridgeInjectUi())
+
+    App.FreeCADMCPBridgeInjectUi()
+
+
+def schedule_ui_injection():
+    import FreeCAD as App
+
+    QtCore = _load_qt_core()
+    if QtCore is None:
+        return
+    QtCore.QTimer.singleShot(0, App.FreeCADMCPBridgeEnsureStartupUi)
     for delay in (1000, 2500, 5000):
         QtCore.QTimer.singleShot(delay, App.FreeCADMCPBridgeInjectUi)
 
 
-# Keep a persistent callback for QTimer under exec() loading.
+# Keep persistent callbacks for QTimer under exec() loading.
 App.FreeCADMCPBridgeInjectUi = inject_ui
+App.FreeCADMCPBridgeEnsureStartupUi = ensure_startup_ui
 
 if App.FreeCADMCPBridgeCommand in Gui.listCommands():
     try:
