@@ -79,8 +79,16 @@ jobs:
           echo "FC_CI_HOME=${RUNNER_TEMP}/freecad-ci-home" >> "${GITHUB_ENV}"
           mkdir -p "${RUNNER_TEMP}/freecad-ci-home"
 
-      - name: Run release install verification
+      - name: Install addon via Addon Manager
         run: ${{ matrix.launch }}
         env:
           HOME: ${{ env.FC_CI_HOME }}
           USERPROFILE: ${{ env.FC_CI_HOME }}
+          RELEASE_INSTALL_PHASE: install
+
+      - name: Verify addon after FreeCAD restart
+        run: ${{ matrix.launch }}
+        env:
+          HOME: ${{ env.FC_CI_HOME }}
+          USERPROFILE: ${{ env.FC_CI_HOME }}
+          RELEASE_INSTALL_PHASE: verify

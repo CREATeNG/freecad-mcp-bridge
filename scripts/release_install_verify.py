@@ -1,17 +1,20 @@
-"""Verify a tagged release installs correctly via the Addon Manager API.
+"""Install and verify a tagged release through FreeCAD + Addon Manager.
 
-Run inside a FreeCAD GUI process (CI or local):
+Run inside a FreeCAD GUI process in two separate launches (CI restarts FreeCAD
+between them):
 
-  freecad scripts/release_install_verify.py
-  xvfb-run -a freecad scripts/release_install_verify.py
+  RELEASE_INSTALL_PHASE=install freecad scripts/release_install_verify.py
+  RELEASE_INSTALL_PHASE=verify  freecad scripts/release_install_verify.py
 
 Environment:
-  RELEASE_INSTALL_TAG       Git tag to install (default: v0.1.11)
-  RELEASE_INSTALL_REPO      Repository URL (default: CREATeNG/freecad-mcp-bridge)
-  RELEASE_INSTALL_NAME      Installed Mod folder name (default: freecad-mcp-bridge)
-  RELEASE_INSTALL_MODE      tag | index_zip (default: tag)
-  RELEASE_INSTALL_PROBE     Python sent over the local socket (default below)
-  RELEASE_INSTALL_GUI_DELAY_MS  Wait before work starts (default: 3000)
+  RELEASE_INSTALL_PHASE   install | verify (required)
+  RELEASE_INSTALL_TAG     Git tag to install (default: v0.1.11)
+  RELEASE_INSTALL_REPO    Repository URL
+  RELEASE_INSTALL_NAME    Installed Mod folder name (default: freecad-mcp-bridge)
+  RELEASE_INSTALL_MODE    tag | index_zip (default: tag)
+  RELEASE_INSTALL_PROBE   Python sent over the local socket (verify phase)
+  RELEASE_INSTALL_GUI_DELAY_MS        Delay before work starts (default: 3000)
+  RELEASE_INSTALL_TOOLBAR_TIMEOUT_MS  Wait for auto-injected toolbar (default: 15000)
 """
 
 from __future__ import annotations
@@ -42,8 +45,22 @@ def _env(name: str, default: str) -> str:
     return os.environ.get(name, default).strip()
 
 
+def _phase() -> str:
+    phase = _env("RELEASE_INSTALL_PHASE", "")
+    if phase not in ("install", "verify"):
+        _fail("RELEASE_INSTALL_PHASE must be 'install' or 'verify'")
+    return phase
+
+
 def _version_from_tag(tag: str) -> str:
     return tag[1:] if tag.startswith("v") else tag
+
+
+def _install_dir() -> str:
+    import FreeCAD as App
+
+    addon_name = _env("RELEASE_INSTALL_NAME", "freecad-mcp-bridge")
+    return os.path.join(App.getUserAppDataDir(), "Mod", addon_name)
 
 
 def _addon_manager_paths() -> list[str]:
@@ -96,22 +113,87 @@ def _verify_install_tree(install_dir: str, expected_version: str) -> None:
     _log(f"Install tree OK at {install_dir} (version {expected_version})")
 
 
-def _ensure_install_on_path(install_dir: str) -> None:
-    if install_dir not in sys.path:
-        sys.path.insert(0, install_dir)
+def _build_addon_descriptor(
+    addon_name: str, repo_url: str, tag: str, mode: str
+) -> tuple[str, str]:
+    if mode == "index_zip":
+        zip_url = f"{repo_url.rstrip('/')}/archive/refs/tags/{tag}.zip"
+        return zip_url, tag
+    if mode == "tag":
+        return repo_url.rstrip("/"), tag
+    _fail(f"Unsupported RELEASE_INSTALL_MODE: {mode}")
+    return "", ""
 
 
-def _verify_python_import(install_dir: str) -> None:
-    _ensure_install_on_path(install_dir)
+def _run_install_phase() -> None:
+    import FreeCAD as App
 
-    import importlib
+    tag = _env("RELEASE_INSTALL_TAG", "v0.1.11")
+    repo_url = _env(
+        "RELEASE_INSTALL_REPO", "https://github.com/CREATeNG/freecad-mcp-bridge"
+    )
+    addon_name = _env("RELEASE_INSTALL_NAME", "freecad-mcp-bridge")
+    mode = _env("RELEASE_INSTALL_MODE", "tag").lower()
+    expected_version = _version_from_tag(tag)
 
-    importlib.import_module("freecad.mcp_bridge.bridge")
-    _log("Imported freecad.mcp_bridge.bridge")
+    _log(
+        f"Install phase (mode={mode}, tag={tag}, repo={repo_url}, "
+        f"user_data={App.getUserAppDataDir()})"
+    )
+
+    am_paths = _addon_manager_paths()
+    if not am_paths:
+        _fail("Addon Manager not found under user or installation Mod paths")
+
+    for path in am_paths:
+        if path not in sys.path:
+            sys.path.insert(0, path)
+
+    from Addon import Addon
+    from addonmanager_installer import AddonInstaller, InstallationMethod
+
+    install_dir = _install_dir()
+    if os.path.isdir(install_dir):
+        _log(f"Removing previous install at {install_dir}")
+        shutil.rmtree(install_dir, ignore_errors=True)
+
+    addon_url, addon_branch = _build_addon_descriptor(
+        addon_name, repo_url, tag, mode
+    )
+    addon = Addon(addon_name, addon_url, branch=addon_branch)
+    installer = AddonInstaller(addon)
+    if not installer.run(InstallationMethod.ANY):
+        _fail(f"AddonInstaller failed for {addon_name} ({mode}, {tag})")
+
+    if not os.path.isdir(install_dir):
+        _fail(f"Install directory was not created: {install_dir}")
+
+    _verify_install_tree(install_dir, expected_version)
+    _log("Install phase passed; restart FreeCAD for verify phase")
+    App.quit()
+    sys.exit(0)
+
+
+def _verify_addon_startup() -> None:
+    """Confirm FreeCAD loaded and registered the addon without manual injection."""
+    import FreeCAD as App
+    import FreeCADGui as Gui
+
+    from freecad.mcp_bridge.constants import COMMAND_ID
+
+    if COMMAND_ID not in Gui.listCommands():
+        _fail(
+            f"Addon command {COMMAND_ID!r} was not registered on startup "
+            "(init_gui did not run automatically)"
+        )
+
+    if not os.path.isdir(_install_dir()):
+        _fail("Installed addon directory is missing after restart")
+
+    _log(f"Addon command {COMMAND_ID!r} registered on startup")
 
 
 def _find_toolbar_action():
-    import FreeCAD as App
     import FreeCADGui as Gui
     from PySide.QtCore import QCoreApplication, QThread
     from PySide.QtWidgets import QToolBar
@@ -119,14 +201,12 @@ def _find_toolbar_action():
     from freecad.mcp_bridge.constants import DISPLAY_NAME, TOOLBAR_OBJECT_NAME
 
     action_label = "MCP Bridge On/Off"
-    timeout_ms = int(_env("RELEASE_INSTALL_TOOLBAR_TIMEOUT_MS", "10000"))
+    timeout_ms = int(_env("RELEASE_INSTALL_TOOLBAR_TIMEOUT_MS", "15000"))
     interval_ms = 200
     attempts = max(1, timeout_ms // interval_ms)
 
     for _ in range(attempts):
         QCoreApplication.processEvents()
-        if hasattr(App, "MCPBridgeInjectUi"):
-            App.MCPBridgeInjectUi()
 
         mw = Gui.getMainWindow()
         if mw:
@@ -144,16 +224,11 @@ def _find_toolbar_action():
     return None
 
 
-def _start_bridge_listener(install_dir: str) -> None:
+def _start_bridge_listener() -> None:
     """Start the listener by triggering the real toolbar button."""
-    _ensure_install_on_path(install_dir)
-
-    import importlib
-
+    import FreeCAD as App
     from PySide.QtCore import QCoreApplication
     from freecad.mcp_bridge import bridge as bridge_mod
-
-    importlib.import_module("freecad.mcp_bridge.init_gui")
 
     inst = bridge_mod._bridge_instance
     if inst and inst.isListening():
@@ -162,7 +237,10 @@ def _start_bridge_listener(install_dir: str) -> None:
 
     action = _find_toolbar_action()
     if action is None:
-        _fail('Toolbar action "MCP Bridge On/Off" not found')
+        _fail(
+            'Toolbar action "MCP Bridge On/Off" not found after startup '
+            "(UI was not auto-injected)"
+        )
 
     _log('Triggering toolbar action "MCP Bridge On/Off"')
     action.trigger()
@@ -217,76 +295,33 @@ def _verify_socket_round_trip() -> None:
     _log(f"Socket round-trip OK (saw {expected!r})")
 
 
-def _build_addon_descriptor(
-    addon_name: str, repo_url: str, tag: str, mode: str
-) -> tuple[str, str]:
-    if mode == "index_zip":
-        zip_url = f"{repo_url.rstrip('/')}/archive/refs/tags/{tag}.zip"
-        return zip_url, tag
-    if mode == "tag":
-        return repo_url.rstrip("/"), tag
-    _fail(f"Unsupported RELEASE_INSTALL_MODE: {mode}")
-    return "", ""
-
-
-def _run_verification() -> None:
+def _run_verify_phase() -> None:
     import FreeCAD as App
 
-    tag = _env("RELEASE_INSTALL_TAG", "v0.1.11")
-    repo_url = _env(
-        "RELEASE_INSTALL_REPO", "https://github.com/CREATeNG/freecad-mcp-bridge"
-    )
-    addon_name = _env("RELEASE_INSTALL_NAME", "freecad-mcp-bridge")
-    mode = _env("RELEASE_INSTALL_MODE", "tag").lower()
-    expected_version = _version_from_tag(tag)
-
     _log(
-        f"Starting install verify (mode={mode}, tag={tag}, repo={repo_url}, "
-        f"user_data={App.getUserAppDataDir()})"
+        "Verify phase after restart "
+        f"(user_data={App.getUserAppDataDir()})"
     )
 
-    am_paths = _addon_manager_paths()
-    if not am_paths:
-        _fail("Addon Manager not found under user or installation Mod paths")
-
-    for path in am_paths:
-        if path not in sys.path:
-            sys.path.insert(0, path)
-
-    from Addon import Addon
-    from addonmanager_installer import AddonInstaller, InstallationMethod
-
-    mod_dir = os.path.join(App.getUserAppDataDir(), "Mod")
-    install_dir = os.path.join(mod_dir, addon_name)
-    if os.path.isdir(install_dir):
-        _log(f"Removing previous install at {install_dir}")
-        shutil.rmtree(install_dir, ignore_errors=True)
-
-    addon_url, addon_branch = _build_addon_descriptor(
-        addon_name, repo_url, tag, mode
-    )
-    addon = Addon(addon_name, addon_url, branch=addon_branch)
-    installer = AddonInstaller(addon)
-    if not installer.run(InstallationMethod.ANY):
-        _fail(f"AddonInstaller failed for {addon_name} ({mode}, {tag})")
-
-    if not os.path.isdir(install_dir):
-        _fail(f"Install directory was not created: {install_dir}")
-
-    _verify_install_tree(install_dir, expected_version)
-    _verify_python_import(install_dir)
-    _start_bridge_listener(install_dir)
+    _verify_addon_startup()
+    _start_bridge_listener()
     _verify_socket_round_trip()
-    _log("Release install verification passed")
+    _log("Verify phase passed")
     App.quit()
     sys.exit(0)
 
 
-def _schedule_verification() -> None:
+def _run_phase() -> None:
+    if _phase() == "install":
+        _run_install_phase()
+    _run_verify_phase()
+
+
+def _schedule_phase() -> None:
     from PySide.QtCore import QTimer
 
     delay_ms = int(_env("RELEASE_INSTALL_GUI_DELAY_MS", "3000"))
-    QTimer.singleShot(delay_ms, _run_verification)
+    QTimer.singleShot(delay_ms, _run_phase)
 
 
-_schedule_verification()
+_schedule_phase()
