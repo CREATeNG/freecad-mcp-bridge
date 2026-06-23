@@ -79,7 +79,9 @@ Index cache updates can take up to four hours after the PR merges.
 GHA workflow `.github/workflows/release-install-verify.yml` runs
 `scripts/release_install_verify.py` inside FreeCAD on Windows, Linux, and macOS.
 It uses the Addon Manager installer API to install a release tag into an isolated
-profile, then verifies `package.xml`, platform `bin/`, and Python import.
+profile, then verifies `package.xml`, platform `bin/`, Python import, starts the
+bridge listener (toolbar command path), and runs a local-socket Python probe
+equivalent to `send_cmd.py`.
 
 Triggers: `workflow_dispatch` (choose tag/mode) or push of a `v*` tag.
 

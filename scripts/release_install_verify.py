@@ -10,6 +10,8 @@ Environment:
   RELEASE_INSTALL_REPO      Repository URL (default: CREATeNG/freecad-mcp-bridge)
   RELEASE_INSTALL_NAME      Installed Mod folder name (default: freecad-mcp-bridge)
   RELEASE_INSTALL_MODE      tag | index_zip (default: tag)
+  RELEASE_INSTALL_PROBE     Python sent over the local socket (default below)
+  RELEASE_INSTALL_GUI_DELAY_MS  Wait before work starts (default: 3000)
 """
 
 from __future__ import annotations
@@ -94,14 +96,83 @@ def _verify_install_tree(install_dir: str, expected_version: str) -> None:
     _log(f"Install tree OK at {install_dir} (version {expected_version})")
 
 
-def _verify_python_import(install_dir: str) -> None:
+def _ensure_install_on_path(install_dir: str) -> None:
     if install_dir not in sys.path:
         sys.path.insert(0, install_dir)
+
+
+def _verify_python_import(install_dir: str) -> None:
+    _ensure_install_on_path(install_dir)
 
     import importlib
 
     importlib.import_module("freecad.mcp_bridge.bridge")
     _log("Imported freecad.mcp_bridge.bridge")
+
+
+def _start_bridge_listener(install_dir: str) -> None:
+    """Start the socket listener the same way the toolbar toggle does."""
+    _ensure_install_on_path(install_dir)
+
+    from PySide.QtCore import QCoreApplication
+    from freecad.mcp_bridge import bridge as bridge_mod
+    from freecad.mcp_bridge.init_gui import MCPBridgeCommand
+
+    inst = bridge_mod._bridge_instance
+    if inst and inst.isListening():
+        _log("Bridge listener already running")
+        return
+
+    MCPBridgeCommand().Activated()
+    QCoreApplication.processEvents()
+
+    inst = bridge_mod._bridge_instance
+    if not inst or not inst.isListening():
+        _fail("Bridge listener failed to start")
+
+
+def _verify_socket_round_trip() -> None:
+    """Run Python through the local socket (same protocol as send_cmd.py)."""
+    from PySide.QtCore import QCoreApplication
+    from PySide.QtNetwork import QLocalSocket
+
+    from freecad.mcp_bridge.constants import SOCKET_NAME
+
+    probe = _env(
+        "RELEASE_INSTALL_PROBE",
+        'print("release_install_verify_ok")',
+    )
+    if not probe.endswith("\n"):
+        probe += "\n"
+    expected = _env("RELEASE_INSTALL_PROBE_EXPECT", "release_install_verify_ok")
+
+    socket = QLocalSocket()
+    socket.connectToServer(SOCKET_NAME)
+    if not socket.waitForConnected(5000):
+        _fail(
+            "Socket connection failed. Is the bridge listener running? "
+            f"({socket.errorString()})"
+        )
+
+    socket.write(probe.encode("utf-8"))
+    socket.flush()
+    socket.waitForBytesWritten(1000)
+
+    if not socket.waitForReadyRead(10000):
+        socket.disconnectFromServer()
+        _fail("Timed out waiting for bridge execution response")
+
+    response = socket.readAll().data().decode("utf-8")
+    socket.disconnectFromServer()
+    QCoreApplication.processEvents()
+
+    if expected not in response:
+        _fail(
+            "Unexpected socket response. "
+            f"Expected substring {expected!r}, got: {response!r}"
+        )
+
+    _log(f"Socket round-trip OK (saw {expected!r})")
 
 
 def _build_addon_descriptor(
@@ -162,6 +233,8 @@ def _run_verification() -> None:
 
     _verify_install_tree(install_dir, expected_version)
     _verify_python_import(install_dir)
+    _start_bridge_listener(install_dir)
+    _verify_socket_round_trip()
     _log("Release install verification passed")
     App.quit()
     sys.exit(0)
