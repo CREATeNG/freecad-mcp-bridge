@@ -5,9 +5,11 @@ from io import StringIO
 import FreeCAD
 from PySide.QtNetwork import QLocalServer, QLocalSocket
 
+from freecad.mcp_bridge.constants import LOG_PREFIX, SOCKET_NAME
+
 
 class FreeCADBridge(QLocalServer):
-    def __init__(self, name="freecad_bridge_socket"):
+    def __init__(self, name=SOCKET_NAME):
         super().__init__()
         self.server_name = name
         self.newConnection.connect(self.handle_connection)
@@ -16,7 +18,7 @@ class FreeCADBridge(QLocalServer):
 
         if self.listen(self.server_name):
             FreeCAD.Console.PrintMessage(
-                f"[Bridge] QLocalServer listening on '{self.server_name}'\n"
+                f"{LOG_PREFIX} QLocalServer listening on '{self.server_name}'\n"
             )
             try:
                 import FreeCADGui as Gui
@@ -31,7 +33,7 @@ class FreeCADBridge(QLocalServer):
                 pass
         else:
             FreeCAD.Console.PrintError(
-                f"[Bridge] Failed to start QLocalServer: {self.errorString()}\n"
+                f"{LOG_PREFIX} Failed to start QLocalServer: {self.errorString()}\n"
             )
 
     def handle_connection(self):
@@ -73,9 +75,9 @@ class FreeCADBridge(QLocalServer):
             output_str += f"\n--- EXCEPTION ---\n{error}"
 
         if output_str:
-            FreeCAD.Console.PrintMessage(f"[Bridge Executed]:\n{output_str}\n")
+            FreeCAD.Console.PrintMessage(f"{LOG_PREFIX} Executed:\n{output_str}\n")
         if error:
-            FreeCAD.Console.PrintError(f"[Bridge Exception]:\n{error}\n")
+            FreeCAD.Console.PrintError(f"{LOG_PREFIX} Exception:\n{error}\n")
 
         socket.write(output_str.encode("utf-8"))
         socket.disconnectFromServer()
@@ -94,8 +96,8 @@ if __name__ == "__main__":
                 old_inst.close()
             if hasattr(old_inst, "timer"):
                 old_inst.timer.stop()
-            print("[Bridge] Closed/Stopped existing local listener in __main__.")
+            print(f"{LOG_PREFIX} Closed/Stopped existing local listener in __main__.")
     except Exception as e:
-        print(f"[Bridge] Error closing old listener: {e}")
+        print(f"{LOG_PREFIX} Error closing old listener: {e}")
 
     _bridge_instance = FreeCADBridge()

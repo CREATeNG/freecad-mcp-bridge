@@ -17,15 +17,15 @@ jobs:
           - os: ubuntu-latest
             os-name: linux
             target: x86_64-unknown-linux-gnu
-            bin-name: freecad-mcp
+            bin-name: freecad-mcp-bridge
           - os: macos-latest
             os-name: macos
             target: x86_64-apple-darwin
-            bin-name: freecad-mcp
+            bin-name: freecad-mcp-bridge
           - os: windows-latest
             os-name: windows
             target: x86_64-pc-windows-msvc
-            bin-name: freecad-mcp.exe
+            bin-name: freecad-mcp-bridge.exe
 
     steps:
       - name: Checkout code
@@ -46,6 +46,6 @@ jobs:
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           file: rust_mcp_server/target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin-name }}
-          asset_name: freecad-mcp-${{ matrix.platform.os-name }}-${{ matrix.platform.bin-name }}
+          asset_name: freecad-mcp-bridge-${{ matrix.platform.os-name }}-${{ matrix.platform.bin-name }}
           tag: ${{ github.ref }}
           overwrite: true

@@ -194,7 +194,7 @@ fn handle_request(req: &Request) -> Option<Response> {
 fn send_to_socket(code: &str) -> String {
     use std::io::{Read, Write};
     
-    let pipe_path = r"\\.\pipe\freecad_bridge_socket";
+    let pipe_path = r"\\.\pipe\freecad_mcp_bridge_socket";
     
     let mut file = match OpenOptions::new()
         .read(true)
@@ -238,12 +238,12 @@ fn send_to_socket(code: &str) -> String {
     use std::io::{Read, Write};
     use std::os::unix::net::UnixStream;
     
-    let socket_path = std::env::temp_dir().join("freecad_bridge_socket");
+    let socket_path = std::env::temp_dir().join("freecad_mcp_bridge_socket");
     
     let mut stream = match UnixStream::connect(&socket_path) {
         Ok(s) => s,
         Err(e) => {
-            let fallback = Path::new("/tmp/freecad_bridge_socket");
+            let fallback = Path::new("/tmp/freecad_mcp_bridge_socket");
             match UnixStream::connect(fallback) {
                 Ok(s) => s,
                 Err(_) => return format!("Error: Connection to FreeCAD failed. Is the bridge running in FreeCAD? ({})", e),

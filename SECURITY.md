@@ -2,7 +2,7 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security issue in FreeCAD MCP Bridge, please report it privately rather than opening a public issue.
+If you discover a security issue in MCP Bridge (FreeCAD MCP Bridge), please report it privately rather than opening a public issue.
 
 **Contact:** chris@createng.com
 

@@ -12,7 +12,10 @@ except ImportError:
         from PySide.QtCore import QCoreApplication
         from PySide.QtNetwork import QLocalSocket
 
-def send_command(code, server_name="freecad_bridge_socket"):
+SOCKET_NAME = "freecad_mcp_bridge_socket"
+
+
+def send_command(code, server_name=SOCKET_NAME):
     app = QCoreApplication.instance()
     if not app:
         app = QCoreApplication(sys.argv)

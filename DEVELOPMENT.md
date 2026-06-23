@@ -18,7 +18,7 @@ If you want to compile the self-contained Rust binary yourself (instead of using
    cargo build --release
    ```
 4. The compiled executable will be located at:
-   `rust_mcp_server/target/release/freecad-mcp.exe` (or `freecad-mcp` on Unix).
+   `rust_mcp_server/target/release/freecad-mcp-bridge.exe` (or `freecad-mcp-bridge` on Unix).
 
 ---
 

@@ -5,9 +5,12 @@ from PySide6.QtNetwork import QLocalSocket
 from mcp.server.fastmcp import FastMCP
 
 # Initialize FastMCP Server
-mcp = FastMCP("FreeCAD")
+mcp = FastMCP("MCP Bridge")
 
-def send_to_socket(code: str, server_name="freecad_bridge_socket") -> str:
+SOCKET_NAME = "freecad_mcp_bridge_socket"
+
+
+def send_to_socket(code: str, server_name=SOCKET_NAME) -> str:
     app = QCoreApplication.instance()
     if not app:
         app = QCoreApplication(sys.argv)
