@@ -34,6 +34,7 @@ jobs:
       RELEASE_INSTALL_NAME: freecad-mcp-bridge
       RELEASE_INSTALL_GUI_DELAY_MS: "5000"
       RELEASE_INSTALL_TOOLBAR_TIMEOUT_MS: "30000"
+      RELEASE_INSTALL_WAIT_MS: "180000"
     strategy:
       fail-fast: false
       matrix:

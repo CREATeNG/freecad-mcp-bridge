@@ -69,7 +69,12 @@ def _run() -> None:
     if not installer.run(InstallationMethod.ANY):
         common.fail(f"AddonInstaller failed for {addon_name} ({mode}, {tag})")
 
-    install_dir = common.wait_for_install_dir(addon_name, expected_version)
+    common._drain_qt_events(3000)
+
+    timeout_ms = int(common.env("RELEASE_INSTALL_WAIT_MS", "180000"))
+    install_dir = common.wait_for_install_dir(
+        addon_name, expected_version, timeout_ms=timeout_ms
+    )
     if install_dir != common.install_dir():
         common.log(f"Resolved install dir: {install_dir}")
 

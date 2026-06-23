@@ -7,6 +7,20 @@ import sys
 import xml.etree.ElementTree as ET
 
 LOG_PREFIX = "[test_install]"
+PACKAGE_NS = "https://wiki.freecad.org/Package_Metadata"
+
+
+def _drain_qt_events(delay_ms: int = 2000) -> None:
+    try:
+        from PySide.QtCore import QCoreApplication, QThread
+
+        interval_ms = 100
+        attempts = max(1, delay_ms // interval_ms)
+        for _ in range(attempts):
+            QCoreApplication.processEvents()
+            QThread.msleep(interval_ms)
+    except Exception:
+        pass
 
 
 def log(message: str) -> None:
@@ -17,6 +31,8 @@ def log(message: str) -> None:
 
 def quit_freecad(exit_code: int = 0) -> None:
     """Exit FreeCAD from a GUI script (App.quit is not available in all builds)."""
+    _drain_qt_events()
+
     for name in ("quit", "exit", "closeApplication"):
         fn = getattr(__import__("FreeCAD"), name, None)
         if callable(fn):
@@ -67,15 +83,23 @@ def install_dir() -> str:
     return os.path.join(mod_dir(), addon_name)
 
 
+def _version_from_package_root(root: ET.Element) -> str | None:
+    for tag in (f"{{{PACKAGE_NS}}}version", "version"):
+        version_el = root.find(tag)
+        if version_el is not None and version_el.text:
+            return version_el.text.strip()
+    for el in root.iter():
+        if el.tag.endswith("version") and el.text and el.text.strip():
+            return el.text.strip()
+    return None
+
+
 def _package_version(package_xml: str) -> str | None:
     try:
         root = ET.parse(package_xml).getroot()
     except ET.ParseError:
         return None
-    version_el = root.find("version")
-    if version_el is None or not version_el.text:
-        return None
-    return version_el.text.strip()
+    return _version_from_package_root(root)
 
 
 def find_install_dir(addon_name: str, expected_version: str) -> str | None:
@@ -89,7 +113,11 @@ def find_install_dir(addon_name: str, expected_version: str) -> str | None:
     candidates.append(preferred)
     if os.path.isdir(preferred):
         for entry in sorted(os.listdir(preferred)):
-            candidates.append(os.path.join(preferred, entry))
+            sub = os.path.join(preferred, entry)
+            candidates.append(sub)
+            if os.path.isdir(sub):
+                for nested in sorted(os.listdir(sub)):
+                    candidates.append(os.path.join(sub, nested))
     for entry in sorted(os.listdir(mod_root)):
         candidates.append(os.path.join(mod_root, entry))
 
@@ -191,13 +219,11 @@ def verify_install_tree(install_dir: str, expected_version: str) -> None:
     except ET.ParseError as exc:
         fail(f"Invalid package.xml: {exc}")
 
-    version_el = root.find("version")
-    if version_el is None or not version_el.text:
+    found_version = _version_from_package_root(root)
+    if found_version is None:
         fail("package.xml is missing <version>")
-    if version_el.text.strip() != expected_version:
-        fail(
-            f"Expected version {expected_version}, found {version_el.text.strip()}"
-        )
+    if found_version != expected_version:
+        fail(f"Expected version {expected_version}, found {found_version}")
 
     log(f"Install tree OK at {install_dir} (version {expected_version})")
 
