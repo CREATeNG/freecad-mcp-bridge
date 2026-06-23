@@ -39,21 +39,15 @@ jobs:
           - os: ubuntu-latest
             os-name: linux
             shell: bash
-            launch: >-
-              xvfb-run -a freecad
-              "${GITHUB_WORKSPACE}/scripts/release_install_verify.py"
+            freecad: xvfb-run -a freecad
           - os: windows-latest
             os-name: windows
             shell: pwsh
-            launch: >-
-              freecad
-              "${{ github.workspace }}\scripts\release_install_verify.py"
+            freecad: freecad
           - os: macos-latest
             os-name: macos
             shell: bash
-            launch: >-
-              freecad
-              "${GITHUB_WORKSPACE}/scripts/release_install_verify.py"
+            freecad: freecad
 
     defaults:
       run:
@@ -80,15 +74,13 @@ jobs:
           mkdir -p "${RUNNER_TEMP}/freecad-ci-home"
 
       - name: Install addon via Addon Manager
-        run: ${{ matrix.launch }}
+        run: ${{ matrix.freecad }} "${{ github.workspace }}/scripts/test_install.py"
         env:
           HOME: ${{ env.FC_CI_HOME }}
           USERPROFILE: ${{ env.FC_CI_HOME }}
-          RELEASE_INSTALL_PHASE: install
 
       - name: Verify addon after FreeCAD restart
-        run: ${{ matrix.launch }}
+        run: ${{ matrix.freecad }} "${{ github.workspace }}/scripts/test_verify.py"
         env:
           HOME: ${{ env.FC_CI_HOME }}
           USERPROFILE: ${{ env.FC_CI_HOME }}
-          RELEASE_INSTALL_PHASE: verify

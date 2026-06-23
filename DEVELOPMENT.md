@@ -76,16 +76,16 @@ Index cache updates can take up to four hours after the PR merges.
 
 ### Automated install verification (CI)
 
-GHA workflow `.github/workflows/release-install-verify.yml` runs
-`scripts/release_install_verify.py` inside FreeCAD on Windows, Linux, and macOS
-in two launches per platform:
+GHA workflow `.github/workflows/release-install-verify.yml` runs two FreeCAD
+scripts on Windows, Linux, and macOS (separate processes; shared helpers in
+`scripts/test_install_common.py`):
 
-1. `RELEASE_INSTALL_PHASE=install` — Addon Manager install + on-disk checks
+1. `scripts/test_install.py` — Addon Manager install + on-disk checks
 2. Restart FreeCAD with the same isolated profile
-3. `RELEASE_INSTALL_PHASE=verify` — confirm startup auto-registration/UI,
+3. `scripts/test_verify.py` — confirm startup auto-registration/UI,
    trigger the toolbar button, and run a `send_cmd.py`-style socket probe
 
-The verify phase does not call `App.MCPBridgeInjectUi()`; it waits for the
+`test_verify.py` does not call `App.MCPBridgeInjectUi()`; it waits for the
 addon's own startup hooks to inject the toolbar.
 
 Triggers: `workflow_dispatch` (choose tag/mode) or push of a `v*` tag.
