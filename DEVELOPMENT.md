@@ -30,11 +30,35 @@ The out-of-process helpers below (`freecad_mcp_server.py`, `send_cmd.py`) run in
 
 ## Icons
 
-The addon uses a single **SVG** icon at `freecad/mcp_bridge/Resources/Icons/icon.svg`. That is sufficient for Windows, Linux, and macOS:
+The addon uses a single **SVG** icon at `Resources/Icons/icon.svg` (repo root). That is sufficient for Windows, Linux, and macOS:
 
 * FreeCAD and Qt load SVG via QtSvg on all platforms (no separate `.ico` or `.png` required).
 * `package.xml` references the icon with forward slashes; FreeCAD normalizes paths per OS.
 * The same file is used for Addon Manager listing and the in-app toolbar/command.
+
+---
+
+## Releases
+
+This addon follows the usual FreeCAD GitHub pattern:
+
+* **`main`** is the release branch. `package.xml` points Addon Manager at `branch="main"`.
+* **Version tags** match `package.xml` semver: `v0.1.8` for `<version>0.1.8</version>`.
+* **GitHub Releases** (created from a tag) trigger `.github/workflows/release.yml`, which builds Rust MCP binaries for Windows, Linux, and macOS and attaches them to the release.
+
+### Publishing a release
+
+1. Merge finished work into `main` (use short-lived topic branches for larger changes).
+2. Bump `<version>` and `<date>` in `package.xml` on `main`.
+3. Commit, push `main`, then tag and push:
+   ```bash
+   git tag v0.1.8
+   git push origin main
+   git push origin v0.1.8
+   ```
+4. On GitHub: **Releases → Draft a new release**, choose tag `v0.1.8`, publish. CI uploads cross-platform binaries to the release assets.
+
+Do not reuse a version number on `main`; Addon Manager treats identical versions as confusing duplicate updates.
 
 ---
 
