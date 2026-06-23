@@ -12,6 +12,8 @@ Environment:
   RELEASE_INSTALL_PROBE_EXPECT      Expected substring in socket response
   RELEASE_INSTALL_GUI_DELAY_MS      Delay before work starts (default: 3000)
   RELEASE_INSTALL_TOOLBAR_TIMEOUT_MS  Wait for auto-injected toolbar (default: 15000)
+  RELEASE_INSTALL_SOCKET_TIMEOUT_MS   Socket response wait (default: 30000)
+  RELEASE_INSTALL_STOP_MESSAGE        Expected Report-view line after toggle off
 """
 
 from __future__ import annotations
@@ -75,15 +77,8 @@ def _find_toolbar_action():
     return None
 
 
-def _start_bridge_listener() -> None:
-    """Start the listener by triggering the real toolbar button."""
+def _trigger_toolbar_toggle(log_message: str) -> None:
     from PySide.QtCore import QCoreApplication
-    from freecad.mcp_bridge import bridge as bridge_mod
-
-    inst = bridge_mod._bridge_instance
-    if inst and inst.isListening():
-        common.log("Bridge listener already running")
-        return
 
     action = _find_toolbar_action()
     if action is None:
@@ -92,13 +87,112 @@ def _start_bridge_listener() -> None:
             "(UI was not auto-injected)"
         )
 
-    common.log('Triggering toolbar action "MCP Bridge On/Off"')
+    common.log(log_message)
     action.trigger()
     QCoreApplication.processEvents()
 
+
+def _bridge_instance():
+    from freecad.mcp_bridge import bridge as bridge_mod
+
     inst = bridge_mod._bridge_instance
+    if inst:
+        return inst
+
+    import __main__
+
+    return getattr(__main__, "_freecad_bridge_instance", None) or getattr(
+        __main__, "_bridge_instance", None
+    )
+
+
+def _report_view_text() -> str:
+    """Return visible Report view text (where Console.PrintMessage appears)."""
+    import FreeCADGui as Gui
+    from PySide.QtWidgets import QDockWidget, QPlainTextEdit, QTextBrowser, QTextEdit
+
+    mw = Gui.getMainWindow()
+    if mw is None:
+        return ""
+
+    dock = mw.findChild(QDockWidget, "Report view")
+    if dock is None:
+        return ""
+
+    if not dock.isVisible():
+        dock.show()
+
+    for widget_type in (QTextEdit, QPlainTextEdit, QTextBrowser):
+        for child in dock.findChildren(widget_type):
+            if hasattr(child, "toPlainText"):
+                text = child.toPlainText()
+            else:
+                text = child.toText()
+            if text:
+                return text
+
+    return ""
+
+
+def _start_bridge_listener() -> None:
+    """Start the listener by triggering the real toolbar button."""
+    inst = _bridge_instance()
+    if inst and inst.isListening():
+        common.log("Bridge listener already running")
+        return
+
+    _trigger_toolbar_toggle('Triggering toolbar action "MCP Bridge On/Off" (start)')
+    common._drain_qt_events(1000)
+
+    inst = _bridge_instance()
     if not inst or not inst.isListening():
         common.fail("Bridge listener failed to start after toolbar click")
+
+
+def _stop_bridge_listener() -> None:
+    """Stop the listener via a second toolbar toggle, like a user would."""
+    from freecad.mcp_bridge.constants import DISPLAY_NAME, LOG_PREFIX
+
+    inst = _bridge_instance()
+    if not inst or not inst.isListening():
+        common.fail("Bridge listener was not running before stop toggle")
+
+    report_before = _report_view_text()
+    _trigger_toolbar_toggle(
+        'Triggering toolbar action "MCP Bridge On/Off" (stop)'
+    )
+    common._drain_qt_events(1500)
+
+    inst = _bridge_instance()
+    if inst and inst.isListening():
+        common.fail("Bridge listener still running after stop toolbar click")
+
+    expected = common.env(
+        "RELEASE_INSTALL_STOP_MESSAGE",
+        f"{LOG_PREFIX} Stopped socket listener.",
+    )
+    report_after = _report_view_text()
+    if expected not in report_after:
+        common.fail(
+            "Stop toggle did not print the expected Report view message. "
+            f"Expected substring {expected!r} in report view."
+        )
+
+    if expected in report_before:
+        common.log("Stop message already present in Report view before toggle")
+
+    import FreeCADGui as Gui
+
+    mw = Gui.getMainWindow()
+    expected_status = f"{DISPLAY_NAME}: Offline"
+    status_message = mw.statusBar().currentMessage() if mw else ""
+    if expected_status not in status_message:
+        common.fail(
+            "Stop toggle did not update the status bar. "
+            f"Expected substring {expected_status!r}, got: {status_message!r}"
+        )
+
+    common.log(f"Bridge stopped via toolbar toggle (saw {expected!r} in Report view)")
 
 
 def _read_socket_response(socket, timeout_ms: int) -> str:
@@ -184,6 +278,7 @@ def _run() -> None:
     _verify_addon_startup()
     _start_bridge_listener()
     _verify_socket_round_trip()
+    _stop_bridge_listener()
     common.log("Verify passed")
     common.quit_freecad(0)
 
