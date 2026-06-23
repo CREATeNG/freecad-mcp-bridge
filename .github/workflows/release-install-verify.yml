@@ -120,7 +120,10 @@ jobs:
               Select-Object -ExpandProperty FullName
             throw "FreeCAD.exe not found after winget install"
           }
-          "FREECAD_BIN=$fcBin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $delimiter = "FREECAD_BIN_EOF"
+          Add-Content -Path $env:GITHUB_ENV -Value "FREECAD_BIN<<$delimiter"
+          Add-Content -Path $env:GITHUB_ENV -Value $fcBin
+          Add-Content -Path $env:GITHUB_ENV -Value $delimiter
           Write-Host "Using FreeCAD: $fcBin"
 
       - name: Prepare isolated FreeCAD profile (Unix)
@@ -163,7 +166,14 @@ jobs:
           $env:USERPROFILE = $env:FC_CI_HOME
           $env:HOME = $env:FC_CI_HOME
           $script = Join-Path $env:GITHUB_WORKSPACE "scripts\test_install.py"
-          $proc = Start-Process -FilePath $env:FREECAD_BIN -ArgumentList $script -PassThru
+          if (-not (Test-Path -LiteralPath $env:FREECAD_BIN)) {
+            throw "FREECAD_BIN is missing or invalid: '$($env:FREECAD_BIN)'"
+          }
+          if (-not (Test-Path -LiteralPath $script)) {
+            throw "test_install.py not found: '$script'"
+          }
+          Write-Host "Launching '$($env:FREECAD_BIN)' with '$script'"
+          $proc = Start-Process -FilePath $env:FREECAD_BIN -ArgumentList @($script) -PassThru
           if (-not $proc.WaitForExit(900000)) {
             $proc.Kill($true)
             throw "FreeCAD timed out after 15 minutes running test_install.py"
@@ -197,7 +207,14 @@ jobs:
           $env:USERPROFILE = $env:FC_CI_HOME
           $env:HOME = $env:FC_CI_HOME
           $script = Join-Path $env:GITHUB_WORKSPACE "scripts\test_verify.py"
-          $proc = Start-Process -FilePath $env:FREECAD_BIN -ArgumentList $script -PassThru
+          if (-not (Test-Path -LiteralPath $env:FREECAD_BIN)) {
+            throw "FREECAD_BIN is missing or invalid: '$($env:FREECAD_BIN)'"
+          }
+          if (-not (Test-Path -LiteralPath $script)) {
+            throw "test_verify.py not found: '$script'"
+          }
+          Write-Host "Launching '$($env:FREECAD_BIN)' with '$script'"
+          $proc = Start-Process -FilePath $env:FREECAD_BIN -ArgumentList @($script) -PassThru
           if (-not $proc.WaitForExit(900000)) {
             $proc.Kill($true)
             throw "FreeCAD timed out after 15 minutes running test_verify.py"
