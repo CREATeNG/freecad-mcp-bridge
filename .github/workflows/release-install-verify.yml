@@ -27,9 +27,6 @@ jobs:
     name: Verify - ${{ matrix.os-name }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
-    defaults:
-      run:
-        shell: bash -l {0}
     env:
       RELEASE_INSTALL_TAG: ${{ github.event.inputs.tag || github.ref_name }}
       RELEASE_INSTALL_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || 'tag' }}
@@ -56,6 +53,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up conda environment
+        if: runner.os != 'Windows'
         uses: conda-incubator/setup-miniconda@v3
         with:
           activate-environment: freecad-ci
@@ -63,14 +61,30 @@ jobs:
           miniforge-version: latest
           channels: conda-forge
 
-      - name: Install FreeCAD
+      - name: Install FreeCAD (conda)
+        if: runner.os != 'Windows'
+        shell: bash -l {0}
         run: conda install -y "freecad=1.1.0" git
+
+      - name: Install FreeCAD (winget)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          winget install --id FreeCAD.FreeCAD --version 1.1.0 `
+            --accept-package-agreements --accept-source-agreements `
+            --disable-interactivity --silent
+          if ($LASTEXITCODE -gt 2) {
+            throw "winget install failed with exit code $LASTEXITCODE"
+          }
 
       - name: Install Linux display dependencies
         if: runner.os == 'Linux'
+        shell: bash -l {0}
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
-      - name: Resolve FreeCAD launcher
+      - name: Resolve FreeCAD launcher (Unix)
+        if: runner.os != 'Windows'
+        shell: bash -l {0}
         run: |
           set -euo pipefail
           if command -v freecad >/dev/null 2>&1; then
@@ -79,53 +93,115 @@ jobs:
             FC_BIN="$(command -v FreeCAD)"
           elif [ -n "${CONDA_PREFIX:-}" ] && [ -x "${CONDA_PREFIX}/bin/freecad" ]; then
             FC_BIN="${CONDA_PREFIX}/bin/freecad"
-          elif [ -n "${CONDA_PREFIX:-}" ] && [ -x "${CONDA_PREFIX}/Library/bin/FreeCAD.exe" ]; then
-            FC_BIN="${CONDA_PREFIX}/Library/bin/FreeCAD.exe"
           elif [ -n "${CONDA_PREFIX:-}" ] && [ -x "${CONDA_PREFIX}/bin/FreeCAD" ]; then
             FC_BIN="${CONDA_PREFIX}/bin/FreeCAD"
           else
             echo "FreeCAD binary not found in PATH or conda env"
             conda list freecad || true
             ls -la "${CONDA_PREFIX}/bin" 2>/dev/null || true
-            ls -la "${CONDA_PREFIX}/Library/bin" 2>/dev/null || true
             exit 1
           fi
           echo "FREECAD_BIN=${FC_BIN}" >> "${GITHUB_ENV}"
           echo "Using FreeCAD: ${FC_BIN}"
 
-      - name: Prepare isolated FreeCAD profile
+      - name: Resolve FreeCAD launcher (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "$env:ProgramFiles\FreeCAD 1.1\bin\FreeCAD.exe",
+            ${env:ProgramFiles(x86)} + "\FreeCAD 1.1\bin\FreeCAD.exe",
+            "$env:LOCALAPPDATA\Programs\FreeCAD 1.1\bin\FreeCAD.exe"
+          )
+          $fcBin = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $fcBin) {
+            Get-ChildItem -Path $env:ProgramFiles, $env:LOCALAPPDATA `
+              -Recurse -Filter FreeCAD.exe -ErrorAction SilentlyContinue |
+              Select-Object -ExpandProperty FullName
+            throw "FreeCAD.exe not found after winget install"
+          }
+          "FREECAD_BIN=$fcBin" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Using FreeCAD: $fcBin"
+
+      - name: Prepare isolated FreeCAD profile (Unix)
+        if: runner.os != 'Windows'
+        shell: bash -l {0}
         run: |
           echo "FC_CI_HOME=${RUNNER_TEMP}/freecad-ci-home" >> "${GITHUB_ENV}"
           mkdir -p "${RUNNER_TEMP}/freecad-ci-home"
 
-      - name: Install addon via Addon Manager
+      - name: Prepare isolated FreeCAD profile (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ciHome = Join-Path $env:RUNNER_TEMP "freecad-ci-home"
+          New-Item -ItemType Directory -Force -Path $ciHome | Out-Null
+          "FC_CI_HOME=$ciHome" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Install addon via Addon Manager (Unix)
+        if: runner.os != 'Windows'
+        shell: bash -l {0}
         run: |
           set -euo pipefail
           SCRIPT="${GITHUB_WORKSPACE}/scripts/test_install.py"
           if [ "${RUNNER_OS}" = "Linux" ]; then
             xvfb-run -a timeout 900 "${FREECAD_BIN}" "${SCRIPT}"
-          elif [ "${RUNNER_OS}" = "macOS" ]; then
-            perl -e 'alarm shift; exec @ARGV' 900 "${FREECAD_BIN}" "${SCRIPT}"
           else
-            timeout 900 "${FREECAD_BIN}" "${SCRIPT}"
+            perl -e 'alarm shift; exec @ARGV' 900 "${FREECAD_BIN}" "${SCRIPT}"
           fi
         env:
           HOME: ${{ env.FC_CI_HOME }}
           USERPROFILE: ${{ env.FC_CI_HOME }}
           QT_QPA_PLATFORM: ${{ matrix.qt_platform }}
 
-      - name: Verify addon after FreeCAD restart
+      - name: Install addon via Addon Manager (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: ${{ matrix.qt_platform }}
+        run: |
+          $env:USERPROFILE = $env:FC_CI_HOME
+          $env:HOME = $env:FC_CI_HOME
+          $script = Join-Path $env:GITHUB_WORKSPACE "scripts\test_install.py"
+          $proc = Start-Process -FilePath $env:FREECAD_BIN -ArgumentList $script -PassThru
+          if (-not $proc.WaitForExit(900000)) {
+            $proc.Kill($true)
+            throw "FreeCAD timed out after 15 minutes running test_install.py"
+          }
+          if ($proc.ExitCode -ne 0) {
+            throw "FreeCAD exited with code $($proc.ExitCode) running test_install.py"
+          }
+
+      - name: Verify addon after FreeCAD restart (Unix)
+        if: runner.os != 'Windows'
+        shell: bash -l {0}
         run: |
           set -euo pipefail
           SCRIPT="${GITHUB_WORKSPACE}/scripts/test_verify.py"
           if [ "${RUNNER_OS}" = "Linux" ]; then
             xvfb-run -a timeout 900 "${FREECAD_BIN}" "${SCRIPT}"
-          elif [ "${RUNNER_OS}" = "macOS" ]; then
-            perl -e 'alarm shift; exec @ARGV' 900 "${FREECAD_BIN}" "${SCRIPT}"
           else
-            timeout 900 "${FREECAD_BIN}" "${SCRIPT}"
+            perl -e 'alarm shift; exec @ARGV' 900 "${FREECAD_BIN}" "${SCRIPT}"
           fi
         env:
           HOME: ${{ env.FC_CI_HOME }}
           USERPROFILE: ${{ env.FC_CI_HOME }}
           QT_QPA_PLATFORM: ${{ matrix.qt_platform }}
+
+      - name: Verify addon after FreeCAD restart (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: ${{ matrix.qt_platform }}
+        run: |
+          $env:USERPROFILE = $env:FC_CI_HOME
+          $env:HOME = $env:FC_CI_HOME
+          $script = Join-Path $env:GITHUB_WORKSPACE "scripts\test_verify.py"
+          $proc = Start-Process -FilePath $env:FREECAD_BIN -ArgumentList $script -PassThru
+          if (-not $proc.WaitForExit(900000)) {
+            $proc.Kill($true)
+            throw "FreeCAD timed out after 15 minutes running test_verify.py"
+          }
+          if ($proc.ExitCode -ne 0) {
+            throw "FreeCAD exited with code $($proc.ExitCode) running test_verify.py"
+          }

@@ -90,9 +90,9 @@ addon's own startup hooks to inject the toolbar.
 
 Triggers: `workflow_dispatch` (choose tag/mode) or push of a `v*` tag.
 
-The workflow installs FreeCAD via conda-forge, resolves the platform binary into
-`FREECAD_BIN`, and runs both test scripts under `bash -l` so the conda env stays
-on `PATH`.
+The workflow installs FreeCAD via conda-forge on Linux/macOS (bash + `FREECAD_BIN`)
+and via `winget install FreeCAD.FreeCAD --version 1.1.0` on Windows (pwsh +
+`Start-Process` with a 15-minute timeout).
 
 ---
 
