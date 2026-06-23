@@ -110,25 +110,67 @@ def _verify_python_import(install_dir: str) -> None:
     _log("Imported freecad.mcp_bridge.bridge")
 
 
+def _find_toolbar_action():
+    import FreeCAD as App
+    import FreeCADGui as Gui
+    from PySide.QtCore import QCoreApplication, QThread
+    from PySide.QtWidgets import QToolBar
+
+    from freecad.mcp_bridge.constants import DISPLAY_NAME, TOOLBAR_OBJECT_NAME
+
+    action_label = "MCP Bridge On/Off"
+    timeout_ms = int(_env("RELEASE_INSTALL_TOOLBAR_TIMEOUT_MS", "10000"))
+    interval_ms = 200
+    attempts = max(1, timeout_ms // interval_ms)
+
+    for _ in range(attempts):
+        QCoreApplication.processEvents()
+        if hasattr(App, "MCPBridgeInjectUi"):
+            App.MCPBridgeInjectUi()
+
+        mw = Gui.getMainWindow()
+        if mw:
+            for toolbar in mw.findChildren(QToolBar):
+                if (
+                    toolbar.windowTitle() == DISPLAY_NAME
+                    or toolbar.objectName() == TOOLBAR_OBJECT_NAME
+                ):
+                    for action in toolbar.actions():
+                        if action.text() == action_label:
+                            return action
+
+        QThread.msleep(interval_ms)
+
+    return None
+
+
 def _start_bridge_listener(install_dir: str) -> None:
-    """Start the socket listener the same way the toolbar toggle does."""
+    """Start the listener by triggering the real toolbar button."""
     _ensure_install_on_path(install_dir)
+
+    import importlib
 
     from PySide.QtCore import QCoreApplication
     from freecad.mcp_bridge import bridge as bridge_mod
-    from freecad.mcp_bridge.init_gui import MCPBridgeCommand
+
+    importlib.import_module("freecad.mcp_bridge.init_gui")
 
     inst = bridge_mod._bridge_instance
     if inst and inst.isListening():
         _log("Bridge listener already running")
         return
 
-    MCPBridgeCommand().Activated()
+    action = _find_toolbar_action()
+    if action is None:
+        _fail('Toolbar action "MCP Bridge On/Off" not found')
+
+    _log('Triggering toolbar action "MCP Bridge On/Off"')
+    action.trigger()
     QCoreApplication.processEvents()
 
     inst = bridge_mod._bridge_instance
     if not inst or not inst.isListening():
-        _fail("Bridge listener failed to start")
+        _fail("Bridge listener failed to start after toolbar click")
 
 
 def _verify_socket_round_trip() -> None:
