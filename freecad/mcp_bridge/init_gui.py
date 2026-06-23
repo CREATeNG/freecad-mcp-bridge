@@ -1,7 +1,10 @@
+import os
+
 import FreeCAD as App
 import FreeCADGui as Gui
 
 from freecad.mcp_bridge import bridge
+from freecad.mcp_bridge.resources import _mod_root
 from freecad.mcp_bridge.constants import (
     COMMAND_ID,
     DISPLAY_NAME,
@@ -12,6 +15,10 @@ from freecad.mcp_bridge.resources import icon_path
 
 App.MCPBridgeIconPath = icon_path()
 App.MCPBridgeCommand = COMMAND_ID
+
+_icons_dir = os.path.join(_mod_root(), "Resources", "Icons")
+if os.path.isdir(_icons_dir):
+    Gui.addIconPath(_icons_dir.replace("\\", "/"))
 
 
 class MCPBridgeCommand:

@@ -1,11 +1,11 @@
 <package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
     <name>MCP Bridge</name>
     <description>Model Context Protocol (MCP) bridge for FreeCAD. Allows AI coding assistants (like Cursor, Claude Desktop, etc.) to natively script and control FreeCAD using a self-contained local Named Pipe / UNIX Socket server.</description>
-    <version>0.1.6</version>
+    <version>0.1.7</version>
     <date>2026-06-23</date>
     <maintainer email="chris@createng.com">CREATeNG</maintainer>
     <license file="LICENSE">MIT</license>
-    <icon>freecad/mcp_bridge/Resources/Icons/icon.svg</icon>
+    <icon>Resources/Icons/icon.svg</icon>
     <freecadmin>1.0.0</freecadmin>
     <tag>Extension</tag>
     <tag>MCP</tag>
@@ -14,6 +14,11 @@
     <url type="readme">https://raw.githubusercontent.com/CREATeNG/freecad-mcp-bridge/main/README.md</url>
     <url type="bugtracker">https://github.com/CREATeNG/freecad-mcp-bridge/issues</url>
     <content>
-        <other/>
+        <other>
+            <name>MCP Bridge</name>
+            <description>Local MCP socket bridge for AI-assisted FreeCAD scripting.</description>
+            <icon>Resources/Icons/icon.svg</icon>
+            <subdirectory>./</subdirectory>
+        </other>
     </content>
 </package>

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Rounded dark background -->
+  <rect x="2" y="2" width="60" height="60" rx="12" fill="#1e293b" />
+  <!-- Core connector symbol -->
+  <circle cx="32" cy="18" r="6" fill="#3b82f6" />
+  <circle cx="18" cy="44" r="6" fill="#10b981" />
+  <circle cx="46" cy="44" r="6" fill="#10b981" />
+  <!-- Connecting lines -->
+  <path d="M 32 24 L 18 38" stroke="#64748b" stroke-width="3" stroke-linecap="round" />
+  <path d="M 32 24 L 46 38" stroke="#64748b" stroke-width="3" stroke-linecap="round" />
+  <path d="M 24 44 L 40 44" stroke="#64748b" stroke-width="3" stroke-linecap="round" />
+  <!-- A cute bridge arch -->
+  <path d="M 12 52 Q 32 32 52 52" stroke="#f59e0b" stroke-width="4" fill="none" stroke-linecap="round" />
+</svg>
