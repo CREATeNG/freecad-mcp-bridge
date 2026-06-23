@@ -107,47 +107,16 @@ def inject_ui():
         return False
 
     QTimer = QtCore.QTimer
-    QMenu = QtWidgets.QMenu
     QToolBar = QtWidgets.QToolBar
     QIcon = QtGui.QIcon
     icon_path = App.FreeCADMCPBridgeIconPath
     command = App.FreeCADMCPBridgeCommand
-    menu_label = "Start/Stop AI Agent Bridge"
+    action_label = "Start/Stop AI Agent Bridge"
 
     mw = Gui.getMainWindow()
     if not mw:
         QTimer.singleShot(500, App.FreeCADMCPBridgeInjectUi)
         return False
-
-    menu_ready = False
-    tools_menu = None
-    for action in mw.menuBar().actions():
-        menu = action.menu()
-        if menu is None:
-            continue
-        title = menu.title().replace("&", "").strip().lower()
-        object_name = menu.objectName().lower()
-        if title == "tools" or object_name == "tools" or object_name.endswith("_tools"):
-            tools_menu = menu
-            break
-    if tools_menu is None:
-        for menu in mw.menuBar().findChildren(QMenu):
-            title = menu.title().replace("&", "").strip().lower()
-            object_name = menu.objectName().lower()
-            if title == "tools" or object_name == "tools" or object_name.endswith("_tools"):
-                tools_menu = menu
-                break
-    if tools_menu:
-        menu_exists = False
-        for action in tools_menu.actions():
-            if action.text() == menu_label:
-                menu_exists = True
-                break
-        if not menu_exists:
-            tools_menu.addSeparator()
-            action = tools_menu.addAction(menu_label)
-            action.triggered.connect(lambda: Gui.runCommand(command))
-        menu_ready = True
 
     target_tb = None
     for tb in mw.findChildren(QToolBar):
@@ -162,43 +131,28 @@ def inject_ui():
 
     toolbar_exists = False
     for action in target_tb.actions():
-        if action.text() == menu_label:
+        if action.text() == action_label:
             toolbar_exists = True
             break
     if not toolbar_exists:
-        action = target_tb.addAction(menu_label)
+        action = target_tb.addAction(action_label)
         action.setIcon(QIcon(icon_path))
         action.setToolTip("Toggle the local Named Pipe / UNIX socket bridge for AI agent control")
         action.triggered.connect(lambda: Gui.runCommand(command))
-
-    toolbar_ready = False
-    for action in target_tb.actions():
-        if action.text() == menu_label:
-            toolbar_ready = target_tb.isVisible()
-            break
 
     target_tb.setVisible(True)
     target_tb.show()
     mw.update()
 
-    if not menu_ready:
-        QTimer.singleShot(500, App.FreeCADMCPBridgeInjectUi)
-
-    ready = menu_ready and toolbar_ready and mw.isVisible()
+    ready = target_tb.isVisible() and mw.isVisible()
     if ready and not getattr(App, "FreeCADMCPBridgeUiReady", False):
         App.FreeCADMCPBridgeUiReady = True
-        App.Console.PrintMessage("[AI Bridge] Toolbar and menu ready.\n")
+        App.Console.PrintMessage("[AI Bridge] Toolbar ready.\n")
     return ready
 
 
 class MCPBridgeUiManipulator:
-    """Re-inject after each workbench activation once FreeCAD has built the UI."""
-
-    def modifyMenuBar(self):
-        import FreeCAD as App
-        if hasattr(App, "FreeCADMCPBridgeInjectUi"):
-            App.FreeCADMCPBridgeInjectUi()
-        return {}
+    """Re-inject the toolbar after each workbench activation."""
 
     def modifyToolBars(self):
         import FreeCAD as App
