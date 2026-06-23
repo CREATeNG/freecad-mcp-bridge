@@ -173,11 +173,50 @@ def describe_mod_dir() -> str:
     return "\n".join(lines) or "(empty)"
 
 
+def flatten_install_dir(resolved_dir: str) -> str:
+    """Move a nested GitHub-zip install up to Mod/<addon_name>/ for autoload."""
+    import shutil
+
+    preferred = install_dir()
+    resolved = os.path.normpath(resolved_dir)
+    target = os.path.normpath(preferred)
+
+    if resolved == target:
+        return target
+
+    package_xml = os.path.join(resolved, "package.xml")
+    if not os.path.isfile(package_xml):
+        fail(f"Cannot flatten install: missing package.xml in {resolved}")
+
+    log(f"Flattening install from {resolved} to {target}")
+    staging = f"{target}__flatten__"
+    if os.path.isdir(staging):
+        shutil.rmtree(staging, ignore_errors=True)
+
+    shutil.move(resolved, staging)
+    if os.path.isdir(target):
+        shutil.rmtree(target, ignore_errors=True)
+    shutil.move(staging, target)
+
+    leftover = os.path.dirname(resolved)
+    if (
+        leftover != target
+        and os.path.isdir(leftover)
+        and leftover.startswith(os.path.dirname(target))
+        and not os.listdir(leftover)
+    ):
+        os.rmdir(leftover)
+
+    return target
+
+
 def installed_addon_dir() -> str:
     addon_name = env("RELEASE_INSTALL_NAME", "freecad-mcp-bridge")
     expected_version = version_from_tag(env("RELEASE_INSTALL_TAG", "v0.1.11"))
     found = find_install_dir(addon_name, expected_version)
-    return found if found is not None else install_dir()
+    if found is not None:
+        return flatten_install_dir(found)
+    return install_dir()
 
 
 def addon_manager_paths() -> list[str]:

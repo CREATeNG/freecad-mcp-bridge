@@ -45,7 +45,7 @@ jobs:
             isolate_home: true
           - os: windows-latest
             os-name: windows
-            qt_platform: offscreen
+            qt_platform: ""
             isolate_home: true
           - os: macos-latest
             os-name: macos
@@ -141,6 +141,7 @@ jobs:
         run: |
           $env:USERPROFILE = $env:FC_CI_HOME
           $env:HOME = $env:FC_CI_HOME
+          New-Item -ItemType Directory -Force -Path (Join-Path $env:FC_CI_HOME "AppData\Roaming") | Out-Null
           $script = Join-Path $env:GITHUB_WORKSPACE "scripts\test_install.py"
           $freecadBin = @(
             (Join-Path $env:ProgramFiles "FreeCAD 1.1\bin\FreeCAD.exe"),
@@ -153,12 +154,16 @@ jobs:
           if (-not (Test-Path -LiteralPath $script)) {
             throw "test_install.py not found: '$script'"
           }
-          Write-Host "Launching '$freecadBin' with '$script'"
-          $proc = Start-Process -FilePath $freecadBin -ArgumentList @($script) -PassThru
+          $logFile = Join-Path $env:RUNNER_TEMP "freecad-test-install.log"
+          Write-Host "Launching '$freecadBin' with '$script' (log: $logFile)"
+          $proc = Start-Process -FilePath $freecadBin -ArgumentList @($script) -PassThru `
+            -RedirectStandardOutput $logFile -RedirectStandardError $logFile
           if (-not $proc.WaitForExit(900000)) {
             $proc.Kill($true)
+            if (Test-Path $logFile) { Get-Content $logFile }
             throw "FreeCAD timed out after 15 minutes running test_install.py"
           }
+          if (Test-Path $logFile) { Get-Content $logFile }
           if ($proc.ExitCode -ne 0) {
             throw "FreeCAD exited with code $($proc.ExitCode) running test_install.py"
           }
@@ -190,6 +195,7 @@ jobs:
         run: |
           $env:USERPROFILE = $env:FC_CI_HOME
           $env:HOME = $env:FC_CI_HOME
+          New-Item -ItemType Directory -Force -Path (Join-Path $env:FC_CI_HOME "AppData\Roaming") | Out-Null
           $script = Join-Path $env:GITHUB_WORKSPACE "scripts\test_verify.py"
           $freecadBin = @(
             (Join-Path $env:ProgramFiles "FreeCAD 1.1\bin\FreeCAD.exe"),
@@ -202,12 +208,16 @@ jobs:
           if (-not (Test-Path -LiteralPath $script)) {
             throw "test_verify.py not found: '$script'"
           }
-          Write-Host "Launching '$freecadBin' with '$script'"
-          $proc = Start-Process -FilePath $freecadBin -ArgumentList @($script) -PassThru
+          $logFile = Join-Path $env:RUNNER_TEMP "freecad-test-verify.log"
+          Write-Host "Launching '$freecadBin' with '$script' (log: $logFile)"
+          $proc = Start-Process -FilePath $freecadBin -ArgumentList @($script) -PassThru `
+            -RedirectStandardOutput $logFile -RedirectStandardError $logFile
           if (-not $proc.WaitForExit(900000)) {
             $proc.Kill($true)
+            if (Test-Path $logFile) { Get-Content $logFile }
             throw "FreeCAD timed out after 15 minutes running test_verify.py"
           }
+          if (Test-Path $logFile) { Get-Content $logFile }
           if ($proc.ExitCode -ne 0) {
             throw "FreeCAD exited with code $($proc.ExitCode) running test_verify.py"
           }

@@ -30,18 +30,18 @@ def _verify_addon_startup() -> None:
     """Confirm FreeCAD loaded and registered the addon without manual injection."""
     import FreeCADGui as Gui
 
-    from freecad.mcp_bridge.constants import COMMAND_ID
+    command_id = "MCP_Bridge_Toggle"
 
-    if COMMAND_ID not in Gui.listCommands():
+    if command_id not in Gui.listCommands():
         common.fail(
-            f"Addon command {COMMAND_ID!r} was not registered on startup "
+            f"Addon command {command_id!r} was not registered on startup "
             "(init_gui did not run automatically)"
         )
 
     if not os.path.isdir(common.installed_addon_dir()):
         common.fail("Installed addon directory is missing after restart")
 
-    common.log(f"Addon command {COMMAND_ID!r} registered on startup")
+    common.log(f"Addon command {command_id!r} registered on startup")
 
 
 def _find_toolbar_action():

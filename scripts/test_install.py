@@ -78,6 +78,7 @@ def _run() -> None:
     if install_dir != common.install_dir():
         common.log(f"Resolved install dir: {install_dir}")
 
+    install_dir = common.flatten_install_dir(install_dir)
     common.verify_install_tree(install_dir, expected_version)
     common.log("Install passed; restart FreeCAD and run scripts/test_verify.py")
     common.quit_freecad(0)
