@@ -1,0 +1,34 @@
+name: Bump package.xml z
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    name: Increment package.xml patch
+    runs-on: ubuntu-latest
+    if: >-
+      !startsWith(github.event.head_commit.message, 'chore: bump package.xml z to ') &&
+      !contains(github.event.head_commit.message, '[skip version]')
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --ff-only origin main
+
+      - name: Bump z and date
+        env:
+          BUMP_PACKAGE_Z_AUTHORIZED: "true"
+        run: bash "${GITHUB_WORKSPACE}/scripts/bump-package-z.sh"

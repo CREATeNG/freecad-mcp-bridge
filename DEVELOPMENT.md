@@ -46,8 +46,8 @@ The addon uses a single **SVG** icon at `Resources/Icons/icon.svg` (repo root). 
 
 | Do | Don't |
 |----|-------|
-| Keep `main` at two-part `x.y` in `package.xml`, push, then run **Release** once | Create release tags by hand or edit stamped `x.y.z` versions |
-| Let Release sync `bin/`, verify, stamp, tag, and reset `main` to `x.(y+1)` | Re-run **Release** for a tag that already exists (workflow fails) |
+| Merge to `main` (Actions bumps `z`), then run **Release** once | Create release tags by hand or edit `package.xml` patch (`z`) |
+| Let Release sync `bin/`, verify, tag `v{x.y.z}`, and publish | Re-run **Release** for a tag that already exists (workflow fails) |
 | Use **Release install verify** (`workflow_dispatch`) to test CI while developing on `main` | Expect install-verify alone to create or move tags |
 
 **Why:** Each release tag must be a complete, installable snapshot — Python sources, `package.xml`, and prebuilt `bin/` clients — with `bin/` committed to `main` *before* the tag is applied. Tags created before this process (before **v0.1.11**) pointed at commits missing synced binaries and are **not** suitable as FreeCAD Index `git_ref` values.
@@ -63,37 +63,37 @@ The addon uses a single **SVG** icon at `Resources/Icons/icon.svg` (repo root). 
 
 ### Version format (`package.xml`)
 
-| Ref | `<version>` | Meaning |
-|-----|-------------|---------|
-| **`main` (development)** | `x.y` (two-part) | Development line — not a stamped release |
-| **Tagged release** | `x.y.0` (three-part; numeric `z`) | Stamped only after verify passes; **tag === version** (e.g. `v0.2.0`) |
+**`x.y.z` everywhere** on `main` and on release tags. **Tag === version** (e.g. `0.2.5` → `v0.2.5`).
 
-Do not hand-edit a stamped release version on `main`. The publish orchestrator resets `main` to `x.(y+1)` after tagging.
+| Part | Who sets it |
+|------|-------------|
+| **`x.y`** | Maintainers (rarely — e.g. new minor line) |
+| **`z` (patch)** | **GitHub Actions only** — `.github/workflows/bump-package-version.yml` increments `z` and `<date>` on each push to `main` |
 
-`z` is not a commit SHA — it cannot honestly be one inside the same commit. Index `git_ref` is the tag name (`v0.2.0`), which matches `package.xml` by convention.
+Do **not** hand-edit `z` in `package.xml`. Release binary sync commits use `[skip version]` so they do not advance `z` again.
+
+Index `git_ref` is the tag name (`v0.2.5`), matching `package.xml` by convention.
 
 ### End-to-end release pipeline
 
 ```mermaid
 flowchart LR
-  dev[main at x.y] --> release[Run Release workflow]
+  push[Push to main] --> bump[Actions: z++]
+  bump --> release[Run Release workflow]
   release --> bins[Sync bin/ to main]
   bins --> verify[Install-verify gate]
-  verify --> stamp[Stamp x.y.z + tag]
-  stamp --> reset[Reset main to x.y+1]
-  reset --> ghrel[GitHub Release + assets]
-  stamp --> postverify[Post-tag install-verify]
+  verify --> tag[Tag v x.y.z]
+  tag --> ghrel[GitHub Release + assets]
+  tag --> postverify[Post-tag install-verify]
   postverify --> index[Index PR when listed]
 ```
 
 **Release workflow order** (`.github/workflows/release.yml`):
 
 1. Build Rust MCP binaries (Linux, macOS, Windows) in parallel.
-2. **Prepare** — download artifacts, install into `bin/`, require two-part `x.y` in `package.xml`, commit `bin/` to `main` if changed, **push `main`**.
-3. **Install verify (hard gate)** — full Addon Manager install + restart verify on all three OSes against `main` (`install_mode: main`, expects `x.y`). **No tag if this fails.**
-4. **Publish (atomic orchestrator)** — `scripts/release-publish-orchestrator.sh` only, with `RELEASE_PUBLISH_AUTHORIZED=true` from the workflow. In one guarded pass: stamp-only commit (`package.xml` only) → annotated tag → reset-only commit (`main` → `x.(y+1)`) → push tag and `main` → GitHub Release assets.
-
-There is **no** standalone stamp script. Stamp, tag, and reset cannot be invoked separately.
+2. **Prepare** — download artifacts, install into `bin/`, read `x.y.z` from `package.xml`, verify the tag does not already exist, commit `bin/` to `main` if changed (`[skip version]`), **push `main`**.
+3. **Install verify (hard gate)** — full Addon Manager install + restart verify on all three OSes against `main` (`install_mode: main`). **No tag if this fails.**
+4. **Publish** — create tag `v{x.y.z}` on the verified commit, push tag, GitHub Release + assets.
 
 Pushing the release tag still triggers `release-install-verify.yml` as a post-release check (`install_mode: tag`).
 
@@ -110,7 +110,7 @@ If Rust sources did not change, the prepare commit step may be a no-op, but veri
 ### Publishing a release (maintainer checklist)
 
 1. Merge finished work into `main` (topic branches for larger changes).
-2. Ensure `package.xml` on `main` is the intended two-part development line (`x.y`); commit and push.
+2. Merge to `main` and let Actions advance `z`; bump `x.y` manually only when starting a new minor line.
 3. GitHub → **Actions** → **Release** → **Run workflow** (branch: **`main`** only).
 4. Wait for **Release install verify** to run automatically on the new `v*` tag (or dispatch it manually against the tag while iterating).
 5. When listed in the Index, update the Addons entry (see below).
