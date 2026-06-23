@@ -96,7 +96,7 @@ jobs:
           install -D artifacts/windows/freecad-mcp-bridge.exe bin/win32/freecad-mcp-bridge.exe
           chmod +x bin/linux/freecad-mcp-bridge bin/macos/freecad-mcp-bridge
 
-      - name: Resolve version from package.xml
+      - name: Resolve development line version from package.xml
         id: version
         run: |
           VERSION=$(sed -n 's/.*<version>\([^<]*\)<\/version>.*/\1/p' package.xml | head -1)
@@ -104,21 +104,13 @@ jobs:
             echo "Could not read <version> from package.xml"
             exit 1
           fi
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+$'; then
+            echo "main must use two-part x.y development version before release (found: $VERSION)"
+            exit 1
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Release version: $VERSION (tag v$VERSION)"
-
-      - name: Verify tag does not exist
-        run: |
-          TAG="${{ steps.version.outputs.tag }}"
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists locally."
-            exit 1
-          fi
-          if [ -n "$(git ls-remote --tags origin "$TAG")" ]; then
-            echo "Tag $TAG already exists on origin."
-            exit 1
-          fi
+          echo "Development line: $VERSION (install-verify expects v$VERSION on main)"
 
       - name: Commit release binaries
         run: |
@@ -128,8 +120,10 @@ jobs:
           if git diff --staged --quiet; then
             echo "bin/ already up to date on main"
           else
-            git commit -m "Sync release binaries for ${{ steps.version.outputs.tag }}"
+            git commit -m "Sync release binaries for line ${VERSION}"
           fi
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
 
       - name: Push release candidate to main
         run: git push origin main
@@ -148,37 +142,47 @@ jobs:
       fail_fast: true
 
   publish:
-    name: Tag and publish release
+    name: Stamp, tag, reset, and publish release
     needs: [prepare, install_verify]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     steps:
-      - name: Checkout release candidate
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.prepare.outputs.commit_sha }}
+          ref: main
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create release tag
-        run: git tag -a "${{ needs.prepare.outputs.tag }}" -m "Release ${{ needs.prepare.outputs.tag }}"
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --ff-only origin main
 
-      - name: Push tag
-        run: git push origin "${{ needs.prepare.outputs.tag }}"
+      - name: Stamp, tag, and reset development line
+        id: publish
+        env:
+          RELEASE_PUBLISH_AUTHORIZED: "true"
+          RELEASE_VERIFIED_SHA: ${{ needs.prepare.outputs.commit_sha }}
+        run: bash "${GITHUB_WORKSPACE}/scripts/release-publish-orchestrator.sh"
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "${{ needs.prepare.outputs.tag }}" --title "${{ needs.prepare.outputs.tag }}" --notes "Release ${{ needs.prepare.outputs.tag }}"
+        run: |
+          TAG="${{ steps.publish.outputs.release_tag }}"
+          gh release create "$TAG" --title "$TAG" --notes "Release $TAG"
 
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          TAG="${{ steps.publish.outputs.release_tag }}"
           cp bin/linux/freecad-mcp-bridge freecad-mcp-bridge-linux
           cp bin/macos/freecad-mcp-bridge freecad-mcp-bridge-macos
           cp bin/win32/freecad-mcp-bridge.exe freecad-mcp-bridge-windows.exe
-          gh release upload "${{ needs.prepare.outputs.tag }}" \
+          gh release upload "$TAG" \
             freecad-mcp-bridge-linux \
             freecad-mcp-bridge-macos \
             freecad-mcp-bridge-windows.exe \
