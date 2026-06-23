@@ -157,8 +157,7 @@ def _run() -> None:
     _start_bridge_listener()
     _verify_socket_round_trip()
     common.log("Verify passed")
-    App.quit()
-    sys.exit(0)
+    common.quit_freecad(0)
 
 
 common.LOG_PREFIX = "[test_verify]"

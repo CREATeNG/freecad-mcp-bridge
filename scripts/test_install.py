@@ -71,8 +71,7 @@ def _run() -> None:
 
     common.verify_install_tree(install_dir, expected_version)
     common.log("Install passed; restart FreeCAD and run scripts/test_verify.py")
-    App.quit()
-    sys.exit(0)
+    common.quit_freecad(0)
 
 
 common.LOG_PREFIX = "[test_install]"

@@ -15,12 +15,37 @@ def log(message: str) -> None:
     App.Console.PrintMessage(f"{LOG_PREFIX} {message}\n")
 
 
+def quit_freecad(exit_code: int = 0) -> None:
+    """Exit FreeCAD from a GUI script (App.quit is not available in all builds)."""
+    for name in ("quit", "exit", "closeApplication"):
+        fn = getattr(__import__("FreeCAD"), name, None)
+        if callable(fn):
+            fn()
+            sys.exit(exit_code)
+
+    try:
+        import FreeCADGui as Gui
+        from PySide.QtCore import QCoreApplication
+
+        mw = Gui.getMainWindow()
+        if mw is not None:
+            mw.close()
+        QCoreApplication.processEvents()
+        app = QCoreApplication.instance()
+        if app is not None:
+            app.quit()
+            QCoreApplication.processEvents()
+    except Exception:
+        pass
+
+    sys.exit(exit_code)
+
+
 def fail(message: str) -> None:
     import FreeCAD as App
 
     App.Console.PrintError(f"{LOG_PREFIX} {message}\n")
-    App.quit()
-    sys.exit(1)
+    quit_freecad(1)
 
 
 def env(name: str, default: str) -> str:
