@@ -38,7 +38,7 @@ def _verify_addon_startup() -> None:
             "(init_gui did not run automatically)"
         )
 
-    if not os.path.isdir(common.install_dir()):
+    if not os.path.isdir(common.installed_addon_dir()):
         common.fail("Installed addon directory is missing after restart")
 
     common.log(f"Addon command {COMMAND_ID!r} registered on startup")

@@ -56,11 +56,100 @@ def version_from_tag(tag: str) -> str:
     return tag[1:] if tag.startswith("v") else tag
 
 
-def install_dir() -> str:
+def mod_dir() -> str:
     import FreeCAD as App
 
+    return os.path.join(App.getUserAppDataDir(), "Mod")
+
+
+def install_dir() -> str:
     addon_name = env("RELEASE_INSTALL_NAME", "freecad-mcp-bridge")
-    return os.path.join(App.getUserAppDataDir(), "Mod", addon_name)
+    return os.path.join(mod_dir(), addon_name)
+
+
+def _package_version(package_xml: str) -> str | None:
+    try:
+        root = ET.parse(package_xml).getroot()
+    except ET.ParseError:
+        return None
+    version_el = root.find("version")
+    if version_el is None or not version_el.text:
+        return None
+    return version_el.text.strip()
+
+
+def find_install_dir(addon_name: str, expected_version: str) -> str | None:
+    """Locate the installed addon, including nested GitHub zip layouts."""
+    mod_root = mod_dir()
+    if not os.path.isdir(mod_root):
+        return None
+
+    candidates: list[str] = []
+    preferred = install_dir()
+    candidates.append(preferred)
+    if os.path.isdir(preferred):
+        for entry in sorted(os.listdir(preferred)):
+            candidates.append(os.path.join(preferred, entry))
+    for entry in sorted(os.listdir(mod_root)):
+        candidates.append(os.path.join(mod_root, entry))
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate in seen or not os.path.isdir(candidate):
+            continue
+        seen.add(candidate)
+        package_xml = os.path.join(candidate, "package.xml")
+        if not os.path.isfile(package_xml):
+            continue
+        if _package_version(package_xml) == expected_version:
+            return candidate
+    return None
+
+
+def wait_for_install_dir(
+    addon_name: str, expected_version: str, timeout_ms: int = 120000
+) -> str:
+    from PySide.QtCore import QCoreApplication, QThread
+
+    interval_ms = 250
+    attempts = max(1, timeout_ms // interval_ms)
+    for _ in range(attempts):
+        QCoreApplication.processEvents()
+        found = find_install_dir(addon_name, expected_version)
+        if found is not None:
+            return found
+        QThread.msleep(interval_ms)
+
+    fail(
+        "Timed out waiting for installed addon. "
+        f"Mod tree under {mod_dir()}:\n{describe_mod_dir()}"
+    )
+    return ""
+
+
+def describe_mod_dir() -> str:
+    mod_root = mod_dir()
+    if not os.path.isdir(mod_root):
+        return f"(missing {mod_root})"
+
+    lines: list[str] = []
+    for root, dirs, files in os.walk(mod_root):
+        depth = root[len(mod_root) :].count(os.sep)
+        indent = "  " * depth
+        lines.append(f"{indent}{os.path.basename(root) or mod_root}/")
+        for filename in sorted(files)[:12]:
+            lines.append(f"{indent}  {filename}")
+        if len(files) > 12:
+            lines.append(f"{indent}  ... ({len(files)} files)")
+        dirs[:] = sorted(dirs)[:8]
+    return "\n".join(lines) or "(empty)"
+
+
+def installed_addon_dir() -> str:
+    addon_name = env("RELEASE_INSTALL_NAME", "freecad-mcp-bridge")
+    expected_version = version_from_tag(env("RELEASE_INSTALL_TAG", "v0.1.11"))
+    found = find_install_dir(addon_name, expected_version)
+    return found if found is not None else install_dir()
 
 
 def addon_manager_paths() -> list[str]:

@@ -53,10 +53,13 @@ def _run() -> None:
     from Addon import Addon
     from addonmanager_installer import AddonInstaller, InstallationMethod
 
-    install_dir = common.install_dir()
-    if os.path.isdir(install_dir):
-        common.log(f"Removing previous install at {install_dir}")
-        shutil.rmtree(install_dir, ignore_errors=True)
+    mod_root = common.mod_dir()
+    if os.path.isdir(mod_root):
+        for entry in os.listdir(mod_root):
+            if entry == addon_name or "mcp-bridge" in entry.lower():
+                stale = os.path.join(mod_root, entry)
+                common.log(f"Removing previous install at {stale}")
+                shutil.rmtree(stale, ignore_errors=True)
 
     addon_url, addon_branch = common.build_addon_descriptor(
         addon_name, repo_url, tag, mode
@@ -66,8 +69,9 @@ def _run() -> None:
     if not installer.run(InstallationMethod.ANY):
         common.fail(f"AddonInstaller failed for {addon_name} ({mode}, {tag})")
 
-    if not os.path.isdir(install_dir):
-        common.fail(f"Install directory was not created: {install_dir}")
+    install_dir = common.wait_for_install_dir(addon_name, expected_version)
+    if install_dir != common.install_dir():
+        common.log(f"Resolved install dir: {install_dir}")
 
     common.verify_install_tree(install_dir, expected_version)
     common.log("Install passed; restart FreeCAD and run scripts/test_verify.py")
