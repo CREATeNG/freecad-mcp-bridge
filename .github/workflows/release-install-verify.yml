@@ -133,12 +133,9 @@ jobs:
             export LIBGL_ALWAYS_SOFTWARE=1
             perl -e 'alarm shift; exec @ARGV' 900 "${FREECAD_BIN}" "${SCRIPT}"
           fi
-          echo "--- CI test summary (install) ---"
-          if [ -f "${RELEASE_INSTALL_CI_LOG}" ]; then
-            cat "${RELEASE_INSTALL_CI_LOG}"
-          else
-            echo "No CI test log written to ${RELEASE_INSTALL_CI_LOG}"
-          fi
+          bash "${GITHUB_WORKSPACE}/scripts/publish_ci_log.sh" \
+            "${RELEASE_INSTALL_CI_LOG}" \
+            "Install addon via Addon Manager"
         env:
           QT_QPA_PLATFORM: ${{ matrix.qt_platform }}
 
@@ -180,12 +177,9 @@ jobs:
           }
           if (Test-Path $logOut) { Get-Content $logOut }
           if (Test-Path $logErr) { Get-Content $logErr }
-          Write-Host "--- CI test summary (install) ---"
-          if (Test-Path -LiteralPath $env:RELEASE_INSTALL_CI_LOG) {
-            Get-Content -LiteralPath $env:RELEASE_INSTALL_CI_LOG
-          } else {
-            Write-Host "No CI test log written to $($env:RELEASE_INSTALL_CI_LOG)"
-          }
+          & "${env:GITHUB_WORKSPACE}/scripts/publish_ci_log.ps1" `
+            -LogFile $env:RELEASE_INSTALL_CI_LOG `
+            -GroupTitle "Install addon via Addon Manager"
           if ($proc.ExitCode -ne 0) {
             throw "FreeCAD exited with code $($proc.ExitCode) running test_install.py"
           }
@@ -208,12 +202,9 @@ jobs:
             export LIBGL_ALWAYS_SOFTWARE=1
             perl -e 'alarm shift; exec @ARGV' 900 "${FREECAD_BIN}" "${SCRIPT}"
           fi
-          echo "--- CI test summary (verify) ---"
-          if [ -f "${RELEASE_INSTALL_CI_LOG}" ]; then
-            cat "${RELEASE_INSTALL_CI_LOG}"
-          else
-            echo "No CI test log written to ${RELEASE_INSTALL_CI_LOG}"
-          fi
+          bash "${GITHUB_WORKSPACE}/scripts/publish_ci_log.sh" \
+            "${RELEASE_INSTALL_CI_LOG}" \
+            "Verify addon after restart"
         env:
           QT_QPA_PLATFORM: ${{ matrix.qt_platform }}
 
@@ -255,12 +246,9 @@ jobs:
           }
           if (Test-Path $logOut) { Get-Content $logOut }
           if (Test-Path $logErr) { Get-Content $logErr }
-          Write-Host "--- CI test summary (verify) ---"
-          if (Test-Path -LiteralPath $env:RELEASE_INSTALL_CI_LOG) {
-            Get-Content -LiteralPath $env:RELEASE_INSTALL_CI_LOG
-          } else {
-            Write-Host "No CI test log written to $($env:RELEASE_INSTALL_CI_LOG)"
-          }
+          & "${env:GITHUB_WORKSPACE}/scripts/publish_ci_log.ps1" `
+            -LogFile $env:RELEASE_INSTALL_CI_LOG `
+            -GroupTitle "Verify addon after restart"
           if ($proc.ExitCode -ne 0) {
             throw "FreeCAD exited with code $($proc.ExitCode) running test_verify.py"
           }
