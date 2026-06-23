@@ -1,8 +1,7 @@
-name: Release Build
+name: Release
 
 on:
-  release:
-    types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -11,26 +10,13 @@ jobs:
   build:
     name: Build - ${{ matrix.platform.os-name }}
     runs-on: ${{ matrix.platform.os }}
-    strategy:
-      matrix:
-        platform:
-          - os: ubuntu-latest
-            os-name: linux
-            target: x86_64-unknown-linux-gnu
-            bin-name: freecad-mcp-bridge
-            dest: bin/linux/freecad-mcp-bridge
-          - os: macos-latest
-            os-name: macos
-            target: x86_64-apple-darwin
-            bin-name: freecad-mcp-bridge
-            dest: bin/macos/freecad-mcp-bridge
-          - os: windows-latest
-            os-name: windows
-            target: x86_64-pc-windows-msvc
-            bin-name: freecad-mcp-bridge.exe
-            dest: bin/win32/freecad-mcp-bridge.exe
-
     steps:
+      - name: Ensure running on main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "Release workflow must be run on the main branch."
+          exit 1
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -49,17 +35,37 @@ jobs:
         with:
           name: ${{ matrix.platform.os-name }}
           path: rust_mcp_server/target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin-name }}
+    strategy:
+      matrix:
+        platform:
+          - os: ubuntu-latest
+            os-name: linux
+            target: x86_64-unknown-linux-gnu
+            bin-name: freecad-mcp-bridge
+          - os: macos-latest
+            os-name: macos
+            target: x86_64-apple-darwin
+            bin-name: freecad-mcp-bridge
+          - os: windows-latest
+            os-name: windows
+            target: x86_64-pc-windows-msvc
+            bin-name: freecad-mcp-bridge.exe
 
-  publish:
-    name: Publish binaries
+  release:
+    name: Tag and publish release
     needs: build
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
     steps:
-      - name: Checkout code
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync with origin main
+        run: git pull --ff-only origin main
 
       - name: Download Linux binary
         uses: actions/download-artifact@v4
@@ -86,41 +92,56 @@ jobs:
           install -D artifacts/windows/freecad-mcp-bridge.exe bin/win32/freecad-mcp-bridge.exe
           chmod +x bin/linux/freecad-mcp-bridge bin/macos/freecad-mcp-bridge
 
-      - name: Upload binaries to GitHub Release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: bin/linux/freecad-mcp-bridge
-          asset_name: freecad-mcp-bridge-linux-freecad-mcp-bridge
-          tag: ${{ github.ref }}
-          overwrite: true
+      - name: Resolve version from package.xml
+        id: version
+        run: |
+          VERSION=$(sed -n 's/.*<version>\([^<]*\)<\/version>.*/\1/p' package.xml | head -1)
+          if [ -z "$VERSION" ]; then
+            echo "Could not read <version> from package.xml"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Release version: $VERSION (tag v$VERSION)"
 
-      - name: Upload macOS binary to GitHub Release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: bin/macos/freecad-mcp-bridge
-          asset_name: freecad-mcp-bridge-macos-freecad-mcp-bridge
-          tag: ${{ github.ref }}
-          overwrite: true
+      - name: Verify tag does not exist
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists locally."
+            exit 1
+          fi
+          if [ -n "$(git ls-remote --tags origin "$TAG")" ]; then
+            echo "Tag $TAG already exists on origin."
+            exit 1
+          fi
 
-      - name: Upload Windows binary to GitHub Release
-        uses: svenstaro/upload-release-action@v2
-        with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: bin/win32/freecad-mcp-bridge.exe
-          asset_name: freecad-mcp-bridge-windows-freecad-mcp-bridge.exe
-          tag: ${{ github.ref }}
-          overwrite: true
-
-      - name: Commit synced bin/ to main
+      - name: Commit release binaries
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add bin/linux bin/macos bin/win32
           if git diff --staged --quiet; then
-            echo "bin/ already up to date"
-            exit 0
+            echo "bin/ already up to date on main"
+          else
+            git commit -m "Sync release binaries for ${{ steps.version.outputs.tag }}"
           fi
-          git commit -m "Sync release binaries for ${{ github.ref_name }}"
+
+      - name: Create release tag
+        run: git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
+
+      - name: Push main and tag
+        run: |
           git push origin main
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "${{ steps.version.outputs.tag }}" \
+            --notes "Release ${{ steps.version.outputs.tag }}" \
+            bin/linux/freecad-mcp-bridge#freecad-mcp-bridge-linux-freecad-mcp-bridge \
+            bin/macos/freecad-mcp-bridge#freecad-mcp-bridge-macos-freecad-mcp-bridge \
+            bin/win32/freecad-mcp-bridge.exe#freecad-mcp-bridge-windows-freecad-mcp-bridge.exe

@@ -13,7 +13,7 @@ It operates entirely in-memory using **Windows Named Pipes** (on Windows) or **U
     *   `init_gui.py`: Registers the bridge toggle and adds a global toolbar across workbenches.
     *   `bridge.py`: Core local QLocalServer socket listener running inside FreeCAD.
     *   `Resources/Icons/icon.svg` (repo root): Addon Manager listing icon (SVG, cross-platform).
-*   `bin/`: Precompiled, self-contained binaries for the MCP client (updated on each published release).
+*   `bin/`: Precompiled, self-contained binaries for the MCP client (updated on each tagged release).
     *   `win32/freecad-mcp-bridge.exe`: Windows
     *   `linux/freecad-mcp-bridge`: Linux x86_64
     *   `macos/freecad-mcp-bridge`: macOS x86_64
@@ -31,7 +31,7 @@ This is a **utility extension** that adds a global toggle across all workbenches
 2. Search for **MCP Bridge** (or `freecad-mcp-bridge`) and click **Install**.
 3. Restart FreeCAD.
 
-Once restarted, a persistent **MCP Bridge** toolbar will appear in your FreeCAD interface. Click it to toggle the bridge on/off in the active window.
+Once restarted, a persistent **MCP Bridge** toolbar will appear in your FreeCAD interface. Click **MCP Bridge On/Off** to toggle the bridge in the active window.
 
 ---
 
@@ -70,7 +70,7 @@ This addon is designed for local-only control of FreeCAD. Here is what runs, wha
 
 ### Inside FreeCAD
 
-* `freecad/mcp_bridge/bridge.py` starts a `QLocalServer` on the local socket name `freecad_mcp_bridge_socket` **only when you click Start/Stop MCP Bridge**.
+* `freecad/mcp_bridge/bridge.py` starts a `QLocalServer` on the local socket name `freecad_mcp_bridge_socket` **only when you click MCP Bridge On/Off**.
 * Communication uses Qt local sockets (Windows named pipes / UNIX domain sockets). **No TCP/IP network traffic** is used by the bridge itself.
 * While the bridge is enabled, received Python code is executed inside your running FreeCAD session. Output (stdout, stderr, exceptions) is returned to the caller over the same local socket.
 * The addon does **not** collect telemetry, upload files, or send data to third-party services.
@@ -95,13 +95,22 @@ For security reports, see [SECURITY.md](SECURITY.md).
 
 ---
 
+## Releases and Installation Sources
+
+* **`main`** is the development branch and may include unreleased work.
+* **Tagged releases** (`v0.1.x`) are complete, installable snapshots (addon + `bin/`). The FreeCAD Addon Index will pin a specific tag once listed.
+* For a stable install before or outside the Index, use the [latest release tag](https://github.com/CREATeNG/freecad-mcp-bridge/releases), not the `main` branch tip.
+
+---
+
 ## Alternative Installation & Testing Methods
 
 ### Custom/Pre-Release Testing (Via Addon Manager)
-If you want to install from this repository before it is officially listed in the FreeCAD index:
+If you want to install from this repository before it is officially listed in the FreeCAD index, prefer a **release tag** over `main`:
+
 1. Open FreeCAD and go to **Edit** ➔ **Preferences** ➔ **Addon manager**.
 2. In the **Custom repositories** section, click the **+ (Add)** button.
-3. Enter the Git repository URL: `https://github.com/CREATeNG/freecad-mcp-bridge` and specify the branch (`main`).
+3. Enter the Git repository URL: `https://github.com/CREATeNG/freecad-mcp-bridge` and specify the latest tag (e.g. `v0.1.11`), not `main`.
 4. Click **OK**, then open **Tools** ➔ **Addon Manager**. The bridge will appear in your list ready to install with a single click.
 
 ### Manual Installation (Developers / Fallback)
@@ -110,7 +119,9 @@ If you prefer to clone or download the files manually:
     *   **Windows:** `%APPDATA%\FreeCAD\Mod\` (typically `C:\Users\<YourUsername>\AppData\Roaming\FreeCAD\Mod\`)
     *   **macOS:** `/Users/<YourUsername>/Library/Application Support/FreeCAD/Mod/`
     *   **Linux:** `~/.local/share/FreeCAD/Mod/`
-2. Download or clone this repository directly into that directory under a folder named `freecad-mcp-bridge`.
+2. Download the [latest release tag](https://github.com/CREATeNG/freecad-mcp-bridge/releases) (or clone and `git checkout` that tag) into that directory under a folder named `freecad-mcp-bridge`.
 3. Restart FreeCAD.
+
+For day-to-day development on `main`, clone normally and accept that it may be ahead of the latest tagged release.
 
 For alternative Python script configuration, compiling the binary from source, or using direct CLI testing utilities, see [DEVELOPMENT.md](DEVELOPMENT.md).
