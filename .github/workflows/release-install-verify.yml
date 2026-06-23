@@ -32,7 +32,6 @@ jobs:
       RELEASE_INSTALL_MODE: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.mode || 'tag' }}
       RELEASE_INSTALL_REPO: https://github.com/CREATeNG/freecad-mcp-bridge
       RELEASE_INSTALL_NAME: freecad-mcp-bridge
-      FC_CI_HOME: ${{ runner.temp }}/freecad-ci-home
     strategy:
       fail-fast: false
       matrix:
@@ -76,10 +75,9 @@ jobs:
 
       - name: Prepare isolated FreeCAD profile
         shell: bash
-        run: mkdir -p "${FC_CI_HOME}"
-        env:
-          HOME: ${{ env.FC_CI_HOME }}
-          USERPROFILE: ${{ env.FC_CI_HOME }}
+        run: |
+          echo "FC_CI_HOME=${RUNNER_TEMP}/freecad-ci-home" >> "${GITHUB_ENV}"
+          mkdir -p "${RUNNER_TEMP}/freecad-ci-home"
 
       - name: Run release install verification
         run: ${{ matrix.launch }}
