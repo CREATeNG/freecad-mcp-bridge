@@ -125,11 +125,19 @@ jobs:
             export USERPROFILE="${FC_CI_HOME}"
           fi
           SCRIPT="${GITHUB_WORKSPACE}/scripts/test_install.py"
+          export RELEASE_INSTALL_CI_LOG="${RUNNER_TEMP}/freecad-ci-install.log"
+          rm -f "${RELEASE_INSTALL_CI_LOG}"
           if [ "${RUNNER_OS}" = "Linux" ]; then
             xvfb-run -a timeout 900 "${FREECAD_BIN}" "${SCRIPT}"
           else
             export LIBGL_ALWAYS_SOFTWARE=1
             perl -e 'alarm shift; exec @ARGV' 900 "${FREECAD_BIN}" "${SCRIPT}"
+          fi
+          echo "--- CI test summary (install) ---"
+          if [ -f "${RELEASE_INSTALL_CI_LOG}" ]; then
+            cat "${RELEASE_INSTALL_CI_LOG}"
+          else
+            echo "No CI test log written to ${RELEASE_INSTALL_CI_LOG}"
           fi
         env:
           QT_QPA_PLATFORM: ${{ matrix.qt_platform }}
@@ -155,6 +163,10 @@ jobs:
           if (-not (Test-Path -LiteralPath $script)) {
             throw "test_install.py not found: '$script'"
           }
+          $env:RELEASE_INSTALL_CI_LOG = Join-Path $env:RUNNER_TEMP "freecad-ci-install.log"
+          if (Test-Path -LiteralPath $env:RELEASE_INSTALL_CI_LOG) {
+            Remove-Item -LiteralPath $env:RELEASE_INSTALL_CI_LOG -Force
+          }
           $logOut = Join-Path $env:RUNNER_TEMP "freecad-test-install.out.log"
           $logErr = Join-Path $env:RUNNER_TEMP "freecad-test-install.err.log"
           Write-Host "Launching '$freecadBin' with '$script' (logs: $logOut, $logErr)"
@@ -168,6 +180,12 @@ jobs:
           }
           if (Test-Path $logOut) { Get-Content $logOut }
           if (Test-Path $logErr) { Get-Content $logErr }
+          Write-Host "--- CI test summary (install) ---"
+          if (Test-Path -LiteralPath $env:RELEASE_INSTALL_CI_LOG) {
+            Get-Content -LiteralPath $env:RELEASE_INSTALL_CI_LOG
+          } else {
+            Write-Host "No CI test log written to $($env:RELEASE_INSTALL_CI_LOG)"
+          }
           if ($proc.ExitCode -ne 0) {
             throw "FreeCAD exited with code $($proc.ExitCode) running test_install.py"
           }
@@ -182,11 +200,19 @@ jobs:
             export USERPROFILE="${FC_CI_HOME}"
           fi
           SCRIPT="${GITHUB_WORKSPACE}/scripts/test_verify.py"
+          export RELEASE_INSTALL_CI_LOG="${RUNNER_TEMP}/freecad-ci-verify.log"
+          rm -f "${RELEASE_INSTALL_CI_LOG}"
           if [ "${RUNNER_OS}" = "Linux" ]; then
             xvfb-run -a timeout 900 "${FREECAD_BIN}" "${SCRIPT}"
           else
             export LIBGL_ALWAYS_SOFTWARE=1
             perl -e 'alarm shift; exec @ARGV' 900 "${FREECAD_BIN}" "${SCRIPT}"
+          fi
+          echo "--- CI test summary (verify) ---"
+          if [ -f "${RELEASE_INSTALL_CI_LOG}" ]; then
+            cat "${RELEASE_INSTALL_CI_LOG}"
+          else
+            echo "No CI test log written to ${RELEASE_INSTALL_CI_LOG}"
           fi
         env:
           QT_QPA_PLATFORM: ${{ matrix.qt_platform }}
@@ -212,6 +238,10 @@ jobs:
           if (-not (Test-Path -LiteralPath $script)) {
             throw "test_verify.py not found: '$script'"
           }
+          $env:RELEASE_INSTALL_CI_LOG = Join-Path $env:RUNNER_TEMP "freecad-ci-verify.log"
+          if (Test-Path -LiteralPath $env:RELEASE_INSTALL_CI_LOG) {
+            Remove-Item -LiteralPath $env:RELEASE_INSTALL_CI_LOG -Force
+          }
           $logOut = Join-Path $env:RUNNER_TEMP "freecad-test-verify.out.log"
           $logErr = Join-Path $env:RUNNER_TEMP "freecad-test-verify.err.log"
           Write-Host "Launching '$freecadBin' with '$script' (logs: $logOut, $logErr)"
@@ -225,6 +255,12 @@ jobs:
           }
           if (Test-Path $logOut) { Get-Content $logOut }
           if (Test-Path $logErr) { Get-Content $logErr }
+          Write-Host "--- CI test summary (verify) ---"
+          if (Test-Path -LiteralPath $env:RELEASE_INSTALL_CI_LOG) {
+            Get-Content -LiteralPath $env:RELEASE_INSTALL_CI_LOG
+          } else {
+            Write-Host "No CI test log written to $($env:RELEASE_INSTALL_CI_LOG)"
+          }
           if ($proc.ExitCode -ne 0) {
             throw "FreeCAD exited with code $($proc.ExitCode) running test_verify.py"
           }

@@ -15,26 +15,42 @@ def _format_line(message: str) -> str:
     return f"{LOG_PREFIX} {message}"
 
 
-def _ci_escape(value: str) -> str:
-    return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+def _ci_log_path() -> str | None:
+    path = env("RELEASE_INSTALL_CI_LOG", "")
+    if path:
+        return path
+    runner_temp = os.environ.get("RUNNER_TEMP", "").strip()
+    if runner_temp:
+        return os.path.join(runner_temp, "freecad-ci-test.log")
+    return None
 
 
-def _emit_stdout(message: str) -> None:
-    print(_format_line(message), flush=True)
+def _write_ci_log(message: str, *, level: str = "INFO") -> None:
+    path = _ci_log_path()
+    if not path:
+        return
+    try:
+        directory = os.path.dirname(path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(f"{level} {_format_line(message)}\n")
+    except OSError:
+        pass
 
 
 def log_group_start(title: str) -> None:
-    """Start a collapsible group in GitHub Actions logs."""
+    """Mark the start of a test phase in the CI log file."""
     global _active_ci_group
     _active_ci_group = title
-    print(f"::group::{title}", flush=True)
+    _write_ci_log(f"=== {title} ===", level="GROUP")
 
 
 def log_group_end() -> None:
-    """Close the active GitHub Actions log group."""
+    """Mark the end of a test phase in the CI log file."""
     global _active_ci_group
     if _active_ci_group is not None:
-        print("::endgroup::", flush=True)
+        _write_ci_log(f"=== end {_active_ci_group} ===", level="GROUP")
         _active_ci_group = None
 
 
@@ -56,18 +72,16 @@ def log(message: str) -> None:
 
     line = _format_line(message)
     App.Console.PrintMessage(f"{line}\n")
-    print(line, flush=True)
+    _write_ci_log(message)
 
 
 def log_notice(message: str) -> None:
-    """Log a passing checkpoint; surfaces as a GitHub Actions notice."""
+    """Log a passing checkpoint to FreeCAD console and the CI log file."""
     import FreeCAD as App
 
     line = _format_line(message)
     App.Console.PrintMessage(f"{line}\n")
-    title = _ci_escape(LOG_PREFIX.strip("[]"))
-    print(f"::notice title={title}::{_ci_escape(message)}", flush=True)
-    print(line, flush=True)
+    _write_ci_log(message, level="PASS")
 
 
 def quit_freecad(exit_code: int = 0) -> None:
@@ -85,9 +99,7 @@ def fail(message: str) -> None:
 
     line = _format_line(message)
     App.Console.PrintError(f"{line}\n")
-    title = _ci_escape(LOG_PREFIX.strip("[]"))
-    print(f"::error title={title}::{_ci_escape(message)}", flush=True)
-    print(line, flush=True)
+    _write_ci_log(message, level="FAIL")
     log_group_end()
     quit_freecad(1)
 
