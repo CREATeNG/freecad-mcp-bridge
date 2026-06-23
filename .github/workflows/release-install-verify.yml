@@ -43,10 +43,13 @@ jobs:
         include:
           - os: ubuntu-latest
             os-name: linux
+            qt_platform: ""
           - os: windows-latest
             os-name: windows
+            qt_platform: offscreen
           - os: macos-latest
             os-name: macos
+            qt_platform: offscreen
 
     steps:
       - name: Checkout repository
@@ -89,7 +92,6 @@ jobs:
           fi
           echo "FREECAD_BIN=${FC_BIN}" >> "${GITHUB_ENV}"
           echo "Using FreeCAD: ${FC_BIN}"
-          "${FC_BIN}" --version || "${FC_BIN}" -v || true
 
       - name: Prepare isolated FreeCAD profile
         run: |
@@ -101,23 +103,29 @@ jobs:
           set -euo pipefail
           SCRIPT="${GITHUB_WORKSPACE}/scripts/test_install.py"
           if [ "${RUNNER_OS}" = "Linux" ]; then
-            xvfb-run -a "${FREECAD_BIN}" "${SCRIPT}"
+            xvfb-run -a timeout 900 "${FREECAD_BIN}" "${SCRIPT}"
+          elif [ "${RUNNER_OS}" = "macOS" ]; then
+            perl -e 'alarm shift; exec @ARGV' 900 "${FREECAD_BIN}" "${SCRIPT}"
           else
-            "${FREECAD_BIN}" "${SCRIPT}"
+            timeout 900 "${FREECAD_BIN}" "${SCRIPT}"
           fi
         env:
           HOME: ${{ env.FC_CI_HOME }}
           USERPROFILE: ${{ env.FC_CI_HOME }}
+          QT_QPA_PLATFORM: ${{ matrix.qt_platform }}
 
       - name: Verify addon after FreeCAD restart
         run: |
           set -euo pipefail
           SCRIPT="${GITHUB_WORKSPACE}/scripts/test_verify.py"
           if [ "${RUNNER_OS}" = "Linux" ]; then
-            xvfb-run -a "${FREECAD_BIN}" "${SCRIPT}"
+            xvfb-run -a timeout 900 "${FREECAD_BIN}" "${SCRIPT}"
+          elif [ "${RUNNER_OS}" = "macOS" ]; then
+            perl -e 'alarm shift; exec @ARGV' 900 "${FREECAD_BIN}" "${SCRIPT}"
           else
-            "${FREECAD_BIN}" "${SCRIPT}"
+            timeout 900 "${FREECAD_BIN}" "${SCRIPT}"
           fi
         env:
           HOME: ${{ env.FC_CI_HOME }}
           USERPROFILE: ${{ env.FC_CI_HOME }}
+          QT_QPA_PLATFORM: ${{ matrix.qt_platform }}
