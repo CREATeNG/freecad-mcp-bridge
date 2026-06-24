@@ -6,22 +6,6 @@ It operates entirely in-memory using **Windows Named Pipes** (on Windows) or **U
 
 ---
 
-## Repository Structure
-
-*   `package.xml`: Addon metadata (`other` utility type) for FreeCAD Addon Manager compatibility.
-*   `freecad/mcp_bridge/`: Namespaced Python package (modern layout).
-    *   `init_gui.py`: Registers the bridge toggle and adds a global toolbar across workbenches.
-    *   `bridge.py`: Core local QLocalServer socket listener running inside FreeCAD.
-    *   `Resources/Icons/icon.svg` (repo root): Addon Manager listing icon (SVG, cross-platform).
-*   `bin/`: Precompiled, self-contained binaries for the MCP client (updated on each tagged release).
-    *   `win32/freecad-mcp-bridge.exe`: Windows
-    *   `linux/freecad-mcp-bridge`: Linux x86_64
-    *   `macos/freecad-mcp-bridge`: macOS x86_64
-
-*(For local development and tinkering, see [DEVELOPMENT.md](DEVELOPMENT.md). Maintainers: [MAINTAINING.md](MAINTAINING.md) and [TESTING.md](TESTING.md).)*
-
----
-
 ## Setup Instructions
 
 ### 1. Install the Addon in FreeCAD
@@ -64,6 +48,20 @@ To allow AI assistants (like Claude Desktop or Cursor) to natively control FreeC
 
 ---
 
+## Repository structure
+
+*   `package.xml`: Addon metadata (`other` utility type) for FreeCAD Addon Manager compatibility.
+*   `freecad/mcp_bridge/`: Namespaced Python package (modern layout).
+    *   `init_gui.py`: Registers the bridge toggle and adds a global toolbar across workbenches.
+    *   `bridge.py`: Core local QLocalServer socket listener running inside FreeCAD.
+    *   `Resources/Icons/icon.svg` (repo root): Addon Manager listing icon (SVG, cross-platform).
+*   `bin/`: Precompiled, self-contained binaries for the MCP client (updated on each tagged release).
+    *   `win32/freecad-mcp-bridge.exe`: Windows
+    *   `linux/freecad-mcp-bridge`: Linux x86_64
+    *   `macos/freecad-mcp-bridge`: macOS x86_64
+
+---
+
 ## Privacy & Connections
 
 This addon is designed for local-only control of FreeCAD. Here is what runs, what connects, and what data leaves your machine.
@@ -100,6 +98,7 @@ For security reports, see [SECURITY.md](SECURITY.md).
 * **`main`** is the development branch and may include unreleased work.
 * **Tagged releases** (`v0.1.x`) are complete, installable snapshots (addon + `bin/`). Tags are created by the [Release workflow](MAINTAINING.md) — not manually. The FreeCAD Addon Index pins a specific tag once listed.
 * For a stable install before or outside the Index, use the [latest release tag](https://github.com/CREATeNG/freecad-mcp-bridge/releases), not the `main` branch tip.
+
 ---
 
 ## Alternative Installation & Testing Methods
