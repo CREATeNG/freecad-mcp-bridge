@@ -100,8 +100,6 @@ For security reports, see [SECURITY.md](SECURITY.md).
 * **`main`** is the development branch and may include unreleased work.
 * **Tagged releases** (`v0.1.x`) are complete, installable snapshots (addon + `bin/`). Tags are created by the [Release workflow](MAINTAINING.md) — not manually. The FreeCAD Addon Index pins a specific tag once listed.
 * For a stable install before or outside the Index, use the [latest release tag](https://github.com/CREATeNG/freecad-mcp-bridge/releases), not the `main` branch tip.
-* Maintainers: release process, Index updates, and CI are documented in [MAINTAINING.md](MAINTAINING.md) and [TESTING.md](TESTING.md).
-
 ---
 
 ## Alternative Installation & Testing Methods
@@ -125,4 +123,13 @@ If you prefer to clone or download the files manually:
 
 For day-to-day development on `main`, clone normally and accept that it may be ahead of the latest tagged release.
 
-For alternative Python script configuration, compiling the binary from source, or using direct CLI testing utilities, see [DEVELOPMENT.md](DEVELOPMENT.md).
+---
+
+## Documentation
+
+| If you are… | Start here |
+|-------------|------------|
+| **Using the addon** | This README — install, MCP setup, privacy |
+| **Tinkering or building locally** | [DEVELOPMENT.md](DEVELOPMENT.md) — Rust/Python MCP, `send_cmd`, macro |
+| **Cutting releases or updating the Index** | [MAINTAINING.md](MAINTAINING.md) — versioning, Release workflow, Index |
+| **CI / install-verify automation** | [TESTING.md](TESTING.md) — FreeCAD test scripts and workflows |
