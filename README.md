@@ -4,7 +4,7 @@ Let AI tools (Cursor, Claude Desktop, and similar) run Python inside your open F
 
 **After you install:** restart FreeCAD, then click **MCP Bridge On/Off** on the toolbar. The bridge is off until you turn it on each session.
 
-**Optional next step:** configure your AI agent to use the bundled MCP server (see [Configure the MCP server](#configure-the-mcp-server-optional) below).
+**Next step:** configure your AI agent to use the bundled MCP server (see [Configure the MCP server](#configure-the-mcp-server) below).
 
 ---
 
@@ -27,11 +27,11 @@ Without the MCP server, you can still use the bridge with other local tools. Wit
 2. **Restart FreeCAD.** A **MCP Bridge** toolbar appears across workbenches.
 3. Click **MCP Bridge On/Off** in the window you want to control. Leave it on while an external tool should talk to FreeCAD.
 
-That is all you need for the in-FreeCAD side. To hook up an AI agent, continue with the optional MCP step below.
+That is all you need for the in-FreeCAD side. To hook up an AI agent, continue with the MCP setup below.
 
 ---
 
-## Configure the MCP server (optional)
+## Configure the MCP server
 
 If you use an AI agent (Claude Desktop, Cursor, a CLI tool, etc.), point it at the bundled MCP server binary. The agent launches this process; it connects to the bridge while the bridge toggle is on in FreeCAD:
 
