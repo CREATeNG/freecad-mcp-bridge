@@ -38,7 +38,7 @@ Run the MCP server with Python rather than the compiled binary:
    ```bash
    python -m pip install PySide6 mcp
    ```
-2. Add this entry to your editor's `mcpServers` configuration (e.g. `claude_desktop_config.json`):
+2. Add this entry to your AI agent's `mcpServers` configuration (e.g. `claude_desktop_config.json`):
    ```json
    {
      "mcpServers": {

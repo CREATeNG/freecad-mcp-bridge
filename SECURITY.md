@@ -24,5 +24,5 @@ Please include:
 ## Scope Notes
 
 * The in-FreeCAD bridge listens on a **local socket only** when explicitly enabled by the user.
-* The optional MCP client binary is a separate process configured by the user in their AI editor.
+* The optional MCP client binary is a separate process configured by the user in their AI agent or MCP client.
 * Arbitrary Python execution inside FreeCAD is an intended capability while the bridge is enabled; treat bridge access as equivalent to running macros in your FreeCAD session.

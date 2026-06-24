@@ -8,22 +8,22 @@ It operates entirely in-memory using **Windows Named Pipes** (on Windows) or **U
 
 ## Two components
 
-This project has two separate parts. You need the first; the second is only for AI editor integration.
+This project has two separable parts. What you set up depends on how you connect.
 
-| Component | What it is | Required? |
-|-----------|------------|-----------|
-| **Bridge** (FreeCAD addon) | Runs inside FreeCAD. You toggle it on/off in the UI. It listens on a local socket and executes Python in your open FreeCAD session. | **Yes** — install via Addon Manager |
-| **MCP server** (`bin/` binary) | A small external process your AI editor starts. It speaks MCP on one side and forwards tool calls to the bridge over the same local socket. | **Optional** — only if you use Claude Desktop, Cursor, or another MCP client |
+| Component | What it is | When you need it |
+|-----------|------------|------------------|
+| **Bridge** | Runs inside FreeCAD. Listens on a local socket and executes Python in your open session. With the addon installed, you toggle it on/off in the UI; you can also run the same logic as a one-off macro. | **Any external connection** — recommended: install the addon (below). Alternatives: [manual macro](DEVELOPMENT.md#4-manual-macro-no-install-alternative), custom repo, or manual copy into `Mod/` |
+| **MCP server** (`bin/` binary) | A small external process your AI agent starts. It speaks MCP on one side and forwards tool calls to the bridge over the same local socket. | **MCP clients only** — Claude Desktop, Cursor, a CLI MCP tool, etc. Not needed for direct socket tools such as [`send_cmd.py`](DEVELOPMENT.md#3-direct-cli-testing-utility-send_cmdpy) |
 
-Without the MCP server, you can still use the bridge with other local tools (for example `send_cmd.py` in [DEVELOPMENT.md](DEVELOPMENT.md)). Without the bridge running in FreeCAD, the MCP server has nothing to connect to.
+Without the MCP server, you can still use the bridge with other local tools. Without the bridge running in FreeCAD, nothing outside FreeCAD can connect — including the MCP server.
 
 ---
 
 ## Setup Instructions
 
-### 1. Install the bridge (FreeCAD addon)
+### 1. Install the bridge (recommended: FreeCAD addon)
 
-This is a **utility extension** that adds a global toggle across all workbenches.
+This is the usual path: a **utility extension** that adds a global toggle across all workbenches. For a no-install tryout, see the [manual macro](DEVELOPMENT.md#4-manual-macro-no-install-alternative) in `DEVELOPMENT.md`.
 
 1. Open FreeCAD and go to **Tools** ➔ **Addon Manager**.
 2. Search for **MCP Bridge** (or `freecad-mcp-bridge`) and click **Install**.
@@ -35,7 +35,7 @@ Once restarted, a persistent **MCP Bridge** toolbar will appear in your FreeCAD 
 
 ### 2. Configure the MCP server (optional)
 
-If you use an AI assistant (Claude Desktop, Cursor, etc.), point it at the bundled MCP server binary. The editor launches this process; it connects to the bridge while the bridge toggle is on in FreeCAD:
+If you use an AI agent (Claude Desktop, Cursor, a CLI tool, etc.), point it at the bundled MCP server binary. The agent launches this process; it connects to the bridge while the bridge toggle is on in FreeCAD:
 
 1. Locate your client's MCP configuration file:
     *   **Claude Desktop**: `%APPDATA%\Claude\claude_desktop_config.json`
@@ -56,7 +56,7 @@ If you use an AI assistant (Claude Desktop, Cursor, etc.), point it at the bundl
 *   **macOS:** `/Users/<YourUsername>/Library/Application Support/FreeCAD/Mod/freecad-mcp-bridge/bin/macos/freecad-mcp-bridge`
 *   **Linux:** `/home/<YourUsername>/.local/share/FreeCAD/Mod/freecad-mcp-bridge/bin/linux/freecad-mcp-bridge`
 
-3. Restart your AI editor/client. The AI will now have native access to:
+3. Restart your AI agent or MCP client. The AI will now have native access to:
     *   `execute_python(code)`: Runs Python code inside FreeCAD and returns stdout/stderr/exceptions.
     *   `execute_python_file(filepath)`: Reads a local Python script file from disk and executes it inside FreeCAD. *(Note: filepath must be an absolute path.)*
 
@@ -89,14 +89,14 @@ This addon is designed for local-only control of FreeCAD. Here is what runs, wha
 
 ### MCP client (optional, user-configured)
 
-* To connect an AI editor, you separately configure the bundled `freecad-mcp-bridge` binary (or the optional Python MCP server in `DEVELOPMENT.md`) in your MCP client settings.
+* To connect an AI agent, you separately configure the bundled `freecad-mcp-bridge` binary (or the optional Python MCP server in `DEVELOPMENT.md`) in your MCP client settings.
 * That MCP process connects to the local FreeCAD socket and forwards tool calls your AI agent makes. It is not started automatically by FreeCAD.
 * Any data sent to an AI provider happens through your chosen MCP client and AI service, not through this FreeCAD addon.
 
 ### Data storage
 
 * The addon does not persist user documents, credentials, or bridge traffic to disk as part of normal operation.
-* MCP client configuration is stored by your AI editor in its own settings files on your system.
+* MCP client configuration is stored by your AI agent or MCP client in its own settings files on your system.
 
 ### Consent and changes
 
