@@ -15,7 +15,7 @@ This project has two separable parts. What you set up beyond the addon install d
 | Component | What it is | When you need it |
 |-----------|------------|------------------|
 | **Bridge** | Runs inside FreeCAD. Listens on a local socket and executes Python in your open session. With the addon installed, you toggle it on/off in the UI; you can also run the same logic as a one-off macro. | **Any external connection** — installing this addon is the usual path. Alternatives: [macro tryout](#3-macro-tryout), [custom repository](#1-addon-manager-custom-repository), or [custom module](#2-custom-module) |
-| **MCP server** (`bin/` binary) | A small external process your AI agent starts. It speaks MCP on one side and forwards tool calls to the bridge over the same local socket. | **MCP clients only** — Claude Desktop, Cursor, a CLI MCP tool, etc. Not needed for direct socket tools such as [`send_cmd.py`](DEVELOPMENT.md#3-direct-cli-testing-utility-send_cmdpy) |
+| **MCP server** (`bin/` binary) | A small external process your AI agent starts. It speaks MCP on one side and forwards tool calls to the bridge over the same local socket. Shipped with addon and custom-module installs. | **MCP clients only** — Claude Desktop, Cursor, a CLI MCP tool, etc. Not needed for direct socket tools such as [`send_cmd.py`](DEVELOPMENT.md#3-direct-cli-testing-utility-send_cmdpy) |
 
 Without the MCP server, you can still use the bridge with other local tools. Without the bridge running in FreeCAD, nothing outside FreeCAD can connect — including the MCP server.
 
@@ -104,7 +104,7 @@ Run the bridge without installing the addon — handy to test before you commit 
 3. Copy the contents of `freecad/mcp_bridge/bridge.py` from this repository, paste into the macro editor, and save (**Ctrl + S**).
 4. Open the macro list and click **Run** on the window you want to control.
 
-Repeat step 4 each session you need the bridge (there is no toolbar toggle on this path). The bundled MCP server binary is not on this path — use an installed addon, custom module, or the Python MCP server in [DEVELOPMENT.md](DEVELOPMENT.md) if you need MCP.
+Repeat step 4 each session you need the bridge (there is no toolbar toggle on this path).
 
 ---
 
