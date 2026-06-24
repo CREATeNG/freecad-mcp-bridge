@@ -6,9 +6,23 @@ It operates entirely in-memory using **Windows Named Pipes** (on Windows) or **U
 
 ---
 
+## Two components
+
+This project has two separate parts. You need the first; the second is only for AI editor integration.
+
+| Component | What it is | Required? |
+|-----------|------------|-----------|
+| **Bridge** (FreeCAD addon) | Runs inside FreeCAD. You toggle it on/off in the UI. It listens on a local socket and executes Python in your open FreeCAD session. | **Yes** — install via Addon Manager |
+| **MCP server** (`bin/` binary) | A small external process your AI editor starts. It speaks MCP on one side and forwards tool calls to the bridge over the same local socket. | **Optional** — only if you use Claude Desktop, Cursor, or another MCP client |
+
+Without the MCP server, you can still use the bridge with other local tools (for example `send_cmd.py` in [DEVELOPMENT.md](DEVELOPMENT.md)). Without the bridge running in FreeCAD, the MCP server has nothing to connect to.
+
+---
+
 ## Setup Instructions
 
-### 1. Install the Addon in FreeCAD
+### 1. Install the bridge (FreeCAD addon)
+
 This is a **utility extension** that adds a global toggle across all workbenches.
 
 1. Open FreeCAD and go to **Tools** ➔ **Addon Manager**.
@@ -19,9 +33,9 @@ Once restarted, a persistent **MCP Bridge** toolbar will appear in your FreeCAD 
 
 ---
 
-### 2. Configure MCP Integration
+### 2. Configure the MCP server (optional)
 
-To allow AI assistants (like Claude Desktop or Cursor) to natively control FreeCAD:
+If you use an AI assistant (Claude Desktop, Cursor, etc.), point it at the bundled MCP server binary. The editor launches this process; it connects to the bridge while the bridge toggle is on in FreeCAD:
 
 1. Locate your client's MCP configuration file:
     *   **Claude Desktop**: `%APPDATA%\Claude\claude_desktop_config.json`
@@ -55,7 +69,7 @@ To allow AI assistants (like Claude Desktop or Cursor) to natively control FreeC
     *   `init_gui.py`: Registers the bridge toggle and adds a global toolbar across workbenches.
     *   `bridge.py`: Core local QLocalServer socket listener running inside FreeCAD.
     *   `Resources/Icons/icon.svg` (repo root): Addon Manager listing icon (SVG, cross-platform).
-*   `bin/`: Precompiled, self-contained binaries for the MCP client (updated on each tagged release).
+*   `bin/`: Precompiled MCP server binaries (updated on each tagged release).
     *   `win32/freecad-mcp-bridge.exe`: Windows
     *   `linux/freecad-mcp-bridge`: Linux x86_64
     *   `macos/freecad-mcp-bridge`: macOS x86_64
