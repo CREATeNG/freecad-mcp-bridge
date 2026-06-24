@@ -14,7 +14,7 @@ This project has two separable parts. What you set up beyond the addon install d
 
 | Component | What it is | When you need it |
 |-----------|------------|------------------|
-| **Bridge** | Runs inside FreeCAD. Listens on a local socket and executes Python in your open session. With the addon installed, you toggle it on/off in the UI; you can also run the same logic as a one-off macro. | **Any external connection** — installing this addon is the usual path. Alternatives: [manual macro](DEVELOPMENT.md#4-manual-macro-no-install-alternative), custom repo, or manual copy into `Mod/` |
+| **Bridge** | Runs inside FreeCAD. Listens on a local socket and executes Python in your open session. With the addon installed, you toggle it on/off in the UI; you can also run the same logic as a one-off macro. | **Any external connection** — installing this addon is the usual path. Alternatives: [macro tryout](#3-macro-tryout), [custom repository](#1-addon-manager-custom-repository), or [custom module](#2-custom-module) |
 | **MCP server** (`bin/` binary) | A small external process your AI agent starts. It speaks MCP on one side and forwards tool calls to the bridge over the same local socket. | **MCP clients only** — Claude Desktop, Cursor, a CLI MCP tool, etc. Not needed for direct socket tools such as [`send_cmd.py`](DEVELOPMENT.md#3-direct-cli-testing-utility-send_cmdpy) |
 
 Without the MCP server, you can still use the bridge with other local tools. Without the bridge running in FreeCAD, nothing outside FreeCAD can connect — including the MCP server.
@@ -76,7 +76,7 @@ For security reports, see [SECURITY.md](SECURITY.md).
 
 ## Other installation methods
 
-Use these if you install from GitHub directly instead of the Addon Index. You can point at **`main`** for the latest work or a **release tag** (e.g. `v0.1.11`) for a known snapshot — tags are the safer choice if you want something stable.
+Besides the Addon Index install (**Quick start** above), you can use any of the following. For GitHub-based options (1 and 2), set the branch to **`main`** for the latest work or a **release tag** (e.g. `v0.1.11`) for a known snapshot — tags are the safer choice if you want something stable.
 
 ### 1. Addon Manager custom repository
 
@@ -95,7 +95,16 @@ Place the repository in your FreeCAD `Mod` folder as `freecad-mcp-bridge`, then 
 
 Clone or copy from GitHub — `main` or a [release tag](https://github.com/CREATeNG/freecad-mcp-bridge/releases) — into that folder.
 
-For a no-install tryout without copying into `Mod/`, see the [manual macro](DEVELOPMENT.md#4-manual-macro-no-install-alternative) in [DEVELOPMENT.md](DEVELOPMENT.md).
+### 3. Macro tryout
+
+Run the bridge without installing the addon — handy to test before you commit to an install:
+
+1. Open FreeCAD and go to **Macro** ➔ **Macros...** ➔ **Create**.
+2. Name it `RunBridge.FCMacro`.
+3. Copy the contents of `freecad/mcp_bridge/bridge.py` from this repository, paste into the macro editor, and save (**Ctrl + S**).
+4. Open the macro list and click **Run** on the window you want to control.
+
+Repeat step 4 each session you need the bridge (there is no toolbar toggle on this path). The bundled MCP server binary is not on this path — use an installed addon, custom module, or the Python MCP server in [DEVELOPMENT.md](DEVELOPMENT.md) if you need MCP.
 
 ---
 
