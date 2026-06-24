@@ -76,24 +76,26 @@ For security reports, see [SECURITY.md](SECURITY.md).
 
 ## Other installation methods
 
-### Custom repository (pre-release or fork)
+Use these if you install from GitHub directly instead of the Addon Index. You can point at **`main`** for the latest work or a **release tag** (e.g. `v0.1.11`) for a known snapshot — tags are the safer choice if you want something stable.
 
-If you install from GitHub instead of the Addon Index, prefer a **release tag** over `main`:
+### 1. Addon Manager custom repository
 
 1. Open FreeCAD and go to **Edit** ➔ **Preferences** ➔ **Addon manager**.
 2. In **Custom repositories**, click **+ (Add)**.
-3. Enter `https://github.com/CREATeNG/freecad-mcp-bridge` and specify a release tag (e.g. `v0.1.11`), not `main`.
+3. Enter `https://github.com/CREATeNG/freecad-mcp-bridge` and set the branch to `main` or a release tag.
 4. Click **OK**, then install from **Tools** ➔ **Addon Manager** as usual.
 
-### Manual installation
+### 2. Custom module
 
-Copy a [release tag](https://github.com/CREATeNG/freecad-mcp-bridge/releases) into your FreeCAD `Mod` folder as `freecad-mcp-bridge`, then restart:
+Place the repository in your FreeCAD `Mod` folder as `freecad-mcp-bridge`, then restart:
 
 *   **Windows:** `%APPDATA%\FreeCAD\Mod\`
 *   **macOS:** `~/Library/Application Support/FreeCAD/Mod/`
 *   **Linux:** `~/.local/share/FreeCAD/Mod/`
 
-For a no-install tryout, see the [manual macro](DEVELOPMENT.md#4-manual-macro-no-install-alternative) in [DEVELOPMENT.md](DEVELOPMENT.md).
+Clone or copy from GitHub — `main` or a [release tag](https://github.com/CREATeNG/freecad-mcp-bridge/releases) — into that folder.
+
+For a no-install tryout without copying into `Mod/`, see the [manual macro](DEVELOPMENT.md#4-manual-macro-no-install-alternative) in [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ---
 
