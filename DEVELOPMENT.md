@@ -1,12 +1,18 @@
-# Development & Advanced Usage Guidelines
+# Development & advanced usage
 
-This document contains instructions for building the bridge from source, running the alternative Python-based MCP server, and using the direct command-line test utility.
+Instructions for **tinkerers and contributors** who want to build from source, try alternative MCP setups, or test the bridge locally.
+
+| If you are… | Read |
+|-------------|------|
+| **Installing and using the addon** | [README.md](README.md) |
+| **Cutting releases, versioning, Index, CI** | [MAINTAINING.md](MAINTAINING.md) and [TESTING.md](TESTING.md) |
+| **Building or experimenting locally** | This document |
 
 ---
 
-## 1. Building the Rust MCP Server from Source
+## 1. Building the Rust MCP server from source
 
-If you want to compile the self-contained Rust binary yourself (instead of using the precompiled ones in `bin/`):
+Compile the MCP client binary yourself (instead of using the prebuilt files in `bin/`):
 
 1. Ensure you have Rust and Cargo installed.
 2. Navigate to the Rust directory:
@@ -20,162 +26,13 @@ If you want to compile the self-contained Rust binary yourself (instead of using
 4. The compiled executable will be located at:
    `rust_mcp_server/target/release/freecad-mcp-bridge.exe` (or `freecad-mcp-bridge` on Unix).
 
----
-
-## Qt imports
-
-Code loaded inside FreeCAD (`freecad/mcp_bridge/init_gui.py`, `freecad/mcp_bridge/bridge.py`) uses FreeCAD's `PySide` shim (`PySide.QtCore`, `PySide.QtNetwork`, etc.), which maps to the Qt binding bundled with your FreeCAD install.
-
-The out-of-process helpers below (`freecad_mcp_server.py`, `send_cmd.py`) run in a normal Python environment and use standalone `PySide6` instead.
-
-## Icons
-
-The addon uses a single **SVG** icon at `Resources/Icons/icon.svg` (repo root). That is sufficient for Windows, Linux, and macOS:
-
-* FreeCAD and Qt load SVG via QtSvg on all platforms (no separate `.ico` or `.png` required).
-* `package.xml` references the icon with forward slashes; FreeCAD normalizes paths per OS.
-* The same file is used for Addon Manager listing and the in-app toolbar/command.
+This is a **local, single-machine** build. Maintainers produce multi-platform `bin/` artifacts via the Release workflow — see [MAINTAINING.md](MAINTAINING.md).
 
 ---
 
-## Releases
+## 2. Alternative Python-based MCP server
 
-### The big rule: never create release tags manually
-
-**Release tags are created only by the Release workflow** (`.github/workflows/release.yml`). Maintainers must not run `git tag` locally or create tags through the GitHub UI.
-
-| Do | Don't |
-|----|-------|
-| Merge to `main` (Actions bumps `z`), then run **Release** once | Create release tags by hand or edit `package.xml` patch (`z`) |
-| Let Release sync `bin/`, verify, tag `v{x.y.z}`, and publish | Re-run **Release** for a tag that already exists (workflow fails) |
-| Use **Release install verify** (`workflow_dispatch`) to test CI while developing on `main` | Expect install-verify alone to create or move tags |
-
-**Why:** Each release tag must be a complete, installable snapshot — Python sources, `package.xml`, and prebuilt `bin/` clients — with `bin/` committed to `main` *before* the tag is applied. Tags created before this process (before **v0.1.11**) pointed at commits missing synced binaries and are **not** suitable as FreeCAD Index `git_ref` values.
-
-**v0.1.11** is the first complete tag in this model.
-
-### Branches, tags, and the Index
-
-* **`main`** is the development branch. It may be ahead of the latest shipped release.
-* **Version tags** (`v0.1.11`, etc.) are the authoritative install snapshots.
-* This project uses **[Alternative 1: Tagged Releases](https://freecad.github.io/Addon-Academy/Guides/Publishing/Indexed)** for the [FreeCAD Addon Index](https://github.com/FreeCAD/Addons): the Index pins a specific tag via `git_ref`, not rolling `main`.
-* First listing request: [FreeCAD/Addons #70](https://github.com/FreeCAD/Addons/issues/70) (open as of 2026-06-23).
-
-### Version format (`package.xml`)
-
-**`x.y.z` everywhere** on `main` and on release tags. **Tag === version** (e.g. `0.1.12` → `v0.1.12`).
-
-| Part | Who sets it |
-|------|-------------|
-| **`x.y`** | Maintainers (rarely — e.g. new minor line) |
-| **`z` (patch)** | **GitHub Actions only** — `.github/workflows/bump-package-version.yml` increments `z` and `<date>` on each push to `main` |
-
-Do **not** hand-edit `z` in `package.xml`. Release binary sync commits use `[skip version]` so they do not advance `z` again.
-
-Index `git_ref` is the tag name (`v0.1.12`), matching `package.xml` by convention.
-
-### Release workflow (orchestrator)
-
-**Release** (`.github/workflows/release.yml`) is the top-level orchestrator. You run it once; it owns build, verify gate, tag creation, and GitHub Release. The publish leg delegates tag + post-release `z` bump to `scripts/release-publish-orchestrator.sh` (workflow-only; not runnable standalone).
-
-```mermaid
-flowchart TD
-  R[release.yml — orchestrator]
-  R --> build[build — Rust matrix]
-  R --> prep[prepare — sync bin/ to main]
-  R --> verify[install_verify — reusable workflow]
-  verify -->|fail| stop[No tag / no release]
-  verify -->|pass| pub[publish job]
-  pub --> orch[release-publish-orchestrator.sh]
-  orch --> tag[tag + push v x.y.z]
-  orch --> zbump[bump z on main]
-  pub --> gh[GitHub Release + assets]
-  tag --> postverify[post-tag install-verify]
-  postverify --> index[Index PR — planned]
-```
-
-### End-to-end maintainer view
-
-```mermaid
-flowchart LR
-  dev[Develop on main] --> bump[Actions: z++ on push]
-  bump --> dispatch[Run Release workflow]
-  dispatch --> shipped[v x.y.z + GitHub Release]
-  shipped --> postverify[Post-tag install-verify]
-  postverify --> index[Index PR to FreeCAD/Addons]
-```
-
-**Release workflow order** (`.github/workflows/release.yml`):
-
-1. Build Rust MCP binaries (Linux, macOS, Windows) in parallel.
-2. **Prepare** — download artifacts, install into `bin/`, read `x.y.z` from `package.xml`, verify the tag does not already exist, commit `bin/` to `main` if changed (`[skip version]`), **push `main`**.
-3. **Install verify (hard gate)** — full Addon Manager install + restart verify on all three OSes against `main` (`install_mode: main`). **No tag if this fails.**
-4. **Publish orchestrator** — `scripts/release-publish-orchestrator.sh` only (`RELEASE_PUBLISH_AUTHORIZED=true`): create and push tag `v{x.y.z}` on the verified commit, then bump `z` on `main` for the next dev cycle. Workflow then creates GitHub Release + assets.
-
-There is no standalone tag script. Tag creation and post-release `z` bump are one guarded pass.
-
-Pushing the release tag still triggers `release-install-verify.yml` as a post-release check (`install_mode: tag`).
-
-**Next shipped line:** `0.1.12` (Index listing request [#70](https://github.com/FreeCAD/Addons/issues/70) references `v0.1.11`). Do not re-run Release for `v0.1.11`.
-
-If Rust sources did not change, the prepare commit step may be a no-op, but verify and publish still run against current `main`.
-
-### `bin/` layout (shipped with the addon)
-
-| Path | Platform |
-|------|----------|
-| `bin/win32/freecad-mcp-bridge.exe` | Windows |
-| `bin/linux/freecad-mcp-bridge` | Linux x86_64 |
-| `bin/macos/freecad-mcp-bridge` | macOS x86_64 |
-
-### Publishing a release (maintainer checklist)
-
-1. Merge finished work into `main` (topic branches for larger changes).
-2. Merge to `main` and let Actions advance `z`; bump `x.y` manually only when starting a new minor line.
-3. GitHub → **Actions** → **Release** → **Run workflow** (branch: **`main`** only).
-4. Wait for **Release install verify** to run automatically on the new `v*` tag (or dispatch it manually against the tag while iterating).
-5. When listed in the Index, update the Addons entry (see below).
-
-Do not reuse a version number. Do not re-run Release for an existing tag (e.g. **v0.1.11**).
-
-### FreeCAD Addon Index
-
-Guides: [Publishing (Indexed)](https://freecad.github.io/Addon-Academy/Guides/Publishing/Indexed), [Updating](https://freecad.github.io/Addon-Academy/Guides/Maintaining/Updating), [Index Qualities](https://freecad.github.io/Addon-Academy/Topics/Addon-Index/Index/Qualities.html).
-
-#### First listing
-
-1. Ensure a complete tag exists (Release workflow).
-2. Open an issue on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) (label **Addon - Addition**) — see [#70](https://github.com/FreeCAD/Addons/issues/70).
-3. Maintainers review against Index Qualities; they may ask for a proper tagged release if the ref is incomplete.
-4. Entry is added to `Data/Index.json` (maintainer or contributor PR).
-
-#### Updating after a new release
-
-1. Run Release workflow → new `v{version}` tag.
-2. Confirm post-tag install-verify passes on that tag.
-3. Open a PR on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) updating your entry's `git_ref`, `zip_url`, and `branch_display_name`.
-
-Helper — prints the three Index fields for a version:
-
-```bash
-bash scripts/bump-index.sh 0.1.12
-```
-
-Index cache refresh can take up to **four hours** after the PR merges.
-
-**Planned:** automate step 3 as a final publish-leg step (open or update the Index PR after a green release). Not implemented yet — manual PR for now.
-
-### Automated install verification (CI)
-
-See **[TESTING.md](TESTING.md)** for the full CI architecture: workflow triggers, install vs verify phases, `ci_run_freecad.sh`, CI log format, and GitHub annotation behavior.
-
-Summary: `.github/workflows/release-install-verify.yml` runs `test_install.py` and `test_verify.py` in **two separate FreeCAD processes** per OS (bash launcher on all platforms). Triggers: `workflow_dispatch` (pick tag and `tag` / `index_zip` mode) or push of a `v*` tag.
-
----
-
-## 2. Alternative Python-Based MCP Server
-
-If you prefer to run the MCP server using Python rather than the compiled binary:
+Run the MCP server with Python rather than the compiled binary:
 
 1. Install Python 3.9+ and the required dependencies globally on your host environment:
    ```bash
@@ -197,9 +54,9 @@ If you prefer to run the MCP server using Python rather than the compiled binary
 
 ---
 
-## 3. Direct CLI Testing Utility (`send_cmd.py`)
+## 3. Direct CLI testing utility (`send_cmd.py`)
 
-The `send_cmd.py` script is an optional command-line utility. It connects directly to the FreeCAD bridge socket (bypassing the MCP server) to execute Python code. It is useful for testing connection status independently.
+Optional command-line utility. Connects directly to the FreeCAD bridge socket (bypassing the MCP server) to execute Python code. Useful for testing connection status independently.
 
 *Requires `PySide6` installed globally on your host terminal environment (`python -m pip install PySide6`).*
 
@@ -215,12 +72,30 @@ python send_cmd.py -f path/to/your/script.py
 
 ---
 
-## 4. Manual Macro (No-Install Alternative)
+## 4. Manual macro (no-install alternative)
 
-If you do not want to install any addon folders or global toolbars, you can run the bridge as a one-off macro:
+Run the bridge as a one-off macro without installing the addon:
 
 1. Open FreeCAD.
 2. Go to **Macro ➔ Macros... ➔ Create**.
 3. Name it `RunBridge.FCMacro`.
 4. Copy the entire contents of `freecad/mcp_bridge/bridge.py` from this project, paste it into the editor tab, and save (**Ctrl + S**).
 5. Open the macro list and click **Run** on the window you want to control.
+
+---
+
+## Appendix: Qt imports
+
+Code loaded inside FreeCAD (`freecad/mcp_bridge/init_gui.py`, `freecad/mcp_bridge/bridge.py`) uses FreeCAD's `PySide` shim (`PySide.QtCore`, `PySide.QtNetwork`, etc.), which maps to the Qt binding bundled with your FreeCAD install.
+
+The out-of-process helpers above (`freecad_mcp_server.py`, `send_cmd.py`) run in a normal Python environment and use standalone `PySide6` instead.
+
+---
+
+## Appendix: Icons
+
+The addon uses a single **SVG** icon at `Resources/Icons/icon.svg` (repo root). That is sufficient for Windows, Linux, and macOS:
+
+* FreeCAD and Qt load SVG via QtSvg on all platforms (no separate `.ico` or `.png` required).
+* `package.xml` references the icon with forward slashes; FreeCAD normalizes paths per OS.
+* The same file is used for Addon Manager listing and the in-app toolbar/command.

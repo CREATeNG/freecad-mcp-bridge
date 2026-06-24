@@ -18,7 +18,7 @@ It operates entirely in-memory using **Windows Named Pipes** (on Windows) or **U
     *   `linux/freecad-mcp-bridge`: Linux x86_64
     *   `macos/freecad-mcp-bridge`: macOS x86_64
 
-*(For source files, Python MCP scripts, release workflow, and developer tools, see [DEVELOPMENT.md](DEVELOPMENT.md). For automated install verification CI, see [TESTING.md](TESTING.md).)*
+*(For local development and tinkering, see [DEVELOPMENT.md](DEVELOPMENT.md). Maintainers: [MAINTAINING.md](MAINTAINING.md) and [TESTING.md](TESTING.md).)*
 
 ---
 
@@ -98,9 +98,9 @@ For security reports, see [SECURITY.md](SECURITY.md).
 ## Releases and Installation Sources
 
 * **`main`** is the development branch and may include unreleased work.
-* **Tagged releases** (`v0.1.x`) are complete, installable snapshots (addon + `bin/`). Tags are created by the [Release workflow](DEVELOPMENT.md#releases) — not manually. The FreeCAD Addon Index pins a specific tag once listed.
+* **Tagged releases** (`v0.1.x`) are complete, installable snapshots (addon + `bin/`). Tags are created by the [Release workflow](MAINTAINING.md) — not manually. The FreeCAD Addon Index pins a specific tag once listed.
 * For a stable install before or outside the Index, use the [latest release tag](https://github.com/CREATeNG/freecad-mcp-bridge/releases), not the `main` branch tip.
-* Maintainers: release process, Index updates, and CI are documented in [DEVELOPMENT.md](DEVELOPMENT.md) and [TESTING.md](TESTING.md).
+* Maintainers: release process, Index updates, and CI are documented in [MAINTAINING.md](MAINTAINING.md) and [TESTING.md](TESTING.md).
 
 ---
 
