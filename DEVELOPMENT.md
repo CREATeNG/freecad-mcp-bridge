@@ -93,9 +93,13 @@ flowchart LR
 1. Build Rust MCP binaries (Linux, macOS, Windows) in parallel.
 2. **Prepare** — download artifacts, install into `bin/`, read `x.y.z` from `package.xml`, verify the tag does not already exist, commit `bin/` to `main` if changed (`[skip version]`), **push `main`**.
 3. **Install verify (hard gate)** — full Addon Manager install + restart verify on all three OSes against `main` (`install_mode: main`). **No tag if this fails.**
-4. **Publish** — create tag `v{x.y.z}` on the verified commit, push tag, GitHub Release + assets.
+4. **Publish orchestrator** — `scripts/release-publish-orchestrator.sh` only (`RELEASE_PUBLISH_AUTHORIZED=true`): create and push tag `v{x.y.z}` on the verified commit, then bump `z` on `main` for the next dev cycle. Workflow then creates GitHub Release + assets.
+
+There is no standalone tag script. Tag creation and post-release `z` bump are one guarded pass.
 
 Pushing the release tag still triggers `release-install-verify.yml` as a post-release check (`install_mode: tag`).
+
+**Next shipped line:** `0.1.12` (Index listing request [#70](https://github.com/FreeCAD/Addons/issues/70) references `v0.1.11`). Do not re-run Release for `v0.1.11`.
 
 If Rust sources did not change, the prepare commit step may be a no-op, but verify and publish still run against current `main`.
 

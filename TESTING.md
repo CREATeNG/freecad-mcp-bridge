@@ -74,7 +74,7 @@ Install-verify is a **hard prerequisite** for tag creation. In `.github/workflow
 1. **Build** Rust binaries (matrix).
 2. **Prepare** — sync `bin/` to `main`, commit if needed, **push `main`** (no tag yet).
 3. **Install verify** — reusable workflow with `install_mode: main` and `fail_fast: true`. If any OS fails, the workflow stops here.
-4. **Publish** — only after verify passes: create tag, push tag, GitHub Release + assets.
+4. **Publish orchestrator** — only after verify passes: `release-publish-orchestrator.sh` creates and pushes the tag, bumps `z` on `main`; workflow then publishes GitHub Release + assets.
 
 A tag push still triggers `release-install-verify.yml` separately as a post-release sanity check (`install_mode: tag`).
 

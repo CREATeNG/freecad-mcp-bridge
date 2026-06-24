@@ -164,25 +164,38 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create release tag
-        run: git tag -a "${{ needs.prepare.outputs.tag }}" -m "Release ${{ needs.prepare.outputs.tag }}"
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Push tag
-        run: git push origin "${{ needs.prepare.outputs.tag }}"
+      - name: Create tag and bump development z
+        id: publish
+        env:
+          RELEASE_PUBLISH_AUTHORIZED: "true"
+          RELEASE_VERIFIED_SHA: ${{ needs.prepare.outputs.commit_sha }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: bash "${GITHUB_WORKSPACE}/scripts/release-publish-orchestrator.sh"
+
+      - name: Checkout tagged tree for release assets
+        run: git checkout "${{ needs.prepare.outputs.tag }}"
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "${{ needs.prepare.outputs.tag }}" --title "${{ needs.prepare.outputs.tag }}" --notes "Release ${{ needs.prepare.outputs.tag }}"
+        run: |
+          TAG="${{ steps.publish.outputs.release_tag }}"
+          gh release create "$TAG" --title "$TAG" --notes "Release $TAG"
 
       - name: Upload release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          TAG="${{ steps.publish.outputs.release_tag }}"
           cp bin/linux/freecad-mcp-bridge freecad-mcp-bridge-linux
           cp bin/macos/freecad-mcp-bridge freecad-mcp-bridge-macos
           cp bin/win32/freecad-mcp-bridge.exe freecad-mcp-bridge-windows.exe
-          gh release upload "${{ needs.prepare.outputs.tag }}" \
+          gh release upload "$TAG" \
             freecad-mcp-bridge-linux \
             freecad-mcp-bridge-macos \
             freecad-mcp-bridge-windows.exe \
