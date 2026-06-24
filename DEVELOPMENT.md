@@ -63,7 +63,7 @@ The addon uses a single **SVG** icon at `Resources/Icons/icon.svg` (repo root). 
 
 ### Version format (`package.xml`)
 
-**`x.y.z` everywhere** on `main` and on release tags. **Tag === version** (e.g. `0.2.5` → `v0.2.5`).
+**`x.y.z` everywhere** on `main` and on release tags. **Tag === version** (e.g. `0.1.12` → `v0.1.12`).
 
 | Part | Who sets it |
 |------|-------------|
@@ -72,20 +72,37 @@ The addon uses a single **SVG** icon at `Resources/Icons/icon.svg` (repo root). 
 
 Do **not** hand-edit `z` in `package.xml`. Release binary sync commits use `[skip version]` so they do not advance `z` again.
 
-Index `git_ref` is the tag name (`v0.2.5`), matching `package.xml` by convention.
+Index `git_ref` is the tag name (`v0.1.12`), matching `package.xml` by convention.
 
-### End-to-end release pipeline
+### Release workflow (orchestrator)
+
+**Release** (`.github/workflows/release.yml`) is the top-level orchestrator. You run it once; it owns build, verify gate, tag creation, and GitHub Release. The publish leg delegates tag + post-release `z` bump to `scripts/release-publish-orchestrator.sh` (workflow-only; not runnable standalone).
+
+```mermaid
+flowchart TD
+  R[release.yml — orchestrator]
+  R --> build[build — Rust matrix]
+  R --> prep[prepare — sync bin/ to main]
+  R --> verify[install_verify — reusable workflow]
+  verify -->|fail| stop[No tag / no release]
+  verify -->|pass| pub[publish job]
+  pub --> orch[release-publish-orchestrator.sh]
+  orch --> tag[tag + push v x.y.z]
+  orch --> zbump[bump z on main]
+  pub --> gh[GitHub Release + assets]
+  tag --> postverify[post-tag install-verify]
+  postverify --> index[Index PR — planned]
+```
+
+### End-to-end maintainer view
 
 ```mermaid
 flowchart LR
-  push[Push to main] --> bump[Actions: z++]
-  bump --> release[Run Release workflow]
-  release --> bins[Sync bin/ to main]
-  bins --> verify[Install-verify gate]
-  verify --> tag[Tag v x.y.z]
-  tag --> ghrel[GitHub Release + assets]
-  tag --> postverify[Post-tag install-verify]
-  postverify --> index[Index PR when listed]
+  dev[Develop on main] --> bump[Actions: z++ on push]
+  bump --> dispatch[Run Release workflow]
+  dispatch --> shipped[v x.y.z + GitHub Release]
+  shipped --> postverify[Post-tag install-verify]
+  postverify --> index[Index PR to FreeCAD/Addons]
 ```
 
 **Release workflow order** (`.github/workflows/release.yml`):
@@ -135,16 +152,18 @@ Guides: [Publishing (Indexed)](https://freecad.github.io/Addon-Academy/Guides/Pu
 #### Updating after a new release
 
 1. Run Release workflow → new `v{version}` tag.
-2. Confirm install-verify passes on that tag.
+2. Confirm post-tag install-verify passes on that tag.
 3. Open a PR on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) updating your entry's `git_ref`, `zip_url`, and `branch_display_name`.
 
 Helper — prints the three Index fields for a version:
 
 ```bash
-bash scripts/bump-index.sh 0.1.11
+bash scripts/bump-index.sh 0.1.12
 ```
 
 Index cache refresh can take up to **four hours** after the PR merges.
+
+**Planned:** automate step 3 as a final publish-leg step (open or update the Index PR after a green release). Not implemented yet — manual PR for now.
 
 ### Automated install verification (CI)
 
