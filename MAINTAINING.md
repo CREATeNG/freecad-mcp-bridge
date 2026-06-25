@@ -133,7 +133,7 @@ If Rust sources did not change, the prepare commit step may be a no-op, but veri
 
 ## FreeCAD Addon Index
 
-How **this repo's maintainers** request or update a listing on the FreeCAD Addon Index. **FreeCAD Addon Index maintainers** (the [FreeCAD/Addons](https://github.com/FreeCAD/Addons) team) review and merge changes to `Data/Index.json` — a different role from maintaining this repository.
+How **this repo's maintainers** request or update a listing on the FreeCAD Addon Index. **FreeCAD Addon Index maintainers** (the [FreeCAD/Addons](https://github.com/FreeCAD/Addons) team) review and merge changes to [`Data/Index.json`](https://github.com/FreeCAD/Addons/blob/master/Data/Index.json) on FreeCAD/Addons — not in this repository — a different maintainer role.
 
 Guides: [Publishing (Indexed)](https://freecad.github.io/Addon-Academy/Guides/Publishing/Indexed), [Updating](https://freecad.github.io/Addon-Academy/Guides/Maintaining/Updating), [FreeCAD Addon Index Qualities](https://freecad.github.io/Addon-Academy/Topics/Addon-Index/Index/Qualities.html).
 
@@ -142,7 +142,7 @@ Guides: [Publishing (Indexed)](https://freecad.github.io/Addon-Academy/Guides/Pu
 1. Ensure a complete tag exists (via **`release.yml`**).
 2. Open an issue on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) (label **Addon - Addition**) — see [#70](https://github.com/FreeCAD/Addons/issues/70).
 3. FreeCAD Addon Index maintainers review against the [FreeCAD Addon Index Qualities](https://freecad.github.io/Addon-Academy/Topics/Addon-Index/Index/Qualities.html); they may ask for a proper tagged release if the ref is incomplete.
-4. Entry is added to `Data/Index.json` (their PR or yours on FreeCAD/Addons).
+4. Entry is added to [`Data/Index.json`](https://github.com/FreeCAD/Addons/blob/master/Data/Index.json) on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) (their PR or yours).
 
 ### Updating after shipping a release
 
