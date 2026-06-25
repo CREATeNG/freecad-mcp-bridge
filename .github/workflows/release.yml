@@ -187,6 +187,32 @@ jobs:
       install_tag: ${{ needs.prepare.outputs.tag }}
       fail_fast: true
 
+  addons_index_pr:
+    name: Open FreeCAD Addon Index PR
+    needs: [prepare, install_verify_tag]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    continue-on-error: true
+    outputs:
+      index_pr_status: ${{ steps.index_pr.outputs.index_pr_status }}
+      index_pr_url: ${{ steps.index_pr.outputs.index_pr_url }}
+    steps:
+      - name: Checkout scripts
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+          sparse-checkout-cone-mode: false
+
+      - name: Open Index PR and update release notes
+        id: index_pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ADDONS_INDEX_PR_TOKEN: ${{ secrets.ADDONS_INDEX_PR_TOKEN }}
+          ADDONS_INDEX_PR_AUTHORIZED: "true"
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: bash "${GITHUB_WORKSPACE}/scripts/open-addons-index-pr.sh"
+
   bump:
     name: Bump development patch on main
     needs: [prepare, install_verify_tag]
