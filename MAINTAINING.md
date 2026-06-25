@@ -42,16 +42,17 @@ For install-verify CI details (scripts, logs, workflow triggers), see **[TESTING
 | **`x.y`** | Maintainers (rarely — e.g. new minor line) |
 | **`z` (patch)** | **GitHub Actions only** — see below |
 
-Do **not** hand-edit `z` in `package.xml`.
+Do **not** hand-edit `z` or `<date>` in `package.xml`.
 
-### When `z` advances
+### When `package.xml` updates
 
-| Trigger | Mechanism |
-|---------|-----------|
-| **Post-release (automatic)** | `release-publish-orchestrator.sh` bumps `z` on `main` after tagging (starts the next dev line) |
-| **Opt-in on push** | Include **`[bump version]`** in a commit message pushed to `main` → `.github/workflows/bump-package-version.yml` increments `z` and `<date>` |
+| Field | Trigger | Mechanism |
+|-------|---------|-----------|
+| **`<date>`** | **Every push to `main`** | `.github/workflows/update-package-xml-on-push.yml` sets `<date>` to today (UTC) |
+| **`z` (post-release)** | After Release tags | `release-publish-orchestrator.sh` bumps `z` and `<date>` |
+| **`z` (opt-in)** | **`[bump version]`** in commit message | Same push workflow increments `z` and `<date>` |
 
-Ordinary pushes **do not** bump `z`. Use `[bump version]` only when you deliberately want `main` to move to the next patch before the next release (uncommon).
+Ordinary pushes update `<date>` only. Use `[bump version]` only when you deliberately want `main` to move to the next patch before the next release (uncommon).
 
 Index `git_ref` is the tag name (`v0.1.12`), matching `package.xml` by convention.
 

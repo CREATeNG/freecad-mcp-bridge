@@ -1,0 +1,39 @@
+name: Update package.xml on push
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    name: Update package.xml date or z
+    runs-on: ubuntu-latest
+    if: >-
+      !startsWith(github.event.head_commit.message, 'chore: bump package.xml z to ') &&
+      !startsWith(github.event.head_commit.message, 'chore: update package.xml date to ')
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --ff-only origin main
+
+      - name: Update package.xml
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          if printf '%s' "$COMMIT_MESSAGE" | grep -q '\[bump version\]'; then
+            BUMP_PACKAGE_Z_AUTHORIZED=true bash "${GITHUB_WORKSPACE}/scripts/bump-package-z.sh"
+          else
+            BUMP_PACKAGE_DATE_AUTHORIZED=true bash "${GITHUB_WORKSPACE}/scripts/bump-package-date.sh"
+          fi
