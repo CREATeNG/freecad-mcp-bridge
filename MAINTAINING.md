@@ -12,12 +12,13 @@ For install-verify CI details (scripts, logs, triggers), see **[TESTING.md](TEST
 |------|------|------|
 | **Release orchestrator workflow** | [`release.yml`](.github/workflows/release.yml) | Build → verify → tag → **GitHub Release**. Actions UI: **Release Orchestrator** → Run workflow. |
 | **Publish script** | [`release-publish-orchestrator.sh`](scripts/release-publish-orchestrator.sh) | Tag + post-release patch bump; runs inside `release.yml` only. |
-| **Install-verify workflow** | [`release-install-verify.yml`](.github/workflows/release-install-verify.yml) | Standalone or post-tag install test. |
+| **Install-verify gate** | [`install-verify-reusable.yml`](.github/workflows/install-verify-reusable.yml) | **Pre-tag prerequisite** inside `release.yml` (`install_mode: main`). No tag if this fails. |
+| **Install-verify workflow** | [`release-install-verify.yml`](.github/workflows/release-install-verify.yml) | Standalone `workflow_dispatch` or automatic post-tag check (`install_mode: tag`). |
 | **Version-bump workflow** | [`bump-package-version-on-push.yml`](.github/workflows/bump-package-version-on-push.yml) | Opt-in patch bump when commit message contains `[bump version]`. |
 | **Shipping a release** | — | Outcome: verified `v*` tag, **GitHub Release** page, optional Index update. |
 | **GitHub Release** | — | Release page and assets on github.com — not `release.yml`. |
 
-**Shorthand in this doc:** **release orchestrator** means `release.yml` only. Other names stay qualified (**publish script**, **install-verify workflow**, **version-bump workflow**). Avoid bare *workflow*, *orchestrator*, or *Release* when you mean a tool. Filenames are authoritative.
+**Shorthand in this doc:** **release orchestrator** means `release.yml` only. Other names stay qualified (**publish script**, **install-verify gate**, **install-verify workflow**, **version-bump workflow**). Avoid bare *workflow*, *orchestrator*, or *Release* when you mean a tool. Filenames are authoritative.
 
 ---
 
@@ -111,7 +112,7 @@ flowchart LR
 
 1. **CI build** — Rust MCP binaries (Linux, macOS, Windows) in parallel.
 2. **Prepare** — download artifacts, install into `bin/`, read the version from `package.xml` (e.g. `0.1.12`), verify the tag does not already exist, commit `bin/` to `main` if changed, **push `main`**.
-3. **Install verify (hard gate)** — full Addon Manager install + restart verify on all three OSes against `main` (`install_mode: main`). **No tag if this fails.**
+3. **Install-verify gate** — [`install-verify-reusable.yml`](.github/workflows/install-verify-reusable.yml) with `install_mode: main`: full Addon Manager install + restart verify on all three OSes against `main`. **No tag if this fails.**
 4. **Publish script** — `release-publish-orchestrator.sh` only (`RELEASE_PUBLISH_AUTHORIZED=true`): create and push the matching tag (e.g. `v0.1.12`) on the verified commit, then bump the patch on `main` for the next dev cycle. The **release orchestrator** then creates the **GitHub Release** and uploads assets.
 
 There is no standalone tag script. Tag creation and post-release patch bump are one guarded pass inside **`release.yml`**.
