@@ -7,17 +7,14 @@
     <license file="LICENSE">MIT</license>
     <icon>Resources/Icons/icon.svg</icon>
     <freecadmin>1.0.0</freecadmin>
-    <tag>Extension</tag>
-    <tag>MCP</tag>
-    <tag>AI</tag>
+    <tag>extension</tag>
+    <tag>mcp</tag>
+    <tag>scripting</tag>
     <url branch="main" type="repository">https://github.com/CREATeNG/freecad-mcp-bridge</url>
     <url type="readme">https://raw.githubusercontent.com/CREATeNG/freecad-mcp-bridge/main/README.md</url>
     <url type="bugtracker">https://github.com/CREATeNG/freecad-mcp-bridge/issues</url>
     <content>
         <other>
-            <name>MCP Bridge</name>
-            <description>Local bridge for AI-assisted and scripted control of FreeCAD.</description>
-            <icon>Resources/Icons/icon.svg</icon>
             <subdirectory>./</subdirectory>
         </other>
     </content>
