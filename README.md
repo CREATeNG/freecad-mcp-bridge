@@ -93,7 +93,7 @@ Place the repository in your FreeCAD `Mod` folder as `freecad-mcp-bridge`, then 
 *   **macOS:** `~/Library/Application Support/FreeCAD/Mod/`
 *   **Linux:** `~/.local/share/FreeCAD/Mod/`
 
-Clone or copy from GitHub — `main` or a [release tag](https://github.com/CREATeNG/freecad-mcp-bridge/releases) — into that folder.
+Clone or copy from GitHub — `main` or a [release tag](https://github.com/CREATeNG/freecad-mcp-bridge/tags) — into that folder.
 
 ### 3. Macro tryout
 

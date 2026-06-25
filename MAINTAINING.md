@@ -10,11 +10,11 @@ For install-verify CI details (scripts, logs, triggers), see **[TESTING.md](TEST
 
 | Name | File | Role |
 |------|------|------|
-| **Release orchestrator workflow** | [`release.yml`](.github/workflows/release.yml) | Build → sync `bin/` → verify → tag → **GitHub Release** (+ attachments) → post-release patch bump. Actions UI: **Release Orchestrator** → Run workflow. |
+| **Release orchestrator workflow** | [`release.yml`](.github/workflows/release.yml) | Build → sync `bin/` → verify → tag → **GitHub Release** (notes) → post-release patch bump. Actions UI: **Release Orchestrator** → Run workflow. |
 | **Install-verify workflow** | [`install-verify.yml`](.github/workflows/install-verify.yml) | Confirms Addon Manager install and post-restart socket verify on Linux, macOS, and Windows. Hard gate before tag in `release.yml`. Actions UI: **Install verify**. |
 | **Version-bump workflow** | [`bump-package-version-on-push.yml`](.github/workflows/bump-package-version-on-push.yml) | Opt-in patch bump when commit message contains `[bump version]`. |
 
-**Shorthand in this doc:** **release orchestrator** means `release.yml` only. Other names stay qualified (**install-verify workflow**, **version-bump workflow**). **`bin/` sync** (prepare) commits matching binaries to `main` *before* the tag; **GitHub Release attachments** are optional download copies on the release page — not a second compile. Avoid bare *assets*. *Internal only:* [`release-publish-orchestrator.sh`](scripts/release-publish-orchestrator.sh) and [`bump-package-z.sh`](scripts/bump-package-z.sh) inside the publish job. Avoid bare *workflow*, *orchestrator*, or *Release* when you mean a tool. Filenames are authoritative.
+**Shorthand in this doc:** **release orchestrator** means `release.yml` only. Other names stay qualified (**install-verify workflow**, **version-bump workflow**). **`bin/` sync** (prepare) commits matching binaries to `main` *before* the tag; the tag zip and Index install use that tree. **GitHub Release** here means release notes only — not a second binary distribution path. *Internal only:* [`release-publish-orchestrator.sh`](scripts/release-publish-orchestrator.sh) and [`bump-package-z.sh`](scripts/bump-package-z.sh) inside the publish job. Avoid bare *workflow*, *orchestrator*, or *Release* when you mean a tool. Filenames are authoritative.
 
 ---
 
@@ -35,7 +35,7 @@ Versions are **`x.y.z`** everywhere — e.g. **`0.1.12`** in `package.xml` and `
 
 ## Release tags
 
-**Index releases are tagged by the release orchestrator workflow** (`release.yml`). It gives FreeCAD Index maintainers a verified snapshot: `bin/` synced to `main`, install-verify green on three OSes, then tag and a **GitHub Release**. Manual tags are fine for experiments or other uses — only tags from **`release.yml`** should be proposed as `git_ref` values on [FreeCAD/Addons](https://github.com/FreeCAD/Addons).
+**Index releases are tagged by the release orchestrator workflow** (`release.yml`). It gives FreeCAD Index maintainers a verified snapshot: `bin/` synced to `main`, install-verify green on three OSes, then tag (with release notes on GitHub). Manual tags are fine for experiments or other uses — only tags from **`release.yml`** should be proposed as `git_ref` values on [FreeCAD/Addons](https://github.com/FreeCAD/Addons).
 
 | Do | Don't |
 |----|-------|
@@ -44,7 +44,7 @@ Versions are **`x.y.z`** everywhere — e.g. **`0.1.12`** in `package.xml` and `
 | Let the **release orchestrator** sync `bin/`, verify, tag (e.g. `v0.1.12`), and publish | Re-run **`release.yml`** for a tag that already exists (fails at prepare) |
 | Use the **install-verify workflow** (`workflow_dispatch`) to test CI on `main` | Expect install-verify alone to create or move tags |
 
-**Why Index cares:** The tag must point at a commit that already has synced `bin/` — Python sources, `package.xml`, and prebuilt clients in the repo tree. Prepare and verify run *before* the tag; GitHub Release attachments come later and do not affect what the tag points at. Tags created before this process (before **v0.1.11**) pointed at commits missing synced binaries and are **not** suitable as `git_ref` values.
+**Why Index cares:** The tag must point at a commit that already has synced `bin/` — Python sources, `package.xml`, and prebuilt clients in the repo tree (and in the tag zip). Prepare and verify run *before* the tag. Tags created before this process (before **v0.1.11**) pointed at commits missing synced binaries and are **not** suitable as `git_ref` values.
 
 **v0.1.11** is the first complete tag in this model.
 
@@ -74,7 +74,7 @@ Index `git_ref` is the tag name (`v0.1.12`), matching `package.xml` by conventio
 
 ## The release orchestrator workflow (`release.yml`)
 
-The **release orchestrator workflow** is what you run to ship a version. It owns build, verify gate, tagging, the **GitHub Release** page, and the post-release patch bump on `main`. There is no standalone tag path.
+The **release orchestrator workflow** is what you run to ship a version. It owns build, verify gate, tagging, GitHub Release notes, and the post-release patch bump on `main`. There is no standalone tag path.
 
 This is **not** the local `cargo build` described in [DEVELOPMENT.md](DEVELOPMENT.md). The `build` job below is a cross-platform CI matrix that produces `bin/` artifacts.
 
@@ -87,7 +87,7 @@ flowchart TD
   verify -->|fail| stop[No tag / no GitHub Release]
   verify -->|pass| pub[publish job]
   pub --> tag[tag e.g. v0.1.12 — points at synced bin/]
-  tag --> gh[GitHub Release + attachments]
+  tag --> gh[GitHub Release notes]
   gh --> zbump[post-release patch bump on main]
   tag --> postverify[install-verify workflow]
   postverify --> index[Index PR — planned]
@@ -98,7 +98,7 @@ flowchart TD
 ```mermaid
 flowchart LR
   dev[Develop on main] --> dispatch[Run release.yml]
-  dispatch --> shipped[tag + GitHub Release]
+  dispatch --> shipped[tag + release notes]
   shipped --> postverify[install-verify workflow]
   postverify --> index[Index PR to FreeCAD/Addons]
 ```
@@ -108,9 +108,9 @@ flowchart LR
 1. **CI build** — Rust MCP binaries (Linux, macOS, Windows) in parallel.
 2. **Prepare** — download artifacts, install into `bin/`, read the version from `package.xml` (e.g. `0.1.12`), verify the tag does not already exist, commit `bin/` to `main` if changed, **push `main`**.
 3. **Install-verify workflow** (pre-tag) — [`install-verify.yml`](.github/workflows/install-verify.yml) with `install_mode: main`: full Addon Manager install + restart verify on all three OSes against `main`. **No tag if this fails.**
-4. **Publish job** — after verify passes: publish the matching tag (e.g. `v0.1.12`) on the verified commit, create the **GitHub Release** and upload **attachments** (copies of `bin/` already in that commit — for direct download only), then bump the patch on `main` for the next dev cycle. The tag always points at the commit from step 3, which already has synced `bin/`. Release publish uses internal [`release-publish-orchestrator.sh`](scripts/release-publish-orchestrator.sh) (`RELEASE_PUBLISH_AUTHORIZED=true`; not runnable standalone); post-release bump uses [`bump-package-z.sh`](scripts/bump-package-z.sh).
+4. **Publish job** — after verify passes: push the matching tag (e.g. `v0.1.12`) on the verified commit, create a **GitHub Release** for release notes (binaries stay in `bin/` on the tag — not uploaded separately), then bump the patch on `main` for the next dev cycle. Release publish uses internal [`release-publish-orchestrator.sh`](scripts/release-publish-orchestrator.sh) (`RELEASE_PUBLISH_AUTHORIZED=true`; not runnable standalone); post-release bump uses [`bump-package-z.sh`](scripts/bump-package-z.sh).
 
-Publishing the release tag triggers **`install-verify.yml`** again as a post-ship check (`install_mode: tag`). That re-verify installs from the **tagged repo tree** (including `bin/`), not from GitHub Release attachments.
+Publishing the release tag triggers **`install-verify.yml`** again as a post-ship check (`install_mode: tag`). That re-verify installs from the **tagged repo tree** (including `bin/`).
 
 **Next shipped line:** `0.1.12` (Index listing request [#70](https://github.com/FreeCAD/Addons/issues/70) references `v0.1.11`). Re-running **`release.yml`** while `package.xml` still says `0.1.11` will fail at **prepare** — `v0.1.11` already exists.
 

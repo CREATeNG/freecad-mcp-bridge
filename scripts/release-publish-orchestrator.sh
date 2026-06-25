@@ -2,9 +2,8 @@
 # Release publish step — INTERNAL to .github/workflows/release.yml only.
 #
 # Runs only after install-verify has passed on main (bin/ already synced on the verified
-# commit). Creates a GitHub Release with attachments copied from bin/ (--target). gh
-# uploads attachments to a draft release, then publishes; the git tag is created when
-# the release is published (after attachments attach).
+# commit). Pushes the release tag, then creates a GitHub Release for release notes.
+# Binaries live in bin/ on the tagged commit (and in the tag zip) — not uploaded here.
 #
 # Does not bump package.xml (a later publish-job step handles that). No standalone entry point.
 
@@ -73,26 +72,21 @@ for path in \
   bin/win32/freecad-mcp-bridge.exe
 do
   if [[ ! -f "$path" ]]; then
-    echo "Missing bin/ binary for release attachments: ${path}" >&2
+    echo "Missing bin/ binary on release candidate: ${path}" >&2
     exit 1
   fi
 done
 
-asset_dir=$(mktemp -d)
-trap 'rm -rf "$asset_dir"' EXIT
-cp bin/linux/freecad-mcp-bridge "$asset_dir/freecad-mcp-bridge-linux"
-cp bin/macos/freecad-mcp-bridge "$asset_dir/freecad-mcp-bridge-macos"
-cp bin/win32/freecad-mcp-bridge.exe "$asset_dir/freecad-mcp-bridge-windows.exe"
+git tag -a "$RELEASE_TAG" -m "Release ${RELEASE_TAG}"
+git push origin "$RELEASE_TAG"
+
+echo "Created and pushed tag ${RELEASE_TAG} at ${VERIFIED_SHA}"
 
 gh release create "$RELEASE_TAG" \
-  --target "$VERIFIED_SHA" \
   --title "$RELEASE_TAG" \
-  --notes "Release $RELEASE_TAG" \
-  "$asset_dir/freecad-mcp-bridge-linux" \
-  "$asset_dir/freecad-mcp-bridge-macos" \
-  "$asset_dir/freecad-mcp-bridge-windows.exe"
+  --notes "Release $RELEASE_TAG"
 
-echo "Published GitHub Release ${RELEASE_TAG} with assets; tag created at ${VERIFIED_SHA}"
+echo "Published GitHub Release ${RELEASE_TAG} (release notes only)"
 
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   printf 'release_tag=%s\n' "$RELEASE_TAG" >> "$GITHUB_OUTPUT"

@@ -164,7 +164,12 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create GitHub Release, upload assets, and publish tag
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Push tag and publish release notes
         id: publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

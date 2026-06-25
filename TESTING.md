@@ -74,7 +74,7 @@ Install-verify is a **hard prerequisite** for tag creation. In **`release.yml`**
 1. **Build** Rust binaries (matrix).
 2. **Prepare** — sync `bin/` to `main`, commit if needed, **push `main`** (no tag yet).
 3. **Install verify** — calls **`install-verify.yml`** with `install_mode: main` and `fail_fast: true`. If any OS fails, **`release.yml`** stops here.
-4. **Publish job** — only after verify passes: publish the tag on the verified commit (synced `bin/` already in the tree), create the **GitHub Release** + attachments (copies from that commit's `bin/`), then bump patch on `main` (`release-publish-orchestrator.sh` and `bump-package-z.sh` plus workflow steps).
+4. **Publish job** — only after verify passes: push the tag on the verified commit (synced `bin/` already in the tree), create a **GitHub Release** for release notes, then bump patch on `main` (`release-publish-orchestrator.sh` and `bump-package-z.sh` plus workflow steps).
 
 A tag push still triggers **`install-verify.yml`** again as a post-ship check (`install_mode: tag`).
 
