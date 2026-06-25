@@ -164,39 +164,28 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Configure git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Create tag and bump development z
+      - name: Create GitHub Release, upload assets, and publish tag
         id: publish
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_PUBLISH_AUTHORIZED: "true"
           RELEASE_VERIFIED_SHA: ${{ needs.prepare.outputs.commit_sha }}
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         run: bash "${GITHUB_WORKSPACE}/scripts/release-publish-orchestrator.sh"
 
-      - name: Checkout tagged tree for release assets
-        run: git checkout "${{ needs.prepare.outputs.tag }}"
+      - name: Checkout main for post-release bump
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Configure git for bump
         run: |
-          TAG="${{ steps.publish.outputs.release_tag }}"
-          gh release create "$TAG" --title "$TAG" --notes "Release $TAG"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Upload release assets
+      - name: Bump development patch on main
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${{ steps.publish.outputs.release_tag }}"
-          cp bin/linux/freecad-mcp-bridge freecad-mcp-bridge-linux
-          cp bin/macos/freecad-mcp-bridge freecad-mcp-bridge-macos
-          cp bin/win32/freecad-mcp-bridge.exe freecad-mcp-bridge-windows.exe
-          gh release upload "$TAG" \
-            freecad-mcp-bridge-linux \
-            freecad-mcp-bridge-macos \
-            freecad-mcp-bridge-windows.exe \
-            --clobber
+          BUMP_PACKAGE_Z_AUTHORIZED: "true"
+        run: bash "${GITHUB_WORKSPACE}/scripts/bump-package-z.sh"

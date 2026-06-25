@@ -1,17 +1,23 @@
 #!/usr/bin/env bash
-# Release publish orchestrator — INTERNAL to .github/workflows/release.yml only.
+# Release publish step — INTERNAL to .github/workflows/release.yml only.
 #
-# Runs only after install-verify has passed. Atomic responsibilities:
-#   A. Create and push the release tag on the verified commit (tag === package.xml version)
-#   B. Bump package.xml z on main for the next development cycle
+# Runs only after install-verify has passed on main (bin/ already synced on the verified
+# commit). Creates a GitHub Release with attachments copied from bin/ (--target). gh
+# uploads attachments to a draft release, then publishes; the git tag is created when
+# the release is published (after attachments attach).
 #
-# Does not create GitHub Releases (workflow steps handle that). No standalone entry point.
+# Does not bump package.xml (a later publish-job step handles that). No standalone entry point.
 
 set -euo pipefail
 
 if [[ "${RELEASE_PUBLISH_AUTHORIZED:-}" != "true" ]]; then
   echo "release-publish-orchestrator.sh is internal to release.yml (Release Orchestrator)." >&2
   exit 2
+fi
+
+if [[ -z "${GH_TOKEN:-}" ]]; then
+  echo "GH_TOKEN is required for gh release create." >&2
+  exit 1
 fi
 
 VERIFIED_SHA="${RELEASE_VERIFIED_SHA:?RELEASE_VERIFIED_SHA is required}"
@@ -61,19 +67,33 @@ if [[ -n "$(git ls-remote --tags origin "${RELEASE_TAG}")" ]]; then
   exit 1
 fi
 
-git tag -a "$RELEASE_TAG" -m "Release ${RELEASE_TAG}"
-git push origin "$RELEASE_TAG"
+for path in \
+  bin/linux/freecad-mcp-bridge \
+  bin/macos/freecad-mcp-bridge \
+  bin/win32/freecad-mcp-bridge.exe
+do
+  if [[ ! -f "$path" ]]; then
+    echo "Missing bin/ binary for release attachments: ${path}" >&2
+    exit 1
+  fi
+done
 
-echo "Created and pushed tag ${RELEASE_TAG} at ${VERIFIED_SHA}"
+asset_dir=$(mktemp -d)
+trap 'rm -rf "$asset_dir"' EXIT
+cp bin/linux/freecad-mcp-bridge "$asset_dir/freecad-mcp-bridge-linux"
+cp bin/macos/freecad-mcp-bridge "$asset_dir/freecad-mcp-bridge-macos"
+cp bin/win32/freecad-mcp-bridge.exe "$asset_dir/freecad-mcp-bridge-windows.exe"
 
-git switch main
-git pull --ff-only origin main
+gh release create "$RELEASE_TAG" \
+  --target "$VERIFIED_SHA" \
+  --title "$RELEASE_TAG" \
+  --notes "Release $RELEASE_TAG" \
+  "$asset_dir/freecad-mcp-bridge-linux" \
+  "$asset_dir/freecad-mcp-bridge-macos" \
+  "$asset_dir/freecad-mcp-bridge-windows.exe"
 
-export BUMP_PACKAGE_Z_AUTHORIZED=true
-bash "$(dirname "${BASH_SOURCE[0]}")/bump-package-z.sh"
+echo "Published GitHub Release ${RELEASE_TAG} with assets; tag created at ${VERIFIED_SHA}"
 
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   printf 'release_tag=%s\n' "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
 fi
-
-echo "Publish orchestrator complete for ${RELEASE_TAG}"

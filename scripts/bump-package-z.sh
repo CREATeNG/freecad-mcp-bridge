@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Increment package.xml patch (z) and <date> — INTERNAL to GitHub Actions only.
-# Triggered by [bump version] in a push commit message (bump-package-version-on-push.yml), or post-release via release-publish-orchestrator.sh.
+# Triggered by [bump version] in a push commit message (bump-package-version-on-push.yml), or post-release in release.yml publish job.
 
 set -euo pipefail
 
