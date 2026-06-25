@@ -40,8 +40,10 @@ from pathlib import Path
 version, date, package_xml = sys.argv[1], sys.argv[2], sys.argv[3]
 path = Path(package_xml)
 text = path.read_text(encoding="utf-8")
-text, n1 = re.subn(r"(<version>)[^<]*(</version>)", rf"\1{version}\2", text, count=1)
-text, n2 = re.subn(r"(<date>)[^<]*(</date>)", rf"\1{date}\2", text, count=1)
+text, n1 = re.subn(
+    r"(<version>)[^<]*(</version>)", rf"\g<1>{version}\g<2>", text, count=1
+)
+text, n2 = re.subn(r"(<date>)[^<]*(</date>)", rf"\g<1>{date}\g<2>", text, count=1)
 if n1 != 1 or n2 != 1:
     raise SystemExit("Failed to update version/date in package.xml")
 path.write_text(text, encoding="utf-8")

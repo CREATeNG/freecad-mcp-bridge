@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Dispatch Index PR workflow on CREATeNG/FreeCAD-Addons — INTERNAL to release.yml.
 #
-# Requires ADDONS_INDEX_DISPATCH_TOKEN (Actions: write on the fork).
+# Requires ADDONS_INDEX_DISPATCH_TOKEN (Actions: write on CREATeNG/FreeCAD-Addons).
 # Waits for the fork workflow, then updates this repo's GitHub Release notes.
 
 set -euo pipefail
@@ -85,12 +85,12 @@ if [[ -n "$existing_pr" ]]; then
   exit 0
 fi
 
-GH_TOKEN="$ADDONS_INDEX_DISPATCH_TOKEN" gh api "repos/${ADDONS_INDEX_FORK_REPO}/dispatches" \
-  -f event_type=freecad-mcp-bridge-release \
-  -f "client_payload[tag]=${RELEASE_TAG}" \
-  -f "client_payload[version]=${RELEASE_VERSION}"
+GH_TOKEN="$ADDONS_INDEX_DISPATCH_TOKEN" gh workflow run "$INDEX_WORKFLOW_FILE" \
+  --repo "$ADDONS_INDEX_FORK_REPO" \
+  -f "tag=${RELEASE_TAG}" \
+  -f "version=${RELEASE_VERSION}"
 
-echo "Dispatched ${INDEX_WORKFLOW_FILE} on ${ADDONS_INDEX_FORK_REPO} for ${RELEASE_TAG}"
+echo "Triggered ${INDEX_WORKFLOW_FILE} on ${ADDONS_INDEX_FORK_REPO} for ${RELEASE_TAG}"
 sleep 5
 
 run_id=""
@@ -99,9 +99,8 @@ for ((attempt = 1; attempt <= POLL_ATTEMPTS; attempt++)); do
     GH_TOKEN="$ADDONS_INDEX_DISPATCH_TOKEN" gh run list \
       --repo "$ADDONS_INDEX_FORK_REPO" \
       --workflow "$INDEX_WORKFLOW_FILE" \
-      --event repository_dispatch \
       --limit 1 \
-      --json databaseId \
+      --json databaseId,createdAt \
       --jq '.[0].databaseId // empty'
   )"
   if [[ -n "$run_id" ]]; then
