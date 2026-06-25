@@ -12,7 +12,7 @@ For install-verify CI details (scripts, logs, triggers), see **[TESTING.md](TEST
 |------|------|------|
 | **Release orchestrator workflow** | [`release.yml`](.github/workflows/release.yml) | Build → sync `bin/` → verify → tag → **GitHub Release** (notes) → post-release patch bump. Actions UI: **Release Orchestrator** → Run workflow. |
 | **Install-verify workflow** | [`install-verify.yml`](.github/workflows/install-verify.yml) | Confirms addon installation works on Linux, macOS, and Windows. Can be run at any time; also runs automatically as a hard gate before tag in `release.yml`. Actions UI: **Install verify**. |
-| **Version-bump workflow** | [`bump-package-version-on-push.yml`](.github/workflows/bump-package-version-on-push.yml) | Actions UI: **Bump package version on push**. |
+| **Version-bump workflow** | [`bump-package-version.yml`](.github/workflows/bump-package-version.yml) | Actions UI: **Bump package version** → Run workflow. |
 
 **Shorthand in this doc:** **release orchestrator** means `release.yml` only. Other names stay qualified (**install-verify workflow**, **version-bump workflow**). **`bin/` sync** (prepare) commits matching binaries to `main` *before* the tag; the tag zip and Index install use that tree. **GitHub Release** here means release notes only — not a second binary distribution path. *Internal only:* [`release-publish-orchestrator.sh`](scripts/release-publish-orchestrator.sh) and [`bump-package-z.sh`](scripts/bump-package-z.sh) inside the publish job. Avoid bare *workflow*, *orchestrator*, or *Release* when you mean a tool. Filenames are authoritative.
 
@@ -64,9 +64,9 @@ Versions are **`x.y.z`** everywhere — e.g. **`0.1.12`** in `package.xml` and `
 | Field | Trigger | Mechanism |
 |-------|---------|-----------|
 | **Patch (post-release)** | After **`release.yml`** ships | Publish job bumps patch + `<date>` (and syncs `Cargo.toml`) |
-| **Patch (opt-in)** | **`[bump version]`** in commit message | Version-bump workflow increments patch + `<date>` (and syncs `Cargo.toml`) |
+| **Patch (opt-in)** | Run **version-bump workflow** on `main` | Increments patch + `<date>` (and syncs `Cargo.toml`) |
 
-Ordinary pushes do not change `package.xml`. Use `[bump version]` only when you deliberately want `main` on the next patch before shipping again (uncommon).
+Ordinary pushes do not change `package.xml`. Run **Bump package version** from Actions only when you deliberately want `main` on the next patch before shipping again (uncommon).
 
 Index `git_ref` is the tag name (`v0.1.12`), matching `package.xml` by convention.
 

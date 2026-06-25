@@ -1,9 +1,7 @@
-name: Bump package version on push
+name: Bump package version
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -12,14 +10,17 @@ jobs:
   bump:
     name: Bump package.xml patch
     runs-on: ubuntu-latest
-    if: >-
-      contains(github.event.head_commit.message, '[bump version]') &&
-      !startsWith(github.event.head_commit.message, 'chore: bump version to ') &&
-      !startsWith(github.event.head_commit.message, 'chore: bump package.xml z to ')
     steps:
+      - name: Ensure running on main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "Bump package version workflow must be run on the main branch."
+          exit 1
+
       - name: Checkout main
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
