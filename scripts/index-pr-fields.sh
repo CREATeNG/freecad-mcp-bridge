@@ -9,7 +9,7 @@ cat <<EOF
 FreeCAD Addons Index PR fields for ${TAG}
 
 In https://github.com/FreeCAD/Addons Data/Index.json, update the
-freecad-mcp-bridge entry (or add it on first submission):
+freecad-mcp-bridge entry:
 
   "git_ref": "${TAG}",
   "branch_display_name": "${TAG}",

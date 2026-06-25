@@ -33,7 +33,7 @@ Versions use **`x.y.z`** — e.g. **`0.1.12`** in `package.xml` and `rust_mcp_se
 
 ## Release tags
 
-**Tagged releases prepared for submission to the FreeCAD Addon Index** are created by the **release orchestrator workflow** (`release.yml`). It produces a verified snapshot: `bin/` synced to `main`, install-verify green on three OSes, then tag (with release notes on GitHub). Manual tags are fine for experiments or other uses — only tags from **`release.yml`** should be proposed as `git_ref` values on [FreeCAD/Addons](https://github.com/FreeCAD/Addons).
+**Tagged releases for the FreeCAD Addon Index** are created by the **release orchestrator workflow** (`release.yml`). It produces a verified snapshot: `bin/` synced to `main`, install-verify green on three OSes, then tag (with release notes on GitHub). Manual tags are fine for experiments or other uses — only tags from **`release.yml`** should be used as Index `git_ref` values on [FreeCAD/Addons](https://github.com/FreeCAD/Addons).
 
 **FreeCAD Addon Index Qualities:** A listed `git_ref` must point at a complete, installable snapshot per the [FreeCAD Addon Index Qualities](https://freecad.github.io/Addon-Academy/Topics/Addon-Index/Index/Qualities.html) — Python sources, `package.xml`, and prebuilt `bin/` clients in the repo tree (and in the tag zip). Prepare and verify run before the tag. Tags created before this process (before **v0.1.11**) pointed at commits missing synced binaries and are not suitable for listing.
 
@@ -44,9 +44,8 @@ Versions use **`x.y.z`** — e.g. **`0.1.12`** in `package.xml` and `rust_mcp_se
 ## Branches, tags, and the FreeCAD Addon Index
 
 * **`main`** is the development branch. It may be ahead of the latest shipped release.
-* **Version tags** (`v0.1.11`, etc.) are the authoritative install snapshots.
-* This project uses **[Alternative 1: Tagged Releases](https://freecad.github.io/Addon-Academy/Guides/Publishing/Indexed)** on the [FreeCAD Addon Index](https://github.com/FreeCAD/Addons): each listing pins a specific tag via `git_ref`, not rolling `main`.
-* First listing request: [FreeCAD/Addons #70](https://github.com/FreeCAD/Addons/issues/70) (open as of 2026-06-23).
+* **Version tags** (`v0.1.12`, etc.) are the authoritative install snapshots.
+* Listed on the [FreeCAD Addon Index](https://github.com/FreeCAD/Addons) as **`freecad-mcp-bridge`**, using **[Alternative 1: Tagged Releases](https://freecad.github.io/Addon-Academy/Guides/Publishing/Indexed)** — the listing pins a specific tag via `git_ref`, not rolling `main`.
 
 ---
 
@@ -104,7 +103,7 @@ flowchart LR
 6. **Addons Index PR** — [`trigger-addons-index-dispatch.sh`](scripts/trigger-addons-index-dispatch.sh) sends `repository_dispatch` to [`CREATeNG/FreeCAD-Addons`](https://github.com/CREATeNG/FreeCAD-Addons) ([`index-release.yml`](https://github.com/CREATeNG/FreeCAD-Addons/blob/main/.github/workflows/index-release.yml): sync upstream, patch [`Data/Index.json`](https://github.com/FreeCAD/Addons/blob/master/Data/Index.json), push branch, open upstream PR using the fork’s `GITHUB_TOKEN`). This job waits for that run and updates GitHub Release notes with the PR link. Secret **`ADDONS_INDEX_DISPATCH_TOKEN`** on this repo (Actions: write on the fork only). If unset, the job skips. **Non-blocking** (`continue-on-error`).
 7. **Bump** — increment patch on `main` for the next dev cycle via [`bump-package-z.sh`](scripts/bump-package-z.sh). Runs in parallel with step 6.
 
-**Next shipped line:** `0.1.12` (FreeCAD Addon Index listing request [#70](https://github.com/FreeCAD/Addons/issues/70) references `v0.1.11`). Re-running **`release.yml`** while `package.xml` still says `0.1.11` will fail at **prepare** — `v0.1.11` already exists.
+**Next ship from `main`:** `0.1.12`. Re-running **`release.yml`** while `package.xml` still names a tag that already exists (e.g. `0.1.11`) will fail at **prepare**.
 
 If Rust sources did not change, the prepare commit step may be a no-op, but verify and publish still run against current `main`.
 
@@ -134,27 +133,20 @@ If Rust sources did not change, the prepare commit step may be a no-op, but veri
 
 ## FreeCAD Addon Index
 
-How **this repo's maintainers** request or update a listing on the FreeCAD Addon Index. **FreeCAD Addon Index maintainers** (the [FreeCAD/Addons](https://github.com/FreeCAD/Addons) team) review and merge changes to [`Data/Index.json`](https://github.com/FreeCAD/Addons/blob/master/Data/Index.json) on FreeCAD/Addons — not in this repository — a different maintainer role.
+How **this repo's maintainers** update the **`freecad-mcp-bridge`** listing on the FreeCAD Addon Index. **FreeCAD Addon Index maintainers** (the [FreeCAD/Addons](https://github.com/FreeCAD/Addons) team) review and merge changes to [`Data/Index.json`](https://github.com/FreeCAD/Addons/blob/master/Data/Index.json) on FreeCAD/Addons — not in this repository — a different maintainer role.
 
-Guides: [Publishing (Indexed)](https://freecad.github.io/Addon-Academy/Guides/Publishing/Indexed), [Updating](https://freecad.github.io/Addon-Academy/Guides/Maintaining/Updating), [FreeCAD Addon Index Qualities](https://freecad.github.io/Addon-Academy/Topics/Addon-Index/Index/Qualities.html).
+Guides: [Updating](https://freecad.github.io/Addon-Academy/Guides/Maintaining/Updating), [FreeCAD Addon Index Qualities](https://freecad.github.io/Addon-Academy/Topics/Addon-Index/Index/Qualities.html).
 
-### First listing
-
-1. Ensure a complete tag exists (via **`release.yml`**).
-2. Open an issue on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) (label **Addon - Addition**) — see [#70](https://github.com/FreeCAD/Addons/issues/70).
-3. FreeCAD Addon Index maintainers review against the [FreeCAD Addon Index Qualities](https://freecad.github.io/Addon-Academy/Topics/Addon-Index/Index/Qualities.html); they may ask for a proper tagged release if the ref is incomplete.
-4. Entry is added to [`Data/Index.json`](https://github.com/FreeCAD/Addons/blob/master/Data/Index.json) on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) — Index maintainers’ PR, yours, or the automated PR from **`release.yml`** (proposes a new `freecad-mcp-bridge` entry when none exists yet).
-
-### Updating after shipping a release
+### After each release
 
 1. Run **`release.yml`** → new `v{version}` tag.
-2. Confirm **`release.yml`** completed successfully (includes tag-path install-verify and **Addons Index PR** job).
-3. Confirm the automated PR on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) (link on the GitHub Release notes). You can review it; **FreeCAD Addon Index maintainers** merge upstream — same as any external contributor PR.
+2. Confirm **`release.yml`** completed successfully (tag-path install-verify and **Addons Index PR** job).
+3. Confirm the automated PR on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) (link on the GitHub Release notes). You can review it; **FreeCAD Addon Index maintainers** merge upstream — same as any external contributor PR. The PR updates `git_ref`, `branch_display_name`, and `zip_url` for the listed entry.
 
-**One-time setup:**
+**Prerequisites** (already in place):
 
-1. Fork [FreeCAD/Addons](https://github.com/FreeCAD/Addons) as [`CREATeNG/FreeCAD-Addons`](https://github.com/CREATeNG/FreeCAD-Addons) (includes [`index-release.yml`](https://github.com/CREATeNG/FreeCAD-Addons/blob/main/.github/workflows/index-release.yml) on fork `main`).
-2. On **`CREATeNG/freecad-mcp-bridge`**, add secret **`ADDONS_INDEX_DISPATCH_TOKEN`** — a PAT (or fine-grained token) with **Actions: read and write** on `CREATeNG/FreeCAD-Addons` (triggers the fork workflow only; push/PR uses the fork’s own `GITHUB_TOKEN`).
+* Fork: [`CREATeNG/FreeCAD-Addons`](https://github.com/CREATeNG/FreeCAD-Addons) ([`index-release.yml`](https://github.com/CREATeNG/FreeCAD-Addons/blob/main/.github/workflows/index-release.yml) on fork `main`).
+* Secret on **`CREATeNG/freecad-mcp-bridge`:** **`ADDONS_INDEX_DISPATCH_TOKEN`** — PAT with **Actions: read and write** on `CREATeNG/FreeCAD-Addons`.
 
 If automation is skipped or fails, use the local helper (prints fields only; does not edit any file):
 
