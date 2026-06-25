@@ -11,7 +11,7 @@ For install-verify CI details (scripts, logs, triggers), see **[TESTING.md](TEST
 | Name | File | Role |
 |------|------|------|
 | **Release orchestrator workflow** | [`release.yml`](.github/workflows/release.yml) | Build → sync `bin/` → verify → tag → **GitHub Release** (notes) → post-release patch bump. Actions UI: **Release Orchestrator** → Run workflow. |
-| **Install-verify workflow** | [`install-verify.yml`](.github/workflows/install-verify.yml) | Confirms Addon Manager install and post-restart socket verify on Linux, macOS, and Windows. Hard gate before tag in `release.yml`. Actions UI: **Install verify**. |
+| **Install-verify workflow** | [`install-verify.yml`](.github/workflows/install-verify.yml) | Confirms addon installation works on Linux, macOS, and Windows. Can be run at any time; also runs automatically as a hard gate before tag in `release.yml`. Actions UI: **Install verify**. |
 | **Version-bump workflow** | [`bump-package-version-on-push.yml`](.github/workflows/bump-package-version-on-push.yml) | Opt-in patch bump when commit message contains `[bump version]`. |
 
 **Shorthand in this doc:** **release orchestrator** means `release.yml` only. Other names stay qualified (**install-verify workflow**, **version-bump workflow**). **`bin/` sync** (prepare) commits matching binaries to `main` *before* the tag; the tag zip and Index install use that tree. **GitHub Release** here means release notes only — not a second binary distribution path. *Internal only:* [`release-publish-orchestrator.sh`](scripts/release-publish-orchestrator.sh) and [`bump-package-z.sh`](scripts/bump-package-z.sh) inside the publish job. Avoid bare *workflow*, *orchestrator*, or *Release* when you mean a tool. Filenames are authoritative.
