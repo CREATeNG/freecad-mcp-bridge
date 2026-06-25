@@ -81,7 +81,7 @@ Automated Index update from [CREATeNG/freecad-mcp-bridge](${ADDON_REPO_URL}) rel
 **Tag / git_ref:** \`${RELEASE_TAG}\`
 **Zip URL:** ${ADDON_REPO_URL}/archive/refs/tags/${RELEASE_TAG}.zip
 
-FreeCAD Addon Index maintainers review and merge.
+Thanks for review.
 EOF
 )"
   GH_TOKEN="$ADDONS_INDEX_DISPATCH_TOKEN" gh pr create \
@@ -161,7 +161,7 @@ if [[ "$fork_ok" == "true" ]] || GH_TOKEN="$ADDONS_INDEX_DISPATCH_TOKEN" gh api 
   "repos/${ADDONS_INDEX_FORK_REPO}/git/ref/heads/${encoded_branch}" >/dev/null 2>&1; then
   if pr_url="$(open_upstream_pr)" && [[ -n "$pr_url" ]]; then
     write_release_notes "opened" \
-      "Opened Index update PR — FreeCAD Addon Index maintainers review and merge: ${pr_url}"
+      "Opened Index update PR: ${pr_url}"
     set_output index_pr_status opened
     set_output index_pr_url "$pr_url"
     exit 0
