@@ -10,7 +10,12 @@ if [[ "${BUMP_PACKAGE_DATE_AUTHORIZED:-}" != "true" ]]; then
 fi
 
 PACKAGE_XML="${PACKAGE_XML:-package.xml}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 today=$(date -u +%Y-%m-%d)
+
+read_version() {
+  sed -n 's/.*<version>\([^<]*\)<\/version>.*/\1/p' "$PACKAGE_XML" | head -1
+}
 
 python3 - <<'PY' "$today" "$PACKAGE_XML"
 import re
@@ -26,13 +31,20 @@ if n != 1:
 path.write_text(text, encoding="utf-8")
 PY
 
-if git diff --quiet "$PACKAGE_XML"; then
-  echo "package.xml date already ${today}"
+version=$(read_version)
+if [[ -z "$version" ]]; then
+  echo "Missing <version> in $PACKAGE_XML" >&2
+  exit 1
+fi
+bash "${SCRIPT_DIR}/sync-cargo-version.sh" "$version"
+
+if git diff --quiet "$PACKAGE_XML" rust_mcp_server/Cargo.toml; then
+  echo "package.xml date already ${today}; Cargo.toml already ${version}"
   exit 0
 fi
 
-git add "$PACKAGE_XML"
+git add "$PACKAGE_XML" rust_mcp_server/Cargo.toml
 git commit -m "chore: update package.xml date to ${today}"
 git push origin HEAD
 
-echo "Updated package.xml date to ${today}"
+echo "Updated package.xml date to ${today}; Cargo.toml at ${version}"

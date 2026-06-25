@@ -35,14 +35,14 @@ For install-verify CI details (scripts, logs, workflow triggers), see **[TESTING
 
 ## Version format (`package.xml`)
 
-**`x.y.z` everywhere** on `main` and on release tags. **Tag === version** (e.g. `0.1.12` → `v0.1.12`).
+**`x.y.z` everywhere** on `main` and on release tags — `package.xml` `<version>` and `rust_mcp_server/Cargo.toml` `[package].version` stay in sync. **Tag === version** (e.g. `0.1.12` → `v0.1.12`).
 
 | Part | Who sets it |
 |------|-------------|
 | **`x.y`** | Maintainers (rarely — e.g. new minor line) |
 | **`z` (patch)** | **GitHub Actions only** — see below |
 
-Do **not** hand-edit `z` or `<date>` in `package.xml`.
+Do **not** hand-edit `z` or `<date>` in `package.xml`, or `version` in `Cargo.toml`.
 
 ### When `package.xml` updates
 
