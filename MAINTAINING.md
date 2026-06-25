@@ -150,10 +150,10 @@ Guides: [Publishing (Indexed)](https://freecad.github.io/Addon-Academy/Guides/Pu
 2. Confirm **`release.yml`** completed successfully (includes tag-path install-verify).
 3. Open a PR on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) updating your entry's `git_ref`, `zip_url`, and `branch_display_name`.
 
-Helper — prints the three FreeCAD Addon Index fields for a version:
+Helper — prints the three [`Data/Index.json`](https://github.com/FreeCAD/Addons/blob/master/Data/Index.json) fields for a FreeCAD/Addons PR (does not edit any file):
 
 ```bash
-bash scripts/bump-index.sh 0.1.12
+bash scripts/index-pr-fields.sh 0.1.12
 ```
 
 FreeCAD Addon Index cache refresh can take up to **four hours** after the PR merges.
