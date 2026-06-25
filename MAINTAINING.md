@@ -2,7 +2,7 @@
 
 Instructions for **project maintainers** who cut releases, manage versioning, and update the FreeCAD Addon Index.
 
-Tinkerers and contributors who only want to build from source, test locally, or try alternative MCP setups should read **[DEVELOPMENT.md](DEVELOPMENT.md)** instead. End users should read **[README.md](README.md)**.
+Developers should read **[DEVELOPMENT.md](DEVELOPMENT.md)**. End users should read **[README.md](README.md)**.
 
 For install-verify CI details (scripts, logs, workflow triggers), see **[TESTING.md](TESTING.md)**.
 

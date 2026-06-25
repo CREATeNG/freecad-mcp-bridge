@@ -1,12 +1,12 @@
 # Development & advanced usage
 
-Instructions for **tinkerers and contributors** who want to build from source, try alternative MCP setups, or test the bridge locally.
+Instructions for **developers** — alternative MCP setups, local testing, and tooling.
 
 | If you are… | Read |
 |-------------|------|
 | **Installing and using the addon** | [README.md](README.md) |
 | **Cutting releases, versioning, Index, CI** | [MAINTAINING.md](MAINTAINING.md) and [TESTING.md](TESTING.md) |
-| **Building or experimenting locally** | This document |
+| **Developers** | This document |
 
 ---
 

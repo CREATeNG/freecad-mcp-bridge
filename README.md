@@ -112,7 +112,7 @@ Repeat step 4 each session you need the bridge (there is no toolbar toggle on th
 
 | If you are… | Start here |
 |-------------|------------|
-| **Tinkering or building locally** | [DEVELOPMENT.md](DEVELOPMENT.md) — Rust/Python MCP, `send_cmd`, macro |
+| **Developers** | [DEVELOPMENT.md](DEVELOPMENT.md) — Rust/Python MCP, `send_cmd`, macro |
 | **Cutting releases or updating the Index** | [MAINTAINING.md](MAINTAINING.md) — versioning, Release workflow, Index |
 | **CI / install-verify automation** | [TESTING.md](TESTING.md) — FreeCAD test scripts and workflows |
 
