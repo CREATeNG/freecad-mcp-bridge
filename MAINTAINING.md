@@ -25,15 +25,16 @@ Versions are **`x.y.z`** everywhere — e.g. **`0.1.12`** in `package.xml` and `
 
 ## Release tags
 
-**Release tags are created automatically by the Release workflow** (`.github/workflows/release.yml`). Do not run `git tag` locally or create tags through the GitHub UI — manual tags bypass install-verify and synced `bin/`.
+**Index releases are tagged automatically by the Release workflow** (`.github/workflows/release.yml`). That pipeline gives FreeCAD Index maintainers a verified snapshot: `bin/` synced to `main`, install-verify green on three OSes, then tag and GitHub Release. Manual tags are fine for experiments or other uses — only **workflow-created** tags should be proposed as `git_ref` values on [FreeCAD/Addons](https://github.com/FreeCAD/Addons).
 
 | Do | Don't |
 |----|-------|
-| Merge to `main`, then run **Release** once when ready | Create release tags by hand or edit the patch number in `package.xml` |
+| Run **Release** when shipping a version to the Index | Point the Index at a tag that skipped install-verify or lacks synced `bin/` |
+| Merge to `main`, then run **Release** once when ready | Edit the patch number in `package.xml` by hand |
 | Let Release sync `bin/`, verify, tag (e.g. `v0.1.12`), and publish | Re-run **Release** for a tag that already exists (workflow fails) |
 | Use **Release install verify** (`workflow_dispatch`) to test CI while developing on `main` | Expect install-verify alone to create or move tags |
 
-**Why:** Each release tag must be a complete, installable snapshot — Python sources, `package.xml`, and prebuilt `bin/` clients — with `bin/` committed to `main` *before* the tag is applied. Tags created before this process (before **v0.1.11**) pointed at commits missing synced binaries and are **not** suitable as FreeCAD Index `git_ref` values.
+**Why Index cares:** Each indexed tag must be a complete, installable snapshot — Python sources, `package.xml`, and prebuilt `bin/` clients — with `bin/` committed to `main` *before* the tag is applied. Tags created before this process (before **v0.1.11**) pointed at commits missing synced binaries and are **not** suitable as `git_ref` values.
 
 **v0.1.11** is the first complete tag in this model.
 
