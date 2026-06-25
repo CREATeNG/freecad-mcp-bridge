@@ -66,8 +66,10 @@ This addon is designed for local-only control of FreeCAD.
 
 * The bridge listens on a local socket **only when you click MCP Bridge On/Off**. Communication uses Qt local sockets (Windows named pipes / UNIX domain sockets) — **no TCP/IP** from the bridge itself.
 * While enabled, received Python runs in your open FreeCAD session; stdout, stderr, and exceptions return to the caller over the same local socket.
-* The addon does **not** collect telemetry or send data to third-party services.
-* The optional MCP server is configured separately in your AI agent or MCP client. Any data sent to an AI provider goes through that client and service, not through FreeCAD.
+* While the bridge is on, any **local process** on this machine that can reach the socket may send Python — only enable it when you trust other software on the machine.
+* MCP tools such as `execute_python_file` can run Python that reads **file paths you or your client supply** — same trust as running a macro with file access.
+* The addon does **not** use network connections or collect telemetry.
+* The bundled `bin/` MCP server is a **local** release binary from this repository; it uses stdio (to your MCP client) and the local socket (to FreeCAD). The MCP client runs locally; any data sent to an AI provider goes through that client and service, not through FreeCAD.
 * Enabling the bridge is an explicit action each session (toggle on/off).
 
 For security reports, see [SECURITY.md](SECURITY.md).

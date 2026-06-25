@@ -21,8 +21,6 @@ Please include:
 * Confirmed issues are prioritized for fix and release.
 * Users are informed when a security fix is available, with upgrade guidance in the release notes or advisory.
 
-## Scope Notes
+## Privacy, connections, and trust
 
-* The in-FreeCAD bridge listens on a **local socket only** when explicitly enabled by the user.
-* The optional MCP client binary is a separate process configured by the user in their AI agent or MCP client.
-* Arbitrary Python execution inside FreeCAD is an intended capability while the bridge is enabled; treat bridge access as equivalent to running macros in your FreeCAD session.
+See [README § Privacy & connections](README.md#privacy--connections) for how the bridge, MCP server, and MCP client interact, and what runs locally vs through your AI client.
