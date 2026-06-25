@@ -2,7 +2,7 @@
 
 This document describes the GitHub Actions workflow that installs a tagged release through FreeCAD's Addon Manager, restarts FreeCAD, and verifies that the addon auto-initializes and the local socket bridge works end-to-end.
 
-For release tagging, Index updates, and maintainer terms, see [MAINTAINING.md](MAINTAINING.md).
+For release tagging, Index updates, and GitHub workflows, see [MAINTAINING.md](MAINTAINING.md).
 
 ---
 
