@@ -18,7 +18,7 @@ For install-verify CI details (scripts, logs, triggers), see **[TESTING.md](TEST
 
 ## Versioning at a glance
 
-Versions are **`x.y.z`** everywhere — e.g. **`0.1.12`** in `package.xml` and `rust_mcp_server/Cargo.toml`.
+The shipped version is **`x.y.z`** — e.g. **`0.1.12`** in `package.xml` and `rust_mcp_server/Cargo.toml` (kept in sync).
 
 | Part | In `0.1.12` | Who changes it |
 |------|-------------|----------------|
