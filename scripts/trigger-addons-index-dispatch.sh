@@ -68,6 +68,25 @@ find_open_pr() {
     --jq '.[0].url // empty'
 }
 
+open_upstream_pr() {
+  local pr_body
+  pr_body="$(cat <<EOF
+Automated Index update from [CREATeNG/freecad-mcp-bridge](https://github.com/CREATeNG/freecad-mcp-bridge) release \`${RELEASE_TAG}\`.
+
+- Entry: \`${ADDONS_INDEX_ENTRY_ID}\`
+- Updates \`git_ref\`, \`branch_display_name\`, and \`zip_url\`
+
+FreeCAD Addon Index maintainers review and merge.
+EOF
+)"
+  GH_TOKEN="$ADDONS_INDEX_DISPATCH_TOKEN" gh pr create \
+    --repo "$ADDONS_INDEX_UPSTREAM_REPO" \
+    --head "${ADDONS_INDEX_FORK_REPO%%/*}:${BRANCH}" \
+    --base main \
+    --title "Index: ${ADDONS_INDEX_ENTRY_ID} ${RELEASE_TAG}" \
+    --body "$pr_body"
+}
+
 if [[ -z "${ADDONS_INDEX_DISPATCH_TOKEN:-}" ]]; then
   write_release_notes "skipped" \
     "No automated Index PR — \`ADDONS_INDEX_DISPATCH_TOKEN\` is not configured on this repository."
@@ -117,24 +136,42 @@ if [[ -z "$run_id" ]]; then
   exit 0
 fi
 
+fork_ok=true
 if ! GH_TOKEN="$ADDONS_INDEX_DISPATCH_TOKEN" gh run watch "$run_id" --repo "$ADDONS_INDEX_FORK_REPO" --exit-status; then
+  fork_ok=false
+  echo "Fork index workflow failed (run ${run_id}); will still try opening upstream PR if branch exists." >&2
+fi
+
+pr_url="$(find_open_pr "$RELEASE_GH_TOKEN" || true)"
+if [[ -n "$pr_url" ]]; then
+  write_release_notes "existing" \
+    "Index update PR already open: ${pr_url}"
+  set_output index_pr_status existing
+  set_output index_pr_url "$pr_url"
+  exit 0
+fi
+
+encoded_branch="${BRANCH//\//%2F}"
+if [[ "$fork_ok" == "true" ]] || GH_TOKEN="$ADDONS_INDEX_DISPATCH_TOKEN" gh api \
+  "repos/${ADDONS_INDEX_FORK_REPO}/git/ref/heads/${encoded_branch}" >/dev/null 2>&1; then
+  if pr_url="$(open_upstream_pr 2>/dev/null || true)" && [[ -n "$pr_url" ]]; then
+    write_release_notes "opened" \
+      "Opened Index update PR — FreeCAD Addon Index maintainers review and merge: ${pr_url}"
+    set_output index_pr_status opened
+    set_output index_pr_url "$pr_url"
+    exit 0
+  fi
+fi
+
+if [[ "$fork_ok" != "true" ]]; then
   write_release_notes "failed" \
-    "Index workflow failed on [\`${ADDONS_INDEX_FORK_REPO}\`](https://github.com/${ADDONS_INDEX_FORK_REPO}/actions/runs/${run_id})."
+    "Index branch workflow failed on [\`${ADDONS_INDEX_FORK_REPO}\`](https://github.com/${ADDONS_INDEX_FORK_REPO}/actions/runs/${run_id}); upstream PR not opened."
   set_output index_pr_status failed
   set_output index_pr_url ""
   exit 1
 fi
 
-pr_url="$(find_open_pr "$RELEASE_GH_TOKEN" || true)"
-if [[ -n "$pr_url" ]]; then
-  write_release_notes "opened" \
-    "Opened Index update PR — FreeCAD Addon Index maintainers review and merge: ${pr_url}"
-  set_output index_pr_status opened
-  set_output index_pr_url "$pr_url"
-  exit 0
-fi
-
 write_release_notes "unchanged" \
-  "Index workflow completed; \`${RELEASE_TAG}\` is already listed or no PR was required. Fork run: https://github.com/${ADDONS_INDEX_FORK_REPO}/actions/runs/${run_id}"
+  "Index entry already lists \`${RELEASE_TAG}\`; no upstream PR opened. Fork run: https://github.com/${ADDONS_INDEX_FORK_REPO}/actions/runs/${run_id}"
 set_output index_pr_status unchanged
 set_output index_pr_url ""
