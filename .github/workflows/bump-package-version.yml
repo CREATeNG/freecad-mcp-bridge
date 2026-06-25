@@ -13,8 +13,8 @@ jobs:
     name: Increment package.xml patch
     runs-on: ubuntu-latest
     if: >-
-      !startsWith(github.event.head_commit.message, 'chore: bump package.xml z to ') &&
-      !contains(github.event.head_commit.message, '[skip version]')
+      contains(github.event.head_commit.message, '[bump version]') &&
+      !startsWith(github.event.head_commit.message, 'chore: bump package.xml z to ')
     steps:
       - name: Checkout main
         uses: actions/checkout@v4

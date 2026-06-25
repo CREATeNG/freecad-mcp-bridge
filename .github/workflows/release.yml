@@ -132,7 +132,7 @@ jobs:
           if git diff --staged --quiet; then
             echo "bin/ already up to date on main"
           else
-            git commit -m "Sync release binaries for ${{ steps.version.outputs.tag }} [skip version]"
+            git commit -m "Sync release binaries for ${{ steps.version.outputs.tag }}"
           fi
 
       - name: Push release candidate to main

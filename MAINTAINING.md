@@ -14,7 +14,7 @@ For install-verify CI details (scripts, logs, workflow triggers), see **[TESTING
 
 | Do | Don't |
 |----|-------|
-| Merge to `main` (Actions bumps `z`), then run **Release** once | Create release tags by hand or edit `package.xml` patch (`z`) |
+| Merge to `main`, then run **Release** once when ready | Create release tags by hand or edit `package.xml` patch (`z`) |
 | Let Release sync `bin/`, verify, tag `v{x.y.z}`, and publish | Re-run **Release** for a tag that already exists (workflow fails) |
 | Use **Release install verify** (`workflow_dispatch`) to test CI while developing on `main` | Expect install-verify alone to create or move tags |
 
@@ -40,9 +40,18 @@ For install-verify CI details (scripts, logs, workflow triggers), see **[TESTING
 | Part | Who sets it |
 |------|-------------|
 | **`x.y`** | Maintainers (rarely — e.g. new minor line) |
-| **`z` (patch)** | **GitHub Actions only** — `.github/workflows/bump-package-version.yml` increments `z` and `<date>` on each push to `main` |
+| **`z` (patch)** | **GitHub Actions only** — see below |
 
-Do **not** hand-edit `z` in `package.xml`. Release binary sync commits use `[skip version]` so they do not advance `z` again.
+Do **not** hand-edit `z` in `package.xml`.
+
+### When `z` advances
+
+| Trigger | Mechanism |
+|---------|-----------|
+| **Post-release (automatic)** | `release-publish-orchestrator.sh` bumps `z` on `main` after tagging (starts the next dev line) |
+| **Opt-in on push** | Include **`[bump version]`** in a commit message pushed to `main` → `.github/workflows/bump-package-version.yml` increments `z` and `<date>` |
+
+Ordinary pushes **do not** bump `z`. Use `[bump version]` only when you deliberately want `main` to move to the next patch before the next release (uncommon).
 
 Index `git_ref` is the tag name (`v0.1.12`), matching `package.xml` by convention.
 
@@ -74,8 +83,7 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-  dev[Develop on main] --> bump[Actions: z++ on push]
-  bump --> dispatch[Run Release workflow]
+  dev[Develop on main] --> dispatch[Run Release workflow]
   dispatch --> shipped[v x.y.z + GitHub Release]
   shipped --> postverify[Post-tag install-verify]
   postverify --> index[Index PR to FreeCAD/Addons]
@@ -84,7 +92,7 @@ flowchart LR
 **Release workflow order** (`.github/workflows/release.yml`):
 
 1. **CI build** — Rust MCP binaries (Linux, macOS, Windows) in parallel.
-2. **Prepare** — download artifacts, install into `bin/`, read `x.y.z` from `package.xml`, verify the tag does not already exist, commit `bin/` to `main` if changed (`[skip version]`), **push `main`**.
+2. **Prepare** — download artifacts, install into `bin/`, read `x.y.z` from `package.xml`, verify the tag does not already exist, commit `bin/` to `main` if changed, **push `main`**.
 3. **Install verify (hard gate)** — full Addon Manager install + restart verify on all three OSes against `main` (`install_mode: main`). **No tag if this fails.**
 4. **Publish orchestrator** — `scripts/release-publish-orchestrator.sh` only (`RELEASE_PUBLISH_AUTHORIZED=true`): create and push tag `v{x.y.z}` on the verified commit, then bump `z` on `main` for the next dev cycle. Workflow then creates GitHub Release + assets.
 
@@ -111,7 +119,7 @@ If Rust sources did not change, the prepare commit step may be a no-op, but veri
 ## Publishing a release (checklist)
 
 1. Merge finished work into `main` (topic branches for larger changes).
-2. Ensure `main` is at the intended `x.y.z` (orchestrator bumps `z` after release; avoid extra pushes before release if you need a specific version).
+2. Ensure `package.xml` on `main` is the version you intend to ship (e.g. `0.1.12`). Ordinary pushes do not advance `z`; the orchestrator bumps after release.
 3. GitHub → **Actions** → **Release** → **Run workflow** (branch: **`main`** only).
 4. Wait for post-tag **Release install verify** on the new `v*` tag.
 5. When listed in the Index, update the Addons entry (see below).
