@@ -145,7 +145,7 @@ jobs:
   install_verify:
     name: Install verify (release gate)
     needs: prepare
-    uses: ./.github/workflows/install-verify-reusable.yml
+    uses: ./.github/workflows/install-verify.yml
     with:
       install_mode: main
       install_tag: ${{ needs.prepare.outputs.tag }}

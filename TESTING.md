@@ -8,7 +8,7 @@ For release tagging, Index updates, and maintainer terms, see [MAINTAINING.md](M
 
 ## Overview
 
-The **install-verify workflow** ([`release-install-verify.yml`](.github/workflows/release-install-verify.yml)) runs on three platforms in parallel:
+The **install-verify workflow** ([`install-verify.yml`](.github/workflows/install-verify.yml)) runs on three platforms in parallel:
 
 | Platform | FreeCAD install | Display / GUI |
 |----------|-----------------|---------------|
@@ -30,7 +30,7 @@ Shared helpers live in `scripts/test_install_common.py`.
 | Trigger | Tag / mode | Typical use |
 |---------|------------|-------------|
 | `workflow_dispatch` | Inputs: `tag` (e.g. `v0.1.11`), `mode` (`tag` or `index_zip`) | Test CI against a tag before or after release; iterate on scripts on `main` |
-| `push` of `v*` tag | Tag = pushed ref; mode = `tag` | Automatic check after **`release.yml`** creates a tag |
+| `push` of `v*` tag | Tag = pushed ref; mode = `tag` | Post-tag check after **`release.yml`** creates a tag |
 
 Environment variables set by the workflow (overridable locally when debugging):
 
@@ -73,10 +73,10 @@ Install-verify is a **hard prerequisite** for tag creation. In **`release.yml`**
 
 1. **Build** Rust binaries (matrix).
 2. **Prepare** — sync `bin/` to `main`, commit if needed, **push `main`** (no tag yet).
-3. **Install verify** — reusable job with `install_mode: main` and `fail_fast: true`. If any OS fails, **`release.yml`** stops here.
+3. **Install verify** — calls **`install-verify.yml`** with `install_mode: main` and `fail_fast: true`. If any OS fails, **`release.yml`** stops here.
 4. **Publish script** — only after verify passes: `release-publish-orchestrator.sh` creates and pushes the tag, bumps patch on `main`; **`release.yml`** then publishes the **GitHub Release** + assets.
 
-A tag push still triggers **`release-install-verify.yml`** separately as a post-ship check (`install_mode: tag`).
+A tag push still triggers **`install-verify.yml`** again as a post-ship check (`install_mode: tag`).
 
 ---
 
@@ -209,8 +209,7 @@ bash scripts/publish_ci_log.sh /tmp/freecad-ci-verify.log "Verify addon after re
 
 | File | Role |
 |------|------|
-| `.github/workflows/install-verify-reusable.yml` | Reusable verify job (called by `release.yml` and install-verify workflow) |
-| `.github/workflows/release-install-verify.yml` | Standalone dispatch / post-tag verify |
+| `.github/workflows/install-verify.yml` | Pre-tag gate (`workflow_call` from `release.yml`), post-tag (`v*` push), or `workflow_dispatch` |
 | `scripts/ci_run_freecad.sh` | FreeCAD launcher + timeout + log path |
 | `scripts/publish_ci_log.sh` | Log file → GitHub annotations |
 | `scripts/test_install.py` | Addon Manager install phase |

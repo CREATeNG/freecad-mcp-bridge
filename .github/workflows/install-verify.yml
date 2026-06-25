@@ -1,4 +1,4 @@
-name: Install verify (reusable)
+name: Install verify
 
 on:
   workflow_call:
@@ -16,6 +16,24 @@ on:
         required: false
         type: boolean
         default: false
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to install and verify
+        required: true
+        default: v0.1.11
+      mode:
+        description: Install mode (tag, index_zip, or main)
+        required: true
+        default: tag
+        type: choice
+        options:
+          - tag
+          - index_zip
+          - main
+  push:
+    tags:
+      - "v*"
 
 permissions:
   contents: read
@@ -26,8 +44,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
-      RELEASE_INSTALL_TAG: ${{ inputs.install_tag }}
-      RELEASE_INSTALL_MODE: ${{ inputs.install_mode }}
+      RELEASE_INSTALL_TAG: ${{ inputs.install_tag || github.event.inputs.tag || github.ref_name }}
+      RELEASE_INSTALL_MODE: ${{ inputs.install_mode || github.event.inputs.mode || 'tag' }}
       RELEASE_INSTALL_REPO: https://github.com/CREATeNG/freecad-mcp-bridge
       RELEASE_INSTALL_NAME: freecad-mcp-bridge
       RELEASE_INSTALL_GUI_DELAY_MS: "5000"
@@ -35,7 +53,7 @@ jobs:
       RELEASE_INSTALL_SOCKET_TIMEOUT_MS: "30000"
       RELEASE_INSTALL_WAIT_MS: "180000"
     strategy:
-      fail-fast: ${{ inputs.fail_fast }}
+      fail-fast: ${{ inputs.fail_fast == true }}
       matrix:
         include:
           - os: ubuntu-latest
