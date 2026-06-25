@@ -105,7 +105,7 @@ There is no standalone tag script. Tag creation and post-release patch bump are 
 
 Pushing the release tag still triggers `release-install-verify.yml` as a post-release check (`install_mode: tag`).
 
-**Next shipped line:** `0.1.12` (Index listing request [#70](https://github.com/FreeCAD/Addons/issues/70) references `v0.1.11`). Do not re-run Release for `v0.1.11`.
+**Next shipped line:** `0.1.12` (Index listing request [#70](https://github.com/FreeCAD/Addons/issues/70) references `v0.1.11`). Re-running **Release** while `package.xml` still says `0.1.11` will fail at **prepare** — `v0.1.11` already exists.
 
 If Rust sources did not change, the prepare commit step may be a no-op, but verify and publish still run against current `main`.
 
@@ -129,7 +129,7 @@ If Rust sources did not change, the prepare commit step may be a no-op, but veri
 4. Wait for post-tag **Release install verify** on the new `v*` tag.
 5. When listed in the Index, update the Addons entry (see below).
 
-Do not reuse a version number. Do not re-run Release for an existing tag (e.g. **v0.1.11**).
+**Duplicate versions are blocked.** **Release** reads `package.xml`, checks that `v{x.y.z}` does not already exist (**prepare**), and checks again before tagging (**publish orchestrator**). If the tag is already on GitHub, the workflow fails — no second tag, no partial publish. After a successful release, the post-release patch bump on `main` moves you to the next line (e.g. `0.1.13`); run **Release** again only when that is the version you intend to ship.
 
 ---
 
