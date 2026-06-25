@@ -129,7 +129,7 @@ fi
 pr_url="$(find_open_pr "$RELEASE_GH_TOKEN" || true)"
 if [[ -n "$pr_url" ]]; then
   write_release_notes "opened" \
-    "Opened Index update PR (human review required): ${pr_url}"
+    "Opened Index update PR — FreeCAD Addon Index maintainers review and merge: ${pr_url}"
   set_output index_pr_status opened
   set_output index_pr_url "$pr_url"
   exit 0

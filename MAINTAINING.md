@@ -91,7 +91,7 @@ flowchart TD
 flowchart LR
   dev[Develop on main] --> dispatch[Run release.yml]
   dispatch --> shipped[release.yml complete]
-  shipped --> index[FreeCAD Addon Index PR — review and merge]
+  shipped --> index[Index maintainers merge PR on FreeCAD/Addons]
 ```
 
 **`release.yml` job order:**
@@ -126,7 +126,7 @@ If Rust sources did not change, the prepare commit step may be a no-op, but veri
 2. Ensure `package.xml` on `main` is the version you intend to ship (e.g. `0.1.12`). Ordinary pushes do not advance the patch number; the **release orchestrator** bumps the patch after a successful ship.
 3. GitHub → **Actions** → **Release Orchestrator** → **Run workflow** — runs **`release.yml`** (branch: **`main`** only).
 4. Wait for **`release.yml`** to finish (includes tag-path install-verify before the patch bump).
-5. Review the automated Index PR linked from the GitHub Release (or open one manually — see below).
+5. Confirm the automated Index PR was opened (link on the GitHub Release). **FreeCAD Addon Index maintainers** review and merge it on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) — you do not merge upstream yourself.
 
 **Duplicate versions are blocked.** **`release.yml`** reads `package.xml`, checks that `v{x.y.z}` does not already exist (**prepare**), and **publish** checks again before tagging. If the tag is already on GitHub, **`release.yml`** fails — no second tag, no partial publish. After shipping one version, the post-release patch bump on `main` moves you to the next line (e.g. `0.1.13`); run **`release.yml`** again only when that is the version you intend to ship.
 
@@ -149,7 +149,7 @@ Guides: [Publishing (Indexed)](https://freecad.github.io/Addon-Academy/Guides/Pu
 
 1. Run **`release.yml`** → new `v{version}` tag.
 2. Confirm **`release.yml`** completed successfully (includes tag-path install-verify and **Addons Index PR** job).
-3. Review and merge the automated PR on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) (link on the GitHub Release notes). FreeCAD Addon Index maintainers still approve the merge.
+3. Confirm the automated PR on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) (link on the GitHub Release notes). You can review it; **FreeCAD Addon Index maintainers** merge upstream — same as any external contributor PR.
 
 **One-time setup:**
 
