@@ -2,13 +2,13 @@
 
 This document describes the GitHub Actions workflow that installs a tagged release through FreeCAD's Addon Manager, restarts FreeCAD, and verifies that the addon auto-initializes and the local socket bridge works end-to-end.
 
-For release tagging, Index updates, and maintainer workflow, see [MAINTAINING.md](MAINTAINING.md).
+For release tagging, Index updates, and maintainer terms, see [MAINTAINING.md](MAINTAINING.md).
 
 ---
 
 ## Overview
 
-The **Release install verify** workflow (`.github/workflows/release-install-verify.yml`) runs on three platforms in parallel:
+The **install-verify workflow** ([`release-install-verify.yml`](.github/workflows/release-install-verify.yml)) runs on three platforms in parallel:
 
 | Platform | FreeCAD install | Display / GUI |
 |----------|-----------------|---------------|
@@ -30,7 +30,7 @@ Shared helpers live in `scripts/test_install_common.py`.
 | Trigger | Tag / mode | Typical use |
 |---------|------------|-------------|
 | `workflow_dispatch` | Inputs: `tag` (e.g. `v0.1.11`), `mode` (`tag` or `index_zip`) | Test CI against a tag before or after release; iterate on scripts on `main` |
-| `push` of `v*` tag | Tag = pushed ref; mode = `tag` | Automatic gate after the Release workflow creates a tag |
+| `push` of `v*` tag | Tag = pushed ref; mode = `tag` | Automatic check after **`release.yml`** creates a tag |
 
 Environment variables set by the workflow (overridable locally when debugging):
 
@@ -63,20 +63,20 @@ Use this mode to validate the same artifact shape the FreeCAD Addon Index serves
 
 ### `main`
 
-Addon Manager installs from the repository URL with `branch=main`. Used by the **Release workflow gate**: after `bin/` is pushed to `main` but **before** the release tag is created, install-verify runs against the release candidate on `main`. `RELEASE_INSTALL_TAG` still supplies the expected `package.xml` version for on-disk checks.
+Addon Manager installs from the repository URL with `branch=main`. Used by the **`release.yml` verify gate**: after `bin/` is pushed to `main` but **before** the release tag is created, install-verify runs against the release candidate on `main`. `RELEASE_INSTALL_TAG` still supplies the expected `package.xml` version for on-disk checks.
 
 ---
 
-## Release workflow gate
+## `release.yml` verify gate
 
-Install-verify is a **hard prerequisite** for tag creation. In `.github/workflows/release.yml`:
+Install-verify is a **hard prerequisite** for tag creation. In **`release.yml`**:
 
 1. **Build** Rust binaries (matrix).
 2. **Prepare** — sync `bin/` to `main`, commit if needed, **push `main`** (no tag yet).
-3. **Install verify** — reusable workflow with `install_mode: main` and `fail_fast: true`. If any OS fails, the workflow stops here.
-4. **Publish orchestrator** — only after verify passes: `release-publish-orchestrator.sh` creates and pushes the tag, bumps `z` on `main`; workflow then publishes GitHub Release + assets.
+3. **Install verify** — reusable job with `install_mode: main` and `fail_fast: true`. If any OS fails, **`release.yml`** stops here.
+4. **Publish script** — only after verify passes: `release-publish-orchestrator.sh` creates and pushes the tag, bumps patch on `main`; **`release.yml`** then publishes the **GitHub Release** + assets.
 
-A tag push still triggers `release-install-verify.yml` separately as a post-release sanity check (`install_mode: tag`).
+A tag push still triggers **`release-install-verify.yml`** separately as a post-ship check (`install_mode: tag`).
 
 ---
 
@@ -209,7 +209,7 @@ bash scripts/publish_ci_log.sh /tmp/freecad-ci-verify.log "Verify addon after re
 
 | File | Role |
 |------|------|
-| `.github/workflows/install-verify-reusable.yml` | Reusable verify job (called by Release gate and standalone workflow) |
+| `.github/workflows/install-verify-reusable.yml` | Reusable verify job (called by `release.yml` and install-verify workflow) |
 | `.github/workflows/release-install-verify.yml` | Standalone dispatch / post-tag verify |
 | `scripts/ci_run_freecad.sh` | FreeCAD launcher + timeout + log path |
 | `scripts/publish_ci_log.sh` | Log file → GitHub annotations |

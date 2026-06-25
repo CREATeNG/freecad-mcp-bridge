@@ -26,7 +26,7 @@ Compile the MCP client binary yourself (instead of using the prebuilt files in `
 4. The compiled executable will be located at:
    `rust_mcp_server/target/release/freecad-mcp-bridge.exe` (or `freecad-mcp-bridge` on Unix).
 
-This is a **local, single-machine** build. Maintainers produce multi-platform `bin/` artifacts via the Release workflow — see [MAINTAINING.md](MAINTAINING.md).
+This is a **local, single-machine** build. Maintainers produce multi-platform `bin/` artifacts via **`release.yml`** — see [MAINTAINING.md](MAINTAINING.md).
 
 ---
 

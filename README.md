@@ -113,7 +113,7 @@ Repeat step 4 each session you need the bridge (there is no toolbar toggle on th
 | If you are… | Start here |
 |-------------|------------|
 | **Developers** | [DEVELOPMENT.md](DEVELOPMENT.md) — Rust/Python MCP, `send_cmd`, macro |
-| **Cutting releases or updating the Index** | [MAINTAINING.md](MAINTAINING.md) — versioning, Release workflow, Index |
+| **Cutting releases or updating the Index** | [MAINTAINING.md](MAINTAINING.md) — versioning, `release.yml`, Index |
 | **CI / install-verify automation** | [TESTING.md](TESTING.md) — FreeCAD test scripts and workflows |
 
 **Repository layout:** `freecad/mcp_bridge/` (addon Python), `bin/` (prebuilt MCP server per OS), `package.xml` (Addon Manager metadata). Tagged releases (`v0.1.x`) are complete install snapshots; `main` may be ahead of the latest tag. See [MAINTAINING.md](MAINTAINING.md) for release policy.
