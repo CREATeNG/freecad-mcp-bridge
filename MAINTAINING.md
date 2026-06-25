@@ -33,26 +33,26 @@ Versions are **`x.y.z`** everywhere — e.g. **`0.1.12`** in `package.xml` and `
 
 ## Release tags
 
-**Index releases are tagged by the release orchestrator workflow** (`release.yml`). It gives FreeCAD Index maintainers a verified snapshot: `bin/` synced to `main`, install-verify green on three OSes, then tag (with release notes on GitHub). Manual tags are fine for experiments or other uses — only tags from **`release.yml`** should be proposed as `git_ref` values on [FreeCAD/Addons](https://github.com/FreeCAD/Addons).
+**Releases for the FreeCAD Addon Index** are tagged by the **release orchestrator workflow** (`release.yml`). It produces a verified snapshot for listing: `bin/` synced to `main`, install-verify green on three OSes, then tag (with release notes on GitHub). Manual tags are fine for experiments or other uses — only tags from **`release.yml`** should be proposed as `git_ref` values on [FreeCAD/Addons](https://github.com/FreeCAD/Addons).
 
 | Do | Don't |
 |----|-------|
-| Run **`release.yml`** when shipping a version to the Index | Point the Index at a tag that skipped install-verify or lacks synced `bin/` |
+| Run **`release.yml`** when shipping a version for the FreeCAD Addon Index | Point a FreeCAD Addon Index listing at a tag that skipped install-verify or lacks synced `bin/` |
 | Merge to `main`, then run **`release.yml`** once when ready | Edit the patch number in `package.xml` by hand |
 | Let the **release orchestrator** sync `bin/`, verify, tag (e.g. `v0.1.12`), and publish | Re-run **`release.yml`** for a tag that already exists (fails at prepare) |
 | Use the **install-verify workflow** (`workflow_dispatch`) to test CI on `main` | Expect install-verify alone to create or move tags |
 
-**Why Index cares:** The tag must point at a commit that already has synced `bin/` — Python sources, `package.xml`, and prebuilt clients in the repo tree (and in the tag zip). Prepare and verify run *before* the tag. Tags created before this process (before **v0.1.11**) pointed at commits missing synced binaries and are **not** suitable as `git_ref` values.
+**FreeCAD Addon Index Qualities:** A listed `git_ref` must point at a complete, installable snapshot per [Index Qualities](https://freecad.github.io/Addon-Academy/Topics/Addon-Index/Index/Qualities.html) — Python sources, `package.xml`, and prebuilt `bin/` clients in the repo tree (and in the tag zip). Prepare and verify run before the tag. Tags created before this process (before **v0.1.11**) pointed at commits missing synced binaries and are not suitable for listing.
 
 **v0.1.11** is the first complete tag in this model.
 
 ---
 
-## Branches, tags, and the Index
+## Branches, tags, and the FreeCAD Addon Index
 
 * **`main`** is the development branch. It may be ahead of the latest shipped release.
 * **Version tags** (`v0.1.11`, etc.) are the authoritative install snapshots.
-* This project uses **[Alternative 1: Tagged Releases](https://freecad.github.io/Addon-Academy/Guides/Publishing/Indexed)** for the [FreeCAD Addon Index](https://github.com/FreeCAD/Addons): the Index pins a specific tag via `git_ref`, not rolling `main`.
+* This project uses **[Alternative 1: Tagged Releases](https://freecad.github.io/Addon-Academy/Guides/Publishing/Indexed)** on the [FreeCAD Addon Index](https://github.com/FreeCAD/Addons): each listing pins a specific tag via `git_ref`, not rolling `main`.
 * First listing request: [FreeCAD/Addons #70](https://github.com/FreeCAD/Addons/issues/70) (open as of 2026-06-23).
 
 ---
@@ -66,7 +66,7 @@ Versions are **`x.y.z`** everywhere — e.g. **`0.1.12`** in `package.xml` and `
 
 Ordinary pushes do not change `package.xml`. Run **Bump package version** from Actions only when you deliberately want `main` on the next patch before shipping again (uncommon).
 
-Index `git_ref` is the tag name (`v0.1.12`), matching `package.xml` by convention.
+FreeCAD Addon Index `git_ref` is the tag name (`v0.1.12`), matching `package.xml` by convention.
 
 ---
 
@@ -89,7 +89,7 @@ flowchart TD
   gh --> postverify[install_verify tag path]
   postverify -->|fail| stop2[No patch bump]
   postverify -->|pass| zbump[post-release patch bump on main]
-  zbump --> index[Index PR — planned]
+  zbump --> index[FreeCAD Addon Index PR — planned]
 ```
 
 ### End-to-end maintainer view
@@ -98,7 +98,7 @@ flowchart TD
 flowchart LR
   dev[Develop on main] --> dispatch[Run release.yml]
   dispatch --> shipped[release.yml complete]
-  shipped --> index[Index PR to FreeCAD/Addons]
+  shipped --> index[FreeCAD Addon Index PR]
 ```
 
 **`release.yml` job order:**
@@ -107,10 +107,10 @@ flowchart LR
 2. **Prepare** — download artifacts, install into `bin/`, read the version from `package.xml` (e.g. `0.1.12`), verify the tag does not already exist, commit `bin/` to `main` if changed, **push `main`**.
 3. **Install-verify** (pre-tag) — [`install-verify.yml`](.github/workflows/install-verify.yml) with `install_mode: main`: full Addon Manager install + restart verify on all three OSes against `main`. **No tag if this fails.**
 4. **Publish** — push the matching tag (e.g. `v0.1.12`) on the verified commit and create a **GitHub Release** for release notes (binaries stay in `bin/` on the tag — not uploaded separately). Uses [`release-publish-orchestrator.sh`](scripts/release-publish-orchestrator.sh) (`RELEASE_PUBLISH_AUTHORIZED=true`; not runnable standalone).
-5. **Install-verify** (tag path) — same workflow with `install_mode: tag`: final sanity check that install works from the tag ref (how Index/users install). **No patch bump if this fails.**
+5. **Install-verify** (tag path) — same workflow with `install_mode: tag`: final sanity check that install works from the tag ref (how the FreeCAD Addon Index and custom-repo users install). **No patch bump if this fails.**
 6. **Bump** — increment patch on `main` for the next dev cycle via [`bump-package-z.sh`](scripts/bump-package-z.sh).
 
-**Next shipped line:** `0.1.12` (Index listing request [#70](https://github.com/FreeCAD/Addons/issues/70) references `v0.1.11`). Re-running **`release.yml`** while `package.xml` still says `0.1.11` will fail at **prepare** — `v0.1.11` already exists.
+**Next shipped line:** `0.1.12` (FreeCAD Addon Index listing request [#70](https://github.com/FreeCAD/Addons/issues/70) references `v0.1.11`). Re-running **`release.yml`** while `package.xml` still says `0.1.11` will fail at **prepare** — `v0.1.11` already exists.
 
 If Rust sources did not change, the prepare commit step may be a no-op, but verify and publish still run against current `main`.
 
@@ -140,7 +140,7 @@ If Rust sources did not change, the prepare commit step may be a no-op, but veri
 
 ## FreeCAD Addon Index
 
-How **this repo's maintainers** request or update a listing. **Index maintainers** (the FreeCAD/Addons team) review and merge changes to `Data/Index.json` — a different role from maintaining this repository.
+How **this repo's maintainers** request or update a listing on the FreeCAD Addon Index. **FreeCAD Addon Index maintainers** (the [FreeCAD/Addons](https://github.com/FreeCAD/Addons) team) review and merge changes to `Data/Index.json` — a different role from maintaining this repository.
 
 Guides: [Publishing (Indexed)](https://freecad.github.io/Addon-Academy/Guides/Publishing/Indexed), [Updating](https://freecad.github.io/Addon-Academy/Guides/Maintaining/Updating), [Index Qualities](https://freecad.github.io/Addon-Academy/Topics/Addon-Index/Index/Qualities.html).
 
@@ -148,7 +148,7 @@ Guides: [Publishing (Indexed)](https://freecad.github.io/Addon-Academy/Guides/Pu
 
 1. Ensure a complete tag exists (via **`release.yml`**).
 2. Open an issue on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) (label **Addon - Addition**) — see [#70](https://github.com/FreeCAD/Addons/issues/70).
-3. Index maintainers review against Index Qualities; they may ask for a proper tagged release if the ref is incomplete.
+3. FreeCAD Addon Index maintainers review against [Index Qualities](https://freecad.github.io/Addon-Academy/Topics/Addon-Index/Index/Qualities.html); they may ask for a proper tagged release if the ref is incomplete.
 4. Entry is added to `Data/Index.json` (their PR or yours on FreeCAD/Addons).
 
 ### Updating after shipping a release
@@ -157,15 +157,15 @@ Guides: [Publishing (Indexed)](https://freecad.github.io/Addon-Academy/Guides/Pu
 2. Confirm **`release.yml`** completed successfully (includes tag-path install-verify).
 3. Open a PR on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) updating your entry's `git_ref`, `zip_url`, and `branch_display_name`.
 
-Helper — prints the three Index fields for a version:
+Helper — prints the three FreeCAD Addon Index fields for a version:
 
 ```bash
 bash scripts/bump-index.sh 0.1.12
 ```
 
-Index cache refresh can take up to **four hours** after the PR merges.
+FreeCAD Addon Index cache refresh can take up to **four hours** after the PR merges.
 
-**Planned:** automate step 3 as a final publish-leg step (open or update the Index PR after a green ship). Not implemented yet — manual PR for now.
+**Planned:** automate step 3 as a final publish-leg step (open or update the FreeCAD Addon Index PR after a green ship). Not implemented yet — manual PR for now.
 
 ---
 
