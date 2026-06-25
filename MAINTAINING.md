@@ -35,12 +35,11 @@ Versions use **`x.y.z`** — e.g. **`0.1.12`** in `package.xml` and `rust_mcp_se
 
 **Tagged releases prepared for submission to the FreeCAD Addon Index** are created by the **release orchestrator workflow** (`release.yml`). It produces a verified snapshot: `bin/` synced to `main`, install-verify green on three OSes, then tag (with release notes on GitHub). Manual tags are fine for experiments or other uses — only tags from **`release.yml`** should be proposed as `git_ref` values on [FreeCAD/Addons](https://github.com/FreeCAD/Addons).
 
-| Do | Don't |
-|----|-------|
-| Run **`release.yml`** when preparing a release for submission to the FreeCAD Addon Index | Point a FreeCAD Addon Index listing at a tag that skipped install-verify or lacks synced `bin/` |
-| Merge to `main`, then run **`release.yml`** once when ready | Edit the patch number in `package.xml` by hand |
-| Let the **release orchestrator** sync `bin/`, verify, tag (e.g. `v0.1.12`), and publish | Re-run **`release.yml`** for a tag that already exists (fails at prepare) |
-| Use the **install-verify workflow** (`workflow_dispatch`) to test CI on `main` | Expect install-verify alone to create or move tags |
+| Do | Enforced by the workflows |
+|----|---------------------------|
+| Run **`release.yml`** when preparing a release for submission to the FreeCAD Addon Index | `bin/` synced to `main` before tag; install-verify on `main`, then on the tag path; duplicate `v{x.y.z}` rejected at **prepare** and **publish**; patch bump only after tag-path verify passes |
+| Merge to `main`, then run **`release.yml`** once when ready | Runs on **`main`** only (branch guard in workflow) |
+| Use **Install verify** from Actions to test CI ad hoc | Does not create or move tags — shipping stays in **`release.yml`** |
 
 **FreeCAD Addon Index Qualities:** A listed `git_ref` must point at a complete, installable snapshot per the [FreeCAD Addon Index Qualities](https://freecad.github.io/Addon-Academy/Topics/Addon-Index/Index/Qualities.html) — Python sources, `package.xml`, and prebuilt `bin/` clients in the repo tree (and in the tag zip). Prepare and verify run before the tag. Tags created before this process (before **v0.1.11**) pointed at commits missing synced binaries and are not suitable for listing.
 
