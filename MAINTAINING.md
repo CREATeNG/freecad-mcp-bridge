@@ -8,14 +8,29 @@ For install-verify CI details (scripts, logs, workflow triggers), see **[TESTING
 
 ---
 
+## Versioning at a glance
+
+Versions are **`x.y.z`** everywhere — e.g. **`0.1.12`** in `package.xml` and `rust_mcp_server/Cargo.toml`.
+
+| Part | In `0.1.12` | Who changes it |
+|------|-------------|----------------|
+| **`x.y`** (major.minor line) | `0.1` | Maintainers, rarely |
+| **`z`** (patch) | `12` | GitHub Actions only |
+
+**Tag === version:** shipping `0.1.12` creates tag **`v0.1.12`**. After release, Actions bumps the patch on `main` (e.g. to `0.1.13`) for the next dev cycle.
+
+Do **not** hand-edit the patch number, `<date>` in `package.xml`, or `version` in `Cargo.toml`.
+
+---
+
 ## The big rule: never create release tags manually
 
 **Release tags are created only by the Release workflow** (`.github/workflows/release.yml`). Maintainers must not run `git tag` locally or create tags through the GitHub UI.
 
 | Do | Don't |
 |----|-------|
-| Merge to `main`, then run **Release** once when ready | Create release tags by hand or edit `package.xml` patch (`z`) |
-| Let Release sync `bin/`, verify, tag `v{x.y.z}`, and publish | Re-run **Release** for a tag that already exists (workflow fails) |
+| Merge to `main`, then run **Release** once when ready | Create release tags by hand or edit the patch number in `package.xml` |
+| Let Release sync `bin/`, verify, tag (e.g. `v0.1.12`), and publish | Re-run **Release** for a tag that already exists (workflow fails) |
 | Use **Release install verify** (`workflow_dispatch`) to test CI while developing on `main` | Expect install-verify alone to create or move tags |
 
 **Why:** Each release tag must be a complete, installable snapshot — Python sources, `package.xml`, and prebuilt `bin/` clients — with `bin/` committed to `main` *before* the tag is applied. Tags created before this process (before **v0.1.11**) pointed at commits missing synced binaries and are **not** suitable as FreeCAD Index `git_ref` values.
@@ -33,26 +48,15 @@ For install-verify CI details (scripts, logs, workflow triggers), see **[TESTING
 
 ---
 
-## Version format (`package.xml`)
-
-**`x.y.z` everywhere** on `main` and on release tags — `package.xml` `<version>` and `rust_mcp_server/Cargo.toml` `[package].version` stay in sync. **Tag === version** (e.g. `0.1.12` → `v0.1.12`).
-
-| Part | Who sets it |
-|------|-------------|
-| **`x.y`** | Maintainers (rarely — e.g. new minor line) |
-| **`z` (patch)** | **GitHub Actions only** — see below |
-
-Do **not** hand-edit `z` or `<date>` in `package.xml`, or `version` in `Cargo.toml`.
-
-### When `package.xml` updates
+## When `package.xml` updates
 
 | Field | Trigger | Mechanism |
 |-------|---------|-----------|
 | **`<date>`** | **Every push to `main`** | `.github/workflows/update-package-xml-on-push.yml` sets `<date>` to today (UTC) |
-| **`z` (post-release)** | After Release tags | `release-publish-orchestrator.sh` bumps `z` and `<date>` |
-| **`z` (opt-in)** | **`[bump version]`** in commit message | Same push workflow increments `z` and `<date>` |
+| **Patch (post-release)** | After Release tags | `release-publish-orchestrator.sh` bumps patch + `<date>` (and syncs `Cargo.toml`) |
+| **Patch (opt-in)** | **`[bump version]`** in commit message | Same push workflow increments patch + `<date>` (and syncs `Cargo.toml`) |
 
-Ordinary pushes update `<date>` only. Use `[bump version]` only when you deliberately want `main` to move to the next patch before the next release (uncommon).
+Ordinary pushes update `<date>` only. Use `[bump version]` only when you deliberately want `main` on the next patch before the next release (uncommon).
 
 Index `git_ref` is the tag name (`v0.1.12`), matching `package.xml` by convention.
 
@@ -60,7 +64,7 @@ Index `git_ref` is the tag name (`v0.1.12`), matching `package.xml` by conventio
 
 ## Release workflow (orchestrator)
 
-**Release** (`.github/workflows/release.yml`) is the top-level orchestrator. You run it once; it owns build, verify gate, tag creation, and GitHub Release. The publish leg delegates tag + post-release `z` bump to `scripts/release-publish-orchestrator.sh` (workflow-only; not runnable standalone).
+**Release** (`.github/workflows/release.yml`) is the top-level orchestrator. You run it once; it owns build, verify gate, tag creation, and GitHub Release. The publish leg delegates tag creation + post-release patch bump to `scripts/release-publish-orchestrator.sh` (workflow-only; not runnable standalone).
 
 This is **not** the local `cargo build` described in [DEVELOPMENT.md](DEVELOPMENT.md). The `build` job below is a cross-platform CI matrix that produces release `bin/` artifacts.
 
@@ -73,8 +77,8 @@ flowchart TD
   verify -->|fail| stop[No tag / no release]
   verify -->|pass| pub[publish job]
   pub --> orch[release-publish-orchestrator.sh]
-  orch --> tag[tag + push v x.y.z]
-  orch --> zbump[bump z on main]
+  orch --> tag[tag + push e.g. v0.1.12]
+  orch --> zbump[bump patch on main]
   pub --> gh[GitHub Release + assets]
   tag --> postverify[post-tag install-verify]
   postverify --> index[Index PR — planned]
@@ -85,7 +89,7 @@ flowchart TD
 ```mermaid
 flowchart LR
   dev[Develop on main] --> dispatch[Run Release workflow]
-  dispatch --> shipped[v x.y.z + GitHub Release]
+  dispatch --> shipped[tag + GitHub Release]
   shipped --> postverify[Post-tag install-verify]
   postverify --> index[Index PR to FreeCAD/Addons]
 ```
@@ -93,11 +97,11 @@ flowchart LR
 **Release workflow order** (`.github/workflows/release.yml`):
 
 1. **CI build** — Rust MCP binaries (Linux, macOS, Windows) in parallel.
-2. **Prepare** — download artifacts, install into `bin/`, read `x.y.z` from `package.xml`, verify the tag does not already exist, commit `bin/` to `main` if changed, **push `main`**.
+2. **Prepare** — download artifacts, install into `bin/`, read the version from `package.xml` (e.g. `0.1.12`), verify the tag does not already exist, commit `bin/` to `main` if changed, **push `main`**.
 3. **Install verify (hard gate)** — full Addon Manager install + restart verify on all three OSes against `main` (`install_mode: main`). **No tag if this fails.**
-4. **Publish orchestrator** — `scripts/release-publish-orchestrator.sh` only (`RELEASE_PUBLISH_AUTHORIZED=true`): create and push tag `v{x.y.z}` on the verified commit, then bump `z` on `main` for the next dev cycle. Workflow then creates GitHub Release + assets.
+4. **Publish orchestrator** — `scripts/release-publish-orchestrator.sh` only (`RELEASE_PUBLISH_AUTHORIZED=true`): create and push the matching tag (e.g. `v0.1.12`) on the verified commit, then bump the patch on `main` for the next dev cycle. Workflow then creates GitHub Release + assets.
 
-There is no standalone tag script. Tag creation and post-release `z` bump are one guarded pass.
+There is no standalone tag script. Tag creation and post-release patch bump are one guarded pass.
 
 Pushing the release tag still triggers `release-install-verify.yml` as a post-release check (`install_mode: tag`).
 
@@ -120,7 +124,7 @@ If Rust sources did not change, the prepare commit step may be a no-op, but veri
 ## Publishing a release (checklist)
 
 1. Merge finished work into `main` (topic branches for larger changes).
-2. Ensure `package.xml` on `main` is the version you intend to ship (e.g. `0.1.12`). Ordinary pushes do not advance `z`; the orchestrator bumps after release.
+2. Ensure `package.xml` on `main` is the version you intend to ship (e.g. `0.1.12`). Ordinary pushes do not advance the patch number; the orchestrator bumps after release.
 3. GitHub → **Actions** → **Release** → **Run workflow** (branch: **`main`** only).
 4. Wait for post-tag **Release install verify** on the new `v*` tag.
 5. When listed in the Index, update the Addons entry (see below).
