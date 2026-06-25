@@ -1,6 +1,6 @@
 # MCP Bridge
 
-**MCP Bridge** gives AI tools access to your open FreeCAD session. A flexible, light, safe, and direct bridge by design.
+**MCP Bridge** gives AI tools access to your open FreeCAD session. A flexible, light, and direct bridge by design.
 
 **After you install:** restart FreeCAD, then click **MCP Bridge On/Off** on the toolbar. The bridge is off until you turn it on each session.
 
