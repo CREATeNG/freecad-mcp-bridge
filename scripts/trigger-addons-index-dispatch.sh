@@ -16,6 +16,7 @@ RELEASE_VERSION="${RELEASE_VERSION:-${RELEASE_TAG#v}}"
 ADDONS_INDEX_FORK_REPO="${ADDONS_INDEX_FORK_REPO:-CREATeNG/FreeCAD-Addons}"
 ADDONS_INDEX_UPSTREAM_REPO="${ADDONS_INDEX_UPSTREAM_REPO:-FreeCAD/Addons}"
 ADDONS_INDEX_ENTRY_ID="${ADDONS_INDEX_ENTRY_ID:-freecad-mcp-bridge}"
+ADDON_REPO_URL="${ADDON_REPO_URL:-https://github.com/CREATeNG/freecad-mcp-bridge}"
 INDEX_WORKFLOW_FILE="${INDEX_WORKFLOW_FILE:-index-release.yml}"
 BRANCH="index/${ADDONS_INDEX_ENTRY_ID}-${RELEASE_TAG}"
 WORK_ROOT="${RUNNER_TEMP:-/tmp}/addons-index-dispatch"
@@ -71,10 +72,14 @@ find_open_pr() {
 open_upstream_pr() {
   local pr_body
   pr_body="$(cat <<EOF
-Automated Index update from [CREATeNG/freecad-mcp-bridge](https://github.com/CREATeNG/freecad-mcp-bridge) release \`${RELEASE_TAG}\`.
+Automated Index update from [CREATeNG/freecad-mcp-bridge](${ADDON_REPO_URL}) release \`${RELEASE_TAG}\`.
 
 - Entry: \`${ADDONS_INDEX_ENTRY_ID}\`
 - Updates \`git_ref\`, \`branch_display_name\`, and \`zip_url\`
+
+**Repository:** ${ADDON_REPO_URL}
+**Tag / git_ref:** \`${RELEASE_TAG}\`
+**Zip URL:** ${ADDON_REPO_URL}/archive/refs/tags/${RELEASE_TAG}.zip
 
 FreeCAD Addon Index maintainers review and merge.
 EOF
