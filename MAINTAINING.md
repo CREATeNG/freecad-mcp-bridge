@@ -1,6 +1,6 @@
 # Maintainer guide — releases & CI
 
-Instructions for **project maintainers** who cut releases, manage versioning, and update the FreeCAD Addon Index.
+Instructions for **maintainers of this repository** who cut releases and manage versioning. Listing on the [FreeCAD Addon Index](https://github.com/FreeCAD/Addons) is covered below — that is a separate project with its own maintainers; this doc is for **this addon's** maintainers only.
 
 Developers should read **[DEVELOPMENT.md](DEVELOPMENT.md)**. End users should read **[README.md](README.md)**.
 
@@ -24,7 +24,7 @@ Versions are **`x.y.z`** everywhere — e.g. **`0.1.12`** in `package.xml` and `
 
 | Part | In `0.1.12` | Who changes it |
 |------|-------------|----------------|
-| **`x.y`** (major.minor line) | `0.1` | Maintainers, rarely |
+| **`x.y`** (major.minor line) | `0.1` | Repo maintainers, rarely |
 | **`z`** (patch) | `12` | GitHub Actions only |
 
 **Tag === version:** shipping `0.1.12` creates tag **`v0.1.12`**. On shipping a release, GitHub Actions automatically bumps the patch on `main` (e.g. to `0.1.13`) for the next dev cycle.
@@ -136,7 +136,7 @@ If Rust sources did not change, the prepare commit step may be a no-op, but veri
 2. Ensure `package.xml` on `main` is the version you intend to ship (e.g. `0.1.12`). Ordinary pushes do not advance the patch number; the **release orchestrator** bumps the patch after a successful ship.
 3. GitHub → **Actions** → **Release Orchestrator** → **Run workflow** — runs **`release.yml`** (branch: **`main`** only).
 4. Wait for the **install-verify workflow** on the new `v*` tag (runs automatically after the tag is pushed).
-5. When listed in the Index, update the Addons entry (see below).
+5. Open a PR on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) to update the listing (see below).
 
 **Duplicate versions are blocked.** **`release.yml`** reads `package.xml`, checks that `v{x.y.z}` does not already exist (**prepare**), and the **publish job** checks again before tagging. If the tag is already on GitHub, **`release.yml`** fails — no second tag, no partial publish. After shipping one version, the post-release patch bump on `main` moves you to the next line (e.g. `0.1.13`); run **`release.yml`** again only when that is the version you intend to ship.
 
@@ -144,14 +144,16 @@ If Rust sources did not change, the prepare commit step may be a no-op, but veri
 
 ## FreeCAD Addon Index
 
+How **this repo's maintainers** request or update a listing. **Index maintainers** (the FreeCAD/Addons team) review and merge changes to `Data/Index.json` — a different role from maintaining this repository.
+
 Guides: [Publishing (Indexed)](https://freecad.github.io/Addon-Academy/Guides/Publishing/Indexed), [Updating](https://freecad.github.io/Addon-Academy/Guides/Maintaining/Updating), [Index Qualities](https://freecad.github.io/Addon-Academy/Topics/Addon-Index/Index/Qualities.html).
 
 ### First listing
 
 1. Ensure a complete tag exists (via **`release.yml`**).
 2. Open an issue on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) (label **Addon - Addition**) — see [#70](https://github.com/FreeCAD/Addons/issues/70).
-3. Maintainers review against Index Qualities; they may ask for a proper tagged release if the ref is incomplete.
-4. Entry is added to `Data/Index.json` (maintainer or contributor PR).
+3. Index maintainers review against Index Qualities; they may ask for a proper tagged release if the ref is incomplete.
+4. Entry is added to `Data/Index.json` (their PR or yours on FreeCAD/Addons).
 
 ### Updating after shipping a release
 
