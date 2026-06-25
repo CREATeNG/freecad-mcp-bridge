@@ -23,9 +23,9 @@ Versions are **`x.y.z`** everywhere — e.g. **`0.1.12`** in `package.xml` and `
 
 ---
 
-## The big rule: never create release tags manually
+## Release tags
 
-**Release tags are created only by the Release workflow** (`.github/workflows/release.yml`). Maintainers must not run `git tag` locally or create tags through the GitHub UI.
+**Release tags are created automatically by the Release workflow** (`.github/workflows/release.yml`). Do not run `git tag` locally or create tags through the GitHub UI — manual tags bypass install-verify and synced `bin/`.
 
 | Do | Don't |
 |----|-------|
