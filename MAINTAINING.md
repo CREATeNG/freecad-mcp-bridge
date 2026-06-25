@@ -10,7 +10,7 @@ For install-verify CI details (scripts, logs, triggers), see **[TESTING.md](TEST
 
 | Term | Meaning |
 |------|---------|
-| **Release orchestrator workflow** | GitHub Actions workflow [`release.yml`](.github/workflows/release.yml) — build → verify → tag → **GitHub Release**. Actions UI: **Release** → Run workflow. |
+| **Release orchestrator workflow** | GitHub Actions workflow [`release.yml`](.github/workflows/release.yml) — build → verify → tag → **GitHub Release**. Actions UI: **Release Orchestrator** → Run workflow. |
 | **Publish script** | [`scripts/release-publish-orchestrator.sh`](scripts/release-publish-orchestrator.sh) — tag + post-release patch bump; runs inside `release.yml` only. |
 | **Install-verify workflow** | [`release-install-verify.yml`](.github/workflows/release-install-verify.yml) — standalone or post-tag install test. |
 | **Package-update workflow** | [`update-package-xml-on-push.yml`](.github/workflows/update-package-xml-on-push.yml) — updates `<date>` on every push; patch on `[bump version]`. |
@@ -141,7 +141,7 @@ If Rust sources did not change, the prepare commit step may be a no-op, but veri
 
 1. Merge finished work into `main` (topic branches for larger changes).
 2. Ensure `package.xml` on `main` is the version you intend to ship (e.g. `0.1.12`). Ordinary pushes do not advance the patch number; the publish script bumps after a successful ship.
-3. GitHub → **Actions** → **Release** → **Run workflow** — runs **`release.yml`** (branch: **`main`** only).
+3. GitHub → **Actions** → **Release Orchestrator** → **Run workflow** — runs **`release.yml`** (branch: **`main`** only).
 4. Wait for the **install-verify workflow** on the new `v*` tag (runs automatically after the tag is pushed).
 5. When listed in the Index, update the Addons entry (see below).
 

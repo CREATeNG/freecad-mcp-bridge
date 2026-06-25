@@ -1,4 +1,4 @@
-name: Release
+name: Release Orchestrator
 
 on:
   workflow_dispatch:
@@ -14,7 +14,7 @@ jobs:
       - name: Ensure running on main
         if: github.ref != 'refs/heads/main'
         run: |
-          echo "Release workflow must be run on the main branch."
+          echo "Release Orchestrator workflow must be run on the main branch."
           exit 1
 
       - name: Checkout code

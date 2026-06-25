@@ -10,7 +10,7 @@
 set -euo pipefail
 
 if [[ "${RELEASE_PUBLISH_AUTHORIZED:-}" != "true" ]]; then
-  echo "release-publish-orchestrator.sh is internal to the Release workflow." >&2
+  echo "release-publish-orchestrator.sh is internal to release.yml (Release Orchestrator)." >&2
   exit 2
 fi
 
