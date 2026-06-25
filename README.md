@@ -8,9 +8,9 @@ Let AI tools (Cursor, Claude Desktop, and similar) run Python inside your open F
 
 ---
 
-## Quick start
+## Quick start (Addon Manager)
 
-1. Click **Install** (you are already in Addon Manager if you are reading this).
+1. Click **Install** in Addon Manager.
 2. **Restart FreeCAD.** A **MCP Bridge** toolbar appears across workbenches.
 3. Click **MCP Bridge On/Off** in the window you want to control. Leave it on while an external tool should talk to FreeCAD.
 
