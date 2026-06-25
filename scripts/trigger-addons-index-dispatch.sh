@@ -154,13 +154,14 @@ fi
 encoded_branch="${BRANCH//\//%2F}"
 if [[ "$fork_ok" == "true" ]] || GH_TOKEN="$ADDONS_INDEX_DISPATCH_TOKEN" gh api \
   "repos/${ADDONS_INDEX_FORK_REPO}/git/ref/heads/${encoded_branch}" >/dev/null 2>&1; then
-  if pr_url="$(open_upstream_pr 2>/dev/null || true)" && [[ -n "$pr_url" ]]; then
+  if pr_url="$(open_upstream_pr)" && [[ -n "$pr_url" ]]; then
     write_release_notes "opened" \
       "Opened Index update PR — FreeCAD Addon Index maintainers review and merge: ${pr_url}"
     set_output index_pr_status opened
     set_output index_pr_url "$pr_url"
     exit 0
   fi
+  echo "Failed to open upstream Index PR for ${BRANCH}." >&2
 fi
 
 if [[ "$fork_ok" != "true" ]]; then

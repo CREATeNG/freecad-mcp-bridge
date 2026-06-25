@@ -137,7 +137,7 @@ Guides: [Updating](https://freecad.github.io/Addon-Academy/Guides/Maintaining/Up
 **Prerequisites** (already in place):
 
 * Fork: [`CREATeNG/FreeCAD-Addons`](https://github.com/CREATeNG/FreeCAD-Addons) ([`index-release.yml`](https://github.com/CREATeNG/FreeCAD-Addons/blob/main/.github/workflows/index-release.yml) on fork `main`).
-* Secret on **`CREATeNG/freecad-mcp-bridge`:** **`ADDONS_INDEX_DISPATCH_TOKEN`** — fine-grained PAT with **Actions: read and write** on `CREATeNG/FreeCAD-Addons` (triggers `workflow_dispatch`; does not need repo Admin).
+* Secret on **`CREATeNG/freecad-mcp-bridge`:** **`ADDONS_INDEX_DISPATCH_TOKEN`** — PAT that can **run Actions** on `CREATeNG/FreeCAD-Addons` and **open PRs** on `FreeCAD/Addons` (classic **`public_repo`** scope, or fine-grained with both repos).
 
 If automation is skipped or fails, use the local helper (prints fields only; does not edit any file):
 
