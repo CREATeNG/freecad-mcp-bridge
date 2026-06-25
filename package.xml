@@ -1,6 +1,6 @@
 <package format="1" xmlns="https://wiki.freecad.org/Package_Metadata">
     <name>MCP Bridge</name>
-    <description>Give AI access to your open FreeCAD session. Safely toggle the bridge on or off. Works with local MCP clients.</description>
+    <description>MCP Bridge gives AI tools access to your open FreeCAD session. Works with local MCP clients.</description>
     <version>0.1.14</version>
     <date>2026-06-25</date>
     <maintainer email="chris@createng.com">CREATeNG</maintainer>
