@@ -82,7 +82,7 @@ flowchart TD
   gh --> postverify[install_verify tag path]
   postverify -->|fail| stop2[No Index PR / no patch bump]
   postverify -->|pass| indexpr[addons_index_pr — dispatch fork workflow]
-  indexpr --> zbump[post-release patch bump on main]
+  postverify -->|pass| zbump[post-release patch bump on main]
 ```
 
 ### End-to-end maintainer view
@@ -125,7 +125,7 @@ If Rust sources did not change, the prepare commit step may be a no-op, but veri
 1. Merge finished work into `main` (topic branches for larger changes).
 2. Ensure `package.xml` on `main` is the version you intend to ship (e.g. `0.1.12`). Ordinary pushes do not advance the patch number; the **release orchestrator** bumps the patch after a successful ship.
 3. GitHub → **Actions** → **Release Orchestrator** → **Run workflow** — runs **`release.yml`** (branch: **`main`** only).
-4. Wait for **`release.yml`** to finish (includes tag-path install-verify before the patch bump).
+4. Wait for **`release.yml`** to finish (tag-path install-verify, **Addons Index PR** dispatch, and patch bump).
 5. Confirm the automated Index PR was opened (link on the GitHub Release). **FreeCAD Addon Index maintainers** review and merge it on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) — you do not merge upstream yourself.
 
 **Duplicate versions are blocked.** **`release.yml`** reads `package.xml`, checks that `v{x.y.z}` does not already exist (**prepare**), and **publish** checks again before tagging. If the tag is already on GitHub, **`release.yml`** fails — no second tag, no partial publish. After shipping one version, the post-release patch bump on `main` moves you to the next line (e.g. `0.1.13`); run **`release.yml`** again only when that is the version you intend to ship.

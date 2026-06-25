@@ -72,16 +72,9 @@ Addon Manager installs from the repository URL with `branch=main`. Used by the *
 **`release.yml`** calls **`install-verify.yml`** twice:
 
 1. **Pre-tag** (`install_mode: main`) — hard gate before tag creation. Fails **`release.yml`** if any OS fails.
-2. **Tag path** (`install_mode: tag`) — after tag and release notes; final sanity check that install works from the tag ref. Fails **`release.yml`** before the patch bump if any OS fails.
+2. **Tag path** (`install_mode: tag`) — after tag and release notes; final sanity check that install works from the tag ref. Fails **`release.yml`** before the Index PR dispatch and patch bump if any OS fails.
 
-Full **`release.yml`** order:
-
-1. **Build** Rust binaries (matrix).
-2. **Prepare** — sync `bin/` to `main`, commit if needed, **push `main`** (no tag yet).
-3. **Install verify** (pre-tag) — `install_mode: main`, `fail_fast: true`.
-4. **Publish** — push tag, create **GitHub Release** notes (`release-publish-orchestrator.sh`).
-5. **Install verify** (tag path) — `install_mode: tag`, `fail_fast: true`.
-6. **Bump** — patch on `main` (`bump-package-z.sh`).
+Full **`release.yml`** job order (build, publish, Index dispatch on [`CREATeNG/FreeCAD-Addons`](https://github.com/CREATeNG/FreeCAD-Addons), bump): see [MAINTAINING.md — `release.yml` job order](MAINTAINING.md#the-release-orchestrator-workflow-releaseyml).
 
 ---
 
