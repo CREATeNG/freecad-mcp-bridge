@@ -203,15 +203,15 @@ jobs:
           sparse-checkout: scripts
           sparse-checkout-cone-mode: false
 
-      - name: Open Index PR and update release notes
+      - name: Dispatch Index PR on fork and update release notes
         id: index_pr
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ADDONS_INDEX_PR_TOKEN: ${{ secrets.ADDONS_INDEX_PR_TOKEN }}
-          ADDONS_INDEX_PR_AUTHORIZED: "true"
+          ADDONS_INDEX_DISPATCH_TOKEN: ${{ secrets.ADDONS_INDEX_DISPATCH_TOKEN }}
+          ADDONS_INDEX_DISPATCH_AUTHORIZED: "true"
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
-        run: bash "${GITHUB_WORKSPACE}/scripts/open-addons-index-pr.sh"
+        run: bash "${GITHUB_WORKSPACE}/scripts/trigger-addons-index-dispatch.sh"
 
   bump:
     name: Bump development patch on main
