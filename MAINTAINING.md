@@ -19,7 +19,7 @@ Versions are **`x.y.z`** everywhere — e.g. **`0.1.12`** in `package.xml` and `
 
 **Tag === version:** shipping `0.1.12` creates tag **`v0.1.12`**. After release, Actions bumps the patch on `main` (e.g. to `0.1.13`) for the next dev cycle.
 
-Do **not** hand-edit the patch number, `<date>` in `package.xml`, or `version` in `Cargo.toml`.
+**Patch, `<date>`, and `Cargo.toml` `version` are Actions-managed** — let the push workflow and Release orchestrator update them. Edit **`x.y`** manually only when starting a new line (e.g. `0.1` → `0.2`).
 
 ---
 
