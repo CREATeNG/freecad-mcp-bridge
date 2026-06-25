@@ -2,6 +2,8 @@
 
 Let AI tools (Cursor, Claude Desktop, and similar) run Python inside your open FreeCAD session — locally, on your machine. Scripts, terminals, and other tools can use the same bridge without MCP.
 
+**MCP Bridge** gives AI tools access to your open FreeCAD session. A flexible, light, safe, and direct bridge by design.
+
 **After you install:** restart FreeCAD, then click **MCP Bridge On/Off** on the toolbar. The bridge is off until you turn it on each session.
 
 **Next step:** configure your AI agent to use the bundled MCP server (see [Configure the MCP server](#configure-the-mcp-server) below).
