@@ -17,7 +17,7 @@ Versions are **`x.y.z`** everywhere — e.g. **`0.1.12`** in `package.xml` and `
 | **`x.y`** (major.minor line) | `0.1` | Maintainers, rarely |
 | **`z`** (patch) | `12` | GitHub Actions only |
 
-**Tag === version:** shipping `0.1.12` creates tag **`v0.1.12`**. After release, Actions bumps the patch on `main` (e.g. to `0.1.13`) for the next dev cycle.
+**Tag === version:** shipping `0.1.12` creates tag **`v0.1.12`**. On cutting a release, GitHub Actions automatically bumps the patch on `main` (e.g. to `0.1.13`) for the next dev cycle.
 
 **Patch, `<date>`, and `Cargo.toml` `version` are GitHub Actions-managed** — the push workflow and Release orchestrator scripts automatically update them. Edit **`x.y`** manually only when starting a new line (e.g. `0.1` → `0.2`).
 
