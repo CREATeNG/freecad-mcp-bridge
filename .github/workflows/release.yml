@@ -143,7 +143,7 @@ jobs:
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   install_verify:
-    name: Install verify (release gate)
+    name: Install verify (pre-tag gate)
     needs: prepare
     uses: ./.github/workflows/install-verify.yml
     with:
@@ -152,7 +152,7 @@ jobs:
       fail_fast: true
 
   publish:
-    name: Tag and publish release
+    name: Tag and publish release notes
     needs: [prepare, install_verify]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
@@ -178,17 +178,33 @@ jobs:
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
         run: bash "${GITHUB_WORKSPACE}/scripts/release-publish-orchestrator.sh"
 
-      - name: Checkout main for post-release bump
+  install_verify_tag:
+    name: Install verify (tag path)
+    needs: [prepare, publish]
+    uses: ./.github/workflows/install-verify.yml
+    with:
+      install_mode: tag
+      install_tag: ${{ needs.prepare.outputs.tag }}
+      fail_fast: true
+
+  bump:
+    name: Bump development patch on main
+    needs: [prepare, install_verify_tag]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Configure git for bump
+      - name: Configure git
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --ff-only origin main
 
       - name: Bump development patch on main
         env:

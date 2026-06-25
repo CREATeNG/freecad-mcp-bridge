@@ -31,9 +31,6 @@ on:
           - tag
           - index_zip
           - main
-  push:
-    tags:
-      - "v*"
 
 permissions:
   contents: read

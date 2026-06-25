@@ -29,8 +29,8 @@ Shared helpers live in `scripts/test_install_common.py`.
 
 | Trigger | Tag / mode | Typical use |
 |---------|------------|-------------|
-| `workflow_dispatch` | Inputs: `tag` (e.g. `v0.1.11`), `mode` (`tag` or `index_zip`) | Test CI against a tag before or after release; iterate on scripts on `main` |
-| `push` of `v*` tag | Tag = pushed ref; mode = `tag` | Post-tag check after **`release.yml`** creates a tag |
+| `workflow_call` from **`release.yml`** | `install_mode: main` or `tag`; `install_tag` from prepare | Pre-tag gate (`main`) and post-tag sanity check (`tag` path) |
+| `workflow_dispatch` | Inputs: `tag` (e.g. `v0.1.11`), `mode` (`tag`, `index_zip`, or `main`) | Ad-hoc CI run; iterate on scripts |
 
 Environment variables set by the workflow (overridable locally when debugging):
 
@@ -67,16 +67,21 @@ Addon Manager installs from the repository URL with `branch=main`. Used by the *
 
 ---
 
-## `release.yml` verify gate
+## `release.yml` and install-verify
 
-Install-verify is a **hard prerequisite** for tag creation. In **`release.yml`**:
+**`release.yml`** calls **`install-verify.yml`** twice:
+
+1. **Pre-tag** (`install_mode: main`) — hard gate before tag creation. Fails **`release.yml`** if any OS fails.
+2. **Tag path** (`install_mode: tag`) — after tag and release notes; final sanity check that install works from the tag ref. Fails **`release.yml`** before the patch bump if any OS fails.
+
+Full **`release.yml`** order:
 
 1. **Build** Rust binaries (matrix).
 2. **Prepare** — sync `bin/` to `main`, commit if needed, **push `main`** (no tag yet).
-3. **Install verify** — calls **`install-verify.yml`** with `install_mode: main` and `fail_fast: true`. If any OS fails, **`release.yml`** stops here.
-4. **Publish job** — only after verify passes: push the tag on the verified commit (synced `bin/` already in the tree), create a **GitHub Release** for release notes, then bump patch on `main` (`release-publish-orchestrator.sh` and `bump-package-z.sh` plus workflow steps).
-
-A tag push still triggers **`install-verify.yml`** again as a post-ship check (`install_mode: tag`).
+3. **Install verify** (pre-tag) — `install_mode: main`, `fail_fast: true`.
+4. **Publish** — push tag, create **GitHub Release** notes (`release-publish-orchestrator.sh`).
+5. **Install verify** (tag path) — `install_mode: tag`, `fail_fast: true`.
+6. **Bump** — patch on `main` (`bump-package-z.sh`).
 
 ---
 
@@ -209,7 +214,7 @@ bash scripts/publish_ci_log.sh /tmp/freecad-ci-verify.log "Verify addon after re
 
 | File | Role |
 |------|------|
-| `.github/workflows/install-verify.yml` | Pre-tag gate (`workflow_call` from `release.yml`), post-tag (`v*` push), or `workflow_dispatch` |
+| `.github/workflows/install-verify.yml` | Pre-tag and tag-path checks (`workflow_call` from `release.yml`), or `workflow_dispatch` |
 | `scripts/ci_run_freecad.sh` | FreeCAD launcher + timeout + log path |
 | `scripts/publish_ci_log.sh` | Log file → GitHub annotations |
 | `scripts/test_install.py` | Addon Manager install phase |
