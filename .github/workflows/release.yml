@@ -211,7 +211,7 @@ jobs:
           ADDONS_INDEX_DISPATCH_AUTHORIZED: "true"
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
-        run: bash "${GITHUB_WORKSPACE}/scripts/trigger-addons-index-dispatch.sh"
+        run: bash "${GITHUB_WORKSPACE}/scripts/trigger-addons-index-pr.sh"
 
   bump:
     name: Bump development patch on main

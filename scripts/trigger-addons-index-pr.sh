@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Dispatch Index PR workflow on CREATeNG/FreeCAD-Addons — INTERNAL to release.yml.
+# Open a FreeCAD Addon Index PR on FreeCAD/Addons — INTERNAL to release.yml.
 #
 # Requires ADDONS_INDEX_DISPATCH_TOKEN (Actions: write on CREATeNG/FreeCAD-Addons).
-# Waits for the fork workflow, then updates this repo's GitHub Release notes.
+# Dispatches the fork index workflow, opens the upstream PR, then updates release notes.
 
 set -euo pipefail
 
 if [[ "${ADDONS_INDEX_DISPATCH_AUTHORIZED:-}" != "true" ]]; then
-  echo "trigger-addons-index-dispatch.sh is internal to release.yml (Release Orchestrator)." >&2
+  echo "trigger-addons-index-pr.sh is internal to release.yml (Release Orchestrator)." >&2
   exit 2
 fi
 
@@ -19,7 +19,7 @@ ADDONS_INDEX_ENTRY_ID="${ADDONS_INDEX_ENTRY_ID:-freecad-mcp-bridge}"
 ADDON_REPO_URL="${ADDON_REPO_URL:-https://github.com/CREATeNG/freecad-mcp-bridge}"
 INDEX_WORKFLOW_FILE="${INDEX_WORKFLOW_FILE:-index-release.yml}"
 BRANCH="index/${ADDONS_INDEX_ENTRY_ID}-${RELEASE_TAG}"
-WORK_ROOT="${RUNNER_TEMP:-/tmp}/addons-index-dispatch"
+WORK_ROOT="${RUNNER_TEMP:-/tmp}/addons-index-pr"
 NOTES_FILE="${WORK_ROOT}/release-notes.md"
 POLL_ATTEMPTS="${POLL_ATTEMPTS:-30}"
 POLL_SECONDS="${POLL_SECONDS:-20}"
