@@ -88,7 +88,7 @@ Run the bridge as a one-off macro without installing the addon:
 
 Code loaded inside FreeCAD (`freecad/mcp_bridge/init_gui.py`, `freecad/mcp_bridge/bridge.py`) uses FreeCAD's `PySide` shim (`PySide.QtCore`, `PySide.QtNetwork`, etc.), which maps to the Qt binding bundled with your FreeCAD install.
 
-The out-of-process helpers above (`freecad_mcp_server.py`, `send_cmd.py`) run in a normal Python environment and use standalone `PySide6` instead.
+The helpers above (`freecad_mcp_server.py`, `send_cmd.py`) run **outside FreeCAD** — in your system Python or terminal — and use standalone `PySide6` for the local socket connection, not FreeCAD's bundled `PySide`.
 
 ---
 
