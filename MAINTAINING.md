@@ -14,10 +14,6 @@ For install-verify CI details (scripts, logs, triggers), see **[TESTING.md](TEST
 | **Install-verify workflow** | [`install-verify.yml`](.github/workflows/install-verify.yml) | Confirms addon installation works on Linux, macOS, and Windows. Can be run at any time; `release.yml` calls it before tag (`main`) and after (`tag` path). Actions UI: **Install verify**. |
 | **Version-bump workflow** | [`bump-package-version.yml`](.github/workflows/bump-package-version.yml) | Actions UI: **Bump package version** → Run workflow. |
 
-- **Release orchestrator** — [`release.yml`](.github/workflows/release.yml), run from Actions as **Release Orchestrator**.
-- **`bin/` sync** — the prepare step commits matching binaries to `main` before the tag; installs use that tree (and the tag zip).
-- **GitHub Release** — release notes on github.com; not where users or the Index get binaries.
-
 ---
 
 ## Versioning at a glance
