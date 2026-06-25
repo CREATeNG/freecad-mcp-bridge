@@ -6,7 +6,7 @@ Developers should read **[DEVELOPMENT.md](DEVELOPMENT.md)**. End users should re
 
 For install-verify CI details (scripts, logs, triggers), see **[TESTING.md](TESTING.md)**.
 
-### GitHub workflows
+### Workflows
 
 | Name | File | Role |
 |------|------|------|
