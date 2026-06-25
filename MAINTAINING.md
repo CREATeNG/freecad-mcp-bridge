@@ -1,6 +1,6 @@
 # Maintainer guide — releases & CI
 
-Instructions for **maintainers of this repository** who cut releases and manage versioning. Listing on the [FreeCAD Addon Index](https://github.com/FreeCAD/Addons) is covered below — that is a separate project with its own maintainers; this doc is for **this addon's** maintainers only.
+Instructions for **maintainers of this repository** who cut releases and manage versioning.
 
 Developers should read **[DEVELOPMENT.md](DEVELOPMENT.md)**. End users should read **[README.md](README.md)**.
 
