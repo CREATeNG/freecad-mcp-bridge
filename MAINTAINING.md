@@ -6,18 +6,18 @@ Developers should read **[DEVELOPMENT.md](DEVELOPMENT.md)**. End users should re
 
 For install-verify CI details (scripts, logs, triggers), see **[TESTING.md](TESTING.md)**.
 
-### Terms (disambiguation)
+### Terms
 
-| Term | Meaning |
-|------|---------|
-| **Release orchestrator workflow** | GitHub Actions workflow [`release.yml`](.github/workflows/release.yml) — build → verify → tag → **GitHub Release**. Actions UI: **Release Orchestrator** → Run workflow. |
-| **Publish script** | [`scripts/release-publish-orchestrator.sh`](scripts/release-publish-orchestrator.sh) — tag + post-release patch bump; runs inside `release.yml` only. |
-| **Install-verify workflow** | [`release-install-verify.yml`](.github/workflows/release-install-verify.yml) — standalone or post-tag install test. |
-| **Package-update workflow** | [`update-package-xml-on-push.yml`](.github/workflows/update-package-xml-on-push.yml) — updates `<date>` on every push; patch on `[bump version]`. |
-| **Shipping a release** | Outcome: verified `v*` tag, **GitHub Release** page, optional Index update. |
-| **GitHub Release** | Release page and assets on github.com — not `release.yml`. |
+| Name | File | Role |
+|------|------|------|
+| **Release orchestrator workflow** | [`release.yml`](.github/workflows/release.yml) | Build → verify → tag → **GitHub Release**. Actions UI: **Release Orchestrator** → Run workflow. |
+| **Publish script** | [`release-publish-orchestrator.sh`](scripts/release-publish-orchestrator.sh) | Tag + post-release patch bump; runs inside `release.yml` only. |
+| **Install-verify workflow** | [`release-install-verify.yml`](.github/workflows/release-install-verify.yml) | Standalone or post-tag install test. |
+| **Version-bump workflow** | [`bump-package-version-on-push.yml`](.github/workflows/bump-package-version-on-push.yml) | Opt-in patch bump when commit message contains `[bump version]`. |
+| **Shipping a release** | — | Outcome: verified `v*` tag, **GitHub Release** page, optional Index update. |
+| **GitHub Release** | — | Release page and assets on github.com — not `release.yml`. |
 
-**Shorthand in this doc:** **release orchestrator** means `release.yml` only. Other names stay qualified (**publish script**, **install-verify workflow**, **package-update workflow**). Avoid bare *workflow*, *orchestrator*, or *Release* when you mean a tool.
+**Shorthand in this doc:** **release orchestrator** means `release.yml` only. Other names stay qualified (**publish script**, **install-verify workflow**, **version-bump workflow**). Avoid bare *workflow*, *orchestrator*, or *Release* when you mean a tool. Filenames are authoritative.
 
 ---
 
@@ -32,7 +32,7 @@ Versions are **`x.y.z`** everywhere — e.g. **`0.1.12`** in `package.xml` and `
 
 **Tag === version:** shipping `0.1.12` creates tag **`v0.1.12`**. On shipping a release, GitHub Actions automatically bumps the patch on `main` (e.g. to `0.1.13`) for the next dev cycle.
 
-**Patch, `<date>`, and `Cargo.toml` `version` are GitHub Actions-managed** — the package-update workflow and publish script update them. Edit **`x.y`** manually only when starting a new line (e.g. `0.1` → `0.2`).
+**Patch, `<date>`, and `Cargo.toml` `version` are GitHub Actions-managed** — the publish script (and optionally the version-bump workflow) update them. Edit **`x.y`** manually only when starting a new line (e.g. `0.1` → `0.2`).
 
 ---
 
@@ -66,11 +66,10 @@ Versions are **`x.y.z`** everywhere — e.g. **`0.1.12`** in `package.xml` and `
 
 | Field | Trigger | Mechanism |
 |-------|---------|-----------|
-| **`<date>`** | **Every push to `main`** | Package-update workflow sets `<date>` to today (UTC) |
 | **Patch (post-release)** | After **`release.yml`** tags | Publish script bumps patch + `<date>` (and syncs `Cargo.toml`) |
-| **Patch (opt-in)** | **`[bump version]`** in commit message | Package-update workflow increments patch + `<date>` (and syncs `Cargo.toml`) |
+| **Patch (opt-in)** | **`[bump version]`** in commit message | Version-bump workflow increments patch + `<date>` (and syncs `Cargo.toml`) |
 
-Ordinary pushes update `<date>` only. Use `[bump version]` only when you deliberately want `main` on the next patch before shipping again (uncommon).
+Ordinary pushes do not change `package.xml`. Use `[bump version]` only when you deliberately want `main` on the next patch before shipping again (uncommon).
 
 Index `git_ref` is the tag name (`v0.1.12`), matching `package.xml` by convention.
 

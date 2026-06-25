@@ -2,7 +2,7 @@
     <name>MCP Bridge</name>
     <description>Connect FreeCAD to AI assistants (Cursor, Claude Desktop, etc.) via MCP. Local only — toggle the bridge on/off inside FreeCAD. Optional MCP server for AI agents; scripts and terminals can connect directly.</description>
     <version>0.1.12</version>
-    P26-06-25</date>
+    <date>2026-06-25</date>
     <maintainer email="chris@createng.com">CREATeNG</maintainer>
     <license file="LICENSE">MIT</license>
     <icon>Resources/Icons/icon.svg</icon>
