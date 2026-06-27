@@ -10,3 +10,8 @@ terminals/
 agent-tools/
 target/
 **/target/
+
+# Kilo local config
+.kilo/
+kilo.jsonc
+plans/
