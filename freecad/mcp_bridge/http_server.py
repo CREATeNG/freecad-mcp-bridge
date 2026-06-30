@@ -75,19 +75,39 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         timeout_ms = config.response_timeout_ms()
 
         if name == "execute_python":
-            token, output_queue = paging.start_page()
-            self.server.executor.submit(args.get("code", ""), output_queue)
-            page = paging.drain(token, timeout_ms)
-            self._send_sse(mcp_protocol.tool_call_response(req_id, page))
+            self._run_code(req_id, args.get("code", ""), timeout_ms)
+        elif name == "execute_python_file":
+            filepath = args.get("filepath", "")
+            try:
+                with open(filepath, "r", encoding="utf-8") as handle:
+                    code = handle.read()
+            except OSError as exc:
+                self._send_sse(
+                    mcp_protocol.tool_call_response(
+                        req_id,
+                        {
+                            "output": f"Error reading file '{filepath}': {exc}",
+                            "has_more": False,
+                        },
+                    )
+                )
+                return
+            self._run_code(req_id, code, timeout_ms)
         elif name == "get_output":
             page = paging.drain(args.get("page_token", ""), timeout_ms)
             self._send_sse(mcp_protocol.tool_call_response(req_id, page))
         else:
             self._send_sse(
                 mcp_protocol.error_response(
-                    req_id, INVALID_PARAMS, f"Unknown or unimplemented tool: {name}"
+                    req_id, INVALID_PARAMS, f"Unknown tool: {name}"
                 )
             )
+
+    def _run_code(self, req_id, code, timeout_ms):
+        token, output_queue = paging.start_page()
+        self.server.executor.submit(code, output_queue)
+        page = paging.drain(token, timeout_ms)
+        self._send_sse(mcp_protocol.tool_call_response(req_id, page))
 
     def _send_json(self, status, payload):
         body = json.dumps(payload).encode("utf-8")
