@@ -15,3 +15,10 @@ target/
 .kilo/
 kilo.jsonc
 plans/
+
+# AI tool local config and memory
+.claude/
+memory/
+
+# Build artifacts
+*.zip
