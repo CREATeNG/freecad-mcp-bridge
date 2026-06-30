@@ -66,17 +66,6 @@ if [[ -n "$(git ls-remote --tags origin "${RELEASE_TAG}")" ]]; then
   exit 1
 fi
 
-for path in \
-  bin/linux/freecad-mcp-bridge \
-  bin/macos/freecad-mcp-bridge \
-  bin/win32/freecad-mcp-bridge.exe
-do
-  if [[ ! -f "$path" ]]; then
-    echo "Missing bin/ binary on release candidate: ${path}" >&2
-    exit 1
-  fi
-done
-
 git tag -a "$RELEASE_TAG" -m "Release ${RELEASE_TAG}"
 git push origin "$RELEASE_TAG"
 

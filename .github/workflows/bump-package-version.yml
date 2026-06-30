@@ -30,7 +30,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git pull --ff-only origin main
 
-      - name: Bump patch, date, and Cargo.toml
+      - name: Bump patch and date
         env:
           BUMP_PACKAGE_Z_AUTHORIZED: "true"
         run: bash "${GITHUB_WORKSPACE}/scripts/bump-package-z.sh"

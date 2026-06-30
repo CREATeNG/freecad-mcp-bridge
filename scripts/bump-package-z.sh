@@ -49,15 +49,13 @@ if n1 != 1 or n2 != 1:
 path.write_text(text, encoding="utf-8")
 PY
 
-bash "$(dirname "${BASH_SOURCE[0]}")/sync-cargo-version.sh" "$next_version"
-
-if git diff --quiet "$PACKAGE_XML" rust_mcp_server/Cargo.toml; then
-  echo "package.xml and Cargo.toml unchanged"
+if git diff --quiet "$PACKAGE_XML"; then
+  echo "package.xml unchanged"
   exit 0
 fi
 
-git add "$PACKAGE_XML" rust_mcp_server/Cargo.toml
+git add "$PACKAGE_XML"
 git commit -m "chore: bump version to ${next_version}"
 git push origin HEAD
 
-echo "Bumped package.xml and Cargo.toml to ${next_version}"
+echo "Bumped package.xml to ${next_version}"

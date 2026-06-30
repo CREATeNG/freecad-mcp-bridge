@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import sys
 import xml.etree.ElementTree as ET
 
 LOG_PREFIX = "[test_install]"
@@ -269,21 +268,12 @@ def addon_manager_paths() -> list[str]:
     return [path for path in candidates if os.path.isdir(path)]
 
 
-def platform_bin_relpath() -> str:
-    if sys.platform.startswith("win"):
-        return os.path.join("bin", "win32", "freecad-mcp-bridge.exe")
-    if sys.platform == "darwin":
-        return os.path.join("bin", "macos", "freecad-mcp-bridge")
-    return os.path.join("bin", "linux", "freecad-mcp-bridge")
-
-
 def verify_install_tree(install_dir: str, expected_version: str) -> None:
     required = [
         "package.xml",
         os.path.join("freecad", "mcp_bridge", "__init__.py"),
         os.path.join("freecad", "mcp_bridge", "init_gui.py"),
         os.path.join("freecad", "mcp_bridge", "bridge.py"),
-        platform_bin_relpath(),
     ]
     for rel_path in required:
         full_path = os.path.join(install_dir, rel_path)

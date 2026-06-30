@@ -7,53 +7,8 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build - ${{ matrix.platform.os-name }}
-    runs-on: ${{ matrix.platform.os }}
-    steps:
-      - name: Ensure running on main
-        if: github.ref != 'refs/heads/main'
-        run: |
-          echo "Release Orchestrator workflow must be run on the main branch."
-          exit 1
-
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.platform.target }}
-
-      - name: Build release binary
-        run: |
-          cd rust_mcp_server
-          cargo build --release --target ${{ matrix.platform.target }}
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.platform.os-name }}
-          path: rust_mcp_server/target/${{ matrix.platform.target }}/release/${{ matrix.platform.bin-name }}
-    strategy:
-      matrix:
-        platform:
-          - os: ubuntu-latest
-            os-name: linux
-            target: x86_64-unknown-linux-gnu
-            bin-name: freecad-mcp-bridge
-          - os: macos-latest
-            os-name: macos
-            target: x86_64-apple-darwin
-            bin-name: freecad-mcp-bridge
-          - os: windows-latest
-            os-name: windows
-            target: x86_64-pc-windows-msvc
-            bin-name: freecad-mcp-bridge.exe
-
   prepare:
     name: Stage release candidate on main
-    needs: build
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     outputs:
@@ -70,31 +25,6 @@ jobs:
 
       - name: Sync with origin main
         run: git pull --ff-only origin main
-
-      - name: Download Linux binary
-        uses: actions/download-artifact@v4
-        with:
-          name: linux
-          path: artifacts/linux
-
-      - name: Download macOS binary
-        uses: actions/download-artifact@v4
-        with:
-          name: macos
-          path: artifacts/macos
-
-      - name: Download Windows binary
-        uses: actions/download-artifact@v4
-        with:
-          name: windows
-          path: artifacts/windows
-
-      - name: Install binaries into bin/
-        run: |
-          install -D artifacts/linux/freecad-mcp-bridge bin/linux/freecad-mcp-bridge
-          install -D artifacts/macos/freecad-mcp-bridge bin/macos/freecad-mcp-bridge
-          install -D artifacts/windows/freecad-mcp-bridge.exe bin/win32/freecad-mcp-bridge.exe
-          chmod +x bin/linux/freecad-mcp-bridge bin/macos/freecad-mcp-bridge
 
       - name: Resolve version from package.xml
         id: version
@@ -123,20 +53,6 @@ jobs:
             echo "Tag $TAG already exists on origin."
             exit 1
           fi
-
-      - name: Commit release binaries
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add bin/linux bin/macos bin/win32
-          if git diff --staged --quiet; then
-            echo "bin/ already up to date on main"
-          else
-            git commit -m "Sync release binaries for ${{ steps.version.outputs.tag }}"
-          fi
-
-      - name: Push release candidate to main
-        run: git push origin main
 
       - name: Record release candidate commit
         id: commit_sha
