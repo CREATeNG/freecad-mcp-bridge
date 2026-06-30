@@ -1,8 +1,10 @@
 """In-process HTTP server hosting the MCP endpoint on loopback.
 
 A ThreadingHTTPServer runs on a background thread, binding 127.0.0.1 only.
-This slice answers the MCP lifecycle (`initialize`, `tools/list`) with plain
-JSON. Tool execution (SSE, Qt main-thread dispatch, paging) is added later.
+Lifecycle methods (initialize, tools/list) return plain JSON; tool calls
+(execute_python, get_output) run code on the Qt main thread via the Executor
+and stream the result back over SSE, with paging for output that outlasts the
+response timeout.
 """
 
 import json
@@ -12,11 +14,13 @@ from urllib.parse import urlparse
 
 import FreeCAD
 
-from freecad.mcp_bridge import config, mcp_protocol
+from freecad.mcp_bridge import config, mcp_protocol, paging
 from freecad.mcp_bridge.constants import ENDPOINT_PATH, LOG_PREFIX
+from freecad.mcp_bridge.executor import Executor
 
 _LOOPBACK_HOSTS = ("localhost", "127.0.0.1")
 PARSE_ERROR = -32700
+INVALID_PARAMS = -32602
 
 
 class McpRequestHandler(BaseHTTPRequestHandler):
@@ -51,6 +55,10 @@ class McpRequestHandler(BaseHTTPRequestHandler):
             self._send_json(400, _parse_error())
             return
 
+        if request.get("method") == "tools/call":
+            self._handle_tool_call(request)
+            return
+
         response = mcp_protocol.handle_request(request)
         if response is None:
             # Notification — acknowledge with no body.
@@ -59,6 +67,28 @@ class McpRequestHandler(BaseHTTPRequestHandler):
             return
         self._send_json(200, response)
 
+    def _handle_tool_call(self, request):
+        req_id = request.get("id")
+        params = request.get("params") or {}
+        name = params.get("name")
+        args = params.get("arguments") or {}
+        timeout_ms = config.response_timeout_ms()
+
+        if name == "execute_python":
+            token, output_queue = paging.start_page()
+            self.server.executor.submit(args.get("code", ""), output_queue)
+            page = paging.drain(token, timeout_ms)
+            self._send_sse(mcp_protocol.tool_call_response(req_id, page))
+        elif name == "get_output":
+            page = paging.drain(args.get("page_token", ""), timeout_ms)
+            self._send_sse(mcp_protocol.tool_call_response(req_id, page))
+        else:
+            self._send_sse(
+                mcp_protocol.error_response(
+                    req_id, INVALID_PARAMS, f"Unknown or unimplemented tool: {name}"
+                )
+            )
+
     def _send_json(self, status, payload):
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
@@ -66,6 +96,15 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_sse(self, payload):
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.write(b"event: message\ndata: " + body + b"\n\n")
 
 
 def _parse_error():
@@ -77,11 +116,12 @@ def _parse_error():
 
 
 class HttpServer:
-    """Owns the ThreadingHTTPServer and its background serving thread."""
+    """Owns the ThreadingHTTPServer, its serving thread, and the Executor."""
 
     def __init__(self):
         self._httpd = None
         self._thread = None
+        self._executor = None
 
     def is_running(self) -> bool:
         return self._thread is not None and self._thread.is_alive()
@@ -89,6 +129,9 @@ class HttpServer:
     def start(self) -> None:
         if self.is_running():
             return
+        # Created here so it inherits main-thread affinity (start() is called
+        # from the toolbar toggle / GUI startup, both on the main thread).
+        self._executor = Executor()
         bind_port = config.port()
         try:
             self._httpd = ThreadingHTTPServer(
@@ -96,11 +139,13 @@ class HttpServer:
             )
         except OSError as exc:
             self._httpd = None
+            self._executor = None
             FreeCAD.Console.PrintError(
                 f"{LOG_PREFIX} Could not bind 127.0.0.1:{bind_port} ({exc}). "
                 "Change the port in Edit → Preferences → MCP Bridge.\n"
             )
             raise
+        self._httpd.executor = self._executor
         self._thread = threading.Thread(
             target=self._httpd.serve_forever,
             name="mcp-bridge-http",
@@ -118,4 +163,6 @@ class HttpServer:
             self._httpd.server_close()
             self._httpd = None
         self._thread = None
+        self._executor = None
+        paging.clear_all()
         FreeCAD.Console.PrintMessage(f"{LOG_PREFIX} HTTP server stopped\n")

@@ -5,6 +5,8 @@ testable on plain CPython. The execute path (tools/call) is added in a
 later slice; for now only the lifecycle methods are answered.
 """
 
+import json
+
 from freecad.mcp_bridge.constants import PROTOCOL_VERSION, SERVER_NAME
 from freecad.mcp_bridge.resources import addon_version
 from freecad.mcp_bridge.tools import TOOL_DEFINITIONS
@@ -49,3 +51,23 @@ def _error(req_id, code, message) -> dict:
         "id": req_id,
         "error": {"code": code, "message": message},
     }
+
+
+def tool_call_response(req_id, page) -> dict:
+    """Wrap a page dict ({output, has_more, [page_token], [error]}) as an MCP
+    tools/call result — a single JSON text content block."""
+    payload = {
+        "output": page.get("output", ""),
+        "has_more": page.get("has_more", False),
+    }
+    if page.get("page_token"):
+        payload["page_token"] = page["page_token"]
+    if page.get("error"):
+        payload["error"] = page["error"]
+    result = {"content": [{"type": "text", "text": json.dumps(payload)}]}
+    return _result(req_id, result)
+
+
+def error_response(req_id, code, message) -> dict:
+    """Public JSON-RPC error envelope, for the transport layer."""
+    return _error(req_id, code, message)
