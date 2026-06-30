@@ -1,4 +1,5 @@
 import os
+import re
 
 
 def _mod_root() -> str:
@@ -22,3 +23,15 @@ def icon_path() -> str:
         return root_icon.replace("\\", "/")
     legacy = os.path.join(os.path.dirname(__file__), "Resources", "Icons", "icon.svg")
     return legacy.replace("\\", "/")
+
+
+def addon_version() -> str:
+    """Read <version> from package.xml; '0.0.0' if it can't be read."""
+    pkg = os.path.join(_mod_root(), "package.xml")
+    try:
+        with open(pkg, encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError:
+        return "0.0.0"
+    match = re.search(r"<version>([^<]+)</version>", text)
+    return match.group(1) if match else "0.0.0"

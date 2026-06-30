@@ -29,7 +29,7 @@ class MCPBridgeCommand:
             "Pixmap": App.MCPBridgeIconPath,
             "MenuText": "MCP Bridge On/Off",
             "ToolTip": (
-                "Start or stop the MCP Bridge listener in this FreeCAD session"
+                "Start or stop the MCP Bridge server in this FreeCAD session"
             ),
         }
 
@@ -37,31 +37,23 @@ class MCPBridgeCommand:
         import FreeCAD as App
         import FreeCADGui as Gui
 
+        from freecad.mcp_bridge import config
+
         try:
-            inst = bridge._bridge_instance
-            if not inst:
-                import __main__
-
-                inst = getattr(__main__, "_freecad_bridge_instance", None)
-                if not inst:
-                    inst = getattr(__main__, "_bridge_instance", None)
-
-            if inst and inst.isListening():
-                inst.close()
-                App.Console.PrintMessage(f"{LOG_PREFIX} Stopped socket listener.\n")
-                mw = Gui.getMainWindow()
-                if mw:
-                    mw.statusBar().showMessage(f"{DISPLAY_NAME}: Offline")
+            if bridge.is_running():
+                bridge.stop()
+                status = f"{DISPLAY_NAME}: Offline"
             else:
-                if inst:
-                    inst.close()
-                bridge._bridge_instance = bridge.FreeCADBridge()
-                App.Console.PrintMessage(f"{LOG_PREFIX} Started socket listener.\n")
-                mw = Gui.getMainWindow()
-                if mw:
-                    mw.statusBar().showMessage(f"{DISPLAY_NAME}: Listening...")
+                bridge.start()
+                status = f"{DISPLAY_NAME}: Listening on 127.0.0.1:{config.port()}"
+            mw = Gui.getMainWindow()
+            if mw:
+                mw.statusBar().showMessage(status)
         except Exception as e:
             App.Console.PrintError(f"{LOG_PREFIX} Error toggling bridge: {e}\n")
+            mw = Gui.getMainWindow()
+            if mw:
+                mw.statusBar().showMessage(f"{DISPLAY_NAME}: Offline")
 
 
 def inject_ui():
@@ -100,7 +92,7 @@ def inject_ui():
         action = target_tb.addAction(action_label)
         action.setIcon(QIcon(icon))
         action.setToolTip(
-            "Start or stop the MCP Bridge listener in this FreeCAD session"
+            "Start or stop the MCP Bridge server in this FreeCAD session"
         )
         action.triggered.connect(lambda: Gui.runCommand(command))
 

@@ -1,5 +1,6 @@
-"""FreeCAD MCP bridge — in-process socket listener and UI."""
+"""FreeCAD MCP Bridge — in-process MCP server exposed over loopback HTTP.
 
-from .bridge import FreeCADBridge, _bridge_instance
-
-__all__ = ["FreeCADBridge", "_bridge_instance"]
+Intentionally import-light: pulling in the server (and thus FreeCAD) is left
+to init_gui at addon load, so pure modules like mcp_protocol stay importable
+on plain CPython for testing.
+"""
