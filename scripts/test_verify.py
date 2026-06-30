@@ -8,11 +8,11 @@ Does not call App.MCPBridgeInjectUi(); waits for the addon's own startup hooks.
 
 Environment:
   RELEASE_INSTALL_NAME              Installed Mod folder name (default: freecad-mcp-bridge)
-  RELEASE_INSTALL_PROBE             Python sent over the local socket
-  RELEASE_INSTALL_PROBE_EXPECT      Expected substring in socket response
+  RELEASE_INSTALL_PROBE             Python sent over HTTP to execute_python
+  RELEASE_INSTALL_PROBE_EXPECT      Expected substring in the exec output
   RELEASE_INSTALL_GUI_DELAY_MS      Delay before work starts (default: 3000)
   RELEASE_INSTALL_TOOLBAR_TIMEOUT_MS  Wait for auto-injected toolbar (default: 15000)
-  RELEASE_INSTALL_SOCKET_TIMEOUT_MS   Socket response wait (default: 30000)
+  RELEASE_INSTALL_HTTP_TIMEOUT_MS     HTTP exec round-trip wait (default: 30000)
   RELEASE_INSTALL_STOP_MESSAGE        Expected Report-view line after toggle off
 """
 
@@ -92,20 +92,6 @@ def _trigger_toolbar_toggle(log_message: str) -> None:
     QCoreApplication.processEvents()
 
 
-def _bridge_instance():
-    from freecad.mcp_bridge import bridge as bridge_mod
-
-    inst = bridge_mod._bridge_instance
-    if inst:
-        return inst
-
-    import __main__
-
-    return getattr(__main__, "_freecad_bridge_instance", None) or getattr(
-        __main__, "_bridge_instance", None
-    )
-
-
 def _report_view_text() -> str:
     """Return visible Report view text (where Console.PrintMessage appears)."""
     import FreeCADGui as Gui
@@ -134,42 +120,39 @@ def _report_view_text() -> str:
     return ""
 
 
-def _start_bridge_listener() -> None:
-    """Start the listener by triggering the real toolbar button."""
-    inst = _bridge_instance()
-    if inst and inst.isListening():
-        common.log("Bridge listener already running")
+def _start_bridge() -> None:
+    """Start the HTTP server by triggering the real toolbar button."""
+    from freecad.mcp_bridge import bridge
+
+    if bridge.is_running():
+        common.log("Bridge HTTP server already running")
         return
 
     _trigger_toolbar_toggle('Triggering toolbar action "MCP Bridge On/Off" (start)')
     common._drain_qt_events(1000)
 
-    inst = _bridge_instance()
-    if not inst or not inst.isListening():
-        common.fail("Bridge listener failed to start after toolbar click")
+    if not bridge.is_running():
+        common.fail("Bridge HTTP server failed to start after toolbar click")
+    common.log_notice("Bridge HTTP server started via toolbar toggle")
 
 
-def _stop_bridge_listener() -> None:
-    """Stop the listener via a second toolbar toggle, like a user would."""
+def _stop_bridge() -> None:
+    """Stop the server via a second toolbar toggle, like a user would."""
+    from freecad.mcp_bridge import bridge
     from freecad.mcp_bridge.constants import DISPLAY_NAME, LOG_PREFIX
 
-    inst = _bridge_instance()
-    if not inst or not inst.isListening():
-        common.fail("Bridge listener was not running before stop toggle")
+    if not bridge.is_running():
+        common.fail("Bridge HTTP server was not running before stop toggle")
 
-    report_before = _report_view_text()
-    _trigger_toolbar_toggle(
-        'Triggering toolbar action "MCP Bridge On/Off" (stop)'
-    )
+    _trigger_toolbar_toggle('Triggering toolbar action "MCP Bridge On/Off" (stop)')
     common._drain_qt_events(1500)
 
-    inst = _bridge_instance()
-    if inst and inst.isListening():
-        common.fail("Bridge listener still running after stop toolbar click")
+    if bridge.is_running():
+        common.fail("Bridge HTTP server still running after stop toolbar click")
 
     expected = common.env(
         "RELEASE_INSTALL_STOP_MESSAGE",
-        f"{LOG_PREFIX} Stopped socket listener.",
+        f"{LOG_PREFIX} HTTP server stopped",
     )
     report_after = _report_view_text()
     if expected not in report_after:
@@ -177,9 +160,6 @@ def _stop_bridge_listener() -> None:
             "Stop toggle did not print the expected Report view message. "
             f"Expected substring {expected!r} in report view."
         )
-
-    if expected in report_before:
-        common.log("Stop message already present in Report view before toggle")
 
     import FreeCADGui as Gui
 
@@ -197,76 +177,103 @@ def _stop_bridge_listener() -> None:
     )
 
 
-def _read_socket_response(socket, timeout_ms: int) -> str:
+def _http_exec_probe(code: str, timeout_ms: int) -> dict:
+    """Run `code` via tools/call over HTTP.
+
+    The request runs on a worker thread while this (main) thread pumps the Qt
+    event loop, so the queued exec can run on the main thread without deadlock.
+    Returns {"output": str} or {"error": str}.
+    """
+    import json
+    import threading
+    import time
+    import urllib.request
+
     from PySide.QtCore import QCoreApplication, QThread
 
-    interval_ms = 100
-    elapsed = 0
-    chunks: list[bytes] = []
+    from freecad.mcp_bridge import config
 
-    while elapsed < timeout_ms:
+    url = f"http://127.0.0.1:{config.port()}/mcp"
+    timeout_s = timeout_ms / 1000.0
+    result: dict = {}
+
+    def _post(payload):
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=timeout_s) as resp:
+            body = resp.read().decode("utf-8")
+        for line in body.splitlines():
+            if line.startswith("data:"):
+                body = line[len("data:"):].strip()
+                break
+        envelope = json.loads(body)
+        return json.loads(envelope["result"]["content"][0]["text"])
+
+    def worker():
+        try:
+            page = _post(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": "execute_python", "arguments": {"code": code}},
+                }
+            )
+            output = page.get("output", "")
+            req_id = 2
+            while page.get("has_more"):
+                page = _post(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "get_output",
+                            "arguments": {"page_token": page["page_token"]},
+                        },
+                    }
+                )
+                output += page.get("output", "")
+                req_id += 1
+            result["output"] = output
+        except Exception as exc:  # noqa: BLE001 - reported to the caller
+            result["error"] = str(exc)
+
+    thread = threading.Thread(target=worker, name="verify-http-probe")
+    thread.start()
+    deadline = time.monotonic() + timeout_s + 5
+    while thread.is_alive() and time.monotonic() < deadline:
         QCoreApplication.processEvents()
-        if socket.bytesAvailable() > 0:
-            chunks.append(socket.readAll().data())
-            for _ in range(10):
-                QCoreApplication.processEvents()
-                if socket.waitForReadyRead(50) and socket.bytesAvailable() > 0:
-                    chunks.append(socket.readAll().data())
-                else:
-                    break
-            break
-        if socket.waitForReadyRead(interval_ms):
-            elapsed += interval_ms
-            continue
-        elapsed += interval_ms
-        QThread.msleep(interval_ms)
-
-    return b"".join(chunks).decode("utf-8")
+        QThread.msleep(20)
+    thread.join(timeout=2)
+    return result
 
 
-def _verify_socket_round_trip() -> None:
-    """Run Python through the local socket (same protocol as send_cmd.py)."""
-    from PySide.QtCore import QCoreApplication
-    from PySide.QtNetwork import QLocalSocket
-
-    from freecad.mcp_bridge.constants import SOCKET_NAME
-
-    probe = common.env(
-        "RELEASE_INSTALL_PROBE",
-        'print("test_verify_ok")',
-    )
-    if not probe.endswith("\n"):
-        probe += "\n"
+def _verify_http_round_trip() -> None:
+    """Run Python through the HTTP endpoint (same path as send_cmd.py)."""
+    probe = common.env("RELEASE_INSTALL_PROBE", 'print("test_verify_ok")')
     expected = common.env("RELEASE_INSTALL_PROBE_EXPECT", "test_verify_ok")
-    timeout_ms = int(common.env("RELEASE_INSTALL_SOCKET_TIMEOUT_MS", "30000"))
+    timeout_ms = int(common.env("RELEASE_INSTALL_HTTP_TIMEOUT_MS", "30000"))
 
-    socket = QLocalSocket()
-    socket.connectToServer(SOCKET_NAME)
-    if not socket.waitForConnected(5000):
+    result = _http_exec_probe(probe, timeout_ms)
+
+    if "error" in result:
+        common.fail(f"HTTP exec round-trip failed: {result['error']}")
+
+    output = result.get("output", "")
+    if not output:
+        common.fail("Timed out waiting for HTTP exec response")
+
+    if expected not in output:
         common.fail(
-            "Socket connection failed. Is the bridge listener running? "
-            f"({socket.errorString()})"
+            "Unexpected exec output. "
+            f"Expected substring {expected!r}, got: {output!r}"
         )
 
-    socket.write(probe.encode("utf-8"))
-    socket.flush()
-    socket.waitForBytesWritten(1000)
-    QCoreApplication.processEvents()
-
-    response = _read_socket_response(socket, timeout_ms)
-    socket.disconnectFromServer()
-    QCoreApplication.processEvents()
-
-    if not response:
-        common.fail("Timed out waiting for bridge execution response")
-
-    if expected not in response:
-        common.fail(
-            "Unexpected socket response. "
-            f"Expected substring {expected!r}, got: {response!r}"
-        )
-
-    common.log_notice(f"Socket round-trip OK (saw {expected!r})")
+    common.log_notice(f"HTTP exec round-trip OK (saw {expected!r})")
 
 
 def _run() -> None:
@@ -279,9 +286,9 @@ def _run() -> None:
     )
 
     _verify_addon_startup()
-    _start_bridge_listener()
-    _verify_socket_round_trip()
-    _stop_bridge_listener()
+    _start_bridge()
+    _verify_http_round_trip()
+    _stop_bridge()
     common.log_notice("Verify passed")
     common.log_group_end()
     common.quit_freecad(0)
