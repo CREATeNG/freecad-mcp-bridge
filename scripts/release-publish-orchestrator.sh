@@ -78,7 +78,7 @@ gh release create "$RELEASE_TAG" \
 echo "Published GitHub Release ${RELEASE_TAG}"
 
 echo "Packing and uploading the Claude Desktop bundle (.mcpb)"
-npx --yes @anthropic-ai/mcpb@2.1.2 pack claude-desktop-shim freecad-mcp-bridge.mcpb
+npx --yes @anthropic-ai/mcpb@2.1.2 pack mcp-stdio-shim freecad-mcp-bridge.mcpb
 gh release upload "$RELEASE_TAG" freecad-mcp-bridge.mcpb
 echo "Uploaded freecad-mcp-bridge.mcpb to ${RELEASE_TAG}"
 
