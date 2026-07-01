@@ -11,7 +11,7 @@ from freecad.mcp_bridge.constants import (
     LOG_PREFIX,
     TOOLBAR_OBJECT_NAME,
 )
-from freecad.mcp_bridge.resources import icon_path
+from freecad.mcp_bridge.resources import icon_path, preferences_ui_path
 
 App.MCPBridgeIconPath = icon_path()
 App.MCPBridgeCommand = COMMAND_ID
@@ -160,6 +160,17 @@ if App.MCPBridgeCommand in Gui.listCommands():
     except Exception:
         pass
 Gui.addCommand(App.MCPBridgeCommand, MCPBridgeCommand())
+
+if not getattr(App, "MCPBridgePrefAdded", False):
+    _prefs_ui = preferences_ui_path()
+    if os.path.isfile(_prefs_ui):
+        try:
+            Gui.addPreferencePage(_prefs_ui, DISPLAY_NAME)
+            App.MCPBridgePrefAdded = True
+        except Exception as exc:
+            App.Console.PrintWarning(
+                f"{LOG_PREFIX} Could not add preference page: {exc}\n"
+            )
 
 if not getattr(App, "MCPBridgeManipulatorAdded", False):
     App.MCPBridgeManipulatorAdded = True

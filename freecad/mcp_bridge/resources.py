@@ -25,6 +25,12 @@ def icon_path() -> str:
     return legacy.replace("\\", "/")
 
 
+def preferences_ui_path() -> str:
+    """Absolute path to the preferences page .ui file."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(here, "Resources", "Ui", "preferences.ui").replace("\\", "/")
+
+
 def addon_version() -> str:
     """Read <version> from package.xml; '0.0.0' if it can't be read."""
     pkg = os.path.join(_mod_root(), "package.xml")
