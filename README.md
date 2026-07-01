@@ -10,30 +10,11 @@ The server runs only while you toggle it on, and only on your own machine.
 
 1. Install **MCP Bridge** from the FreeCAD **Addon Manager** and restart FreeCAD.
 2. A **MCP Bridge** toolbar button appears. Click it to start the server — the status bar shows `MCP Bridge: Listening on 127.0.0.1:39280`.
-3. [Connect your MCP client](#connect-an-mcp-client) (below).
+3. Point your MCP client at the bridge with:
+   - **Transport:** Streamable HTTP
+   - **URL:** `http://127.0.0.1:39280/mcp`
 
-The server is off until you turn it on, each session. Click the button again to stop it.
-
----
-
-## Connect an MCP client
-
-The bridge is a standard MCP server. How your client connects depends on the transport it speaks.
-
-### Clients that speak HTTP
-
-Most MCP clients (for example Claude Code or Cursor) connect over HTTP. Add an MCP server with:
-
-- **Transport:** Streamable HTTP
-- **URL:** `http://127.0.0.1:39280/mcp`
-
-For example, Claude Code takes it on the command line:
-
-```
-claude mcp add --transport http freecad http://127.0.0.1:39280/mcp
-```
-
-or in its `.mcp.json`:
+For example, in Claude Code's `.mcp.json`:
 
 ```json
 {
@@ -46,13 +27,13 @@ or in its `.mcp.json`:
 }
 ```
 
-Other clients differ, but it's always the same URL and HTTP transport.
+The server is off until you toggle it on, each session — click the button again to stop it.
 
-### Clients that only speak stdio
+That's the whole setup for most clients.
 
-Clients like Claude Desktop can't open an HTTP endpoint the way Claude Code and others can. But they can reach the bridge through a small stdio↔HTTP relay (the shim in [`mcp-stdio-shim/`](mcp-stdio-shim/)).
+## Claude Desktop
 
-For **Claude Desktop**, that relay is packaged as a bundle you install by double-clicking:
+Claude Desktop can't open an HTTP endpoint the way Claude Code and others can, but it can reach the bridge through a small stdio↔HTTP relay (the shim in [`mcp-stdio-shim/`](mcp-stdio-shim/)) — packaged as a bundle you install by double-clicking:
 
 1. Download **`freecad-mcp-bridge.mcpb`** from the [latest release](https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest).
 2. Double-click it to install in Claude Desktop.
