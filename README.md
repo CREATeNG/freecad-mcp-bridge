@@ -50,7 +50,7 @@ Other clients differ, but it's always the same URL and HTTP transport.
 
 ### Clients that only speak stdio
 
-**Claude Desktop** (and possibly other clients) can't open an HTTP endpoint; they only launch MCP servers over stdio. (Not **Claude Code** — that's an HTTP client, above.) They can reach the bridge through a small stdio↔HTTP relay (the shim in [`mcp-stdio-shim/`](mcp-stdio-shim/)).
+Clients like Claude Desktop can't open an HTTP endpoint the way Claude Code and others can. But they can reach the bridge through a small stdio↔HTTP relay (the shim in [`mcp-stdio-shim/`](mcp-stdio-shim/)).
 
 For **Claude Desktop**, that relay is packaged as a bundle you install by double-clicking:
 
@@ -59,20 +59,6 @@ For **Claude Desktop**, that relay is packaged as a bundle you install by double
 3. When prompted, set the **port** to match FreeCAD's (default `39280`).
 
 It forwards to the same `http://127.0.0.1:39280/mcp` endpoint. Other stdio-only clients can run the shim directly instead of the bundle.
-
-### Changing the port
-
-The default is **39280**. To move off it (e.g. to avoid a conflict with another listener), change it in **both** places so they match:
-
-- **FreeCAD:** Edit → Preferences → MCP Bridge.
-- **HTTP clients:** the URL you configured.
-- **stdio clients (bundle):** the extension's port setting — in Claude Desktop, Settings → Extensions → FreeCAD MCP Bridge → configure. No reinstall needed.
-
-### If it won't connect
-
-- Is the **MCP Bridge button toggled on** in FreeCAD? The server only runs while it is.
-- Do the **ports match** on both sides?
-- The bridge is **loopback-only** — your client must run on the **same machine** as FreeCAD.
 
 ---
 
