@@ -22,3 +22,5 @@ memory/
 
 # Build artifacts
 *.zip
+*.mcpb
+node_modules/

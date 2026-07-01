@@ -1,0 +1,31 @@
+{
+  "manifest_version": "0.2",
+  "name": "freecad-mcp-bridge",
+  "display_name": "FreeCAD MCP Bridge",
+  "version": "0.1.15",
+  "description": "Connect Claude Desktop to a running FreeCAD session through the FreeCAD MCP Bridge addon.",
+  "author": {
+    "name": "CREATeNG",
+    "url": "https://github.com/CREATeNG/freecad-mcp-bridge"
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "index.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/index.js"],
+      "env": {
+        "FREECAD_MCP_PORT": "${user_config.port}"
+      }
+    }
+  },
+  "user_config": {
+    "port": {
+      "type": "number",
+      "title": "FreeCAD MCP Bridge port",
+      "description": "Must match FreeCAD's Edit -> Preferences -> MCP Bridge port.",
+      "default": 39280,
+      "required": false
+    }
+  }
+}
