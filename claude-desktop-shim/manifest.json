@@ -1,5 +1,5 @@
 {
-  "manifest_version": "0.2",
+  "manifest_version": "0.3",
   "name": "freecad-mcp-bridge",
   "display_name": "FreeCAD MCP Bridge",
   "version": "0.1.15",

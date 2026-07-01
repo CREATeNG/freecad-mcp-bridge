@@ -54,6 +54,9 @@ jobs:
             exit 1
           fi
 
+      - name: Validate Claude Desktop bundle manifest
+        run: npx --yes @anthropic-ai/mcpb@2.1.2 validate claude-desktop-shim/manifest.json
+
       - name: Record release candidate commit
         id: commit_sha
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"

@@ -80,6 +80,31 @@
     </widget>
    </item>
    <item>
+    <widget class="QGroupBox" name="claudeDesktopGroup">
+     <property name="title">
+      <string>Claude Desktop</string>
+     </property>
+     <layout class="QVBoxLayout" name="claudeDesktopLayout">
+      <item>
+       <widget class="QLabel" name="claudeDesktopNote">
+        <property name="textFormat">
+         <enum>Qt::RichText</enum>
+        </property>
+        <property name="text">
+         <string>Claude Desktop needs a small connector. &lt;a href="https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest/download/freecad-mcp-bridge.mcpb"&gt;Download the bundle&lt;/a&gt;, then double-click it to install.&lt;br/&gt;&lt;br/&gt;Claude Code and Cursor connect directly to the port above; no download needed.</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+        <property name="openExternalLinks">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
     <spacer name="verticalSpacer">
      <property name="orientation">
       <enum>Qt::Vertical</enum>

@@ -75,7 +75,12 @@ gh release create "$RELEASE_TAG" \
   --title "$RELEASE_TAG" \
   --notes "Release $RELEASE_TAG"
 
-echo "Published GitHub Release ${RELEASE_TAG} (release notes only)"
+echo "Published GitHub Release ${RELEASE_TAG}"
+
+echo "Packing and uploading the Claude Desktop bundle (.mcpb)"
+npx --yes @anthropic-ai/mcpb@2.1.2 pack claude-desktop-shim freecad-mcp-bridge.mcpb
+gh release upload "$RELEASE_TAG" freecad-mcp-bridge.mcpb
+echo "Uploaded freecad-mcp-bridge.mcpb to ${RELEASE_TAG}"
 
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   printf 'release_tag=%s\n' "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
