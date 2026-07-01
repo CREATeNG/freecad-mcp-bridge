@@ -39,7 +39,9 @@ Claude Desktop can't open an HTTP endpoint the way Claude Code and others can, b
 2. Double-click it to install in Claude Desktop.
 3. When prompted, set the **port** to match FreeCAD's (default `39280`).
 
-It forwards to the same `http://127.0.0.1:39280/mcp` endpoint. Other stdio-only clients can run the shim directly instead of the bundle.
+It forwards to the same `http://127.0.0.1:39280/mcp` endpoint.
+
+Alternatively, stdio clients can run the shim directly with node, instead of installing the bundle.
 
 ---
 
