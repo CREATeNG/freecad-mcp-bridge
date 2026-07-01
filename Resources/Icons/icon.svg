@@ -1,14 +1,28 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <!-- Rounded dark background -->
-  <rect x="2" y="2" width="60" height="60" rx="12" fill="#1e293b" />
-  <!-- Core connector symbol -->
-  <circle cx="32" cy="18" r="6" fill="#3b82f6" />
-  <circle cx="18" cy="44" r="6" fill="#10b981" />
-  <circle cx="46" cy="44" r="6" fill="#10b981" />
-  <!-- Connecting lines -->
-  <path d="M 32 24 L 18 38" stroke="#64748b" stroke-width="3" stroke-linecap="round" />
-  <path d="M 32 24 L 46 38" stroke="#64748b" stroke-width="3" stroke-linecap="round" />
-  <path d="M 24 44 L 40 44" stroke="#64748b" stroke-width="3" stroke-linecap="round" />
-  <!-- A cute bridge arch -->
-  <path d="M 12 52 Q 32 32 52 52" stroke="#f59e0b" stroke-width="4" fill="none" stroke-linecap="round" />
+  <defs>
+    <!-- Gradient running from bottom-left to top-right -->
+    <linearGradient id="tailGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f97316" stop-opacity="0" />
+      <stop offset="40%" stop-color="#f97316" stop-opacity="0.7" />
+      <stop offset="80%" stop-color="#f59e0b" stop-opacity="0.95" />
+      <stop offset="100%" stop-color="#fef08a" stop-opacity="1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Shooting Star Tail (Symmetric Nested Swooshes matching mockup image proportions - flat-capped curved wedges thinned by 1/5) -->
+  <!-- 1. Lower Trail Swoosh (Curved wedge, thinned by 1/5, bottom tip very straight) -->
+  <path d="M 14 56 C 11 48, 26 20, 42 24 L 42.8 28.8 C 27 30, 14 48, 14 56 Z" fill="url(#tailGrad)" />
+  <!-- 2. Center Trail Swoosh (Curved wedge, thinned by 1/5, bottom tip very straight) -->
+  <path d="M 8 60 C 5 48, 24 16, 40 20 L 40.8 24.8 C 24 26, 7 52, 8 60 Z" fill="url(#tailGrad)" />
+  <!-- 3. Upper Trail Swoosh (Curved wedge, nudged down, flattened top arch, thinned by 1/5, bottom tip straighter) -->
+  <path d="M 8 48 C 8 38, 22 21, 38 18 L 39.5 22 C 24 26, 7 40, 8 48 Z" fill="url(#tailGrad)" />
+
+  <!-- 8-pointed Blue/Cyan Electric Spark at the head (shifted to 44, 22, scaled 15% larger, razor-sharp bright cyan, symmetrical) -->
+  <g transform="translate(44, 22) scale(1.15) translate(-32, -34)">
+    <!-- 1. Diagonal and Cardinal arms (Outer glow - sharp straight V-cut corners in bright cyan, symmetrical) -->
+    <path d="M 32 22 L 33.5 29.5 L 39 27 L 36.5 32.5 L 44 34 L 36.5 35.5 L 39 41 L 33.5 38.5 L 32 46 L 30.5 38.5 L 25 41 L 27.5 35.5 L 20 34 L 27.5 32.5 L 25 27 L 30.5 29.5 Z" fill="#06b6d4" stroke="#22d3ee" stroke-width="2" stroke-linejoin="miter" stroke-miterlimit="10"/>
+    
+    <!-- 2. Diagonal and Cardinal arms (Inner white core - sharp straight V-cut corners) -->
+    <path d="M 32 26 L 32.8 31.5 L 36 30 L 34.5 33.2 L 40 34 L 34.5 34.7 L 36 38 L 32.8 36.5 L 32 42 L 31.2 36.5 L 28 38 L 29.5 34.8 L 24 34 L 29.5 33.3 L 28 30 L 31.2 31.5 Z" fill="#ffffff"/>
+  </g>
 </svg>
