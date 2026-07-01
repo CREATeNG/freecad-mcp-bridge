@@ -27,23 +27,38 @@ Most MCP clients (for example Claude Code or Cursor) connect over HTTP. Add an M
 - **Transport:** Streamable HTTP
 - **URL:** `http://127.0.0.1:39280/mcp`
 
-For example, with the Claude Code CLI:
+For example, Claude Code takes it on the command line:
 
 ```
 claude mcp add --transport http freecad http://127.0.0.1:39280/mcp
 ```
 
-Other clients have their own "add MCP server" screen or config file — give it the same transport and URL.
+or in its `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "freecad": {
+      "type": "http",
+      "url": "http://127.0.0.1:39280/mcp"
+    }
+  }
+}
+```
+
+Other clients differ, but it's always the same URL and HTTP transport.
 
 ### Clients that only speak stdio
 
-Some clients (for example Claude Desktop) can only launch MCP servers over stdio. For those, install the small connector bundle:
+**Claude Desktop** (and possibly other clients) can't open an HTTP endpoint; they only launch MCP servers over stdio. (Not **Claude Code** — that's an HTTP client, above.) They can reach the bridge through a small stdio↔HTTP relay (the shim in [`mcp-stdio-shim/`](mcp-stdio-shim/)).
+
+For **Claude Desktop**, that relay is packaged as a bundle you install by double-clicking:
 
 1. Download **`freecad-mcp-bridge.mcpb`** from the [latest release](https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest).
-2. Install it in your client (in Claude Desktop, double-click the file).
+2. Double-click it to install in Claude Desktop.
 3. When prompted, set the **port** to match FreeCAD's (default `39280`).
 
-The bundle is a tiny stdio↔HTTP relay — it forwards to the same `http://127.0.0.1:39280/mcp` endpoint. Its source is in [`mcp-stdio-shim/`](mcp-stdio-shim/).
+It forwards to the same `http://127.0.0.1:39280/mcp` endpoint. Other stdio-only clients can run the shim directly instead of the bundle.
 
 ### Changing the port
 
