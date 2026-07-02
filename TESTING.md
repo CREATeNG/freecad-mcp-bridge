@@ -1,6 +1,6 @@
 # Automated install verification (CI)
 
-This document describes the GitHub Actions workflow that installs a tagged release through FreeCAD's Addon Manager, restarts FreeCAD, and verifies that the addon auto-initializes and the local socket bridge works end-to-end.
+This document describes the GitHub Actions workflow that installs a tagged release through FreeCAD's Addon Manager, restarts FreeCAD, and verifies that the addon auto-initializes and the bridge works end-to-end over HTTP.
 
 For release tagging, Index updates, and workflows, see [MAINTAINING.md](MAINTAINING.md).
 
@@ -32,18 +32,11 @@ Shared helpers live in `scripts/test_install_common.py`.
 | `workflow_call` from **`release.yml`** | `install_mode: main` or `tag`; `install_tag` from prepare | Pre-tag gate (`main`) and post-tag sanity check (`tag` path) |
 | `workflow_dispatch` | Inputs: `tag` (e.g. `v0.1.11`), `mode` (`tag`, `index_zip`, or `main`) | Ad-hoc CI run; iterate on scripts |
 
-Environment variables set by the workflow (overridable locally when debugging):
+Environment variables set by the workflow (overridable locally when debugging) fall into three groups. Exact names and defaults live in [`install-verify.yml`](.github/workflows/install-verify.yml) and each script's own module docstring (`test_install.py`, `test_verify.py`) — not repeated here to avoid the two copies drifting apart:
 
-| Variable | Default (workflow) | Purpose |
-|----------|----------------------|---------|
-| `RELEASE_INSTALL_TAG` | dispatch input or `github.ref_name` | Git tag to install |
-| `RELEASE_INSTALL_MODE` | `tag` (or dispatch `index_zip`) | Addon Manager install source |
-| `RELEASE_INSTALL_REPO` | `https://github.com/CREATeNG/freecad-mcp-bridge` | Repository URL |
-| `RELEASE_INSTALL_NAME` | `freecad-mcp-bridge` | Installed Mod folder name |
-| `RELEASE_INSTALL_GUI_DELAY_MS` | `5000` | Delay before test logic starts |
-| `RELEASE_INSTALL_TOOLBAR_TIMEOUT_MS` | `30000` | Wait for auto-injected toolbar |
-| `RELEASE_INSTALL_SOCKET_TIMEOUT_MS` | `30000` | Socket response timeout |
-| `RELEASE_INSTALL_WAIT_MS` | `180000` | Install completion timeout |
+- **Install source** — which tag/repo/mode/Mod-folder-name to install.
+- **Timing** — how long to wait for GUI startup, toolbar injection, the HTTP exec round-trip, and overall install completion.
+- **Expected strings** (verify phase only) — the probe code sent over HTTP, the expected output substring, and the expected Report-view message after stopping the bridge.
 
 ---
 
@@ -89,10 +82,7 @@ Run inside the first FreeCAD GUI process.
 3. Install via Addon Manager (`InstallationMethod.ANY`) using `build_addon_descriptor()` for the chosen mode.
 4. Poll until `package.xml` with the expected version appears (handles nested GitHub zip directories).
 5. **Flatten** nested install paths to `Mod/freecad-mcp-bridge/` so FreeCAD autoloads the addon on restart.
-6. **Verify on-disk tree:**
-   - `package.xml` (version matches tag)
-   - `freecad/mcp_bridge/{__init__.py,init_gui.py,bridge.py}`
-   - Platform binary under `bin/{win32,linux,macos}/`
+6. **Verify on-disk tree** — confirms `package.xml`'s version matches the tag and the addon's core Python files are present. Exact required-file list lives in `verify_install_tree()` in [`test_install_common.py`](scripts/test_install_common.py).
 
 On success, the script exits via `quit_freecad(0)` and CI launches verify in a new FreeCAD process.
 
@@ -104,16 +94,16 @@ Run inside the **second** FreeCAD process after restart. Does **not** call `App.
 
 **Checklist:**
 
-| Step | Assertion |
-|------|-----------|
-| Auto-registration | `MCP_Bridge_Toggle` in `Gui.listCommands()` |
-| Install dir | `Mod/freecad-mcp-bridge/` exists |
-| Toolbar injection | Find **MCP Bridge On/Off** on the MCP Bridge toolbar (timeout) |
-| Start listener | First toolbar click → bridge instance `isListening()` |
-| Socket round-trip | `QLocalSocket` connect to `freecad_mcp_bridge_socket`, send probe Python, expect `test_verify_ok` in response |
-| Stop listener | Second toolbar click → listener stopped |
-| Report view | Contains `[MCP Bridge] Stopped socket listener.` (or `RELEASE_INSTALL_STOP_MESSAGE`) |
-| Status bar | Contains `MCP Bridge: Offline` |
+| Step | Proves |
+|------|--------|
+| Auto-registration | The addon's command registers on startup with no manual injection — `init_gui.py`'s own startup hooks ran |
+| Install dir | The installed addon directory exists |
+| Toolbar injection | The **MCP Bridge On/Off** toolbar action appears with no manual injection |
+| Start bridge | First toolbar click actually starts the HTTP server |
+| HTTP round-trip | A client-shaped request — `tools/call` → `execute_python` over HTTP, sent from a worker thread while the main thread pumps the Qt event loop, paginating via `get_output` if the response is chunked — returns the expected probe output. Same code path a real MCP client uses. |
+| Stop bridge | Second toolbar click actually stops the HTTP server |
+| Report view | Shows the expected "stopped" message (`RELEASE_INSTALL_STOP_MESSAGE`, defaults to the bridge's own stop log line) |
+| Status bar | Shows `MCP Bridge: Offline` |
 
 On success, exits with `quit_freecad(0)`.
 
