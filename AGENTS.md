@@ -1,7 +1,8 @@
 # freecad-mcp-bridge Workspace Rules
 
-> Phase: implementation. Design complete — chosen direction: Concept C — Addon-Hosted MCP Server.
-> Reference: `design/addon-hosted-mcp-server.md` (full design, ready for implementation).
+> Phase: wrap-up. Implementation complete — shipping and finalising the Index listing.
+> Reference: `plans/wrap-up.md` (current status and remaining checklist).
+
 
 Any AI assistant entering this workspace must follow these rules to maintain clarity and focus:
 
