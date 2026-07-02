@@ -10,6 +10,8 @@ Developer tips and guidelines for coding and local testing.
 
 For general guidelines on FreeCAD addon development setup—such as cloning, symlinking, or copying files into FreeCAD's versioned `Mod/` directory—please refer to the [FreeCAD Addon Academy](https://freecad.github.io/Addon-Academy/).
 
+This is a small addon — each module in `freecad/mcp_bridge/` carries a docstring describing its role. Start with `http_server.py` and `executor.py` to see the request lifecycle.
+
 ---
 
 ## 1. Direct CLI testing utility (`send_cmd.py`)
