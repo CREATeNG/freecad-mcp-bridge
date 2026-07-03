@@ -7,8 +7,9 @@ preference change takes effect on the next server start without a restart.
 import FreeCAD
 
 from freecad.mcp_bridge.constants import (
+    DEFAULT_MAX_PAGE_SIZE_KB,
+    DEFAULT_MAX_RESPONSE_TIMEOUT_S,
     DEFAULT_PORT,
-    DEFAULT_TIMEOUT_MS,
     PREF_GROUP,
 )
 
@@ -22,6 +23,13 @@ def port() -> int:
     return _params().GetInt("Port", DEFAULT_PORT)
 
 
-def response_timeout_ms() -> int:
+def max_response_timeout_ms() -> int:
     """Max time a tool call waits for output before returning has_more=True."""
-    return _params().GetInt("ResponseTimeout", DEFAULT_TIMEOUT_MS)
+    seconds = _params().GetInt("MaxResponseTimeoutSeconds", DEFAULT_MAX_RESPONSE_TIMEOUT_S)
+    return seconds * 1000
+
+
+def max_page_size_chars() -> int:
+    """Max size of a single page's output before returning has_more=True."""
+    kb = _params().GetInt("MaxPageSize", DEFAULT_MAX_PAGE_SIZE_KB)
+    return kb * 1024

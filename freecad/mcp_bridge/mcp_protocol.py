@@ -1,8 +1,9 @@
 """MCP protocol handling — maps parsed JSON-RPC requests to responses.
 
-Pure protocol logic: no FreeCAD or HTTP dependency, so it runs and is
-testable on plain CPython. The execute path (tools/call) is added in a
-later slice; for now only the lifecycle methods are answered.
+Handles the lifecycle methods (initialize, tools/list) and provides the
+tools/call response-framing helpers (tool_call_response, error_response);
+the HTTP layer performs the actual tools/call dispatch since it needs the
+Executor and paging buffer.
 """
 
 import json

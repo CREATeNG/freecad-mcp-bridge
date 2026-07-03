@@ -44,7 +44,7 @@
       <item row="1" column="0">
        <widget class="QLabel" name="timeoutLabel">
         <property name="text">
-         <string>Response timeout</string>
+         <string>Max response timeout</string>
         </property>
        </widget>
       </item>
@@ -54,22 +54,57 @@
          <string>The maximum time a request waits for output before returning what it has so far. The client fetches any remaining output automatically.</string>
         </property>
         <property name="suffix">
-         <string> ms</string>
+         <string> s</string>
         </property>
         <property name="minimum">
-         <number>1000</number>
+         <number>1</number>
         </property>
         <property name="maximum">
-         <number>600000</number>
+         <number>600</number>
         </property>
         <property name="singleStep">
-         <number>1000</number>
+         <number>1</number>
         </property>
         <property name="value">
-         <number>15000</number>
+         <number>15</number>
         </property>
         <property name="prefEntry" stdset="0">
-         <cstring>ResponseTimeout</cstring>
+         <cstring>MaxResponseTimeoutSeconds</cstring>
+        </property>
+        <property name="prefPath" stdset="0">
+         <cstring>Mod/freecad-mcp-bridge</cstring>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="pageSizeLabel">
+        <property name="text">
+         <string>Max page size</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="Gui::PrefSpinBox" name="pageSizeSpinBox">
+        <property name="toolTip">
+         <string>The maximum size of a single page of output. Larger output is split across multiple pages, fetched automatically via get_output.</string>
+        </property>
+        <property name="suffix">
+         <string> KB</string>
+        </property>
+        <property name="minimum">
+         <number>1</number>
+        </property>
+        <property name="maximum">
+         <number>10240</number>
+        </property>
+        <property name="singleStep">
+         <number>1</number>
+        </property>
+        <property name="value">
+         <number>64</number>
+        </property>
+        <property name="prefEntry" stdset="0">
+         <cstring>MaxPageSize</cstring>
         </property>
         <property name="prefPath" stdset="0">
          <cstring>Mod/freecad-mcp-bridge</cstring>

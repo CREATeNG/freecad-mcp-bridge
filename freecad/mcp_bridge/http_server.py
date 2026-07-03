@@ -4,7 +4,7 @@ A ThreadingHTTPServer runs on a background thread, binding 127.0.0.1 only.
 Lifecycle methods (initialize, tools/list) return plain JSON; tool calls
 (execute_python, get_output) run code on the Qt main thread via the Executor
 and stream the result back over SSE, with paging for output that outlasts the
-response timeout.
+response timeout or exceeds the max page size.
 """
 
 import json
@@ -72,10 +72,11 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         params = request.get("params") or {}
         name = params.get("name")
         args = params.get("arguments") or {}
-        timeout_ms = config.response_timeout_ms()
+        timeout_ms = config.max_response_timeout_ms()
+        page_size_chars = config.max_page_size_chars()
 
         if name == "execute_python":
-            self._run_code(req_id, args.get("code", ""), timeout_ms)
+            self._run_code(req_id, args.get("code", ""), timeout_ms, page_size_chars)
         elif name == "execute_python_file":
             filepath = args.get("filepath", "")
             try:
@@ -92,9 +93,11 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                     )
                 )
                 return
-            self._run_code(req_id, code, timeout_ms)
+            self._run_code(req_id, code, timeout_ms, page_size_chars)
         elif name == "get_output":
-            page = paging.drain(args.get("page_token", ""), timeout_ms)
+            page = paging.drain(
+                args.get("page_token", ""), timeout_ms, page_size_chars
+            )
             self._send_sse(mcp_protocol.tool_call_response(req_id, page))
         else:
             self._send_sse(
@@ -103,10 +106,10 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                 )
             )
 
-    def _run_code(self, req_id, code, timeout_ms):
+    def _run_code(self, req_id, code, timeout_ms, page_size_chars):
         token, output_queue = paging.start_page()
         self.server.executor.submit(code, output_queue)
-        page = paging.drain(token, timeout_ms)
+        page = paging.drain(token, timeout_ms, page_size_chars)
         self._send_sse(mcp_protocol.tool_call_response(req_id, page))
 
     def _send_json(self, status, payload):

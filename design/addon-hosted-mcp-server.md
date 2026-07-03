@@ -177,6 +177,19 @@ Token lifetime: evicted whenever `has_more: false` is returned — by `execute_p
 itself if exec completes within the timeout, or by `get_output` if polling was needed.
 Buffers that are never fully drained accumulate until server stop.
 
+**Page size cap (added post-launch)**
+A page is also bounded by size (`max_page_size_chars`, configurable, default 64 KB),
+independent of the timeout — a fast-producing exec could otherwise return an
+arbitrarily large single response, bounded only by how much it printed within the
+timeout window. A chunk that doesn't fully fit in the current page is split: the part
+that fits is returned, and the untaken remainder is held as `(text, offset)` on the
+buffer entry (`pending`) rather than being re-copied — the original string is read
+from in place across calls, so splitting one large chunk across many pages costs
+proportional to the chunk's total size, not quadratic in the number of pages. No new
+lock is needed; `pending` is only ever touched inside the existing per-token
+`entry["lock"]`, which already had to exist to serialize concurrent `get_output`
+calls for the same token.
+
 ### Local socket
 Not used. HTTP is the only listener — one endpoint, simpler architecture, and any
 developer can test directly with `curl`.
@@ -255,4 +268,5 @@ MCP Bridge. FreeCAD wires widgets to the parameter store automatically.
 | Parameter | Widget | Default | Notes |
 |-----------|--------|---------|-------|
 | Port | `QSpinBox` | 39280 | Error logged on conflict at startup |
-| Response timeout (ms) | `QSpinBox` | 15000 | Max wait in `execute_python` and `get_output` before returning with `has_more: true` |
+| Max response timeout (s) | `QSpinBox` | 15 | Max wait in `execute_python` and `get_output` before returning with `has_more: true` |
+| Max page size (KB) | `QSpinBox` | 64 | Max size of a single page's output before returning with `has_more: true`, independent of the timeout |

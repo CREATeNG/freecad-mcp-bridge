@@ -1,8 +1,7 @@
 """MCP tool definitions exposed by the bridge.
 
-Schemas only. `tools/list` returns these; `tools/call` (added with the
-execute path) dispatches by name. Kept free of FreeCAD/HTTP imports so the
-protocol layer stays unit-testable on plain CPython.
+Schemas only. `tools/list` returns these; the HTTP layer dispatches
+`tools/call` by name.
 """
 
 EXECUTE_PYTHON = {

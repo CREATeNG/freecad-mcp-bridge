@@ -14,7 +14,8 @@ ENDPOINT_PATH = "/mcp"
 
 # Network / timing defaults — overridable via FreeCAD preferences (see config.py)
 DEFAULT_PORT = 39280
-DEFAULT_TIMEOUT_MS = 15000
+DEFAULT_MAX_RESPONSE_TIMEOUT_S = 15
+DEFAULT_MAX_PAGE_SIZE_KB = 64
 
 # FreeCAD preference group backing config.py
 PREF_GROUP = "User parameter:BaseApp/Preferences/Mod/freecad-mcp-bridge"
