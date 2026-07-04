@@ -76,6 +76,15 @@ serialized without a `threading.Lock` — each signal carries its own `(code, ou
 pair and is processed in submission order. Concurrent scripts would interfere with each
 other's session state anyway, so sequential execution is the correct behaviour.
 
+**Cancellation of a running exec — out of scope (2026-07-04):** analysed and closed
+without action. The concept is bigger in scope than this project alone: native CAD
+operations are uninterruptible by anyone (a ceiling set by FreeCAD/OCCT, not by this
+bridge), stock FreeCAD freezes identically on a runaway macro, and the agent-side
+recovery loop (spot the stuck process, kill it, correct the script, re-run) is proven
+in practice and covers every hang class — more than an in-process cancel verb ever
+could. If the capability belongs anywhere, it is upstream (interruptible scripting in
+FreeCAD) or in the agent, not in the bridge.
+
 **Loopback only, user-toggled**
 The server binds to `127.0.0.1` only, never `0.0.0.0`. It starts only when the user
 activates the toolbar toggle, and stops when they deactivate it. This satisfies the
