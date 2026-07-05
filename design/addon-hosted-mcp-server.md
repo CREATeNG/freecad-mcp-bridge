@@ -1,6 +1,9 @@
 # Addon-Hosted MCP Server — Analysis & Design
 
-Status: **READY FOR IMPLEMENTATION**
+The decision record for the in-process HTTP architecture: the architecture as it
+is, and why — including rejected alternatives. History lives in git. For a
+plain-language walkthrough of how execution behaves at runtime, see
+[job-lifecycle.md](job-lifecycle.md).
 
 ---
 
@@ -49,18 +52,16 @@ The HTTP server runs in a background thread. The existing patterns (Qt signals/s
 A background thread with Qt signal dispatch is a standard Qt/PySide pattern, well
 documented and normal for FreeCAD addons.
 
-Two dispatch modes are needed:
+Two kinds of request, only one of which crosses threads:
 
-- **Simple JSON response** — used for MCP lifecycle messages (`initialize`,
-  `tools/list`) which are request/response with no streaming. `QMetaObject.invokeMethod`
-  with `Qt.BlockingQueuedConnection`: the background thread blocks until the Qt main
-  thread processes the call and the slot returns. Result is passed back via a shared
-  object. Clean and direct.
+- **Lifecycle messages** (`initialize`, `tools/list`) are answered directly on the
+  HTTP request thread — pure protocol logic, no FreeCAD state involved, so no
+  main-thread hop is needed.
 
-- **Non-blocking tool call response** — used for `execute_python` and
-  `execute_python_file`. Exec is dispatched to the Qt main thread via `Qt.QueuedConnection`
-  (non-blocking); the Qt main thread redirects `sys.stdout` and `sys.stderr` to a
-  `TeeWriter` when it receives the signal — not before, and not in the HTTP handler.
+- **Tool calls** (`execute_python` and `execute_python_file`) must run on the Qt
+  main thread. The job is queued to the main-thread dispatcher (see *Exec
+  serialization* below); when the job runs, the main thread redirects `sys.stdout`
+  and `sys.stderr` to a `TeeWriter` — not before, and not in the HTTP handler.
   The HTTP handler drains the output queue for up to the configured timeout (default 15 s);
   if the sentinel arrives within the timeout, returns `has_more: false` and evicts the
   buffer entry; otherwise returns `has_more: true`. The output queue persists as the page
@@ -70,18 +71,22 @@ Two dispatch modes are needed:
   returned. Python's GIL is released periodically during exec, allowing the background
   thread to drain the queue in the gaps.
 
-**Concurrent request serialization:** `Qt.QueuedConnection` signals are queued by Qt's
-event loop and processed sequentially on the main thread. Exec calls are naturally
-serialized without a `threading.Lock` — each signal carries its own `(code, output_queue)`
-pair and is processed in submission order. Concurrent scripts would interfere with each
-other's session state anyway, so sequential execution is the correct behaviour.
+**Exec serialization — dispatcher gate:** exec jobs travel only
+through a single FIFO job queue owned by the Executor; the Qt signal carries no payload
+and serves purely as a wake-up. The main-thread dispatcher holds a busy latch and drains
+the queue one job at a time, each job running to completion before the next is taken.
+The latch makes nested dispatcher invocations no-ops — required because executed code
+that pumps the Qt event loop (`Gui.updateGui()`, `processEvents()`, modal dialogs) would
+otherwise have the next queued exec delivered nested inside the current one. Strict FIFO
+and one-at-a-time are enforced by the structure (single queue, single consumer loop)
+rather than assumed of Qt's queued-signal delivery. Sequential execution remains the
+correct semantics: concurrent scripts would interfere with each other's session state.
 
-**Cancellation of a running exec — out of scope (2026-07-04):** analysed and closed
-without action. The concept is bigger in scope than this project alone: native CAD
-operations are uninterruptible by anyone (a ceiling set by FreeCAD/OCCT, not by this
-bridge), stock FreeCAD freezes identically on a runaway macro, and the agent-side
-recovery loop (spot the stuck process, kill it, correct the script, re-run) is proven
-in practice and covers every hang class — more than an in-process cancel verb ever
+**Cancellation of a running exec — out of scope:** the concept is bigger than this
+project alone. Native CAD operations are uninterruptible by anyone (a ceiling set by
+FreeCAD/OCCT, not by this bridge), stock FreeCAD freezes identically on a runaway
+macro, and the agent-side recovery loop (spot the stuck process, kill it, correct the
+script, re-run) covers every hang class — more than an in-process cancel verb ever
 could. If the capability belongs anywhere, it is upstream (interruptible scripting in
 FreeCAD) or in the agent, not in the bridge.
 
@@ -103,15 +108,14 @@ to prevent DNS rebinding attacks. Rule: reject any request where the `Origin` he
 present and is not `localhost` or `127.0.0.1`.
 
 **Claude Desktop shim**
-Claude Desktop speaks stdio only for local MCP servers. A small TypeScript shim ships
-with the addon as an MCP proxy: an SDK Server with `StdioServerTransport` (Claude
-Desktop side) wired to an SDK Client with `StreamableHTTPClientTransport` (FreeCAD
-side). Tool calls arriving on stdio are forwarded to the in-process HTTP server; the
-SDK client handles SSE internally and returns the assembled result to the SDK server,
-which sends it back to Claude Desktop as a single stdio response.
-
-Claude Desktop bundles Node.js — no user-side runtime install needed. Compiled to JS
-for the `.mcpb` bundle; TypeScript source lives in the addon repo.
+Claude Desktop speaks stdio only for local MCP servers. A small zero-dependency
+Node.js shim (`mcp-stdio-shim/index.js`) ships with the addon as a stdio ↔ HTTP
+proxy: each newline-delimited JSON-RPC message arriving on stdin is forwarded as an
+HTTP POST to the in-process server; the JSON or single-event SSE reply is unwrapped
+and written back on stdout as one line. It interprets as little of the protocol as
+possible, so protocol additions pass through untouched. Node stdlib only (global
+`fetch`, Node ≥ 18); Claude Desktop bundles Node.js — no user-side runtime install
+needed.
 
 **Transport distinction — Claude Desktop vs direct clients**
 Claude Code and Cursor connect to the HTTP endpoint directly and receive responses over
@@ -121,8 +125,16 @@ configured timeout for initial output, then poll via `get_output` if needed. The
 only for Claude Desktop users.
 
 **No binary ships with the addon**
-No prebuilt machine-code binary is distributed. The compiled JS bundle in the `.mcpb` is
-the only non-Python artifact; its TypeScript source lives in the addon repo.
+No prebuilt machine-code binary is distributed. The only non-Python artifact is the
+shim's plain, readable `index.js`, whose source ships in the addon repo
+(`mcp-stdio-shim/`); nothing is compiled.
+
+**`.mcpb` distribution and the Index binary ban**
+The packed `.mcpb` is treated as if the Addon Index binary ban applies to it — a
+working assumption, stated to the maintainer on the Index issue, where it can be
+corrected. The safer path is taken regardless: the Addon Manager package contains
+only source, and the packed `.mcpb` is distributed separately as a GitHub release
+asset for Claude Desktop users.
 
 **Project name — `freecad-mcp-bridge`**
 "Bridge" is accurate at the conceptual level (bridging FreeCAD to the MCP world)
@@ -186,7 +198,7 @@ Token lifetime: evicted whenever `has_more: false` is returned — by `execute_p
 itself if exec completes within the timeout, or by `get_output` if polling was needed.
 Buffers that are never fully drained accumulate until server stop.
 
-**Page size cap (added post-launch)**
+**Page size cap**
 A page is also bounded by size (`max_page_size_chars`, configurable, default 64 KB),
 independent of the timeout — a fast-producing exec could otherwise return an
 arbitrarily large single response, bounded only by how much it printed within the
@@ -203,19 +215,11 @@ calls for the same token.
 Not used. HTTP is the only listener — one endpoint, simpler architecture, and any
 developer can test directly with `curl`.
 
-### Shim — SDK
-Uses `@modelcontextprotocol/sdk`. JSON-RPC framing, session lifecycle, protocol
-versioning, and batch request handling handled by the SDK. Bundle size (~100–300KB
-compiled JS in the `.mcpb`) is not a concern.
-
-## Open questions
-
-### `.mcpb` and the Addon Index binary ban
-A `.mcpb` containing only compiled JS and a manifest is not a prebuilt binary in the
-sense the Addon Index ban targets (compiled machine code). Whether the maintainer treats
-it as equivalent is unknown. Plan: include it in the addon repo and raise the question
-when the Index issue is updated. Fallback: generate the `.mcpb` at install time from
-source files already in the repo.
+### Shim — no SDK
+The shim is hand-rolled. `@modelcontextprotocol/sdk` was considered and rejected:
+the forwarding job (read line → POST → unwrap → write line) is small enough that
+the SDK's framing/session machinery isn't warranted, and zero dependencies keeps
+the `.mcpb` bundle trivial and auditable.
 
 ---
 
@@ -238,30 +242,28 @@ source files already in the repo.
 
 ### Qt thread boundary
 
-**Simple JSON response path:**
-- HTTP handler calls `QMetaObject.invokeMethod` with `Qt.BlockingQueuedConnection` to dispatch to Qt main thread
-- Qt main thread: constructs response (protocol handshake, tools list, etc.) and returns it
+**Lifecycle path (no thread hop):**
+- HTTP handler answers `initialize` / `tools/list` directly on the request thread (`mcp_protocol.handle_request`) — no FreeCAD state involved
 - HTTP handler: sends `application/json` response
 
 **Non-blocking tool call path:**
-- HTTP handler generates `page_token` (UUID4), creates `{"queue": queue.Queue(), "lock": threading.Lock()}` entry in the page buffer dict, emits signal with `Qt.QueuedConnection` carrying `(code, output_queue)`
+- HTTP handler generates `page_token` (UUID4), creates the page-buffer entry (queue, per-token lock, pending slot), puts the job on the Executor's job queue and emits the wake-up signal (see *Exec serialization*)
 - HTTP handler acquires the per-token lock, drains the output queue for up to the configured timeout; if sentinel received, returns `has_more: false` and evicts buffer entry; otherwise returns `has_more: true`
 - Qt main thread: unaware of paging or chunking — receives signal, redirects `sys.stdout` and `sys.stderr` to a `TeeWriter`, runs `exec()`, puts sentinel on queue, restores `sys.stdout` and `sys.stderr`. Done.
 - `TeeWriter` writes to two destinations simultaneously: `output_queue` (for the AI) and `FreeCAD.Console.PrintMessage` (for the FreeCAD Report View). Both receive output in real time as exec runs. The user sees what the AI is executing directly in FreeCAD, in real time.
 - Both `sys.stdout` and `sys.stderr` are redirected to the `TeeWriter` for the duration of exec. Exceptions and error output reach the AI and the Report View equally.
 - `get_output(page_token)`: if `page_token` not in buffer, returns `{"output": "", "has_more": false, "error": "unknown or expired page_token"}`; otherwise acquires the per-token lock (FIFO — only one reader at a time), reads from the output queue, manages `has_more`; if queue empty and sentinel not seen, waits up to the configured timeout before returning with `has_more: true`; on sentinel, returns remaining output with `has_more: false` and evicts buffer entry
 
-### Shim (TypeScript → compiled JS in `.mcpb`)
+### Shim (`mcp-stdio-shim/index.js`, plain Node.js)
 
-MCP proxy using the SDK on both sides:
-- SDK Server + `StdioServerTransport` — speaks MCP to Claude Desktop
-- SDK Client + `StreamableHTTPClientTransport(new URL('http://127.0.0.1:39280/mcp'))` — speaks MCP to FreeCAD
-- Tool call handler forwards to the client; SDK handles SSE internally; assembled result returned to Claude Desktop as a single stdio response
-- Compiled into `.mcpb` bundle via esbuild
+- Reads newline-delimited JSON-RPC from stdin; one HTTP POST per message to `http://127.0.0.1:<port>/mcp` (port from `FREECAD_MCP_PORT`, default 39280)
+- Unwraps `application/json` or single-event `text/event-stream` replies; writes the JSON-RPC envelope back as a single stdout line
+- Notifications (no `id`) get no reply; if the bridge is unreachable, a JSON-RPC error is synthesized directing the user to the toolbar toggle
+- Zero dependencies — Node stdlib only (global `fetch`, Node ≥ 18); no build step
 
 ### `.mcpb`
 
-- `manifest.json` + compiled `dist/index.js` (from TypeScript shim)
+- `manifest.json` + `index.js` + `package.json` — the shim shipped as-is, `entry_point: index.js`, no compile step
 - `server.type = "node"` — Node.js ships with Claude Desktop, no user-side install
 - Ships in the addon repo alongside Python files
 - Claude Desktop users: find in installed addon folder, double-click to install
