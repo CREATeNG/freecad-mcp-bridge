@@ -10,7 +10,7 @@ Developer tips and guidelines for coding and local testing.
 
 For general guidelines on FreeCAD addon development setup—such as cloning, symlinking, or copying files into FreeCAD's versioned `Mod/` directory—please refer to the [FreeCAD Addon Academy](https://freecad.github.io/Addon-Academy/).
 
-This is a small addon — each module in `freecad/mcp_bridge/` carries a docstring describing its role. Start with `http_server.py` and `executor.py` to see the request lifecycle.
+This is a small addon — each module in `freecad/mcp_bridge/` carries a docstring describing its role. Start with `http_server.py` and `executor.py` to see the request lifecycle. For the architecture and its rationale, see [design/addon-hosted-mcp-server.md](design/addon-hosted-mcp-server.md); for a walkthrough of how execution behaves, [design/job-lifecycle.md](design/job-lifecycle.md).
 
 ---
 
