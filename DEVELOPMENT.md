@@ -53,19 +53,7 @@ To run it locally for testing:
    ```
 ---
 
-## 3. Manual macro (no-install alternative)
-
-Run the bridge as a one-off macro without installing the addon:
-
-1. Open FreeCAD.
-2. Go to **Macro ➔ Macros... ➔ Create**.
-3. Name it `RunBridge.FCMacro`.
-4. Copy the entire contents of `freecad/mcp_bridge/bridge.py` from this project, paste it into the editor tab, and save (**Ctrl + S**).
-5. Open the macro list and click **Run** on the window you want to control.
-
----
-
-## 4. Python import guidelines
+## 3. Python import guidelines
 
 ### Qt/PySide version compatibility
 Inside FreeCAD, all GUI and core Qt bindings are exposed via a built-in `PySide` namespace wrapper. Standard addon development guidelines recommend always importing Qt modules from this unified wrapper (e.g., `from PySide.QtCore import ...`) rather than explicitly targeting `PySide6`. Importing `PySide6` directly can conflict with FreeCAD's internally managed Qt namespace. See the [FreeCAD Addon Academy Qt/PySide guide](https://freecad.github.io/Addon-Academy/Guides/Code/Qt).
@@ -73,11 +61,11 @@ Inside FreeCAD, all GUI and core Qt bindings are exposed via a built-in `PySide`
 ### Environment separation & import isolation
 Python code running outside of FreeCAD (such as `send_cmd.py`) cannot import the `FreeCAD`, `FreeCADGui`, or `PySide` modules.
 
-Additionally, shared protocol modules like `mcp_protocol.py` and `tools.py` are kept free of FreeCAD and Qt imports so they can be imported or tested without requiring a running FreeCAD process.
+Additionally, shared protocol modules like `mcp_protocol.py` and `tools.py` must be able to run outside FreeCAD; they therefore must not import FreeCAD or Qt.
 
 ---
 
-## 5. Addon icon
+## 4. Addon icon
 
 The project maintains the following SVG icon assets:
 

@@ -51,7 +51,7 @@ Once connected, the client has these tools:
 
 - **`execute_python(code)`** — run Python in your FreeCAD session. `App`/`FreeCAD` and `Gui`/`FreeCADGui` are pre-bound. Output (stdout, stderr, exceptions) is returned to the client and mirrored to FreeCAD's **Report view**, so you can watch what the AI runs in real time.
 - **`execute_python_file(filepath)`** — read a local `.py` file and run it in the same context.
-- **`get_output(page_token)`** — retrieve the remainder of a long-running script's output. Clients call this automatically when a run outlasts the response timeout.
+- **`get_output(page_token)`** — retrieve the remainder of a long-running script's output. Clients call this automatically when a run outlasts the response timeout or produces more than the max page size.
 
 ---
 
@@ -60,7 +60,8 @@ Once connected, the client has these tools:
 **Edit → Preferences → MCP Bridge:**
 
 - **Port** — the loopback port the server listens on (default 39280).
-- **Response timeout** — how long a request waits for output before returning what it has so far; the client fetches any remainder automatically (default 15000 ms).
+- **Max response timeout** — how long a request waits for output before returning what it has so far; the client fetches any remainder automatically (default 15 s).
+- **Max page size** — the most output a single response carries; larger output is split into pages the client fetches automatically (default 64 KB).
 
 ---
 

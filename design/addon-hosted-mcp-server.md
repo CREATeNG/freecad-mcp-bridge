@@ -115,7 +115,9 @@ HTTP POST to the in-process server; the JSON or single-event SSE reply is unwrap
 and written back on stdout as one line. It interprets as little of the protocol as
 possible, so protocol additions pass through untouched. Node stdlib only (global
 `fetch`, Node ≥ 18); Claude Desktop bundles Node.js — no user-side runtime install
-needed.
+needed. The shim reads the port from the `FREECAD_MCP_PORT` environment variable
+(default 39280). Notifications (no `id`) get no reply; if the bridge is unreachable,
+the shim synthesizes a JSON-RPC error directing the user to the toolbar toggle.
 
 **Transport distinction — Claude Desktop vs direct clients**
 Claude Code and Cursor connect to the HTTP endpoint directly and receive responses over
@@ -196,7 +198,10 @@ data access, but tool support is universal while resource support varies by clie
 
 Token lifetime: evicted whenever `has_more: false` is returned — by `execute_python`
 itself if exec completes within the timeout, or by `get_output` if polling was needed.
-Buffers that are never fully drained accumulate until server stop.
+Buffers that are never fully drained accumulate until server stop. An unknown or
+expired `page_token` returns
+`{"output": "", "has_more": false, "error": "unknown or expired page_token"}` —
+never an exception.
 
 **Page size cap**
 A page is also bounded by size (`max_page_size_chars`, configurable, default 64 KB),
@@ -220,53 +225,6 @@ The shim is hand-rolled. `@modelcontextprotocol/sdk` was considered and rejected
 the forwarding job (read line → POST → unwrap → write line) is small enough that
 the SDK's framing/session machinery isn't warranted, and zero dependencies keeps
 the `.mcpb` bundle trivial and auditable.
-
----
-
-## Implementation areas
-
-### In-process HTTP server
-
-- Single endpoint on `127.0.0.1:39280`, supports POST and GET (GET returns 405)
-- POST with lifecycle messages (`initialize`, `tools/list`): return `application/json`
-- POST with tool calls (`tools/call`): return `text/event-stream` (SSE)
-- Session management: stateless for v1
-- Origin header validation: required (DNS rebinding protection)
-- Port configurable via FreeCAD preferences; error logged on conflict
-- Tools: `execute_python(code)`, `execute_python_file(filepath)`, `get_output(page_token)`
-- `execute_python` / `execute_python_file` responses include `has_more: bool` and `page_token` when `has_more: true`
-- `get_output(page_token)` returns the next chunk; same response shape
-- Page buffer: `dict` keyed by `page_token`, each entry `{"queue": queue.Queue(), "lock": threading.Lock()}`
-- Sentinel: module-level `SENTINEL = object()` placed on the output queue by the Qt main thread when exec completes — unambiguous end-of-stream signal
-- Buffer entries evicted on `has_more: false`; all remaining entries cleared on server stop
-
-### Qt thread boundary
-
-**Lifecycle path (no thread hop):**
-- HTTP handler answers `initialize` / `tools/list` directly on the request thread (`mcp_protocol.handle_request`) — no FreeCAD state involved
-- HTTP handler: sends `application/json` response
-
-**Non-blocking tool call path:**
-- HTTP handler generates `page_token` (UUID4), creates the page-buffer entry (queue, per-token lock, pending slot), puts the job on the Executor's job queue and emits the wake-up signal (see *Exec serialization*)
-- HTTP handler acquires the per-token lock, drains the output queue for up to the configured timeout; if sentinel received, returns `has_more: false` and evicts buffer entry; otherwise returns `has_more: true`
-- Qt main thread: unaware of paging or chunking — receives signal, redirects `sys.stdout` and `sys.stderr` to a `TeeWriter`, runs `exec()`, puts sentinel on queue, restores `sys.stdout` and `sys.stderr`. Done.
-- `TeeWriter` writes to two destinations simultaneously: `output_queue` (for the AI) and `FreeCAD.Console.PrintMessage` (for the FreeCAD Report View). Both receive output in real time as exec runs. The user sees what the AI is executing directly in FreeCAD, in real time.
-- Both `sys.stdout` and `sys.stderr` are redirected to the `TeeWriter` for the duration of exec. Exceptions and error output reach the AI and the Report View equally.
-- `get_output(page_token)`: if `page_token` not in buffer, returns `{"output": "", "has_more": false, "error": "unknown or expired page_token"}`; otherwise acquires the per-token lock (FIFO — only one reader at a time), reads from the output queue, manages `has_more`; if queue empty and sentinel not seen, waits up to the configured timeout before returning with `has_more: true`; on sentinel, returns remaining output with `has_more: false` and evicts buffer entry
-
-### Shim (`mcp-stdio-shim/index.js`, plain Node.js)
-
-- Reads newline-delimited JSON-RPC from stdin; one HTTP POST per message to `http://127.0.0.1:<port>/mcp` (port from `FREECAD_MCP_PORT`, default 39280)
-- Unwraps `application/json` or single-event `text/event-stream` replies; writes the JSON-RPC envelope back as a single stdout line
-- Notifications (no `id`) get no reply; if the bridge is unreachable, a JSON-RPC error is synthesized directing the user to the toolbar toggle
-- Zero dependencies — Node stdlib only (global `fetch`, Node ≥ 18); no build step
-
-### `.mcpb`
-
-- `manifest.json` + `index.js` + `package.json` — the shim shipped as-is, `entry_point: index.js`, no compile step
-- `server.type = "node"` — Node.js ships with Claude Desktop, no user-side install
-- Ships in the addon repo alongside Python files
-- Claude Desktop users: find in installed addon folder, double-click to install
 
 ---
 

@@ -38,8 +38,6 @@ The bump runs immediately after each tag is cut, pushing `main` ahead of the las
 
 **FreeCAD Addon Index Qualities:** A listed `git_ref` must point at a complete, installable snapshot per the [FreeCAD Addon Index Qualities](https://freecad.github.io/Addon-Academy/Topics/Addon-Index/Index/Qualities.html) — Python sources and `package.xml`, nothing else required. The addon ships no prebuilt binaries at all; verify runs before the tag specifically to confirm the snapshot actually installs.
 
-No release has shipped under this architecture yet — the current tags (through **v0.1.14**) predate the Concept C rewrite and reflect the old Rust/`bin/` model.
-
 ---
 
 ## Branches, tags, and the FreeCAD Addon Index
