@@ -1,7 +1,7 @@
 # The life of a job
 
-A **job** is one `execute_python` call: the Python code to run, a private
-output channel, and the page token that names it. This walks the whole
+A **job** is one `execute_python` (or `execute_python_file`) call: the Python
+code to run, a private output channel, and the page token that names it. This walks the whole
 lifecycle from the job's point of view, as implemented in `executor.py`
 (dispatch) and `paging.py` (output). Terms are collected at the bottom.
 Why it works this way — trade-offs and rejected alternatives — lives in
@@ -60,7 +60,10 @@ stops.
 If the bridge is stopped while the job is in line, it dies unstarted: its
 buffers are cleared, and a client polling its token gets
 `"unknown or expired page_token"` — indistinguishable from any other dead
-token.
+token. If the bridge is stopped while the job is running, the job itself
+cannot be interrupted — it runs to completion — but its output buffer is
+cleared at stop, so undelivered output is lost and its token dies the same
+way.
 
 ## Terms
 

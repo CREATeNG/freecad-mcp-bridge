@@ -27,8 +27,9 @@ use SSE (`Content-Type: text/event-stream`). The GET endpoint returns 405 — se
 push is not in scope.
 
 `execute_python` and `execute_python_file` are non-blocking: the HTTP handler dispatches
-exec to the Qt main thread, collects output for up to the configured timeout (default 15 s),
-then returns — even if exec is still running. The response always arrives quickly; the AI polls for remaining
+exec to the Qt main thread, collects output for up to the configured timeout (default 15 s)
+or until a page fills (see *Page size cap* under Design decisions), then returns — even if
+exec is still running. The response always arrives quickly; the AI polls for remaining
 output via `get_output`. FreeCAD operations can be long-running; this pattern gives the
 AI an immediate acknowledgment that exec started rather than a silent wait that may look
 like a timeout.
@@ -47,10 +48,8 @@ the Addon Manager allowed packages list. The stdlib implementation is simpler an
 MCP protocol surface for this server is small enough to hand-roll cleanly.
 
 **Threading model**
-The HTTP server runs in a background thread. The existing patterns (Qt signals/slots,
-`QTimer.singleShot` for deferred main-thread execution) are the right building blocks.
-A background thread with Qt signal dispatch is a standard Qt/PySide pattern, well
-documented and normal for FreeCAD addons.
+The HTTP server runs in a background thread; work crosses to the Qt main thread via
+queued signal dispatch — a standard Qt/PySide pattern.
 
 Two kinds of request, only one of which crosses threads:
 
@@ -62,33 +61,37 @@ Two kinds of request, only one of which crosses threads:
   main thread. The job is queued to the main-thread dispatcher (see *Exec
   serialization* below); when the job runs, the main thread redirects `sys.stdout`
   and `sys.stderr` to a `TeeWriter` — not before, and not in the HTTP handler.
-  The HTTP handler drains the output queue for up to the configured timeout (default 15 s);
-  if the sentinel arrives within the timeout, returns `has_more: false` and evicts the
-  buffer entry; otherwise returns `has_more: true`. The output queue persists as the page
-  buffer (keyed by `page_token`); exec continues running on the Qt main thread, pushing
-  chunks to the queue. Subsequent `get_output(page_token)` calls drain the queue until
+  The HTTP handler drains the output queue for up to the configured timeout (default 15 s)
+  or until a page fills; if the sentinel arrives first, returns `has_more: false` and
+  evicts the buffer entry; otherwise returns `has_more: true`. The output queue persists
+  as the page buffer (keyed by `page_token`); exec continues running on the Qt main
+  thread, pushing chunks to the queue (a *chunk* is the text of one `write()` call,
+  of arbitrary size). Subsequent `get_output(page_token)` calls drain the queue until
   exec puts the sentinel and the queue is empty, at which point `has_more: false` is
-  returned. Python's GIL is released periodically during exec, allowing the background
-  thread to drain the queue in the gaps.
+  returned. Draining works while exec still holds the main thread because Python
+  releases the GIL periodically during execution — the HTTP thread reads the queue in
+  those gaps.
 
 **Exec serialization — dispatcher gate:** exec jobs travel only
 through a single FIFO job queue owned by the Executor; the Qt signal carries no payload
 and serves purely as a wake-up. The main-thread dispatcher holds a busy latch and drains
 the queue one job at a time, each job running to completion before the next is taken.
-The latch makes nested dispatcher invocations no-ops — required because executed code
-that pumps the Qt event loop (`Gui.updateGui()`, `processEvents()`, modal dialogs) would
-otherwise have the next queued exec delivered nested inside the current one. Strict FIFO
+The latch makes nested dispatcher invocations no-ops. It is required because executed
+code can ask Qt to process pending events mid-run — "pumping" the event loop, which is
+what `Gui.updateGui()`, `processEvents()`, and modal dialogs do — and delivering
+pending events includes starting the next queued exec. That delivery re-enters the
+dispatcher on the same call stack — recursion — so without the latch the next job
+would run nested inside the current one. Strict FIFO
 and one-at-a-time are enforced by the structure (single queue, single consumer loop)
 rather than assumed of Qt's queued-signal delivery. Sequential execution remains the
 correct semantics: concurrent scripts would interfere with each other's session state.
 
 **Cancellation of a running exec — out of scope:** the concept is bigger than this
-project alone. Native CAD operations are uninterruptible by anyone (a ceiling set by
-FreeCAD/OCCT, not by this bridge), stock FreeCAD freezes identically on a runaway
-macro, and the agent-side recovery loop (spot the stuck process, kill it, correct the
-script, re-run) covers every hang class — more than an in-process cancel verb ever
-could. If the capability belongs anywhere, it is upstream (interruptible scripting in
-FreeCAD) or in the agent, not in the bridge.
+project alone. Stock FreeCAD freezes identically on a runaway macro, and the AI client's
+own recovery loop (spot the stuck process, kill it, correct the script, re-run) covers every
+hang — including executions that cannot be interrupted in-process — more than an
+in-process cancel verb ever could. If the capability belongs anywhere, it is upstream
+(interruptible scripting in FreeCAD) or in the AI client, not in the bridge.
 
 **Loopback only, user-toggled**
 The server binds to `127.0.0.1` only, never `0.0.0.0`. It starts only when the user
@@ -147,15 +150,14 @@ and is distinctive in a crowded namespace.
 ## Design decisions
 
 ### Port
-Fixed port **39280**, user-configurable in FreeCAD preferences. Clear of all known
-FreeCAD MCP ports (9000, 9875, 9876, 10944–10946) and general-purpose dev server ports.
+Fixed port **39280**, user-configurable in FreeCAD preferences.
 On conflict at startup: log a clear error directing the user to Edit → Preferences →
 MCP Bridge. No silent increment. Dynamic port rejected — Claude Code and Cursor users
 configure the HTTP endpoint directly; a changing port would require reconfiguration each
 session.
 
 ### HTTP server implementation
-`http.server.ThreadingHTTPServer` + background thread (stdlib, available since Python 3.7).
+`http.server.ThreadingHTTPServer` + background thread (stdlib).
 Each request gets its own thread, allowing concurrent handling of `execute_python` and
 `get_output`. No Qt dependency in the HTTP layer. `QTcpServer` was considered — more
 Qt-idiomatic but requires implementing HTTP parsing manually with no clear benefit.
@@ -206,15 +208,9 @@ never an exception.
 **Page size cap**
 A page is also bounded by size (`max_page_size_chars`, configurable, default 64 KB),
 independent of the timeout — a fast-producing exec could otherwise return an
-arbitrarily large single response, bounded only by how much it printed within the
-timeout window. A chunk that doesn't fully fit in the current page is split: the part
-that fits is returned, and the untaken remainder is held as `(text, offset)` on the
-buffer entry (`pending`) rather than being re-copied — the original string is read
-from in place across calls, so splitting one large chunk across many pages costs
-proportional to the chunk's total size, not quadratic in the number of pages. No new
-lock is needed; `pending` is only ever touched inside the existing per-token
-`entry["lock"]`, which already had to exist to serialize concurrent `get_output`
-calls for the same token.
+arbitrarily large single response. A chunk that doesn't fit the current page is split
+across pages and delivered by subsequent `get_output` calls — no data loss, cost
+proportional to the output's size.
 
 ### Local socket
 Not used. HTTP is the only listener — one endpoint, simpler architecture, and any
