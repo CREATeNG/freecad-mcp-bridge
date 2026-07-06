@@ -5,13 +5,16 @@ A FreeCAD addon that lets AI agents drive a live FreeCAD session over the
 inside the FreeCAD process, on FreeCAD's bundled Python: no binary ships with the
 addon, and there are no user-side dependencies beyond the addon itself.
 
-The addon exposes an HTTP endpoint (Streamable HTTP, MCP spec 2025-03-26). MCP clients
-connect directly. Clients that speak only stdio for local servers (e.g. Claude Desktop)
-connect via a thin zero-dependency Node.js shim that translates stdio ↔ HTTP.
-
 ---
 
 ## Interface
+
+**Tools**
+The server exposes three tools. `execute_python(code)` runs Python inside the live
+FreeCAD session, with `App`/`Gui` pre-bound and stdout/stderr captured.
+`execute_python_file(filepath)` reads a local file and runs it the same way.
+`get_output(page_token)` retrieves the remaining buffered output of a prior call that
+returned `has_more: true`. Schemas live in `tools.py`.
 
 **Transport — Streamable HTTP with SSE**
 The in-process server uses Streamable HTTP (MCP spec 2025-03-26). Tool call responses
