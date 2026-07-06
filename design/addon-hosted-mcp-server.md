@@ -1,8 +1,4 @@
-# Addon-Hosted MCP Server — Design Overview
-
----
-
-## What this is
+# Addon-Hosted MCP Server
 
 A FreeCAD addon that lets AI agents drive a live FreeCAD session over the
 [Model Context Protocol](https://modelcontextprotocol.io) (MCP). The MCP server runs
@@ -192,7 +188,7 @@ the `.mcpb` bundle trivial and auditable.
 
 **No external dependencies**
 The HTTP server uses Python stdlib only (`http.server`, `threading`, `socketserver`).
-No pip installs required. FreeCAD's bundled Python 3.11 provides everything needed.
+No pip installs required. FreeCAD's bundled Python provides everything needed.
 
 The Python `mcp` package was considered — it would handle MCP protocol, Streamable HTTP
 transport, and SSE on the server side, analogous to the Node.js SDK on the shim side.
