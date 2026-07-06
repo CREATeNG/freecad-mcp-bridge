@@ -1,6 +1,6 @@
 # MCP Bridge
 
-**MCP Bridge** gives AI tools access to your open FreeCAD session. It runs a small [MCP](https://modelcontextprotocol.io) server *inside* FreeCAD — no binaries, no external dependencies — letting an AI agent execute Python in your live session and see the results.
+**MCP Bridge** gives AI agents access to your open FreeCAD session. It runs a small [MCP](https://modelcontextprotocol.io) server *inside* FreeCAD — no binaries, no external dependencies — letting an AI agent execute Python in your live session and see the results.
 
 The server runs only while you toggle it on, and only on your own machine.
 

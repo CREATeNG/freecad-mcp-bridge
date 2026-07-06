@@ -4,10 +4,12 @@
 
 ## What this is
 
-The MCP server runs inside the FreeCAD process, on FreeCAD's bundled Python. No
-binary ships with the addon; no user-side dependencies beyond the addon itself.
+A FreeCAD addon that lets AI agents drive a live FreeCAD session over the
+[Model Context Protocol](https://modelcontextprotocol.io) (MCP). The MCP server runs
+inside the FreeCAD process, on FreeCAD's bundled Python: no binary ships with the
+addon, and there are no user-side dependencies beyond the addon itself.
 
-The addon exposes an HTTP endpoint (Streamable HTTP, MCP spec 2025-03-26). AI clients
+The addon exposes an HTTP endpoint (Streamable HTTP, MCP spec 2025-03-26). MCP clients
 connect directly. Clients that speak only stdio for local servers (e.g. Claude Desktop)
 connect via a thin zero-dependency Node.js shim that translates stdio ↔ HTTP.
 
@@ -23,10 +25,10 @@ push is not in scope.
 `execute_python` and `execute_python_file` are non-blocking: the HTTP handler dispatches
 exec to the Qt main thread, collects output for up to the configured timeout (default 15 s)
 or until a page fills (see *Page size cap* below), then returns — even if
-exec is still running. The response always arrives quickly; the AI polls for remaining
+exec is still running. The response always arrives quickly; the agent polls for remaining
 output via `get_output`. FreeCAD operations can be long-running; this pattern gives the
-AI an immediate acknowledgment that exec started rather than a silent wait that may look
-like a timeout.
+agent an immediate acknowledgment that exec started rather than a silent wait that may
+look like a timeout.
 
 **No external dependencies**
 The HTTP server uses Python stdlib only (`http.server`, `threading`, `socketserver`).
@@ -83,11 +85,11 @@ A plain-language walkthrough of execution — the life of a job from submission 
 eviction — is in [job-lifecycle.md](job-lifecycle.md).
 
 **Cancellation of a running exec — out of scope:** the concept is bigger than this
-project alone. Stock FreeCAD freezes identically on a runaway macro, and the AI client's
+project alone. Stock FreeCAD freezes identically on a runaway macro, and the AI agent's
 own recovery loop (spot the stuck process, kill it, correct the script, re-run) covers every
 hang — including executions that cannot be interrupted in-process — more than an
 in-process cancel verb ever could. If the capability belongs anywhere, it is upstream
-(interruptible scripting in FreeCAD) or in the AI client, not in the bridge.
+(interruptible scripting in FreeCAD) or in the agent, not in the bridge.
 
 **Loopback only, user-toggled**
 The server binds to `127.0.0.1` only, never `0.0.0.0`. It starts only when the user
@@ -171,14 +173,14 @@ a `page_token` parameter on `execute_python`, with a dedicated `get_output` tool
 → { "output": "...(last chunk)...", "has_more": false }
 ```
 
-`has_more` is always present in the response — the AI reads a boolean, not an absent
+`has_more` is always present in the response — the agent reads a boolean, not an absent
 field. `get_output` is a distinct tool: it only retrieves buffered output and takes no
 code parameter, so there is no ambiguity about what it does on each call.
 
 LLMs handle this pattern reliably — it is ubiquitous in API design.
 
 Paging applies to all clients. For direct HTTP clients, the SSE response carries the
-first chunk and `has_more`; the AI polls via `get_output` for the rest. For stdio
+first chunk and `has_more`; the agent polls via `get_output` for the rest. For stdio
 clients (via the shim), paging is the primary large-output mechanism since SSE is not
 visible on that transport.
 

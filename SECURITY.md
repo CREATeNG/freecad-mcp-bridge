@@ -23,4 +23,4 @@ Please include:
 
 ## Privacy, connections, and trust
 
-See [README § Privacy & connections](README.md#privacy--connections) for how the bridge, MCP server, and MCP client interact, and what runs locally vs through your AI client.
+See [README § Privacy & security](README.md#privacy--security) for how the bridge, MCP server, and MCP client interact, and what runs locally vs through your MCP client.
