@@ -15,7 +15,7 @@ connect via a thin zero-dependency Node.js shim that translates stdio ↔ HTTP.
 
 ---
 
-## Decisions
+## Interface
 
 **Transport — Streamable HTTP with SSE**
 The in-process server uses Streamable HTTP (MCP spec 2025-03-26). Tool call responses
@@ -30,17 +30,70 @@ output via `get_output`. FreeCAD operations can be long-running; this pattern gi
 agent an immediate acknowledgment that exec started rather than a silent wait that may
 look like a timeout.
 
-**No external dependencies**
-The HTTP server uses Python stdlib only (`http.server`, `threading`, `socketserver`).
-No pip installs required. FreeCAD's bundled Python 3.11 provides everything needed.
+**Tool response design — paging pattern**
+Large output from exec calls (printing large arrays, verbose script runs) is handled via
+a `page_token` parameter on `execute_python`, with a dedicated `get_output` tool for retrieval.
 
-The Python `mcp` package was considered — it would handle MCP protocol, Streamable HTTP
-transport, and SSE on the server side, analogous to the Node.js SDK on the shim side.
-Rejected: the package is built on asyncio, which conflicts with Qt's event loop —
-running it in a background thread with its own event loop is possible but significantly
-complicates the Qt dispatch boundary — and its dependency chain would need adding to
-the Addon Manager allowed packages list. The stdlib implementation is simpler and the
-MCP protocol surface for this server is small enough to hand-roll cleanly.
+```json
+// execution call
+{ "tool": "execute_python", "code": "..." }
+→ { "output": "...(first chunk)...", "page_token": "abc123", "has_more": true }
+
+// retrieval call — same token each time
+{ "tool": "get_output", "page_token": "abc123" }
+→ { "output": "...(next chunk)...", "page_token": "abc123", "has_more": true }
+
+// final page
+→ { "output": "...(last chunk)...", "has_more": false }
+```
+
+`has_more` is always present in the response — the agent reads a boolean, not an absent
+field. `get_output` is a distinct tool: it only retrieves buffered output and takes no
+code parameter, so there is no ambiguity about what it does on each call.
+
+LLMs handle this pattern reliably — it is ubiquitous in API design.
+
+Paging applies to all clients. For direct HTTP clients, the SSE response carries the
+first chunk and `has_more`; the agent polls via `get_output` for the rest. For stdio
+clients (via the shim), paging is the primary large-output mechanism since SSE is not
+visible on that transport.
+
+MCP Resources (`resources/read`) were evaluated as an alternative. Rejected: identical
+data access, but tool support is universal while resource support varies by client.
+
+Token lifetime: evicted whenever `has_more: false` is returned — by `execute_python`
+itself if exec completes within the timeout, or by `get_output` if polling was needed.
+Buffers that are never fully drained accumulate until server stop. An unknown or
+expired `page_token` returns
+`{"output": "", "has_more": false, "error": "unknown or expired page_token"}` —
+never an exception.
+
+**Page size cap**
+A page is also bounded by size (`max_page_size_chars`, configurable, default 64 KB),
+independent of the timeout — a fast-producing exec could otherwise return an
+arbitrarily large single response. A chunk that doesn't fit the current page is split
+across pages and delivered by subsequent `get_output` calls — no data loss, cost
+proportional to the output's size.
+
+**Transport distinction — direct HTTP clients vs stdio clients**
+HTTP-capable clients connect to the endpoint directly and receive responses over SSE.
+Stdio clients (via the shim) receive responses as single stdio messages — SSE does not
+exist on that transport. The behavior is otherwise identical: both wait up to the
+configured timeout for initial output, then poll via `get_output` if needed.
+
+**Port**
+Fixed port **39280**, user-configurable in FreeCAD preferences.
+On conflict at startup: log a clear error directing the user to Edit → Preferences →
+MCP Bridge. No silent increment. Dynamic port rejected — HTTP clients configure the
+endpoint URL directly; a changing port would require reconfiguration each session.
+
+**Session management**
+Stateless — each POST is independent, no `Mcp-Session-Id` assigned. Sessions would add
+multi-client isolation; not needed for a single local client.
+
+---
+
+## Execution model
 
 **Threading model**
 The HTTP server runs in a background thread; work crosses to the Qt main thread via
@@ -91,6 +144,10 @@ hang — including executions that cannot be interrupted in-process — more tha
 in-process cancel verb ever could. If the capability belongs anywhere, it is upstream
 (interruptible scripting in FreeCAD) or in the agent, not in the bridge.
 
+---
+
+## Security
+
 **Loopback only, user-toggled**
 The server binds to `127.0.0.1` only, never `0.0.0.0`. It starts only when the user
 activates the toolbar toggle, and stops when they deactivate it. This satisfies the
@@ -107,6 +164,10 @@ The MCP spec requires servers to validate the `Origin` header on all incoming co
 to prevent DNS rebinding attacks. Rule: reject any request where the `Origin` header is
 present and is not `localhost` or `127.0.0.1`.
 
+---
+
+## The stdio shim
+
 **Stdio shim**
 Some MCP clients speak only stdio for local servers. A small zero-dependency
 Node.js shim (`mcp-stdio-shim/index.js`) ships with the addon as a stdio ↔ HTTP
@@ -119,11 +180,41 @@ needed. The shim reads the port from the `FREECAD_MCP_PORT` environment variable
 (default 39280). Notifications (no `id`) get no reply; if the bridge is unreachable,
 the shim synthesizes a JSON-RPC error directing the user to the toolbar toggle.
 
-**Transport distinction — direct HTTP clients vs stdio clients**
-HTTP-capable clients connect to the endpoint directly and receive responses over SSE.
-Stdio clients (via the shim) receive responses as single stdio messages — SSE does not
-exist on that transport. The behavior is otherwise identical: both wait up to the
-configured timeout for initial output, then poll via `get_output` if needed.
+**Shim — no SDK**
+The shim is hand-rolled. `@modelcontextprotocol/sdk` was considered and rejected:
+the forwarding job (read line → POST → unwrap → write line) is small enough that
+the SDK's framing/session machinery isn't warranted, and zero dependencies keeps
+the `.mcpb` bundle trivial and auditable.
+
+---
+
+## Implementation choices
+
+**No external dependencies**
+The HTTP server uses Python stdlib only (`http.server`, `threading`, `socketserver`).
+No pip installs required. FreeCAD's bundled Python 3.11 provides everything needed.
+
+The Python `mcp` package was considered — it would handle MCP protocol, Streamable HTTP
+transport, and SSE on the server side, analogous to the Node.js SDK on the shim side.
+Rejected: the package is built on asyncio, which conflicts with Qt's event loop —
+running it in a background thread with its own event loop is possible but significantly
+complicates the Qt dispatch boundary — and its dependency chain would need adding to
+the Addon Manager allowed packages list. The stdlib implementation is simpler and the
+MCP protocol surface for this server is small enough to hand-roll cleanly.
+
+**HTTP server implementation**
+`http.server.ThreadingHTTPServer` + background thread (stdlib).
+Each request gets its own thread, allowing concurrent handling of `execute_python` and
+`get_output`. No Qt dependency in the HTTP layer. `QTcpServer` was considered — more
+Qt-idiomatic but requires implementing HTTP parsing manually with no clear benefit.
+
+**Local socket**
+Not used. HTTP is the only listener — one endpoint, simpler architecture, and any
+developer can test directly with `curl`.
+
+---
+
+## Distribution
 
 **No binary ships with the addon**
 No prebuilt machine-code binary is distributed. The only non-Python artifact is the
@@ -139,77 +230,6 @@ asset for Claude Desktop users.
 
 **Project name — `freecad-mcp-bridge`**
 "Bridge" is accurate at the conceptual level: bridging FreeCAD to the MCP world.
-
-**Port**
-Fixed port **39280**, user-configurable in FreeCAD preferences.
-On conflict at startup: log a clear error directing the user to Edit → Preferences →
-MCP Bridge. No silent increment. Dynamic port rejected — HTTP clients configure the
-endpoint URL directly; a changing port would require reconfiguration each session.
-
-**HTTP server implementation**
-`http.server.ThreadingHTTPServer` + background thread (stdlib).
-Each request gets its own thread, allowing concurrent handling of `execute_python` and
-`get_output`. No Qt dependency in the HTTP layer. `QTcpServer` was considered — more
-Qt-idiomatic but requires implementing HTTP parsing manually with no clear benefit.
-
-**Session management**
-Stateless — each POST is independent, no `Mcp-Session-Id` assigned. Sessions would add
-multi-client isolation; not needed for a single local client.
-
-**Tool response design — paging pattern**
-Large output from exec calls (printing large arrays, verbose script runs) is handled via
-a `page_token` parameter on `execute_python`, with a dedicated `get_output` tool for retrieval.
-
-```json
-// execution call
-{ "tool": "execute_python", "code": "..." }
-→ { "output": "...(first chunk)...", "page_token": "abc123", "has_more": true }
-
-// retrieval call — same token each time
-{ "tool": "get_output", "page_token": "abc123" }
-→ { "output": "...(next chunk)...", "page_token": "abc123", "has_more": true }
-
-// final page
-→ { "output": "...(last chunk)...", "has_more": false }
-```
-
-`has_more` is always present in the response — the agent reads a boolean, not an absent
-field. `get_output` is a distinct tool: it only retrieves buffered output and takes no
-code parameter, so there is no ambiguity about what it does on each call.
-
-LLMs handle this pattern reliably — it is ubiquitous in API design.
-
-Paging applies to all clients. For direct HTTP clients, the SSE response carries the
-first chunk and `has_more`; the agent polls via `get_output` for the rest. For stdio
-clients (via the shim), paging is the primary large-output mechanism since SSE is not
-visible on that transport.
-
-MCP Resources (`resources/read`) were evaluated as an alternative. Rejected: identical
-data access, but tool support is universal while resource support varies by client.
-
-Token lifetime: evicted whenever `has_more: false` is returned — by `execute_python`
-itself if exec completes within the timeout, or by `get_output` if polling was needed.
-Buffers that are never fully drained accumulate until server stop. An unknown or
-expired `page_token` returns
-`{"output": "", "has_more": false, "error": "unknown or expired page_token"}` —
-never an exception.
-
-**Page size cap**
-A page is also bounded by size (`max_page_size_chars`, configurable, default 64 KB),
-independent of the timeout — a fast-producing exec could otherwise return an
-arbitrarily large single response. A chunk that doesn't fit the current page is split
-across pages and delivered by subsequent `get_output` calls — no data loss, cost
-proportional to the output's size.
-
-**Local socket**
-Not used. HTTP is the only listener — one endpoint, simpler architecture, and any
-developer can test directly with `curl`.
-
-**Shim — no SDK**
-The shim is hand-rolled. `@modelcontextprotocol/sdk` was considered and rejected:
-the forwarding job (read line → POST → unwrap → write line) is small enough that
-the SDK's framing/session machinery isn't warranted, and zero dependencies keeps
-the `.mcpb` bundle trivial and auditable.
 
 ---
 
