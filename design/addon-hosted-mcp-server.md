@@ -1,9 +1,4 @@
-# Addon-Hosted MCP Server — Decision Record
-
-The decision record for the in-process HTTP architecture: the architecture as it
-is, and why — including rejected alternatives. History lives in git. For a
-plain-language walkthrough of how execution behaves at runtime, see
-[job-lifecycle.md](job-lifecycle.md).
+# Addon-Hosted MCP Server — Design Overview
 
 ---
 
@@ -83,6 +78,9 @@ would run nested inside the current one. Strict FIFO
 and one-at-a-time are enforced by the structure (single queue, single consumer loop)
 rather than assumed of Qt's queued-signal delivery. Sequential execution remains the
 correct semantics: concurrent scripts would interfere with each other's session state.
+
+A plain-language walkthrough of execution — the life of a job from submission to
+eviction — is in [job-lifecycle.md](job-lifecycle.md).
 
 **Cancellation of a running exec — out of scope:** the concept is bigger than this
 project alone. Stock FreeCAD freezes identically on a runaway macro, and the AI client's
