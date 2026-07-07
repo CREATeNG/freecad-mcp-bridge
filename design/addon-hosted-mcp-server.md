@@ -161,6 +161,10 @@ server stops. After the final page (`has_more: false`), the retention clock star
 whichever comes first. The client need not have fetched every page before retention
 begins — only the job must be complete.
 
+Histories are held in memory; retention bounds a history's lifetime, not its size — a
+job's full output is held from job start until retention expires. Accepted for a local,
+single-user tool; users needing a smaller footprint can shorten the retention period.
+
 Requesting an unknown or expired `job_token` returns
 `{"page": [], "has_more": false, "error": "unknown or expired job_token"}` — never an
 exception.
