@@ -145,6 +145,12 @@ is stored as an immutable snapshot (`page_no`, `page`, and the `has_more` value 
 time) before the response is returned. The live output queue feeds forward fetches while
 the job is still running; stored snapshots serve replay.
 
+A job is **complete** when its sentinel — the end-of-output marker placed on the queue
+as the job's final act — has been drained into a page. The drain that consumes the
+sentinel produces the job's final page, possibly with an empty `page` array, returning
+`has_more: false`. `has_more: true` therefore always precedes at least one more
+fetchable page: the promise holds by construction.
+
 The history is shared: any client with the `job_token` may read any stored page.
 Capability is the token itself (typically passed from the initiating agent to a
 sub-agent).
@@ -170,6 +176,10 @@ the history for that job.
 - **`page_no > max + 1`** and the job is not yet complete — error.
 - Out-of-range `page_no` (either case above) returns `"page_no out of range"`.
 
+Because completion is only recorded by the drain that produces the final page, an agent
+that follows `has_more` never receives `"page_no out of range"` — that error always
+indicates a genuinely out-of-range request.
+
 While a job is running, only one forward poller per `job_token` should request
 `page_no == max + 1`; other clients (e.g. sub-agents) should use explicit lower
 `page_no` values to read from the history.
@@ -182,9 +192,9 @@ Append each response's `page` chunks in order. If `error` is present, read it an
 
 Otherwise, keep `job_token` and the last committed `page_no`, then call
 `get_output_page` with `page_no` equal to that value plus one until `has_more` is
-`false`. To retry or replay a page, request the same `page_no` again. Read `error` on
-`get_output_page` if present (dead token or out-of-range `page_no`), otherwise a normal
-finish.
+`false` — the final page may arrive with an empty `page` array. To retry or replay a
+page, request the same `page_no` again. `error` is never how a job finishes: on
+`get_output_page` it means a dead token or an out-of-range `page_no`.
 
 **Rejected alternative**
 
