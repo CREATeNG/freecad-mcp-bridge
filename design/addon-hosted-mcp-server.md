@@ -72,7 +72,7 @@ proportional to the output's size.
 
 ---
 
-## Interface
+## Connection
 
 **Transport — Streamable HTTP with SSE**
 The in-process server uses Streamable HTTP (MCP spec 2025-03-26). Tool call responses
