@@ -7,43 +7,23 @@ addon, and there are no user-side dependencies beyond the addon itself.
 
 ---
 
-## Interface
+## Tools
 
-**Tools**
-The server exposes three tools. `execute_python(code)` runs Python inside the live
-FreeCAD session, with `App`/`Gui` pre-bound and stdout/stderr captured.
-`execute_python_file(filepath)` reads a local file and runs it the same way.
-`get_output(page_token)` retrieves the remaining buffered output of a prior call that
-returned `has_more: true`. Schemas live in `tools.py`.
+The MCP server exposes three tools; schemas live in `tools.py`.
 
-**Transport — Streamable HTTP with SSE**
-The in-process server uses Streamable HTTP (MCP spec 2025-03-26). Tool call responses
-use SSE (`Content-Type: text/event-stream`). The GET endpoint returns 405 — server-initiated
-push is not in scope.
+- **`execute_python(code)`** — runs Python inside the live FreeCAD session, with
+  `App`/`Gui` pre-bound and stdout/stderr captured.
+- **`execute_python_file(filepath)`** — reads a local file and runs it the same way.
+- **`get_output(page_token)`** — retrieves the remaining buffered output of a prior
+  call that returned `has_more: true`.
 
-`execute_python` and `execute_python_file` are non-blocking: the HTTP handler dispatches
+`execute_python` and `execute_python_file` are non-blocking: the server dispatches
 exec to the Qt main thread, collects output for up to the configured timeout (default 15 s)
 or until a page fills (see *Page size cap* below), then returns — even if
 exec is still running. The response always arrives quickly; the agent polls for remaining
 output via `get_output`. FreeCAD operations can be long-running; this pattern gives the
 agent an immediate acknowledgment that exec started rather than a silent wait that may
 look like a timeout.
-
-**Transport distinction — direct HTTP clients vs stdio clients**
-HTTP-capable clients connect to the endpoint directly and receive responses over SSE.
-Stdio clients (via the shim) receive responses as single stdio messages — SSE does not
-exist on that transport. The behavior is otherwise identical: both wait up to the
-configured timeout for initial output, then poll via `get_output` if needed.
-
-**Port**
-Fixed port **39280**, user-configurable in FreeCAD preferences.
-On conflict at startup: log a clear error directing the user to Edit → Preferences →
-MCP Bridge. No silent increment. Dynamic port rejected — HTTP clients configure the
-endpoint URL directly; a changing port would require reconfiguration each session.
-
-**Session management**
-Stateless — each POST is independent, no `Mcp-Session-Id` assigned. Sessions would add
-multi-client isolation; not needed for a single local client.
 
 ---
 
@@ -71,10 +51,7 @@ code parameter, so there is no ambiguity about what it does on each call.
 
 LLMs handle this pattern reliably — it is ubiquitous in API design.
 
-Paging applies to all clients. For direct HTTP clients, the SSE response carries the
-first chunk and `has_more`; the agent polls via `get_output` for the rest. For stdio
-clients (via the shim), paging is the primary large-output mechanism since SSE is not
-visible on that transport.
+Paging applies to all clients, on both transports.
 
 MCP Resources (`resources/read`) were evaluated as an alternative. Rejected: identical
 data access, but tool support is universal while resource support varies by client.
@@ -92,6 +69,31 @@ independent of the timeout — a fast-producing exec could otherwise return an
 arbitrarily large single response. A chunk that doesn't fit the current page is split
 across pages and delivered by subsequent `get_output` calls — no data loss, cost
 proportional to the output's size.
+
+---
+
+## Interface
+
+**Transport — Streamable HTTP with SSE**
+The in-process server uses Streamable HTTP (MCP spec 2025-03-26). Tool call responses
+use SSE (`Content-Type: text/event-stream`). The GET endpoint returns 405 — server-initiated
+push is not in scope.
+
+**Transport distinction — direct HTTP clients vs stdio clients**
+HTTP-capable clients connect to the endpoint directly and receive responses over SSE.
+Stdio clients (via the shim) receive responses as single stdio messages — SSE does not
+exist on that transport. The behavior is otherwise identical: both wait up to the
+configured timeout for initial output, then poll via `get_output` if needed.
+
+**Port**
+Fixed port **39280**, user-configurable in FreeCAD preferences.
+On conflict at startup: log a clear error directing the user to Edit → Preferences →
+MCP Bridge. No silent increment. Dynamic port rejected — HTTP clients configure the
+endpoint URL directly; a changing port would require reconfiguration each session.
+
+**Session management**
+Stateless — each POST is independent, no `Mcp-Session-Id` assigned. Sessions would add
+multi-client isolation; not needed for a single local client.
 
 ---
 
