@@ -16,7 +16,39 @@ FreeCAD session, with `App`/`Gui` pre-bound and stdout/stderr captured.
 `get_output(page_token)` retrieves the remaining buffered output of a prior call that
 returned `has_more: true`. Schemas live in `tools.py`.
 
-**Tool response design — paging pattern**
+**Transport — Streamable HTTP with SSE**
+The in-process server uses Streamable HTTP (MCP spec 2025-03-26). Tool call responses
+use SSE (`Content-Type: text/event-stream`). The GET endpoint returns 405 — server-initiated
+push is not in scope.
+
+`execute_python` and `execute_python_file` are non-blocking: the HTTP handler dispatches
+exec to the Qt main thread, collects output for up to the configured timeout (default 15 s)
+or until a page fills (see *Page size cap* below), then returns — even if
+exec is still running. The response always arrives quickly; the agent polls for remaining
+output via `get_output`. FreeCAD operations can be long-running; this pattern gives the
+agent an immediate acknowledgment that exec started rather than a silent wait that may
+look like a timeout.
+
+**Transport distinction — direct HTTP clients vs stdio clients**
+HTTP-capable clients connect to the endpoint directly and receive responses over SSE.
+Stdio clients (via the shim) receive responses as single stdio messages — SSE does not
+exist on that transport. The behavior is otherwise identical: both wait up to the
+configured timeout for initial output, then poll via `get_output` if needed.
+
+**Port**
+Fixed port **39280**, user-configurable in FreeCAD preferences.
+On conflict at startup: log a clear error directing the user to Edit → Preferences →
+MCP Bridge. No silent increment. Dynamic port rejected — HTTP clients configure the
+endpoint URL directly; a changing port would require reconfiguration each session.
+
+**Session management**
+Stateless — each POST is independent, no `Mcp-Session-Id` assigned. Sessions would add
+multi-client isolation; not needed for a single local client.
+
+---
+
+## Paging
+
 Large output from exec calls (printing large arrays, verbose script runs) is handled via
 a `page_token` parameter on `execute_python`, with a dedicated `get_output` tool for retrieval.
 
@@ -60,35 +92,6 @@ independent of the timeout — a fast-producing exec could otherwise return an
 arbitrarily large single response. A chunk that doesn't fit the current page is split
 across pages and delivered by subsequent `get_output` calls — no data loss, cost
 proportional to the output's size.
-
-**Transport — Streamable HTTP with SSE**
-The in-process server uses Streamable HTTP (MCP spec 2025-03-26). Tool call responses
-use SSE (`Content-Type: text/event-stream`). The GET endpoint returns 405 — server-initiated
-push is not in scope.
-
-`execute_python` and `execute_python_file` are non-blocking: the HTTP handler dispatches
-exec to the Qt main thread, collects output for up to the configured timeout (default 15 s)
-or until a page fills (see *Page size cap* above), then returns — even if
-exec is still running. The response always arrives quickly; the agent polls for remaining
-output via `get_output`. FreeCAD operations can be long-running; this pattern gives the
-agent an immediate acknowledgment that exec started rather than a silent wait that may
-look like a timeout.
-
-**Transport distinction — direct HTTP clients vs stdio clients**
-HTTP-capable clients connect to the endpoint directly and receive responses over SSE.
-Stdio clients (via the shim) receive responses as single stdio messages — SSE does not
-exist on that transport. The behavior is otherwise identical: both wait up to the
-configured timeout for initial output, then poll via `get_output` if needed.
-
-**Port**
-Fixed port **39280**, user-configurable in FreeCAD preferences.
-On conflict at startup: log a clear error directing the user to Edit → Preferences →
-MCP Bridge. No silent increment. Dynamic port rejected — HTTP clients configure the
-endpoint URL directly; a changing port would require reconfiguration each session.
-
-**Session management**
-Stateless — each POST is independent, no `Mcp-Session-Id` assigned. Sessions would add
-multi-client isolation; not needed for a single local client.
 
 ---
 
