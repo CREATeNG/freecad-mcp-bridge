@@ -34,6 +34,10 @@ def _rpc(port, method, params, req_id):
     return json.loads(body)
 
 
+def _page_text(result):
+    return "".join(chunk.get("text", "") for chunk in result.get("page", []))
+
+
 def _tool(port, name, arguments, req_id):
     resp = _rpc(port, "tools/call", {"name": name, "arguments": arguments}, req_id)
     if "error" in resp:
@@ -42,13 +46,13 @@ def _tool(port, name, arguments, req_id):
 
 
 def run(port, name, arguments):
-    """Call a tool and stream its output, polling get_output while paged."""
+    """Call a tool and stream its output, polling get_output_page while paged."""
     page = _tool(port, name, arguments, 1)
-    sys.stdout.write(page.get("output", ""))
+    sys.stdout.write(_page_text(page))
     req_id = 2
     while page.get("has_more"):
-        page = _tool(port, "get_output", {"page_token": page["page_token"]}, req_id)
-        sys.stdout.write(page.get("output", ""))
+        page = _tool(port, "get_output_page", {"job_token": page["job_token"]}, req_id)
+        sys.stdout.write(_page_text(page))
         req_id += 1
     if page.get("error"):
         sys.stderr.write(f"\n{page['error']}\n")

@@ -24,12 +24,13 @@ from freecad.mcp_bridge.paging import SENTINEL
 class TeeWriter:
     """File-like sink: every write goes to the page queue and the Report View."""
 
-    def __init__(self, output_queue):
+    def __init__(self, output_queue, stream):
         self._queue = output_queue
+        self._stream = stream
 
     def write(self, text):
         if text:
-            self._queue.put(text)
+            self._queue.put((self._stream, text))
             FreeCAD.Console.PrintMessage(text)
 
     def flush(self):
@@ -77,9 +78,10 @@ class Executor(QObject):
         """Run one job to completion: exec, traceback on error, sentinel."""
         import FreeCADGui
 
-        tee = TeeWriter(output_queue)
+        stdout_tee = TeeWriter(output_queue, "stdout")
+        stderr_tee = TeeWriter(output_queue, "stderr")
         old_out, old_err = sys.stdout, sys.stderr
-        sys.stdout, sys.stderr = tee, tee
+        sys.stdout, sys.stderr = stdout_tee, stderr_tee
         env = {
             "FreeCAD": FreeCAD,
             "App": FreeCAD,
@@ -89,7 +91,7 @@ class Executor(QObject):
         try:
             exec(code, env)
         except Exception:
-            tee.write("\n" + traceback.format_exc())
+            stderr_tee.write("\n" + traceback.format_exc())
         finally:
             sys.stdout, sys.stderr = old_out, old_err
             output_queue.put(SENTINEL)

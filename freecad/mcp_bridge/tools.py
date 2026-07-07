@@ -41,22 +41,24 @@ EXECUTE_PYTHON_FILE = {
     },
 }
 
-GET_OUTPUT = {
-    "name": "get_output",
+GET_OUTPUT_PAGE = {
+    "name": "get_output_page",
     "description": (
-        "Retrieve the next chunk of buffered output for a prior execute call "
-        "that returned has_more=true. Pass the page_token from that response."
+        "Retrieve the next page of buffered output for a prior execute call "
+        "that returned has_more=true. Pass the job_token from that response."
     ),
     "inputSchema": {
         "type": "object",
         "properties": {
-            "page_token": {
+            "job_token": {
                 "type": "string",
-                "description": "Token from a previous execute or get_output response.",
+                "description": (
+                    "Token from a previous execute or get_output_page response."
+                ),
             }
         },
-        "required": ["page_token"],
+        "required": ["job_token"],
     },
 }
 
-TOOL_DEFINITIONS = [EXECUTE_PYTHON, EXECUTE_PYTHON_FILE, GET_OUTPUT]
+TOOL_DEFINITIONS = [EXECUTE_PYTHON, EXECUTE_PYTHON_FILE, GET_OUTPUT_PAGE]

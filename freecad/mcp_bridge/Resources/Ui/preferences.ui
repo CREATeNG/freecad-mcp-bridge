@@ -86,7 +86,7 @@
       <item row="2" column="1">
        <widget class="Gui::PrefSpinBox" name="pageSizeSpinBox">
         <property name="toolTip">
-         <string>The maximum size of a single page of output. Larger output is split across multiple pages, fetched automatically via get_output.</string>
+         <string>The maximum size of a single page of output. Larger output is split across multiple pages, fetched automatically via get_output_page.</string>
         </property>
         <property name="suffix">
          <string> KB</string>

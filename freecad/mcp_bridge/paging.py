@@ -1,6 +1,6 @@
 """Page buffer for streamed exec output.
 
-Each execute call gets a buffer entry keyed by a page_token: a queue the Qt
+Each execute call gets a buffer entry keyed by a job_token: a queue the Qt
 main thread pushes output chunks (then SENTINEL) onto, and a per-entry lock so
 only one reader drains it at a time. drain() bounds a single page by both
 time (timeout_ms) and size (page_size_chars) — a chunk that doesn't fully fit
@@ -21,14 +21,14 @@ _BUFFER_LOCK = threading.Lock()
 
 
 def start_page():
-    """Create a new buffer entry; return (page_token, output_queue)."""
+    """Create a new buffer entry; return (job_token, output_queue)."""
     token = uuid.uuid4().hex
     output_queue = queue.Queue()
     with _BUFFER_LOCK:
         _BUFFER[token] = {
             "queue": output_queue,
             "lock": threading.Lock(),
-            # (text, offset) for a chunk that didn't fully fit in a page —
+            # (stream, text, offset) for a chunk that didn't fully fit in a page —
             # checked before pulling a new item, so a chunk can be split
             # across pages without re-copying its untaken remainder each time.
             "pending": None,
@@ -40,20 +40,20 @@ def drain(token, timeout_ms, page_size_chars):
     """Collect up to `page_size_chars` of output for `token`, waiting up to
     `timeout_ms` for the sentinel or enough output to fill a page.
 
-    Returns {output, has_more}; while has_more, also the page_token to poll
+    Returns {page, has_more}; while has_more, also the job_token to poll
     with. An unknown/expired token yields has_more=False plus an error string.
     """
     with _BUFFER_LOCK:
         entry = _BUFFER.get(token)
     if entry is None:
         return {
-            "output": "",
+            "page": [],
             "has_more": False,
-            "error": "unknown or expired page_token",
+            "error": "unknown or expired job_token",
         }
 
     deadline = time.monotonic() + max(0.0, timeout_ms / 1000.0)
-    chunks = []
+    page = []
     total = 0
     done = False
 
@@ -61,7 +61,7 @@ def drain(token, timeout_ms, page_size_chars):
         output_queue = entry["queue"]
         while total < page_size_chars:
             if entry["pending"] is not None:
-                text, offset = entry["pending"]
+                stream, text, offset = entry["pending"]
                 entry["pending"] = None
             else:
                 remaining = deadline - time.monotonic()
@@ -74,17 +74,18 @@ def drain(token, timeout_ms, page_size_chars):
                 if item is SENTINEL:
                     done = True
                     break
-                text, offset = item, 0
+                stream, text = item
+                offset = 0
 
             room = page_size_chars - total
             available = len(text) - offset
             if available <= room:
-                chunks.append(text[offset:])
+                page.append({"stream": stream, "text": text[offset:]})
                 total += available
             else:
-                chunks.append(text[offset:offset + room])
+                page.append({"stream": stream, "text": text[offset:offset + room]})
                 total += room
-                entry["pending"] = (text, offset + room)
+                entry["pending"] = (stream, text, offset + room)
                 break
 
         # The page filled exactly, and we don't yet know if that was also the
@@ -101,13 +102,13 @@ def drain(token, timeout_ms, page_size_chars):
                 if item is SENTINEL:
                     done = True
                 else:
-                    entry["pending"] = (item, 0)
+                    stream, text = item
+                    entry["pending"] = (stream, text, 0)
 
-    output = "".join(chunks)
     if done:
         evict(token)
-        return {"output": output, "has_more": False}
-    return {"output": output, "has_more": True, "page_token": token}
+        return {"page": page, "has_more": False}
+    return {"page": page, "has_more": True, "job_token": token}
 
 
 def evict(token):

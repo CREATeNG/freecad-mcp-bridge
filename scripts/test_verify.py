@@ -222,7 +222,9 @@ def _http_exec_probe(code: str, timeout_ms: int) -> dict:
                     "params": {"name": "execute_python", "arguments": {"code": code}},
                 }
             )
-            output = page.get("output", "")
+            output = "".join(
+                chunk.get("text", "") for chunk in page.get("page", [])
+            )
             req_id = 2
             while page.get("has_more"):
                 page = _post(
@@ -231,12 +233,14 @@ def _http_exec_probe(code: str, timeout_ms: int) -> dict:
                         "id": req_id,
                         "method": "tools/call",
                         "params": {
-                            "name": "get_output",
-                            "arguments": {"page_token": page["page_token"]},
+                            "name": "get_output_page",
+                            "arguments": {"job_token": page["job_token"]},
                         },
                     }
                 )
-                output += page.get("output", "")
+                output += "".join(
+                    chunk.get("text", "") for chunk in page.get("page", [])
+                )
                 req_id += 1
             result["output"] = output
         except Exception as exc:  # noqa: BLE001 - reported to the caller

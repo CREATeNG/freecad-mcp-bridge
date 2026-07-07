@@ -54,17 +54,17 @@ def _error(req_id, code, message) -> dict:
     }
 
 
-def tool_call_response(req_id, page) -> dict:
-    """Wrap a page dict ({output, has_more, [page_token], [error]}) as an MCP
+def tool_call_response(req_id, result) -> dict:
+    """Wrap a tool result ({page, has_more, [job_token], [error]}) as an MCP
     tools/call result — a single JSON text content block."""
     payload = {
-        "output": page.get("output", ""),
-        "has_more": page.get("has_more", False),
+        "page": result.get("page", []),
+        "has_more": result.get("has_more", False),
     }
-    if page.get("page_token"):
-        payload["page_token"] = page["page_token"]
-    if page.get("error"):
-        payload["error"] = page["error"]
+    if result.get("job_token"):
+        payload["job_token"] = result["job_token"]
+    if result.get("error"):
+        payload["error"] = result["error"]
     result = {"content": [{"type": "text", "text": json.dumps(payload)}]}
     return _result(req_id, result)
 

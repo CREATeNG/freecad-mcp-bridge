@@ -1,11 +1,12 @@
 # The life of a job
 
 A **job** is one `execute_python` (or `execute_python_file`) call: the Python
-code to run, a private output channel, and the page token that names it. This walks the whole
+code to run, a private output channel, and the job token that names it. This walks the whole
 lifecycle from the job's point of view, as implemented in `executor.py`
 (dispatch) and `paging.py` (output). Terms are collected at the bottom.
 Why it works this way — trade-offs and rejected alternatives — lives in
-[addon-hosted-mcp-server.md](addon-hosted-mcp-server.md).
+[addon-hosted-mcp-server.md](addon-hosted-mcp-server.md). Agent-facing output
+vocabulary (chunk, page, page history) is defined there.
 
 ## 1. Born
 
@@ -20,7 +21,7 @@ its entire identity now — nobody watches it individually, and nothing needs
 to. Everything ahead of it must fully complete before its turn.
 
 While it waits, someone may already be asking about it: the client got the
-token back within the response timeout and may poll `get_output`, finding
+token back within the response timeout and may poll `get_output_page`, finding
 an empty queue and `has_more: true`. From the outside, *waiting in line*
 looks identical to *running but quiet*.
 
@@ -49,19 +50,25 @@ job in line gets its turn.
 
 ## 6. Afterlife
 
-The job no longer exists, but its output does. It sits in the page buffer
-being drained page by page until the client reads through to the sentinel —
-at which point the token is evicted and every trace of the job is gone. If
-nobody ever finishes draining it, the remains persist until the bridge
-stops.
+The job is done, but its page history remains. Every page the bridge already
+returned was stored as an immutable snapshot at emit time — replayable by
+`page_no`, readable by any client that holds the token. While the job was
+still running, forward fetches drained the live output queue into new pages
+appended to the history.
+
+When the final page is emitted, the retention clock starts (see
+[addon-hosted-mcp-server.md](addon-hosted-mcp-server.md) *Configuration*).
+The history stays retrievable for that period whether or not anyone has read
+every page yet, then it is deleted. If the bridge stops first, the history is
+cleared with everything else and the token dies.
 
 ## The unhappy path
 
 If the bridge is stopped while the job is in line, it dies unstarted: its
 buffers are cleared, and a client polling its token gets
-`"unknown or expired page_token"` — indistinguishable from any other dead
+`"unknown or expired job_token"` — indistinguishable from any other dead
 token. If the bridge is stopped while the job is running, the job itself
-cannot be interrupted — it runs to completion — but its output buffer is
+cannot be interrupted — it runs to completion — but its page history is
 cleared at stop, so undelivered output is lost and its token dies the same
 way.
 
@@ -78,8 +85,9 @@ way.
 - **Busy latch** — a flag meaning "a job is running right now"; it makes a
   mid-job wake-up of the dispatcher a harmless no-op.
 - **Output queue** — the job's private channel for everything it prints;
-  what `get_output` pages out to the client.
+  forward fetches at `page_no == max + 1` drain this into the next page of
+  the history.
 - **Sentinel** — the end-of-output marker the runner places on the output
   queue as the job's final act; "no more output will ever come."
-- **Page token** — the public name of a job's output; the client presents
-  it to `get_output` to keep reading.
+- **Job token** — the public name of a job's page history; the client
+  presents it to `get_output_page` to read or replay pages.

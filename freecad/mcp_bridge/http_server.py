@@ -2,7 +2,7 @@
 
 A ThreadingHTTPServer runs on a background thread, binding 127.0.0.1 only.
 Lifecycle methods (initialize, tools/list) return plain JSON; tool calls
-(execute_python, get_output) run code on the Qt main thread via the Executor
+(execute_python, get_output_page) run code on the Qt main thread via the Executor
 and stream the result back over SSE, with paging for output that outlasts the
 response timeout or exceeds the max page size.
 """
@@ -87,16 +87,21 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                     mcp_protocol.tool_call_response(
                         req_id,
                         {
-                            "output": f"Error reading file '{filepath}': {exc}",
+                            "page": [
+                                {
+                                    "stream": "stderr",
+                                    "text": f"Error reading file '{filepath}': {exc}",
+                                }
+                            ],
                             "has_more": False,
                         },
                     )
                 )
                 return
             self._run_code(req_id, code, timeout_ms, page_size_chars)
-        elif name == "get_output":
+        elif name == "get_output_page":
             page = paging.drain(
-                args.get("page_token", ""), timeout_ms, page_size_chars
+                args.get("job_token", ""), timeout_ms, page_size_chars
             )
             self._send_sse(mcp_protocol.tool_call_response(req_id, page))
         else:
