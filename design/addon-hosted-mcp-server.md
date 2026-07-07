@@ -43,9 +43,10 @@ Every tool call returns a response with the same shape.
 - **`page`** — an ordered array of `{stream, text}` chunks captured from the running
   job's stdout and stderr. Read the array in order; concatenate `text` values for a flat
   transcript. Empty when the response is a tool-level `error` (no exec output).
-- **`page_no`** — 0-based index of this page in the job's page history. Page 0 is the
-  first page from the initiating `execute_python` or `execute_python_file` call. Omitted
-  when no page history exists (tool-level `error` responses).
+- **`page_no`** — 0-based index of this page in the job's page history; present exactly
+  when the response is a stored page (it carries content, or is the job's final page).
+  Page 0 is the job's first stored page — usually in the response of the initiating
+  call. Empty non-final responses and tool-level `error` responses carry no `page_no`.
 - **`has_more`** — always present. When `true`, at least one higher-numbered page exists
   or will exist for this job.
 - **`job_token`** — present while the job's page history exists.
@@ -145,6 +146,11 @@ is stored as an immutable snapshot (`page_no`, `page`, and the `has_more` value 
 time) before the response is returned. The live output queue feeds forward fetches while
 the job is still running; stored snapshots serve replay.
 
+Only pages with content — and the job's final page — are stored and numbered. An empty
+non-final drain is not stored and consumes no page number: the response returns
+`page: []`, `has_more: true`, and no `page_no`. `page_no` therefore counts output, not
+polling rhythm.
+
 A job is **complete** when its sentinel — the end-of-output marker placed on the queue
 as the job's final act — has been drained into a page. The drain that consumes the
 sentinel produces the job's final page, possibly with an empty `page` array, returning
@@ -175,7 +181,9 @@ exception.
 the history for that job.
 
 - **`page_no` in the history** — return the stored snapshot (idempotent replay).
-- **`page_no == max + 1`** and the job is not yet complete — drain forward, store, return.
+- **`page_no == max + 1`** and the job is not yet complete — drain forward; if the drain
+  yields content or the sentinel, store and return the new page; otherwise return an
+  unstored empty response (`page: []`, `has_more: true`, no `page_no`).
 - **`page_no > max`** and the job is complete — error.
 - **`page_no > max + 1`** and the job is not yet complete — error.
 - Out-of-range `page_no` (either case above) returns `"page_no out of range"`.
@@ -194,10 +202,11 @@ Append each response's `page` chunks in order. If `error` is present, read it an
 (tool-level failure — no job output to collect). If the initiating call returns
 `has_more: false` without `error`, the job is complete — no polling.
 
-Otherwise, keep `job_token` and the last committed `page_no`, then call
-`get_output_page` with `page_no` equal to that value plus one until `has_more` is
-`false` — the final page may arrive with an empty `page` array. To retry or replay a
-page, request the same `page_no` again. `error` is never how a job finishes: on
+Otherwise, keep `job_token` and apply one rule: call `get_output_page` with `page_no`
+equal to the last `page_no` received plus one — 0 if none has been received yet — until
+`has_more` is `false`. Empty non-final responses carry no `page_no`, so the same request
+naturally repeats; the final page may arrive with an empty `page` array. To retry or
+replay a page, request its `page_no` again. `error` is never how a job finishes: on
 `get_output_page` it means a dead token or an out-of-range `page_no`.
 
 **Rejected alternative**

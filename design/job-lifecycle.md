@@ -43,10 +43,13 @@ another job's, because the channel it writes to is its own.
 
 ## 5. Finished
 
-Success or error, the same ending: an error becomes traceback text in the
-output, and the runner's final act is placing the sentinel on the queue —
-the job's last word. Control returns to the dispatcher's loop, and the next
-job in line gets its turn.
+Success or error, the same ending: a failure becomes traceback text on the
+job's stderr stream, and the runner's final act is placing the sentinel on
+the queue — the job's last word. That sentinel is later consumed by
+whichever fetch drains it, closing the job's final page — possibly empty —
+with `has_more: false`; the sentinel itself never appears in a page.
+Control returns to the dispatcher's loop, and the next job in line gets its
+turn.
 
 ## 6. Afterlife
 
@@ -65,7 +68,7 @@ cleared with everything else and the token dies.
 ## The unhappy path
 
 If the bridge is stopped while the job is in line, it dies unstarted: its
-buffers are cleared, and a client polling its token gets
+output queue and history are cleared, and a client polling its token gets
 `"unknown or expired job_token"` — indistinguishable from any other dead
 token. If the bridge is stopped while the job is running, the job itself
 cannot be interrupted — it runs to completion — but its page history is
@@ -88,6 +91,8 @@ way.
   forward fetches at `page_no == max + 1` drain this into the next page of
   the history.
 - **Sentinel** — the end-of-output marker the runner places on the output
-  queue as the job's final act; "no more output will ever come."
+  queue as the job's final act; "no more output will ever come." Consumed
+  by the drain that closes the job's final page — it never appears in a
+  page.
 - **Job token** — the public name of a job's page history; the client
   presents it to `get_output_page` to read or replay pages.
