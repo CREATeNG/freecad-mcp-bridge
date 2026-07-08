@@ -111,6 +111,41 @@
         </property>
        </widget>
       </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="retentionLabel">
+        <property name="text">
+         <string>Page history retention</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="Gui::PrefSpinBox" name="retentionSpinBox">
+        <property name="toolTip">
+         <string>How long a finished job's output pages remain readable via get_output_page before being discarded.</string>
+        </property>
+        <property name="suffix">
+         <string> min</string>
+        </property>
+        <property name="minimum">
+         <number>1</number>
+        </property>
+        <property name="maximum">
+         <number>1440</number>
+        </property>
+        <property name="singleStep">
+         <number>1</number>
+        </property>
+        <property name="value">
+         <number>5</number>
+        </property>
+        <property name="prefEntry" stdset="0">
+         <cstring>MaxHistoryRetentionMinutes</cstring>
+        </property>
+        <property name="prefPath" stdset="0">
+         <cstring>Mod/freecad-mcp-bridge</cstring>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>

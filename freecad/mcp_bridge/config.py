@@ -7,6 +7,7 @@ preference change takes effect on the next server start without a restart.
 import FreeCAD
 
 from freecad.mcp_bridge.constants import (
+    DEFAULT_MAX_HISTORY_RETENTION_MIN,
     DEFAULT_MAX_PAGE_SIZE_KB,
     DEFAULT_MAX_RESPONSE_TIMEOUT_S,
     DEFAULT_PORT,
@@ -33,3 +34,11 @@ def max_page_size_chars() -> int:
     """Max size of a single page's output before returning has_more=True."""
     kb = _params().GetInt("MaxPageSize", DEFAULT_MAX_PAGE_SIZE_KB)
     return kb * 1024
+
+
+def max_history_retention_ms() -> int:
+    """How long a completed job's page history stays readable, in ms."""
+    minutes = _params().GetInt(
+        "MaxHistoryRetentionMinutes", DEFAULT_MAX_HISTORY_RETENTION_MIN
+    )
+    return minutes * 60 * 1000

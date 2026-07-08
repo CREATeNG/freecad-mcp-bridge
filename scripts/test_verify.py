@@ -225,8 +225,10 @@ def _http_exec_probe(code: str, timeout_ms: int) -> dict:
             output = "".join(
                 chunk.get("text", "") for chunk in page.get("page", [])
             )
+            last_page_no = page.get("page_no")
             req_id = 2
             while page.get("has_more"):
+                next_no = 0 if last_page_no is None else last_page_no + 1
                 page = _post(
                     {
                         "jsonrpc": "2.0",
@@ -234,13 +236,18 @@ def _http_exec_probe(code: str, timeout_ms: int) -> dict:
                         "method": "tools/call",
                         "params": {
                             "name": "get_output_page",
-                            "arguments": {"job_token": page["job_token"]},
+                            "arguments": {
+                                "job_token": page["job_token"],
+                                "page_no": next_no,
+                            },
                         },
                     }
                 )
                 output += "".join(
                     chunk.get("text", "") for chunk in page.get("page", [])
                 )
+                if page.get("page_no") is not None:
+                    last_page_no = page["page_no"]
                 req_id += 1
             result["output"] = output
         except Exception as exc:  # noqa: BLE001 - reported to the caller

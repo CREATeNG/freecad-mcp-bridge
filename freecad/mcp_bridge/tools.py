@@ -44,8 +44,10 @@ EXECUTE_PYTHON_FILE = {
 GET_OUTPUT_PAGE = {
     "name": "get_output_page",
     "description": (
-        "Retrieve the next page of buffered output for a prior execute call "
-        "that returned has_more=true. Pass the job_token from that response."
+        "Retrieve a page of output for a prior execute call that returned "
+        "has_more=true. To read forward, pass page_no one higher than the "
+        "last page_no you received (0 if you received none yet); repeat until "
+        "has_more=false. Requesting a page_no already received replays it."
     ),
     "inputSchema": {
         "type": "object",
@@ -55,9 +57,14 @@ GET_OUTPUT_PAGE = {
                 "description": (
                     "Token from a previous execute or get_output_page response."
                 ),
-            }
+            },
+            "page_no": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "0-based index of the page to retrieve.",
+            },
         },
-        "required": ["job_token"],
+        "required": ["job_token", "page_no"],
     },
 }
 

@@ -49,10 +49,20 @@ def run(port, name, arguments):
     """Call a tool and stream its output, polling get_output_page while paged."""
     page = _tool(port, name, arguments, 1)
     sys.stdout.write(_page_text(page))
+    # Forward rule: request the last page_no received + 1 (0 if none yet).
+    last_page_no = page.get("page_no")
     req_id = 2
     while page.get("has_more"):
-        page = _tool(port, "get_output_page", {"job_token": page["job_token"]}, req_id)
+        next_no = 0 if last_page_no is None else last_page_no + 1
+        page = _tool(
+            port,
+            "get_output_page",
+            {"job_token": page["job_token"], "page_no": next_no},
+            req_id,
+        )
         sys.stdout.write(_page_text(page))
+        if page.get("page_no") is not None:
+            last_page_no = page["page_no"]
         req_id += 1
     if page.get("error"):
         sys.stderr.write(f"\n{page['error']}\n")

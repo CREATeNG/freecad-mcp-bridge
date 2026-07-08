@@ -55,12 +55,14 @@ def _error(req_id, code, message) -> dict:
 
 
 def tool_call_response(req_id, result) -> dict:
-    """Wrap a tool result ({page, has_more, [job_token], [error]}) as an MCP
-    tools/call result — a single JSON text content block."""
+    """Wrap a tool result ({page, has_more, [page_no], [job_token], [error]})
+    as an MCP tools/call result — a single JSON text content block."""
     payload = {
         "page": result.get("page", []),
         "has_more": result.get("has_more", False),
     }
+    if result.get("page_no") is not None:
+        payload["page_no"] = result["page_no"]
     if result.get("job_token"):
         payload["job_token"] = result["job_token"]
     if result.get("error"):

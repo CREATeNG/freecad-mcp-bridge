@@ -2,9 +2,10 @@
 
 A ThreadingHTTPServer runs on a background thread, binding 127.0.0.1 only.
 Lifecycle methods (initialize, tools/list) return plain JSON; tool calls
-(execute_python, get_output_page) run code on the Qt main thread via the Executor
-and stream the result back over SSE, with paging for output that outlasts the
-response timeout or exceeds the max page size.
+(execute_python, execute_python_file, get_output_page) run code on the Qt main
+thread via the Executor and return the result over SSE. Output is paged through
+the job's page history (see paging.py) when it outlasts the response timeout or
+exceeds the max page size.
 """
 
 import json
@@ -72,11 +73,14 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         params = request.get("params") or {}
         name = params.get("name")
         args = params.get("arguments") or {}
-        timeout_ms = config.max_response_timeout_ms()
-        page_size_chars = config.max_page_size_chars()
+        drain_args = (
+            config.max_response_timeout_ms(),
+            config.max_page_size_chars(),
+            config.max_history_retention_ms(),
+        )
 
         if name == "execute_python":
-            self._run_code(req_id, args.get("code", ""), timeout_ms, page_size_chars)
+            self._run_code(req_id, args.get("code", ""), drain_args)
         elif name == "execute_python_file":
             filepath = args.get("filepath", "")
             try:
@@ -98,12 +102,20 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                     )
                 )
                 return
-            self._run_code(req_id, code, timeout_ms, page_size_chars)
+            self._run_code(req_id, code, drain_args)
         elif name == "get_output_page":
-            page = paging.drain(
-                args.get("job_token", ""), timeout_ms, page_size_chars
-            )
-            self._send_sse(mcp_protocol.tool_call_response(req_id, page))
+            page_no = _as_page_no(args.get("page_no"))
+            if page_no is None:
+                result = {
+                    "page": [],
+                    "has_more": False,
+                    "error": "page_no out of range",
+                }
+            else:
+                result = paging.fetch(
+                    args.get("job_token", ""), page_no, *drain_args
+                )
+            self._send_sse(mcp_protocol.tool_call_response(req_id, result))
         else:
             self._send_sse(
                 mcp_protocol.error_response(
@@ -111,11 +123,12 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                 )
             )
 
-    def _run_code(self, req_id, code, timeout_ms, page_size_chars):
+    def _run_code(self, req_id, code, drain_args):
         token, output_queue = paging.start_page()
         self.server.executor.submit(code, output_queue)
-        page = paging.drain(token, timeout_ms, page_size_chars)
-        self._send_sse(mcp_protocol.tool_call_response(req_id, page))
+        # The initiating call returns page 0 — the first page the job produces.
+        result = paging.fetch(token, 0, *drain_args)
+        self._send_sse(mcp_protocol.tool_call_response(req_id, result))
 
     def _send_json(self, status, payload):
         body = json.dumps(payload).encode("utf-8")
@@ -133,6 +146,17 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(b"event: message\ndata: " + body + b"\n\n")
+
+
+def _as_page_no(value):
+    """Coerce a page_no argument to a non-negative int, or None if invalid."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value >= 0 else None
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
 
 
 def _parse_error():
