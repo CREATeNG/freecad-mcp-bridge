@@ -3,6 +3,7 @@
 > Phase: wrap-up. Implementation complete — shipping and finalising the Index listing.
 > Reference: `plans/wrap-up.md` (current status and remaining checklist).
 
+**Agent scratch:** `agent-tools/` is gitignored — local one-off scripts and spilled tool output; not product or CI.
 
 Any AI assistant entering this workspace must follow these rules to maintain clarity and focus:
 
