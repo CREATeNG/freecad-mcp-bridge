@@ -31,6 +31,7 @@ The bump runs immediately after each tag is cut, pushing `main` ahead of the las
 - **The release pipeline is maximally automated, gated to help ensure the above.** Automation removes the chance of human error at the moment it would matter most — shipping.
 - **What we verify is what we tag.** The prepare job pins the release-candidate commit; publish refuses to tag if `main` has moved since; the tag is then re-verified by installing it exactly as users will. The Addon Index listing can therefore never point at an untested snapshot.
 - **The Addons Index PR leg is non-blocking by design.** Its failures are external — fork Actions availability, upstream PR permissions, token state — and say nothing about the release's own integrity, so it must never wedge the tag or the version cycle. It must fail loudly, not silently (see `release.yml`).
+- **The tag's zip is the tag.** GitHub archives the same tree the tag names, so the two install forms can never differ in content — only in install-layout mechanics. Verifying the zip form is about layout handling, never a second content gate.
 
 ---
 
