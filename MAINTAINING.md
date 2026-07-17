@@ -29,6 +29,8 @@ The bump runs immediately after each tag is cut, pushing `main` ahead of the las
 - **Every component in a release carries the same version.** Matching numbers across `package.xml`, `manifest.json`, and `package.json` are what make "version X" mean one coherent thing, not a mismatched patchwork.
 - **Version numbers only increase.** A newer version must always sort higher than an older one, or "is this an update" becomes unanswerable — for Addon Manager, for users, for anyone comparing releases.
 - **The release pipeline is maximally automated, gated to help ensure the above.** Automation removes the chance of human error at the moment it would matter most — shipping.
+- **What we verify is what we tag.** The prepare job pins the release-candidate commit; publish refuses to tag if `main` has moved since; the tag is then re-verified by installing it exactly as users will. The Addon Index listing can therefore never point at an untested snapshot.
+- **The Addons Index PR leg is non-blocking by design.** Its failures are external — fork Actions availability, upstream PR permissions, token state — and say nothing about the release's own integrity, so it must never wedge the tag or the version cycle. The trade-off: its failure needs the maintainer's eye (the release-notes PR link and checklist step are the current backstop).
 
 ---
 
