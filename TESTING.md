@@ -1,6 +1,6 @@
 # Automated install verification (CI)
 
-This document describes the GitHub Actions workflow that installs a tagged release through FreeCAD's Addon Manager, restarts FreeCAD, and verifies that the addon auto-initializes and the bridge works end-to-end over HTTP.
+This document describes the GitHub Actions workflow that installs a release candidate (branch `main`) or a tagged release through FreeCAD's Addon Manager, restarts FreeCAD, and verifies that the addon auto-initializes and the bridge works end-to-end over HTTP.
 
 For release tagging, Index updates, and workflows, see [MAINTAINING.md](MAINTAINING.md).
 
@@ -19,7 +19,7 @@ The **install-verify workflow** ([`install-verify.yml`](.github/workflows/instal
 Each matrix job launches **two separate FreeCAD processes**:
 
 1. **Install** — `scripts/test_install.py` via `scripts/ci_run_freecad.sh install`
-2. **Verify** — `scripts/test_verify.py` via `scripts/ci_run_freecad.sh verify` (fresh process, same isolated profile)
+2. **Verify** — `scripts/test_verify.py` via `scripts/ci_run_freecad.sh verify` (fresh process, same profile; isolated on Linux and Windows, not on macOS)
 
 Shared helpers live in `scripts/test_install_common.py`.
 
@@ -123,7 +123,7 @@ bash scripts/ci_run_freecad.sh verify    # phase 2
 - Resolve FreeCAD binary (conda `PATH` on Linux/macOS; common install paths after winget on Windows).
 - Optionally isolate profile via `ISOLATE_HOME=true` → `HOME` / `USERPROFILE` = `FC_CI_HOME`.
 - Set `RELEASE_INSTALL_CI_LOG` to a phase-specific file under `RUNNER_TEMP`.
-- Run FreeCAD with the test script under a **15-minute** timeout (`xvfb-run` on Linux, `perl alarm` on macOS, `timeout` on Windows when available).
+- Run FreeCAD with the test script under a **15-minute** timeout (`xvfb-run` on Linux, `perl alarm` on macOS, on Windows `timeout`, else `perl alarm`, else no timeout).
 - Invoke `publish_ci_log.sh` after FreeCAD exits.
 
 ---
@@ -201,5 +201,5 @@ bash scripts/publish_ci_log.sh /tmp/freecad-ci-verify.log "Verify addon after re
 | `scripts/ci_run_freecad.sh` | FreeCAD launcher + timeout + log path |
 | `scripts/publish_ci_log.sh` | Log file → GitHub annotations |
 | `scripts/test_install.py` | Addon Manager install phase |
-| `scripts/test_verify.py` | Post-restart UI + socket phase |
+| `scripts/test_verify.py` | Post-restart UI + HTTP phase |
 | `scripts/test_install_common.py` | Shared helpers, CI log, `quit_freecad()` |

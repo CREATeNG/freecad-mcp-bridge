@@ -23,4 +23,4 @@ Please include:
 
 ## Privacy, connections, and trust
 
-See [README § Privacy & security](README.md#privacy--security) for how the bridge, MCP server, and MCP client interact, and what runs locally vs through your MCP client.
+See [README § Privacy & security](README.md#privacy--security) for how the bridge (the MCP server inside FreeCAD) and your MCP client interact, and what runs locally vs through your MCP client.

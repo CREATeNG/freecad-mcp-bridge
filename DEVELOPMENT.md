@@ -10,7 +10,7 @@ Developer tips and guidelines for coding and local testing.
 
 For general guidelines on FreeCAD addon development setup—such as cloning, symlinking, or copying files into FreeCAD's versioned `Mod/` directory—please refer to the [FreeCAD Addon Academy](https://freecad.github.io/Addon-Academy/).
 
-This is a small addon — each module in `freecad/mcp_bridge/` carries a docstring describing its role. Start with `http_server.py` and `executor.py` to see the request lifecycle. For the architecture and its rationale, see [design/addon-hosted-mcp-server.md](design/addon-hosted-mcp-server.md); for a walkthrough of how execution behaves, [design/job-lifecycle.md](design/job-lifecycle.md).
+This is a small addon. Start with `http_server.py` and `executor.py` to see the request lifecycle. For the architecture and its rationale, see [design/addon-hosted-mcp-server.md](design/addon-hosted-mcp-server.md); for a walkthrough of how execution behaves, [design/job-lifecycle.md](design/job-lifecycle.md).
 
 ---
 
@@ -34,7 +34,7 @@ python send_cmd.py 39280 -f path/to/your/script.py
 
 ## 2. Claude Desktop shim (`mcp-stdio-shim/`)
 
-Claude Desktop cannot directly connect to HTTP MCP servers over the network. The zero-dependency Node shim in `mcp-stdio-shim/` acts as a stdio-to-HTTP relay. It reads JSON-RPC messages from stdin, forwards them to the HTTP server at `http://127.0.0.1:<port>/mcp`, and writes the responses back on stdout.
+Claude Desktop cannot connect directly to a local HTTP MCP server. The zero-dependency Node shim in `mcp-stdio-shim/` acts as a stdio-to-HTTP relay. It reads JSON-RPC messages from stdin, forwards them to the HTTP server at `http://127.0.0.1:<port>/mcp`, and writes the responses back on stdout.
 
 To run it locally for testing:
 1. Ensure Node.js (>=18) is installed.
@@ -59,9 +59,9 @@ To run it locally for testing:
 Inside FreeCAD, all GUI and core Qt bindings are exposed via a built-in `PySide` namespace wrapper. Standard addon development guidelines recommend always importing Qt modules from this unified wrapper (e.g., `from PySide.QtCore import ...`) rather than explicitly targeting `PySide6`. Importing `PySide6` directly can conflict with FreeCAD's internally managed Qt namespace. See the [FreeCAD Addon Academy Qt/PySide guide](https://freecad.github.io/Addon-Academy/Guides/Code/Qt).
 
 ### Environment separation & import isolation
-Python code running outside of FreeCAD (such as `send_cmd.py`) cannot import the `FreeCAD`, `FreeCADGui`, or `PySide` modules.
+Python code meant to run outside FreeCAD (such as `send_cmd.py`) must not depend on the `FreeCAD`, `FreeCADGui`, or `PySide` modules.
 
-Additionally, shared protocol modules like `mcp_protocol.py` and `tools.py` must be able to run outside FreeCAD; they therefore must not import FreeCAD or Qt.
+Additionally, the shared modules `mcp_protocol.py`, `tools.py`, `paging.py`, `resources.py` and `constants.py` must be able to run outside FreeCAD; they therefore must not import FreeCAD or Qt.
 
 ---
 

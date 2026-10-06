@@ -19,7 +19,7 @@ The version number format is `x.y.z`; tags are named `v{x.y.z}` — e.g. shippin
 
 The version number is stored in `package.xml`, `manifest.json`, and `package.json` — kept in lockstep automatically by the bump process, which syncs the current version across all three whenever it runs, so none of them should ever need a manual edit just to match the others.
 
-The bump runs immediately after each tag is cut, pushing `main` ahead of the last shipped version — this is what keeps tag collisions rare, not continuous policing of `main` (which is expected to be unstable between releases; see [Branches, tags, and the FreeCAD Addon Index](#branches-tags-and-the-freecad-addon-index) below).
+The bump runs once each new tag has passed its install-verify, pushing `main` ahead of the last shipped version — this is what keeps tag collisions rare, not continuous policing of `main` (which is expected to be unstable between releases; see [Branches, tags, and the FreeCAD Addon Index](#branches-tags-and-the-freecad-addon-index) below).
 
 ---
 
@@ -28,7 +28,7 @@ The bump runs immediately after each tag is cut, pushing `main` ahead of the las
 - **Tags are permanent.** The FreeCAD Addon Index pins a tag as a fixed install source — once `v{x.y.z}` exists, its content must never change, or every install/reference pointing at it silently breaks.
 - **Every component in a release carries the same version.** Matching numbers across `package.xml`, `manifest.json`, and `package.json` are what make "version X" mean one coherent thing, not a mismatched patchwork.
 - **Version numbers only increase.** A newer version must always sort higher than an older one, or "is this an update" becomes unanswerable — for Addon Manager, for users, for anyone comparing releases.
-- **The release pipeline is maximally automated, gated to help ensure the above.** Automation removes the chance of human error at the moment it would matter most — shipping.
+- **The release pipeline is automated and gated, to help ensure the above.**
 - **What we verify is what we tag.** The prepare job pins the release-candidate commit; publish refuses to tag if `main` has moved since; the tag is then re-verified by installing it exactly as users will. The Addon Index listing can therefore never point at an untested snapshot.
 - **The Addons Index PR leg is non-blocking by design.** Its failures are external — fork Actions availability, upstream PR permissions, token state — and say nothing about the release's own integrity, so it must never wedge the tag or the version cycle. It must fail loudly, not silently (see `release.yml`).
 - **The tag's zip is the tag.** GitHub archives the same tree the tag names, so the two install forms can never differ in content — only in install-layout mechanics. Verifying the zip form is about layout handling, never a second content gate.
@@ -68,7 +68,7 @@ FreeCAD Addon Index `git_ref` is the tag name (`v{x.y.z}`), matching `package.xm
 
 | Name | File | Role |
 |------|------|------|
-| **Release orchestrator workflow** | [`release.yml`](.github/workflows/release.yml) | Validate manifest → verify (`main`) → tag → **GitHub Release** (notes + `.mcpb` bundle) → verify (tag path) → dispatch Index PR on fork + release-notes link → post-release patch bump. Actions UI: **Release Orchestrator** → Run workflow. |
+| **Release orchestrator workflow** | [`release.yml`](.github/workflows/release.yml) | Ships a version; see the [job order](#the-release-orchestrator-workflow-releaseyml) below. Actions UI: **Release Orchestrator** → Run workflow. |
 | **Install-verify workflow** | [`install-verify.yml`](.github/workflows/install-verify.yml) | Confirms addon installation works on Linux, macOS, and Windows. Can be run at any time; `release.yml` calls it before tag (`main`) and after (`tag` path). Actions UI: **Install verify**. |
 | **Version-bump workflow** | [`bump-package-version.yml`](.github/workflows/bump-package-version.yml) | Actions UI: **Bump package version** → Run workflow. |
 
@@ -76,7 +76,7 @@ FreeCAD Addon Index `git_ref` is the tag name (`v{x.y.z}`), matching `package.xm
 
 ## The release orchestrator workflow (`release.yml`)
 
-The **release orchestrator workflow** is what you run to ship a version. It owns validating the release candidate, the verify gate, tagging, GitHub Release notes (plus packing and uploading the `.mcpb` bundle), dispatching an Index PR workflow on [`CREATeNG/FreeCAD-Addons`](https://github.com/CREATeNG/FreeCAD-Addons) (patch + upstream PR runs there), and the post-release patch bump on `main`. There is no standalone tag path.
+The **release orchestrator workflow** is what you run to ship a version. It owns validating the release candidate, the verify gate, tagging, GitHub Release notes (plus packing and uploading the `.mcpb` bundle), dispatching an Index PR workflow on [`CREATeNG/FreeCAD-Addons`](https://github.com/CREATeNG/FreeCAD-Addons) (the fork patches the Index and pushes a branch; the trigger script then opens the upstream PR), and the post-release patch bump on `main`. There is no standalone tag path.
 
 ```mermaid
 flowchart TD

@@ -47,11 +47,11 @@ Alternatively, stdio clients can run the shim directly with node, instead of ins
 
 ## What the AI can do
 
-Once connected, the client has these tools:
+Once connected, the agent has these tools:
 
-- **`execute_python(code)`** — run Python in your FreeCAD session. `App`/`FreeCAD` and `Gui`/`FreeCADGui` are pre-bound. Output (stdout, stderr, exceptions) is returned to the client and mirrored to FreeCAD's **Report view**, so you can watch what the AI runs in real time.
+- **`execute_python(code)`** — run Python in your FreeCAD session. `App`/`FreeCAD` and `Gui`/`FreeCADGui` are pre-bound. Output (stdout, stderr, exceptions) is returned to the client and mirrored to FreeCAD's **Report view**, so you can watch its output in real time.
 - **`execute_python_file(filepath)`** — read a local `.py` file and run it in the same context.
-- **`get_output_page(job_token)`** — retrieve the remainder of a long-running script's output. Clients call this automatically when a run outlasts the response timeout or produces more than the max page size.
+- **`get_output_page(job_token, page_no)`** — fetch the next page of a long-running script's output. The agent calls it while a response says `has_more: true`, as the tool's description tells it to.
 
 ---
 
@@ -60,8 +60,9 @@ Once connected, the client has these tools:
 **Edit → Preferences → MCP Bridge:**
 
 - **Port** — the loopback port the server listens on (default 39280).
-- **Max response timeout** — how long a request waits for output before returning what it has so far; the client fetches any remainder automatically (default 15 s).
-- **Max page size** — the most output a single response carries; larger output is split into pages the client fetches automatically (default 64 K characters, that is 65,536).
+- **Max response timeout** — how long a request waits for output before returning what it has so far; the agent fetches the rest with `get_output_page` (default 15 s).
+- **Max page size** — the most output a single response carries; larger output is split into pages the agent fetches with `get_output_page` (default 64 K characters, that is 65,536).
+- **Page history retention** — how long a finished job's output stays readable after its last page is fetched (default 5 min).
 
 ---
 
@@ -70,9 +71,9 @@ Once connected, the client has these tools:
 MCP Bridge is designed for **local** control of FreeCAD.
 
 - The bridge opens a loopback-only port (`127.0.0.1`), and only while you toggle it on — an explicit action each session. The open port isn't exclusive to your MCP client — any process on your machine can reach it.
-- Your agent can run code in your live FreeCAD session — macro-level access, with no sandbox on the bridge side. That makes your MCP client the guardrail: with one you trust, you stay in control, since it's designed to ask for your approval before running the agent's tool calls.
-- The bridge blocks requests whose `Origin` is a web page, so malicious sites can't reach it through your browser.
-- The addon collects no telemetry and never connects out to the internet. Any data an AI provider receives is sent by your MCP client, not by FreeCAD.
+- Your agent can run code in your live FreeCAD session — macro-level access, with no sandbox on the bridge side. That makes your MCP client the guardrail: with one you trust, set to ask for your approval before running the agent's tool calls, you stay in control.
+- The bridge rejects requests whose `Origin` names a host other than `localhost` or `127.0.0.1`, so web pages from other sites can't reach it through your browser.
+- The addon collects no telemetry, and the bridge itself never connects out to the internet. Code the agent runs can, as any macro can. Any data an AI provider receives is sent by your MCP client, not by the bridge.
 
 For security reports, see [SECURITY.md](SECURITY.md).
 

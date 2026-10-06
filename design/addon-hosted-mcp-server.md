@@ -38,7 +38,7 @@ The MCP server exposes three tools (schemas in `tools.py`).
 
 **Result shape**
 
-Every tool call returns a response with the same shape.
+Every call of the three tools returns a response with the same shape.
 
 - **`page`** — an ordered array of `{stream, text}` chunks captured from the running
   job's stdout and stderr. Read the array in order; concatenate `text` values for a flat
@@ -49,8 +49,8 @@ Every tool call returns a response with the same shape.
   call. Empty non-final responses and tool-level `error` responses carry no `page_no`.
 - **`has_more`** — always present. When `true`, at least one higher-numbered page exists
   or will exist for this job.
-- **`job_token`** — present while the job's page history exists.
-  Pass it to `get_output_page`. The token names the history for replay and for sub-agents
+- **`job_token`** — present while the job's page history exists, except on an `error`
+  response. Pass it to `get_output_page`. The token names the history for replay and for sub-agents
   that read the same job.
 - **`error`** — present when the tool cannot return exec output: `execute_python_file`
   when the bridge cannot read the file (human-readable message), and `get_output_page`
@@ -156,11 +156,11 @@ non-final drain is not stored and consumes no page number: the response returns
 `page: []`, `has_more: true`, and no `page_no`. `page_no` therefore counts output, not
 polling rhythm.
 
-A job is **complete** when its sentinel — the end-of-output marker placed on the queue
-as the job's final act — has been drained into a page. The drain that consumes the
+A job is **complete** when its sentinel (see [job-lifecycle.md](job-lifecycle.md)
+*Terms*) has been drained into a page. The drain that consumes the
 sentinel produces the job's final page, possibly with an empty `page` array, returning
-`has_more: false`. `has_more: true` therefore always precedes at least one more
-fetchable page: the promise holds by construction.
+`has_more: false`. While the server runs, `has_more: true` therefore always precedes
+at least one more fetchable page: the promise holds by construction.
 
 The history is shared: any client with the `job_token` may read any stored page.
 Capability is the token itself (typically passed from the initiating agent to a
@@ -282,15 +282,11 @@ thread:
   Otherwise the job is queued to the main-thread dispatcher (see *Exec
   serialization* below); when the job runs, the main thread redirects `sys.stdout`
   and `sys.stderr` to a `TeeWriter` — not before, and not in the HTTP handler.
-  The HTTP handler drains the output queue for up to the configured timeout (default 15 s)
-  or until a page fills; if the sentinel arrives first, returns `has_more: false`;
-  otherwise returns `has_more: true`. Each returned page with content, and the final page,
-  is stored in the page history (see *Page history*). The output queue persists as the live buffer (keyed by
-  `job_token`);
-  exec continues running on the Qt main thread, pushing chunks to the queue (a *chunk*
-  is one `{stream, text}` entry from a `write()` call, of arbitrary size). Subsequent
-  `get_output_page` calls with `page_no == max + 1` drain the queue until exec puts
-  the sentinel and the queue is empty, at which point `has_more: false` is returned.
+  The HTTP handler then drains the output queue into the first page and returns it
+  (bounds: *Page bounds*; storage and completion: *Page history*). The output queue
+  persists as the live buffer, keyed by `job_token`; exec keeps running on the Qt main
+  thread, pushing chunks to the queue (a *chunk* is one `{stream, text}` entry from a
+  `write()` call, of arbitrary size), and later `get_output_page` calls drain it.
   Draining works while exec still holds the main thread because Python
   releases the GIL periodically during execution — the HTTP thread reads the queue in
   those gaps.
@@ -317,9 +313,9 @@ page history retention — is in [job-lifecycle.md](job-lifecycle.md).
 
 The concept is bigger than this project alone. Stock FreeCAD freezes identically on a
 runaway macro, and the AI agent's own recovery loop (spot the stuck process, kill it,
-correct the script, re-run) covers every
-hang — including executions that cannot be interrupted in-process — more than an
-in-process cancel verb ever could. If the capability belongs anywhere, it is upstream
+correct the script, re-run) reaches hangs an in-process cancel verb cannot, including
+executions that cannot be interrupted in-process, at the cost of the session's unsaved
+state. If the capability belongs anywhere, it is upstream
 (interruptible scripting in FreeCAD) or in the agent, not in the bridge.
 
 ---
@@ -335,8 +331,9 @@ Addon Index transparency and deferred-activation requirements.
 **Security posture — noted trade-off**
 
 A loopback TCP port is accessible to any local process while active. Named sockets
-(Windows named pipes / UNIX domain sockets) are OS-user-scoped and unreachable from
-other local users; a TCP loopback port is not. Accepted on the basis that the attack
+(Windows named pipes / UNIX domain sockets) can be restricted to the OS user on most
+platforms (Qt notes that macOS does not honour socket file permissions); a TCP loopback
+port cannot. Accepted on the basis that the attack
 surface is local-only and the user controls the toggle.
 
 **Origin header validation — required**
@@ -356,7 +353,8 @@ Node.js shim (`mcp-stdio-shim/index.js`) ships with the addon as a stdio ↔ HTT
 proxy: each newline-delimited JSON-RPC message arriving on stdin is forwarded as an
 HTTP POST to the in-process server; the JSON or single-event SSE reply is unwrapped
 and written back on stdout as one line. It interprets as little of the protocol as
-possible, so protocol additions pass through untouched. Node stdlib only (global
+possible: it forwards any JSON-RPC message, and unwraps only a plain JSON or
+single-event SSE reply. Node stdlib only (global
 `fetch`, Node ≥ 18); Claude Desktop bundles Node.js — no user-side runtime install
 needed. The shim reads the port from the `FREECAD_MCP_PORT` environment variable
 (default 39280). Notifications (no `id`) get no reply; if the bridge is unreachable,
@@ -390,7 +388,8 @@ MCP protocol surface for this server is small enough to hand-roll cleanly.
 
 `http.server.ThreadingHTTPServer` + background thread (stdlib).
 Each request gets its own thread, allowing concurrent handling of `execute_python` and
-`get_output_page`. No Qt dependency in the HTTP layer. `QTcpServer` was considered — more
+`get_output_page`. Socket handling and HTTP parsing need no Qt; only the hand-off to the
+main thread goes through the Qt-based Executor. `QTcpServer` was considered — more
 Qt-idiomatic but requires implementing HTTP parsing manually with no clear benefit.
 
 **Local socket**
