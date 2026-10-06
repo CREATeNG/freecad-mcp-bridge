@@ -32,7 +32,12 @@ case "$PHASE" in
 esac
 
 resolve_freecad_bin() {
-  if [[ -n "${FREECAD_BIN:-}" && -f "${FREECAD_BIN}" ]]; then
+  if [[ -n "${FREECAD_BIN:-}" ]]; then
+    if [[ ! -f "${FREECAD_BIN}" ]]; then
+      echo "FREECAD_BIN is set but not a file: ${FREECAD_BIN}" >&2
+      return 1
+    fi
+    echo "Using FreeCAD: ${FREECAD_BIN}"
     return 0
   fi
 
@@ -66,14 +71,8 @@ resolve_freecad_bin() {
     FREECAD_BIN="$(command -v freecad)"
   elif command -v FreeCAD >/dev/null 2>&1; then
     FREECAD_BIN="$(command -v FreeCAD)"
-  elif [[ -n "${CONDA_PREFIX:-}" && -x "${CONDA_PREFIX}/bin/freecad" ]]; then
-    FREECAD_BIN="${CONDA_PREFIX}/bin/freecad"
-  elif [[ -n "${CONDA_PREFIX:-}" && -x "${CONDA_PREFIX}/bin/FreeCAD" ]]; then
-    FREECAD_BIN="${CONDA_PREFIX}/bin/FreeCAD"
   else
-    echo "FreeCAD binary not found in PATH or conda env" >&2
-    conda list freecad 2>/dev/null || true
-    ls -la "${CONDA_PREFIX:-}/bin" 2>/dev/null || true
+    echo "FreeCAD binary not found: set FREECAD_BIN, or put freecad on PATH" >&2
     return 1
   fi
   echo "Using FreeCAD: ${FREECAD_BIN}"

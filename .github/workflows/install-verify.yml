@@ -49,6 +49,7 @@ jobs:
       RELEASE_INSTALL_TOOLBAR_TIMEOUT_MS: "30000"
       RELEASE_INSTALL_HTTP_TIMEOUT_MS: "30000"
       RELEASE_INSTALL_WAIT_MS: "180000"
+      FREECAD_VERSION: "1.1.4"
     strategy:
       fail-fast: ${{ inputs.fail_fast == true }}
       matrix:
@@ -63,34 +64,108 @@ jobs:
             isolate_home: true
           - os: macos-latest
             os-name: macos
-            qt_platform: offscreen
+            qt_platform: ""
             isolate_home: false
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Set up conda environment
-        if: runner.os != 'Windows'
-        uses: conda-incubator/setup-miniconda@v4
-        with:
-          activate-environment: freecad-ci
-          python-version: "3.11"
-          miniforge-version: latest
-          channels: conda-forge
-          conda-remove-defaults: "true"
+      - name: Show runner facts
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "OS=${RUNNER_OS} arch=$(uname -m) FreeCAD=${FREECAD_VERSION}"
+          git --version
+          if [[ "${RUNNER_OS}" == "Linux" ]]; then
+            if ldconfig -p | grep 'libfuse\.so\.2' > /dev/null; then
+              echo "libfuse2 present (unused: the AppImage is extracted)"
+            else
+              echo "libfuse2 absent (fine: the AppImage is extracted, not mounted)"
+            fi
+          fi
+          if [[ "${RUNNER_OS}" == "macOS" && "$(uname -m)" != "arm64" ]]; then
+            echo "::error::Expected an arm64 macOS runner, got $(uname -m)"
+            exit 1
+          fi
 
-      - name: Install FreeCAD (conda)
+      - name: Name the FreeCAD download
         if: runner.os != 'Windows'
-        shell: bash -l {0}
-        run: conda install -y "freecad=1.1.3" git
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${RUNNER_OS}" in
+            Linux) asset="FreeCAD_${FREECAD_VERSION}-Linux-x86_64-py311.AppImage" ;;
+            macOS) asset="FreeCAD_${FREECAD_VERSION}-macOS-arm64-py311.dmg" ;;
+          esac
+          echo "FREECAD_ASSET=${asset}" >> "${GITHUB_ENV}"
+          echo "FREECAD_DL_DIR=${RUNNER_TEMP}/freecad-download" >> "${GITHUB_ENV}"
+
+      - name: Cache the FreeCAD download
+        if: runner.os != 'Windows'
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.FREECAD_DL_DIR }}
+          key: freecad-${{ env.FREECAD_ASSET }}
+
+      - name: Download FreeCAD and check its SHA256
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://github.com/FreeCAD/FreeCAD/releases/download/${FREECAD_VERSION}"
+          mkdir -p "${FREECAD_DL_DIR}"
+          cd "${FREECAD_DL_DIR}"
+          if [[ ! -f "${FREECAD_ASSET}" ]]; then
+            curl -fsSL --retry 3 -o "${FREECAD_ASSET}" "${base}/${FREECAD_ASSET}"
+          fi
+          curl -fsSL --retry 3 -o "${FREECAD_ASSET}-SHA256.txt" "${base}/${FREECAD_ASSET}-SHA256.txt"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum -c "${FREECAD_ASSET}-SHA256.txt"
+          else
+            shasum -a 256 -c "${FREECAD_ASSET}-SHA256.txt"
+          fi
+
+      - name: Unpack FreeCAD (Linux AppImage)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "${RUNNER_TEMP}"
+          chmod +x "${FREECAD_DL_DIR}/${FREECAD_ASSET}"
+          "${FREECAD_DL_DIR}/${FREECAD_ASSET}" --appimage-extract > /dev/null
+          echo "FREECAD_BIN=${RUNNER_TEMP}/squashfs-root/AppRun" >> "${GITHUB_ENV}"
+
+      - name: Unpack FreeCAD (macOS dmg)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mnt="${RUNNER_TEMP}/freecad-dmg"
+          echo Y | hdiutil attach -nobrowse -readonly -noautoopen -mountpoint "${mnt}" \
+            "${FREECAD_DL_DIR}/${FREECAD_ASSET}"
+          app="$(find "${mnt}" -maxdepth 1 -name '*.app' | head -n 1)"
+          if [[ -z "${app}" ]]; then
+            echo "::error::No .app found in the FreeCAD dmg"
+            ls -la "${mnt}"
+            exit 1
+          fi
+          cp -R "${app}" "${RUNNER_TEMP}/"
+          hdiutil detach "${mnt}"
+          bin="${RUNNER_TEMP}/$(basename "${app}")/Contents/MacOS/FreeCAD"
+          if [[ ! -x "${bin}" ]]; then
+            echo "::error::No FreeCAD binary at ${bin}"
+            ls -la "$(dirname "${bin}")"
+            exit 1
+          fi
+          echo "FREECAD_BIN=${bin}" >> "${GITHUB_ENV}"
 
       - name: Install FreeCAD (winget)
         if: runner.os == 'Windows'
         shell: bash
         run: |
           set -uo pipefail
-          winget install --id FreeCAD.FreeCAD --version 1.1.3 \
+          winget install --id FreeCAD.FreeCAD --version "${FREECAD_VERSION}" \
             --accept-package-agreements --accept-source-agreements \
             --disable-interactivity --silent
           code=$?
@@ -100,8 +175,10 @@ jobs:
 
       - name: Install Linux display dependencies
         if: runner.os == 'Linux'
-        shell: bash -l {0}
-        run: sudo apt-get update && sudo apt-get install -y xvfb
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgl1 libegl1 libopengl0 libxcb-cursor0 libxkbcommon-x11-0
 
       - name: Prepare isolated FreeCAD profile
         shell: bash
@@ -111,14 +188,14 @@ jobs:
           mkdir -p "${RUNNER_TEMP}/freecad-ci-home"
 
       - name: Install addon via Addon Manager
-        shell: bash -l {0}
+        shell: bash
         run: bash "${GITHUB_WORKSPACE}/scripts/ci_run_freecad.sh" install
         env:
           ISOLATE_HOME: ${{ matrix.isolate_home }}
           QT_QPA_PLATFORM: ${{ matrix.qt_platform }}
 
       - name: Verify addon after FreeCAD restart
-        shell: bash -l {0}
+        shell: bash
         run: bash "${GITHUB_WORKSPACE}/scripts/ci_run_freecad.sh" verify
         env:
           ISOLATE_HOME: ${{ matrix.isolate_home }}
