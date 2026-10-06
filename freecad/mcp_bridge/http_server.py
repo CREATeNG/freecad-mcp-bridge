@@ -86,7 +86,7 @@ class McpRequestHandler(BaseHTTPRequestHandler):
             try:
                 with open(filepath, "r", encoding="utf-8") as handle:
                     code = handle.read()
-            except OSError as exc:
+            except (OSError, UnicodeDecodeError) as exc:
                 self._send_sse(
                     mcp_protocol.tool_call_response(
                         req_id,
