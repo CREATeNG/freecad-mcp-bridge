@@ -156,8 +156,8 @@ non-final drain is not stored and consumes no page number: the response returns
 `page: []`, `has_more: true`, and no `page_no`. `page_no` therefore counts output, not
 polling rhythm.
 
-A job is **complete** when its sentinel — the end-of-output marker placed on the queue
-as the job's final act — has been drained into a page. The drain that consumes the
+A job is **complete** when its sentinel (see [job-lifecycle.md](job-lifecycle.md)
+*Terms*) has been drained into a page. The drain that consumes the
 sentinel produces the job's final page, possibly with an empty `page` array, returning
 `has_more: false`. While the server runs, `has_more: true` therefore always precedes
 at least one more fetchable page: the promise holds by construction.

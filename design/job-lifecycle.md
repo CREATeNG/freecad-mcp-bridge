@@ -1,9 +1,9 @@
 # The life of a job
 
-A **job** is one `execute_python` (or `execute_python_file`) call: the Python
-code to run, a private output channel, and the job token that names it. This walks the whole
-lifecycle from the job's point of view, as implemented in `executor.py`
-(dispatch) and `paging.py` (output). Terms are collected at the bottom.
+A **job** is what one `execute_python` call, or one `execute_python_file` call
+whose file was read, creates: the Python code to run, a private output channel, and
+the job token that names it. This walks the whole lifecycle from the job's point of
+view. Terms are collected at the bottom.
 Why it works this way — trade-offs and rejected alternatives — lives in
 [addon-hosted-mcp-server.md](addon-hosted-mcp-server.md). Agent-facing output
 vocabulary (chunk, page, page history) is defined there.
@@ -16,11 +16,10 @@ together. It exists before any decision about *when* it will run.
 
 ## 2. In line
 
-The job is appended to the tail of the job queue. Its position in line is
-its entire identity now — nobody watches it individually, and nothing needs
-to. Everything ahead of it must fully complete before its turn.
+The job is appended to the tail of the job queue. Everything ahead of it must
+fully complete before its turn.
 
-While it waits, someone may already be asking about it: the client got the
+While it waits, someone may already be asking about it: the agent got the
 token back within the response timeout and may poll `get_output_page`, finding
 an empty queue and `has_more: true`. From the outside, *waiting in line*
 looks identical to *running but quiet*.
@@ -35,11 +34,14 @@ makes that wake-up do nothing, so the order still holds.)
 
 ## 4. Running
 
-The job owns the main thread. Everything it prints flows into its own
-output queue — and the Report View — as it is produced. If its code
-refreshes the GUI, repaints happen, but no other job can slip in. Nothing
-preempts it; it runs until it is done. Its output can never interleave with
-another job's, because the channel it writes to is its own.
+The job owns the main thread. Everything printed while it runs flows into its
+output queue — and the Report View — as it is produced. The redirect of
+`sys.stdout` and `sys.stderr` is process-wide, so that includes anything else
+that prints during the job, and output from a thread the job started lands in
+whichever job is running when the thread prints. If its code refreshes the GUI,
+repaints happen, but no other job can slip in. Nothing preempts it; it runs
+until it is done. Its own output can never interleave with another job's,
+because jobs run one at a time.
 
 ## 5. Finished
 
@@ -53,8 +55,8 @@ turn.
 
 ## 6. Afterlife
 
-The job is done, but its page history remains. Every page the bridge already
-returned was stored as an immutable snapshot at emit time — replayable by
+The job is done, but its page history remains. Every page with content, and
+the final page, was stored as an immutable snapshot at emit time — replayable by
 `page_no`, readable by any client that holds the token. While the job was
 still running, forward fetches drained the live output queue into new pages
 appended to the history.
@@ -62,7 +64,9 @@ appended to the history.
 When the final page is emitted, the retention clock starts (see
 [addon-hosted-mcp-server.md](addon-hosted-mcp-server.md) *Configuration*).
 The history stays retrievable for that period whether or not anyone has read
-every page yet, then it is deleted. If the bridge stops first, the history is
+every page yet. After that it is deleted the next time a job starts or a page
+is fetched; until then it is unreadable but still in memory. If the bridge
+stops first, the history is
 cleared with everything else and the token dies.
 
 ## The unhappy path
