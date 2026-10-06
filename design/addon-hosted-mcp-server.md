@@ -64,8 +64,11 @@ job on the Qt main thread, then return a response whose first page is in `page` 
 the job is still running. A
 response always arrives within the configured max response timeout; the agent polls for
 remaining output via `get_output_page`. FreeCAD operations can be long-running; this pattern
-gives the agent an immediate acknowledgment that the job has started rather than a silent
-wait that may look like a timeout.
+gives the agent an acknowledgment within that timeout, rather than a silent wait that may
+look like a hang.
+
+The timeout bounds the wait for output, not the whole request: its clock starts once the
+job is queued, after any file read, and runs while the handler drains the output queue.
 
 **Page bounds**
 
