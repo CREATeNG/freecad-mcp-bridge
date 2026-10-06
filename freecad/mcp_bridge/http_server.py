@@ -91,13 +91,9 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                     mcp_protocol.tool_call_response(
                         req_id,
                         {
-                            "page": [
-                                {
-                                    "stream": "stderr",
-                                    "text": f"Error reading file '{filepath}': {exc}",
-                                }
-                            ],
+                            "page": [],
                             "has_more": False,
+                            "error": f"Error reading file '{filepath}': {exc}",
                         },
                     )
                 )
