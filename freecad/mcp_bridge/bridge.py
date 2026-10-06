@@ -1,7 +1,7 @@
 """MCP Bridge lifecycle facade.
 
 Owns the in-process HTTP server singleton and exposes start/stop/is_running
-to the toolbar toggle. Replaces the former QLocalServer socket transport.
+to the toolbar toggle.
 """
 
 from freecad.mcp_bridge.http_server import HttpServer

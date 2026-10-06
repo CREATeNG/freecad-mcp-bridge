@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Release publish step — INTERNAL to .github/workflows/release.yml only.
 #
-# Runs only after install-verify has passed on main (bin/ already synced on the verified
-# commit). Pushes the release tag, then creates a GitHub Release for release notes.
-# Binaries live in bin/ on the tagged commit (and in the tag zip) — not uploaded here.
+# Runs only after install-verify has passed on main. Pushes the release tag on the
+# verified commit, creates a GitHub Release, then packs the Claude Desktop bundle and
+# uploads it as the release's one asset (freecad-mcp-bridge.mcpb).
 #
-# Does not bump package.xml (a later publish-job step handles that). No standalone entry point.
+# Does not bump package.xml (the bump job does that). No standalone entry point.
 
 set -euo pipefail
 

@@ -279,8 +279,6 @@ def verify_install_tree(install_dir: str, expected_version: str) -> None:
         full_path = os.path.join(install_dir, rel_path)
         if not os.path.isfile(full_path):
             fail(f"Missing required file: {rel_path}")
-        if rel_path.startswith("bin/") and os.path.getsize(full_path) <= 0:
-            fail(f"Binary is empty: {rel_path}")
 
     package_xml = os.path.join(install_dir, "package.xml")
     try:

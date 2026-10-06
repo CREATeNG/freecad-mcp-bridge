@@ -33,7 +33,7 @@ write_release_notes() {
   mkdir -p "$WORK_ROOT"
   {
     printf '## %s\n\n' "$RELEASE_TAG"
-    printf 'Tagged release with synced `bin/` clients (see repository tag zip).\n\n'
+    printf 'Source-only addon; the Claude Desktop bundle is attached as `freecad-mcp-bridge.mcpb`.\n\n'
     printf '### FreeCAD Addon Index\n\n'
     printf '%s\n' "$detail"
   } >"$NOTES_FILE"
