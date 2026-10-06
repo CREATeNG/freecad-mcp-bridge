@@ -1,3 +1,5 @@
+<img src="Resources/Icons/icon.svg" alt="MCP Bridge icon" width="64" align="right">
+
 # MCP Bridge
 
 **MCP Bridge** gives AI agents access to your open FreeCAD session. It runs a small [MCP](https://modelcontextprotocol.io) server *inside* FreeCAD — no binaries, no external dependencies — letting an AI agent execute Python in your live session and see the results.

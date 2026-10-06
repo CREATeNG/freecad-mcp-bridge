@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 *.log
 *.png
+!mcp-stdio-shim/icon.png
 .venv/
 venv/
 .vscode/
