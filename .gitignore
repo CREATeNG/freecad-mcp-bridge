@@ -24,3 +24,7 @@ memory/
 *.zip
 *.mcpb
 node_modules/
+
+# Workspace agent instructions (kept locally, not shipped)
+AGENTS.md
+CLAUDE.md
