@@ -98,7 +98,7 @@ cursor to track.
 Large or slow job output is delivered over multiple pages. The first page (`page_no: 0`)
 is in the response from `execute_python` (or `execute_python_file`) when the job produced
 output or finished within the timeout; otherwise that response is empty and unnumbered,
-and page 0 comes from the first `get_output_page` that finds output. Later pages come from `get_output_page` with the `job_token` and the next `page_no`. Same contract on HTTP and
+and page 0 comes from the first `get_output_page` that finds output or the job's end. Later pages come from `get_output_page` with the `job_token` and the next `page_no`. Same contract on HTTP and
 the stdio shim.
 
 ```json
