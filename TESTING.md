@@ -12,9 +12,11 @@ The **install-verify workflow** ([`install-verify.yml`](.github/workflows/instal
 
 | Platform | FreeCAD install | Display / GUI |
 |----------|-----------------|---------------|
-| Linux | conda-forge `freecad=1.1.0` | `xvfb-run` |
-| macOS | conda-forge `freecad=1.1.0` | `QT_QPA_PLATFORM=offscreen` |
-| Windows | `winget install FreeCAD.FreeCAD --version 1.1.0` | native (Git Bash launcher) |
+| Linux | official AppImage, extracted | `xvfb-run` |
+| macOS | official arm64 `.dmg` | native |
+| Windows | `winget install FreeCAD.FreeCAD` | native (Git Bash launcher) |
+
+The FreeCAD version (1.1.4) is set once, as `FREECAD_VERSION` in the workflow. The AppImage and `.dmg` downloads are checked against FreeCAD's published SHA256 files and cached per version.
 
 Each matrix job launches **two separate FreeCAD processes**:
 
@@ -30,7 +32,7 @@ Shared helpers live in `scripts/test_install_common.py`.
 | Trigger | Tag / mode | Typical use |
 |---------|------------|-------------|
 | `workflow_call` from **`release.yml`** | `install_mode: main` or `tag`; `install_tag` from prepare | Pre-tag gate (`main`) and post-tag sanity check (`tag` path) |
-| `workflow_dispatch` | Inputs: `tag` (e.g. `v0.1.11`), `mode` (`tag`, `index_zip`, or `main`) | Ad-hoc CI run; iterate on scripts |
+| `workflow_dispatch` | Inputs: `tag` (e.g. `v0.1.15`), `mode` (`tag`, `index_zip`, or `main`) | Ad-hoc CI run; iterate on scripts |
 
 Environment variables set by the workflow (overridable locally when debugging) fall into three groups. Exact names and defaults live in [`install-verify.yml`](.github/workflows/install-verify.yml) and each script's own module docstring (`test_install.py`, `test_verify.py`) — not repeated here to avoid the two copies drifting apart:
 
@@ -120,7 +122,7 @@ bash scripts/ci_run_freecad.sh verify    # phase 2
 
 **Responsibilities:**
 
-- Resolve FreeCAD binary (conda `PATH` on Linux/macOS; common install paths after winget on Windows).
+- Resolve FreeCAD binary (`FREECAD_BIN` from the workflow on Linux/macOS; common install paths after winget on Windows; `PATH` for local runs).
 - Optionally isolate profile via `ISOLATE_HOME=true` → `HOME` / `USERPROFILE` = `FC_CI_HOME`.
 - Set `RELEASE_INSTALL_CI_LOG` to a phase-specific file under `RUNNER_TEMP`.
 - Run FreeCAD with the test script under a **15-minute** timeout (`xvfb-run` on Linux, `perl alarm` on macOS, on Windows `timeout`, else `perl alarm`, else no timeout).
@@ -168,20 +170,17 @@ CI test scripts call `os._exit(code)` unconditionally after a short Qt event dra
 
 Prerequisites: FreeCAD 1.1 with GUI, Git Bash (Windows) or bash (Unix).
 
-```bash
-# Optional: isolated profile (mirrors CI on Linux/Windows)
-export FC_CI_HOME=/tmp/freecad-ci-home
-export ISOLATE_HOME=true
-mkdir -p "$FC_CI_HOME"
+Running the scripts directly uses your real FreeCAD profile: `test_install.py` removes any existing `freecad-mcp-bridge` install from your `Mod` folder before installing, so a dev install there is replaced.
 
-export RELEASE_INSTALL_TAG=v0.1.11
-export RELEASE_INSTALL_MODE=tag
+```bash
+export RELEASE_INSTALL_TAG=v0.1.15   # the version package.xml names
+export RELEASE_INSTALL_MODE=main
 export RELEASE_INSTALL_REPO=https://github.com/CREATeNG/freecad-mcp-bridge
 
 # Phase 1 — install (replace with your FreeCAD binary)
 freecad scripts/test_install.py
 
-# Phase 2 — verify (new FreeCAD process, same profile if isolated)
+# Phase 2 — verify (new FreeCAD process)
 freecad scripts/test_verify.py
 ```
 
