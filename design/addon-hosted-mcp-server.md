@@ -59,9 +59,10 @@ Every tool call returns a response with the same shape.
 
 **Non-blocking**
 
-`execute_python` and `execute_python_file` (once the file is read successfully) start a
-job on the Qt main thread, then return a response whose first page is in `page` — even if
-the job is still running. A
+`execute_python` and `execute_python_file` (once the file is read successfully) queue a
+job for the Qt main thread, then return a response — even if the job is still queued or
+running. The response carries the job's first page when the job has produced output or
+finished; a quiet job's first response is empty and unnumbered (see *Page history*). A
 response always arrives within the configured max response timeout; the agent polls for
 remaining output via `get_output_page`. FreeCAD operations can be long-running; this pattern
 gives the agent an acknowledgment within that timeout, rather than a silent wait that may
@@ -95,8 +96,9 @@ initiating call returns `has_more: false` and the agent need not poll — no `pa
 cursor to track.
 
 Large or slow job output is delivered over multiple pages. The first page (`page_no: 0`)
-is in the response from `execute_python` (or `execute_python_file`); later pages from
-`get_output_page` with the `job_token` and the next `page_no`. Same contract on HTTP and
+is in the response from `execute_python` (or `execute_python_file`) when the job produced
+output or finished within the timeout; otherwise that response is empty and unnumbered,
+and page 0 comes from the first `get_output_page` that finds output. Later pages come from `get_output_page` with the `job_token` and the next `page_no`. Same contract on HTTP and
 the stdio shim.
 
 ```json
@@ -273,8 +275,8 @@ Two kinds of request, only one of which crosses threads:
   and `sys.stderr` to a `TeeWriter` — not before, and not in the HTTP handler.
   The HTTP handler drains the output queue for up to the configured timeout (default 15 s)
   or until a page fills; if the sentinel arrives first, returns `has_more: false`;
-  otherwise returns `has_more: true`. Each returned page is stored in the page history
-  (see *Page history*). The output queue persists as the live buffer (keyed by
+  otherwise returns `has_more: true`. Each returned page with content, and the final page,
+  is stored in the page history (see *Page history*). The output queue persists as the live buffer (keyed by
   `job_token`);
   exec continues running on the Qt main thread, pushing chunks to the queue (a *chunk*
   is one `{stream, text}` entry from a `write()` call, of arbitrary size). Subsequent
