@@ -6,8 +6,6 @@ If you discover a security issue in MCP Bridge (FreeCAD MCP Bridge), please repo
 
 **Contact:** chris@createng.com
 
-You can also use [GitHub Security Advisories](https://github.com/CREATeNG/freecad-mcp-bridge/security/advisories) for this repository if you prefer.
-
 Please include:
 
 * A description of the issue and its potential impact

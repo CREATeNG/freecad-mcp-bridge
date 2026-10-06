@@ -6,7 +6,7 @@
     <maintainer email="chris@createng.com">CREATeNG</maintainer>
     <license file="LICENSE">MIT</license>
     <icon>Resources/Icons/icon.svg</icon>
-    <freecadmin>1.0.0</freecadmin>
+    <freecadmin>1.1.0</freecadmin>
     <tag>extension</tag>
     <tag>mcp</tag>
     <tag>scripting</tag>

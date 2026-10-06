@@ -90,7 +90,9 @@ class Executor(QObject):
         }
         try:
             exec(code, env)
-        except Exception:
+        except BaseException:
+            # BaseException, so a job's sys.exit() ends that job like any
+            # other error instead of escaping and stalling the queue.
             stderr_tee.write("\n" + traceback.format_exc())
         finally:
             sys.stdout, sys.stderr = old_out, old_err
