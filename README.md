@@ -61,7 +61,7 @@ Once connected, the client has these tools:
 
 - **Port** — the loopback port the server listens on (default 39280).
 - **Max response timeout** — how long a request waits for output before returning what it has so far; the client fetches any remainder automatically (default 15 s).
-- **Max page size** — the most output a single response carries; larger output is split into pages the client fetches automatically (default 64 KB).
+- **Max page size** — the most output a single response carries; larger output is split into pages the client fetches automatically (default 64 K characters, that is 65,536).
 
 ---
 

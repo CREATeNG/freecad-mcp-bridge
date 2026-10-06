@@ -83,7 +83,7 @@ the job has no more output to deliver. Both bounds apply to `execute_python`,
   slow job may therefore yield `has_more: true` with little or no output once the timeout
   elapses.
 - **Page size cap** — bounded by the sum of `text` character lengths in the page
-  (`max_page_size_chars`, configurable, default 64 KB), independent of JSON framing. A
+  (`max_page_size_chars`, configurable, default 64 K characters, that is 65,536), independent of JSON framing. A
   fast-producing job could otherwise return an arbitrarily large single page. The drain
   logic fills a page until the cap is reached; if a single chunk's
   `text` does not fully fit, the remainder is held as pending and continued on the next
@@ -428,5 +428,5 @@ Preferences → MCP Bridge. FreeCAD wires widgets to the parameter store automat
 |-----------|---------|-------|
 | Port | 39280 | Error logged on conflict at startup |
 | Max response timeout (s) | 15 | Max wait in `execute_python` and `get_output_page` before returning with `has_more: true` |
-| Max page size (KB) | 64 | Max sum of chunk `text` lengths per page before returning with `has_more: true`, independent of JSON framing and the timeout |
+| Max page size (K characters) | 64 | Max sum of chunk `text` lengths per page before returning with `has_more: true`, independent of JSON framing and the timeout |
 | Page history retention (min) | 5 | How long a job's page history remains readable after its final page (`has_more: false`) |
