@@ -375,7 +375,7 @@ the `.mcpb` bundle trivial and auditable.
 
 **No external dependencies**
 
-The HTTP server uses Python stdlib only (`http.server`, `threading`, `socketserver`).
+The HTTP server uses Python stdlib only (`http.server` (on `socketserver`), `threading`).
 No pip installs required. FreeCAD's bundled Python provides everything needed.
 
 The Python `mcp` package was considered — it would handle MCP protocol, Streamable HTTP
@@ -420,8 +420,8 @@ asset for Claude Desktop users.
 ## Configuration
 
 Stored at `User parameter:BaseApp/Preferences/Mod/freecad-mcp-bridge`. The port is read
-at server start; the timeout and page size are read per request, so changes to them take
-effect immediately. Preference page registered as a `.ui` file; appears in Edit →
+at server start; the timeout, page size and retention are read per request, so changes to
+them take effect immediately. Preference page registered as a `.ui` file; appears in Edit →
 Preferences → MCP Bridge. FreeCAD wires widgets to the parameter store automatically.
 
 | Parameter | Default | Notes |

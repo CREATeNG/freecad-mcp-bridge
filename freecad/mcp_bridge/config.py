@@ -1,7 +1,8 @@
 """Runtime configuration for the MCP Bridge, read from FreeCAD preferences.
 
-Values live under PREF_GROUP and are read fresh on each access so a
-preference change takes effect on the next server start without a restart.
+Values live under PREF_GROUP and are read fresh on each access: a port change
+takes effect at the next server start; timeout, page size and retention changes
+take effect on the next request.
 """
 
 import FreeCAD
