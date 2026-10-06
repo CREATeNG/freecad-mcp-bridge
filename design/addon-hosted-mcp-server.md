@@ -27,8 +27,8 @@ addon, and there are no user-side dependencies beyond the addon itself.
 The MCP server exposes three tools (schemas in `tools.py`).
 
 - **`execute_python(code)`** — initiates a job that runs Python inside the live FreeCAD
-  session, with `App`/`Gui` pre-bound. Stdout and stderr are captured as tagged output
-  chunks.
+  session, with `App`/`Gui` pre-bound and `__name__` set to `"__main__"`. Stdout and stderr
+  are captured as tagged output chunks.
 - **`execute_python_file(filepath)`** — initiates a job that reads a local file and runs
   it the same way. The bridge reads the file before the job is queued. If the file cannot
   be read, the tool returns `page: []`, `has_more: false`, and `error` with a message

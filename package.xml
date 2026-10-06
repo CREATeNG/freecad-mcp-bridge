@@ -2,7 +2,7 @@
     <name>MCP Bridge</name>
     <description>MCP Bridge gives AI agents access to your open FreeCAD session. Works with local MCP clients.</description>
     <version>0.1.16</version>
-    <date>2026-10-06</date>
+    <date>2026-10-07</date>
     <maintainer email="chris@createng.com">CREATeNG</maintainer>
     <license file="LICENSE">MIT</license>
     <icon>Resources/Icons/icon.svg</icon>

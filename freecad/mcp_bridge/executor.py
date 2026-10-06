@@ -83,6 +83,9 @@ class Executor(QObject):
         old_out, old_err = sys.stdout, sys.stderr
         sys.stdout, sys.stderr = stdout_tee, stderr_tee
         env = {
+            # As FreeCAD's macro runner does, so a script's
+            # `if __name__ == "__main__":` block runs.
+            "__name__": "__main__",
             "FreeCAD": FreeCAD,
             "App": FreeCAD,
             "FreeCADGui": FreeCADGui,
