@@ -9,6 +9,7 @@ exceeds the max page size.
 """
 
 import json
+import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
@@ -98,7 +99,7 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                     )
                 )
                 return
-            self._run_code(req_id, code, drain_args)
+            self._run_code(req_id, code, drain_args, os.path.abspath(filepath))
         elif name == "get_output_page":
             page_no = _as_page_no(args.get("page_no"))
             if page_no is None:
@@ -119,9 +120,9 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                 )
             )
 
-    def _run_code(self, req_id, code, drain_args):
+    def _run_code(self, req_id, code, drain_args, filepath=None):
         token, output_queue = paging.start_page()
-        self.server.executor.submit(code, output_queue)
+        self.server.executor.submit(code, output_queue, filepath)
         # The initiating call returns page 0 — the first page the job produces.
         result = paging.fetch(token, 0, *drain_args)
         self._send_sse(mcp_protocol.tool_call_response(req_id, result))

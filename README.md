@@ -50,7 +50,7 @@ Alternatively, stdio clients can run the shim directly with node, instead of ins
 Once connected, the agent has these tools:
 
 - **`execute_python(code)`** — run Python in your FreeCAD session. `App`/`FreeCAD` and `Gui`/`FreeCADGui` are pre-bound, and `__name__` is `"__main__"`, so a script's `if __name__ == "__main__":` block runs. Output (stdout, stderr, exceptions) is returned to the client and mirrored to FreeCAD's **Report view**, so you can watch its output in real time.
-- **`execute_python_file(filepath)`** — read a local `.py` file and run it in the same context.
+- **`execute_python_file(filepath)`** — read a local `.py` file (absolute path) and run it in the same context, with `__file__` set to that path.
 - **`get_output_page(job_token, page_no)`** — fetch the next page of a long-running script's output. The agent calls it while a response says `has_more: true`, as the tool's description tells it to.
 
 ---

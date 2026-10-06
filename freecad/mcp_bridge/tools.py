@@ -34,7 +34,7 @@ EXECUTE_PYTHON_FILE = {
         "properties": {
             "filepath": {
                 "type": "string",
-                "description": "Absolute or workspace-relative path to a .py file.",
+                "description": "Absolute path to a .py file.",
             }
         },
         "required": ["filepath"],

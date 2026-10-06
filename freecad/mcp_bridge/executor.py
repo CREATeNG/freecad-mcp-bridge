@@ -43,13 +43,13 @@ class Executor(QObject):
 
     def __init__(self):
         super().__init__()
-        self._jobs = queue.Queue()  # (code, output_queue), FIFO
+        self._jobs = queue.Queue()  # (code, output_queue, filepath), FIFO
         self._busy = False  # main-thread only: True while a job is running
         self.wake_up.connect(self._dispatch, Qt.QueuedConnection)
 
-    def submit(self, code, output_queue):
+    def submit(self, code, output_queue, filepath=None):
         """Queue the job and wake the dispatcher. Called from a request thread."""
-        self._jobs.put((code, output_queue))
+        self._jobs.put((code, output_queue, filepath))
         self.wake_up.emit()
 
     def _dispatch(self):
@@ -67,14 +67,14 @@ class Executor(QObject):
         try:
             while True:
                 try:
-                    code, output_queue = self._jobs.get_nowait()
+                    code, output_queue, filepath = self._jobs.get_nowait()
                 except queue.Empty:
                     break
-                self._run(code, output_queue)
+                self._run(code, output_queue, filepath)
         finally:
             self._busy = False
 
-    def _run(self, code, output_queue):
+    def _run(self, code, output_queue, filepath=None):
         """Run one job to completion: exec, traceback on error, sentinel."""
         import FreeCADGui
 
@@ -91,6 +91,8 @@ class Executor(QObject):
             "FreeCADGui": FreeCADGui,
             "Gui": FreeCADGui,
         }
+        if filepath is not None:
+            env["__file__"] = filepath
         try:
             exec(code, env)
         except BaseException:
