@@ -1,6 +1,6 @@
 {
   "name": "freecad-mcp-bridge-shim",
-  "version": "0.1.15",
+  "version": "0.1.16",
   "description": "Claude Desktop stdio<->HTTP shim for the FreeCAD MCP Bridge addon. Zero dependencies.",
   "private": true,
   "bin": {
