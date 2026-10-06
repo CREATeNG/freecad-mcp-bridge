@@ -138,7 +138,7 @@ The first listing goes through [FreeCAD/Addons#70](https://github.com/FreeCAD/Ad
 2. Confirm **`release.yml`** completed successfully (tag-path install-verify and **Addons Index PR** job).
 3. Confirm the automated PR on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) (link on the GitHub Release notes). You can review it; **FreeCAD Addon Index maintainers** merge upstream — same as any external contributor PR. The PR updates `git_ref`, `branch_display_name`, and `zip_url` for the listed entry.
 
-**Prerequisites** (already in place):
+**Prerequisites:**
 
 * Fork: [`CREATeNG/FreeCAD-Addons`](https://github.com/CREATeNG/FreeCAD-Addons) ([`index-release.yml`](https://github.com/CREATeNG/FreeCAD-Addons/blob/main/.github/workflows/index-release.yml) on fork `main`).
 * Secret on **`CREATeNG/freecad-mcp-bridge`:** **`ADDONS_INDEX_DISPATCH_TOKEN`** — PAT that can **run Actions** on `CREATeNG/FreeCAD-Addons` and **open PRs** on `FreeCAD/Addons` (classic **`public_repo`** scope, or fine-grained with both repos).

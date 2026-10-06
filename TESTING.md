@@ -56,7 +56,7 @@ Use this mode to validate the same artifact shape the FreeCAD Addon Index serves
 
 ### `main`
 
-Addon Manager installs from the repository URL with `branch=main`. Used by the **`release.yml` verify gate**: install-verify runs against the exact release-candidate commit on `main` **before** the release tag is created — the last chance to catch a broken install before an irreversible tag gets cut (tags are permanent; see [MAINTAINING.md — Why these rules exist](MAINTAINING.md#why-these-rules-exist)). `RELEASE_INSTALL_TAG` still supplies the expected `package.xml` version for on-disk checks.
+Addon Manager installs from the repository URL with `branch=main`. Used by the **`release.yml` verify gate**: install-verify installs `main` as it stands when the leg runs, **before** the release tag is created, and publish then refuses to tag unless `main` is still the commit prepare recorded — the last chance to catch a broken install before an irreversible tag gets cut (tags are permanent; see [MAINTAINING.md — Why these rules exist](MAINTAINING.md#why-these-rules-exist)). `RELEASE_INSTALL_TAG` still supplies the expected `package.xml` version for on-disk checks.
 
 ---
 

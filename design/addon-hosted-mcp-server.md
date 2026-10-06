@@ -229,7 +229,8 @@ data access, but tool support is universal while resource support varies by clie
 
 The in-process server uses Streamable HTTP (MCP spec 2025-03-26). Tool call responses
 use POST SSE (`Content-Type: text/event-stream`). The server returns HTTP 405 on GET; it
-does not offer a server-initiated SSE stream.
+does not offer a server-initiated SSE stream. Each POST carries one JSON-RPC message;
+batched arrays are not accepted.
 
 Job output and paging are delivered on POST through `tools/call` — not through GET.
 
