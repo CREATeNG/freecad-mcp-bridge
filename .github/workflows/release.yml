@@ -9,7 +9,7 @@ permissions:
 jobs:
   prepare:
     name: Stage release candidate on main
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: github.ref == 'refs/heads/main'
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -17,7 +17,7 @@ jobs:
       commit_sha: ${{ steps.commit_sha.outputs.sha }}
     steps:
       - name: Checkout main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
@@ -73,11 +73,11 @@ jobs:
   publish:
     name: Tag and publish release notes
     needs: [prepare, install_verify]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout release candidate
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ needs.prepare.outputs.commit_sha }}
           fetch-depth: 0
@@ -109,7 +109,7 @@ jobs:
   addons_index_pr:
     name: Open FreeCAD Addon Index PR
     needs: [prepare, install_verify_tag]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: github.ref == 'refs/heads/main'
     continue-on-error: true
     outputs:
@@ -117,7 +117,7 @@ jobs:
       index_pr_url: ${{ steps.index_pr.outputs.index_pr_url }}
     steps:
       - name: Checkout scripts
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           sparse-checkout: scripts
           sparse-checkout-cone-mode: false
@@ -135,11 +135,11 @@ jobs:
   bump:
     name: Bump development patch on main
     needs: [prepare, install_verify_tag]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0

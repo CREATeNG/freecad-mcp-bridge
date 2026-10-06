@@ -53,7 +53,7 @@ jobs:
       fail-fast: ${{ inputs.fail_fast == true }}
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             os-name: linux
             qt_platform: ""
             isolate_home: true
@@ -68,28 +68,29 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up conda environment
         if: runner.os != 'Windows'
-        uses: conda-incubator/setup-miniconda@v3
+        uses: conda-incubator/setup-miniconda@v4
         with:
           activate-environment: freecad-ci
           python-version: "3.11"
           miniforge-version: latest
           channels: conda-forge
+          conda-remove-defaults: "true"
 
       - name: Install FreeCAD (conda)
         if: runner.os != 'Windows'
         shell: bash -l {0}
-        run: conda install -y "freecad=1.1.0" git
+        run: conda install -y "freecad=1.1.3" git
 
       - name: Install FreeCAD (winget)
         if: runner.os == 'Windows'
         shell: bash
         run: |
           set -uo pipefail
-          winget install --id FreeCAD.FreeCAD --version 1.1.0 \
+          winget install --id FreeCAD.FreeCAD --version 1.1.3 \
             --accept-package-agreements --accept-source-agreements \
             --disable-interactivity --silent
           code=$?

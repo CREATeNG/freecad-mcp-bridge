@@ -9,7 +9,7 @@ permissions:
 jobs:
   bump:
     name: Bump package.xml patch
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Ensure running on main
         if: github.ref != 'refs/heads/main'
@@ -18,7 +18,7 @@ jobs:
           exit 1
 
       - name: Checkout main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
