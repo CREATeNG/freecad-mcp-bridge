@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "freecad-mcp-bridge",
   "display_name": "FreeCAD MCP Bridge",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "description": "Connect Claude Desktop to a running FreeCAD session through the FreeCAD MCP Bridge addon.",
   "author": {
     "name": "CREATeNG",
