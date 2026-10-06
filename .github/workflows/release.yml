@@ -2,6 +2,11 @@ name: Release Orchestrator
 
 on:
   workflow_dispatch:
+    inputs:
+      index_pr:
+        description: Open the automated Addon Index PR (off until the addon is listed; the first listing goes through FreeCAD/Addons#70)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -110,7 +115,7 @@ jobs:
     name: Open FreeCAD Addon Index PR
     needs: [prepare, install_verify_tag]
     runs-on: ubuntu-24.04
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && inputs.index_pr
     continue-on-error: true
     outputs:
       index_pr_status: ${{ steps.index_pr.outputs.index_pr_status }}
