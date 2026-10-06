@@ -263,13 +263,20 @@ holds the token.
 The HTTP server runs in a background thread; work crosses to the Qt main thread via
 queued signal dispatch — a standard Qt/PySide pattern.
 
-Two kinds of request, only one of which crosses threads:
+Only execution crosses threads; every other request is answered on the HTTP request
+thread:
 
 - **Lifecycle messages** (`initialize`, `tools/list`) are answered directly on the
-  HTTP request thread — pure protocol logic, no FreeCAD state involved, so no
-  main-thread hop is needed.
+  HTTP request thread as plain JSON, not SSE — pure protocol logic, no FreeCAD state
+  involved, so no main-thread hop is needed.
 
-- **Tool calls** (`execute_python` and `execute_python_file`) must run on the Qt
+- **Notifications** (requests with no `id`) get an empty `202` reply on the request
+  thread.
+
+- **`get_output_page`** is answered on the request thread: it replays a stored page or
+  drains the job's output queue, and never touches FreeCAD.
+
+- **Execution calls** (`execute_python` and `execute_python_file`) must run on the Qt
   main thread. For `execute_python_file`, the HTTP handler reads the file first; a
   read failure returns a tool-level `error` on the request thread without queueing a job.
   Otherwise the job is queued to the main-thread dispatcher (see *Exec
@@ -397,21 +404,16 @@ developer can test directly with `curl`.
 
 **No binary ships with the addon**
 
-No prebuilt machine-code binary is distributed. The only non-Python artifact is the
-shim's plain, readable `index.js`, whose source ships in the addon repo
-(`mcp-stdio-shim/`); nothing is compiled.
+No prebuilt machine-code binary is distributed, and nothing is compiled. The only
+non-Python code is the shim's plain, readable `index.js`, whose source ships in the addon
+repo (`mcp-stdio-shim/`).
 
 **`.mcpb` distribution and the Index binary ban**
 
 The packed `.mcpb` is treated as if the Addon Index binary ban applies to it — a
-working assumption, stated to the maintainer on the Index issue, where it can be
-corrected. The safer path is taken regardless: the Addon Manager package contains
+working assumption. The safer path is taken regardless: the Addon Manager package contains
 only source, and the packed `.mcpb` is distributed separately as a GitHub release
 asset for Claude Desktop users.
-
-**Project name — `freecad-mcp-bridge`**
-
-"Bridge" is accurate at the conceptual level: bridging FreeCAD to the MCP world.
 
 ---
 
