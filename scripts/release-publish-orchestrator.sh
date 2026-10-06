@@ -43,6 +43,14 @@ if [[ "$current" != "$VERIFIED_SHA" ]]; then
   exit 1
 fi
 
+# The pre-tag verify installed main as it stood when it ran, so main must
+# still be the recorded commit; otherwise the verified and tagged commits differ.
+remote_main=$(git ls-remote origin refs/heads/main | cut -f1)
+if [[ "$remote_main" != "$VERIFIED_SHA" ]]; then
+  echo "main moved since prepare (now ${remote_main}, verified ${VERIFIED_SHA}); not tagging." >&2
+  exit 1
+fi
+
 version=$(read_package_version)
 if [[ -z "$version" ]]; then
   echo "Missing <version> in ${PACKAGE_XML}" >&2
