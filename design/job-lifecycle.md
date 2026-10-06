@@ -75,6 +75,10 @@ cannot be interrupted — it runs to completion — but its page history is
 cleared at stop, so undelivered output is lost and its token dies the same
 way.
 
+If the client stops polling before the final page, the job still runs to
+completion, but its history never reaches the retention clock: nothing drains
+the sentinel, so the history stays in memory until the bridge stops.
+
 ## Terms
 
 - **Main thread** — the one thread allowed to touch FreeCAD; also runs the

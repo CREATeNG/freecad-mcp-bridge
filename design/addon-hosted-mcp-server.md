@@ -166,14 +166,16 @@ The history is shared: any client with the `job_token` may read any stored page.
 Capability is the token itself (typically passed from the initiating agent to a
 sub-agent).
 
-While a job is incomplete, its page history persists until the job finishes or the
-server stops. After the final page (`has_more: false`), the retention clock starts (see
+While a job is incomplete, its page history persists until its final page is fetched or
+the server stops. A job whose final page is never fetched (an agent that stops polling)
+therefore keeps its history until the server stops. After the final page (`has_more: false`), the retention clock starts (see
 *Configuration*); the history is then deleted when retention expires or the server stops,
 whichever comes first. The client need not have fetched every page before retention
 begins — only the job must be complete.
 
-Histories are held in memory; retention bounds a history's lifetime, not its size — a
-job's full output is held from job start until retention expires. Accepted for a local,
+Histories are held in memory; once the final page is fetched, retention bounds a history's
+lifetime, not its size — a job's full output is held from job start until retention
+expires. Accepted for a local,
 single-user tool; users needing a smaller footprint can shorten the retention period.
 
 Requesting an unknown or expired `job_token` returns
