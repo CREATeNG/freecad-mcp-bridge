@@ -88,7 +88,7 @@ Besides the Addon Manager (**Quick start** above):
 ### Addon Manager — custom repository
 
 1. FreeCAD → Edit → Preferences → Addon Manager → **Custom repositories** → **+**.
-2. Enter `https://github.com/CREATeNG/freecad-mcp-bridge`, branch `main` (latest) or a release tag (stable).
+2. Enter `https://github.com/CREATeNG/freecad-mcp-bridge`, with a release tag as the branch (for example `v0.1.18`). For the latest `main`, use the manual install below.
 3. OK, then install from Tools → Addon Manager.
 
 ### Manual (Mod folder)
