@@ -97,7 +97,7 @@ flowchart TD
 2. **Install-verify** (pre-tag) — [`install-verify.yml`](.github/workflows/install-verify.yml) with `install_mode: main`: full Addon Manager install + restart verify on all three OSes against `main`. **No tag if this fails.**
 3. **Publish** — push the matching tag (`v{x.y.z}`) on the verified commit, create a **GitHub Release**, then pack the Claude Desktop bundle (`mcpb pack`) and upload it as a release asset. Uses [`release-publish-orchestrator.sh`](scripts/release-publish-orchestrator.sh) (`RELEASE_PUBLISH_AUTHORIZED=true`; not runnable standalone).
 4. **Install-verify** (tag path) — same workflow with `install_mode: tag`: final sanity check that install works from the tag ref (how the FreeCAD Addon Index and custom-repo users install). **No Index PR or patch bump if this fails.**
-5. **Addons Index PR** — [`trigger-addons-index-pr.sh`](scripts/trigger-addons-index-pr.sh) runs [`index-release.yml`](https://github.com/CREATeNG/FreeCAD-Addons/blob/main/.github/workflows/index-release.yml) on the fork via `workflow_dispatch` (sync upstream, patch [`Data/Index.json`](https://github.com/FreeCAD/Addons/blob/master/Data/Index.json), push branch), then opens the upstream PR on `FreeCAD/Addons` with **`ADDONS_INDEX_DISPATCH_TOKEN`**. Updates GitHub Release notes with the PR link. PAT needs **Actions: read and write** on `CREATeNG/FreeCAD-Addons` and permission to open PRs on `FreeCAD/Addons` (classic `public_repo` or equivalent). If unset, the job skips. Runs only when the release is started with **`index_pr`** ticked (off by default until the addon is listed; see [First listing](#first-listing)). **Non-blocking** (`continue-on-error`).
+5. **Addons Index PR** — [`trigger-addons-index-pr.sh`](scripts/trigger-addons-index-pr.sh) runs [`index-release.yml`](https://github.com/CREATeNG/FreeCAD-Addons/blob/main/.github/workflows/index-release.yml) on the fork via `workflow_dispatch` (sync upstream, patch [`Data/Index.json`](https://github.com/FreeCAD/Addons/blob/master/Data/Index.json), push branch), then opens the upstream PR on `FreeCAD/Addons` with **`ADDONS_INDEX_DISPATCH_TOKEN`**. Updates GitHub Release notes with the PR link. PAT needs **Actions: read and write** on `CREATeNG/FreeCAD-Addons` and permission to open PRs on `FreeCAD/Addons` (classic `public_repo` or equivalent). If unset, the job skips. Runs only when the release is started with **`index_pr`** ticked (the default). **Non-blocking** (`continue-on-error`).
 6. **Bump** — increment patch on `main` for the next dev cycle via [`bump-package-z.sh`](scripts/bump-package-z.sh), syncing the shim's `manifest.json`/`package.json` too. Runs in parallel with step 5.
 
 Re-running **`release.yml`** while `package.xml` still names a tag that already exists on GitHub will fail at **prepare**.
@@ -116,7 +116,7 @@ Each GitHub Release carries one uploaded asset: **`freecad-mcp-bridge.mcpb`** �
 2. Ensure `package.xml` on `main` is the version you intend to ship. Ordinary pushes do not advance the patch number; the **release orchestrator** bumps the patch after a successful ship.
 3. GitHub → **Actions** → **Release Orchestrator** → **Run workflow** — runs **`release.yml`** (branch: **`main`** only).
 4. Wait for **`release.yml`** to finish (tag-path install-verify, **Addons Index PR** dispatch, and patch bump).
-5. Until the addon is listed, leave **`index_pr`** unticked and follow [First listing](#first-listing) instead of steps 4–5's Index PR. Once listed: confirm the automated Index PR was opened (link on the GitHub Release). **FreeCAD Addon Index maintainers** review and merge it on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) — you do not merge upstream yourself.
+5. Confirm the automated Index PR was opened (link on the GitHub Release). **FreeCAD Addon Index maintainers** review and merge it on [FreeCAD/Addons](https://github.com/FreeCAD/Addons) — you do not merge upstream yourself.
 
 **Duplicate versions are blocked.** **`release.yml`** reads `package.xml`, checks that `v{x.y.z}` does not already exist (**prepare**), and **publish** checks again before tagging. If the tag is already on GitHub, **`release.yml`** fails — no second tag, no partial publish. After shipping, the post-release patch bump on `main` advances the patch; run **`release.yml`** again only when `package.xml` names the version you intend to ship next.
 
@@ -130,7 +130,7 @@ Guides: [Updating](https://freecad.github.io/Addon-Academy/Guides/Maintaining/Up
 
 ### First listing
 
-The first listing goes through [FreeCAD/Addons#70](https://github.com/FreeCAD/Addons/issues/70), not a PR. Run **`release.yml`** with **`index_pr`** unticked, then post the new tag on the issue by hand. Once the entry is merged, change the `index_pr` default in `release.yml` to `true`.
+A first listing goes through [FreeCAD/Addons#70](https://github.com/FreeCAD/Addons/issues/70), not a PR. Run **`release.yml`** with **`index_pr`** unticked, then post the new tag on the issue by hand.
 
 ### After each release
 

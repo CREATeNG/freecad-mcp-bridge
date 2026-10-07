@@ -33,7 +33,7 @@ y="${BASH_REMATCH[2]}"
 z="${BASH_REMATCH[3]}"
 next_z=$((z + 1))
 next_version="${x}.${y}.${next_z}"
-today=$(date -u +%Y-%m-%d)
+today=$(TZ=Australia/Sydney date +%Y-%m-%d)  # the maintainer's date, not UTC
 
 python3 - <<'PY' "$next_version" "$today" "$PACKAGE_XML" "$SHIM_MANIFEST" "$SHIM_PACKAGE_JSON"
 import re
@@ -48,8 +48,13 @@ text, n1 = re.subn(
     r"(<version>)[^<]*(</version>)", rf"\g<1>{version}\g<2>", text, count=1
 )
 text, n2 = re.subn(r"(<date>)[^<]*(</date>)", rf"\g<1>{date}\g<2>", text, count=1)
-if n1 != 1 or n2 != 1:
-    raise SystemExit("Failed to update version/date in package.xml")
+# The Addon Manager installs the repository url's branch, overriding the Index's
+# git_ref, so each tag must name itself: point it at the next release's tag.
+text, n3 = re.subn(
+    r'(<url branch=")[^"]*(" type="repository">)', rf"\g<1>v{version}\g<2>", text, count=1
+)
+if n1 != 1 or n2 != 1 or n3 != 1:
+    raise SystemExit("Failed to update version/date/repository branch in package.xml")
 path.write_text(text, encoding="utf-8")
 
 for json_path in (shim_manifest, shim_package_json):

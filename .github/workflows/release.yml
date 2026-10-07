@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       index_pr:
-        description: Open the automated Addon Index PR (off until the addon is listed; the first listing goes through FreeCAD/Addons#70)
+        description: Open the automated Addon Index PR that moves the listing to this release
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: write
@@ -41,6 +41,12 @@ jobs:
           fi
           if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "package.xml must use x.y.z (found: $VERSION)"
+            exit 1
+          fi
+          BRANCH=$(sed -n 's/.*<url branch="\([^"]*\)" type="repository">.*/\1/p' package.xml | head -1)
+          if [ "$BRANCH" != "v$VERSION" ]; then
+            echo "package.xml's repository url branch must be the release tag v$VERSION (found: $BRANCH)."
+            echo "The Addon Manager installs that branch, not the Index's git_ref."
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
