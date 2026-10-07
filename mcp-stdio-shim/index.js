@@ -5,15 +5,58 @@
  * A zero-dependency stdio <-> HTTP proxy. Claude Desktop speaks MCP over stdio
  * (newline-delimited JSON-RPC); this forwards each message to the addon's HTTP
  * endpoint (http://127.0.0.1:<port>/mcp), unwraps the JSON or SSE reply, and
- * writes it back on stdout. It interprets as little as possible, so protocol
- * additions pass through untouched. Node stdlib only (global fetch, >=18).
+ * writes it back on stdout.
+ *
+ * When FreeCAD isn't reachable, it answers initialize and tools/list itself
+ * (tools.json is a copy of the addon's tool list), and answers a tools/call
+ * with a tool-level error saying how to start the bridge, so the client
+ * starts cleanly instead of reporting a failed server. Node stdlib only
+ * (global fetch, >=18).
  */
+
+const fs = require("fs");
+const path = require("path");
 
 const PORT = process.env.FREECAD_MCP_PORT || "39280";
 const ENDPOINT = `http://127.0.0.1:${PORT}/mcp`;
+const PROTOCOL_VERSION = "2025-03-26";
+const TOOLS = JSON.parse(fs.readFileSync(path.join(__dirname, "tools.json"), "utf8"));
+const VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf8")).version;
+const UNREACHABLE_HINT =
+  "FreeCAD isn't reachable. Start FreeCAD and turn the bridge on with the MCP Bridge toolbar button, then try again.";
 
 function writeLine(text) {
   process.stdout.write(text + "\n");
+}
+
+function offlineResult(message, err) {
+  // What a client gets while FreeCAD is down, in place of a JSON-RPC error.
+  switch (message.method) {
+    case "initialize":
+      return {
+        protocolVersion: PROTOCOL_VERSION,
+        capabilities: { tools: {} },
+        serverInfo: { name: "freecad-mcp-bridge", version: VERSION },
+      };
+    case "tools/list":
+      return { tools: TOOLS };
+    case "tools/call":
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              page: [],
+              has_more: false,
+              error: `${UNREACHABLE_HINT} (${ENDPOINT}: ${err.message})`,
+            }),
+          },
+        ],
+        isError: true,
+      };
+    default:
+      return null;
+  }
 }
 
 async function forward(rawLine, message) {
@@ -28,7 +71,11 @@ async function forward(rawLine, message) {
       body: rawLine,
     });
   } catch (err) {
-    if (!isNotification) {
+    if (isNotification) return;
+    const result = offlineResult(message, err);
+    if (result) {
+      writeLine(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }));
+    } else {
       writeLine(
         JSON.stringify({
           jsonrpc: "2.0",

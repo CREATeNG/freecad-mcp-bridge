@@ -68,6 +68,9 @@ jobs:
       - name: Validate Claude Desktop bundle manifest
         run: npx --yes @anthropic-ai/mcpb@2.1.2 validate mcp-stdio-shim/manifest.json
 
+      - name: Check the Claude Desktop shim's tool list matches the addon's
+        run: python3 scripts/check_shim_tools.py
+
       - name: Record release candidate commit
         id: commit_sha
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"

@@ -46,14 +46,46 @@ class MCPBridgeCommand:
             else:
                 bridge.start()
                 status = f"{DISPLAY_NAME}: Listening on 127.0.0.1:{config.port()}"
-            mw = Gui.getMainWindow()
-            if mw:
-                mw.statusBar().showMessage(status)
         except Exception as e:
             App.Console.PrintError(f"{LOG_PREFIX} Error toggling bridge: {e}\n")
-            mw = Gui.getMainWindow()
-            if mw:
-                mw.statusBar().showMessage(f"{DISPLAY_NAME}: Offline")
+            status = f"{DISPLAY_NAME}: Could not start ({e})"
+        mw = Gui.getMainWindow()
+        if mw:
+            mw.statusBar().showMessage(status)
+        show_toggle_state(status)
+
+
+def show_toggle_state(message=None):
+    """Make the toolbar button show whether the bridge is on: pressed while it
+    runs, with a matching tooltip, and a brief popup beside it for `message`."""
+    import FreeCAD as App
+    import FreeCADGui as Gui
+    from PySide.QtWidgets import QToolBar, QToolTip
+
+    action = getattr(App, "MCPBridgeAction", None)
+    if action is None:
+        return
+    running = bridge.is_running()
+    action.setChecked(running)
+    action.setToolTip(
+        f"{DISPLAY_NAME}: on (click to stop)"
+        if running
+        else f"{DISPLAY_NAME}: off (click to start)"
+    )
+    mw = Gui.getMainWindow()
+    if not message or mw is None:
+        return
+    for toolbar in mw.findChildren(QToolBar):
+        widget = toolbar.widgetForAction(action)
+        if widget is not None and widget.isVisible():
+            QToolTip.showText(
+                widget.mapToGlobal(widget.rect().bottomLeft()),
+                message,
+                widget,
+                widget.rect(),
+                3000,
+            )
+            return
 
 
 def inject_ui():
@@ -91,10 +123,10 @@ def inject_ui():
     if not toolbar_exists:
         action = target_tb.addAction(action_label)
         action.setIcon(QIcon(icon))
-        action.setToolTip(
-            "Start or stop the MCP Bridge server in this FreeCAD session"
-        )
-        action.triggered.connect(lambda: Gui.runCommand(command))
+        action.setCheckable(True)
+        action.triggered.connect(lambda *_: Gui.runCommand(command))
+        App.MCPBridgeAction = action
+        show_toggle_state()
 
     target_tb.setVisible(True)
     target_tb.show()

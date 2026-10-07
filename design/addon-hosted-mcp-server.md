@@ -359,8 +359,12 @@ possible: it forwards any JSON-RPC message, and unwraps only a plain JSON or
 single-event SSE reply. Node stdlib only (global
 `fetch`, Node ≥ 18); Claude Desktop bundles Node.js — no user-side runtime install
 needed. The shim reads the port from the `FREECAD_MCP_PORT` environment variable
-(default 39280). Notifications (no `id`) get no reply; if the bridge is unreachable,
-the shim synthesizes a JSON-RPC error directing the user to the toolbar toggle.
+(default 39280). Notifications (no `id`) get no reply. If the bridge is unreachable,
+the shim answers `initialize` and `tools/list` itself, from `tools.json`, a copy of
+the addon's tool list that release preparation checks against `tools.py`, so a
+client started before FreeCAD comes up cleanly. A `tools/call` then gets a tool
+result whose `error` says to start FreeCAD and turn the bridge on; any other request
+gets a JSON-RPC error saying the same.
 
 **Shim — no SDK**
 
