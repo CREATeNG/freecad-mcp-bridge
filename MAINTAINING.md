@@ -97,7 +97,7 @@ flowchart TD
 2. **Install-verify** (pre-tag) — [`install-verify.yml`](.github/workflows/install-verify.yml) with `install_mode: main`: full Addon Manager install + restart verify on all three OSes against `main`. **No tag if this fails.**
 3. **Publish** — push the matching tag (`v{x.y.z}`) on the verified commit, create a **GitHub Release**, then pack the Claude Desktop bundle (`mcpb pack`) and upload it as a release asset. Uses [`release-publish-orchestrator.sh`](scripts/release-publish-orchestrator.sh) (`RELEASE_PUBLISH_AUTHORIZED=true`; not runnable standalone).
 4. **Install-verify** (tag path) — same workflow with `install_mode: tag`: final sanity check that install works from the tag ref (how the FreeCAD Addon Index and custom-repo users install). **No Index PR or patch bump if this fails.**
-5. **Addons Index PR** — [`trigger-addons-index-pr.sh`](scripts/trigger-addons-index-pr.sh) runs [`index-release.yml`](https://github.com/CREATeNG/FreeCAD-Addons/blob/main/.github/workflows/index-release.yml) on the fork via `workflow_dispatch` (sync upstream, patch [`Data/Index.json`](https://github.com/FreeCAD/Addons/blob/master/Data/Index.json), push branch), then opens the upstream PR on `FreeCAD/Addons` with **`ADDONS_INDEX_DISPATCH_TOKEN`**. Updates GitHub Release notes with the PR link. PAT needs **Actions: read and write** on `CREATeNG/FreeCAD-Addons` and permission to open PRs on `FreeCAD/Addons` (classic `public_repo` or equivalent). If unset, the job skips. Runs only when the release is started with **`index_pr`** ticked (the default). **Non-blocking** (`continue-on-error`).
+5. **Addons Index PR** — [`trigger-addons-index-pr.sh`](scripts/trigger-addons-index-pr.sh) runs [`index-release.yml`](https://github.com/CREATeNG/FreeCAD-Addons/blob/main/.github/workflows/index-release.yml) on the fork via `workflow_dispatch` (sync upstream, patch [`Data/Index.json`](https://github.com/FreeCAD/Addons/blob/master/Data/Index.json), push branch), then opens the upstream PR on `FreeCAD/Addons` with **`ADDONS_INDEX_DISPATCH_TOKEN`**. Updates GitHub Release notes with the PR link. The token is a classic PAT with the **`repo`** and **`workflow`** scopes (see *Prerequisites* below). If unset, the job skips. Runs only when the release is started with **`index_pr`** ticked (the default). **Non-blocking** (`continue-on-error`).
 6. **Bump** — increment patch on `main` for the next dev cycle via [`bump-package-z.sh`](scripts/bump-package-z.sh), syncing the shim's `manifest.json`/`package.json` too. Runs in parallel with step 5.
 
 Re-running **`release.yml`** while `package.xml` still names a tag that already exists on GitHub will fail at **prepare**.
@@ -141,7 +141,9 @@ A first listing goes through [FreeCAD/Addons#70](https://github.com/FreeCAD/Addo
 **Prerequisites:**
 
 * Fork: [`CREATeNG/FreeCAD-Addons`](https://github.com/CREATeNG/FreeCAD-Addons) ([`index-release.yml`](https://github.com/CREATeNG/FreeCAD-Addons/blob/main/.github/workflows/index-release.yml) on fork `main`).
-* Secret on **`CREATeNG/freecad-mcp-bridge`:** **`ADDONS_INDEX_DISPATCH_TOKEN`** — PAT that can **run Actions** on `CREATeNG/FreeCAD-Addons` and **open PRs** on `FreeCAD/Addons` (classic **`public_repo`** scope, or fine-grained with both repos).
+* One **classic** PAT with the **`repo`** and **`workflow`** scopes, stored as two secrets:
+  * **`ADDONS_INDEX_DISPATCH_TOKEN`** on **`CREATeNG/freecad-mcp-bridge`**: runs the fork's workflow and opens the PR on `FreeCAD/Addons`.
+  * **`INDEX_PUSH_TOKEN`** on **`CREATeNG/FreeCAD-Addons`**: lets the fork's workflow push its branch, which carries any workflow-file changes from upstream.
 
 If automation is skipped or fails, use the local helper (prints fields only; does not edit any file):
 
