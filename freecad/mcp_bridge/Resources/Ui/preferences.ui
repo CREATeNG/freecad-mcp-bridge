@@ -175,6 +175,31 @@
     </widget>
    </item>
    <item>
+    <widget class="QGroupBox" name="helpGroup">
+     <property name="title">
+      <string>Help &amp; feedback</string>
+     </property>
+     <layout class="QVBoxLayout" name="helpLayout">
+      <item>
+       <widget class="QLabel" name="helpNote">
+        <property name="textFormat">
+         <enum>Qt::RichText</enum>
+        </property>
+        <property name="text">
+         <string>Report a bug, ask a question or suggest a feature: &lt;a href="https://github.com/CREATeNG/freecad-mcp-bridge/issues"&gt;GitHub issues&lt;/a&gt;.&lt;br/&gt;&lt;br/&gt;Project page and documentation: &lt;a href="https://github.com/CREATeNG/freecad-mcp-bridge"&gt;github.com/CREATeNG/freecad-mcp-bridge&lt;/a&gt;.</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+        <property name="openExternalLinks">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
     <spacer name="verticalSpacer">
      <property name="orientation">
       <enum>Qt::Vertical</enum>
