@@ -2,11 +2,6 @@ name: Release Orchestrator
 
 on:
   workflow_dispatch:
-    inputs:
-      index_pr:
-        description: Open the automated Addon Index PR that moves the listing to this release
-        type: boolean
-        default: true
 
 permissions:
   contents: write
@@ -44,8 +39,8 @@ jobs:
             exit 1
           fi
           BRANCH=$(sed -n 's/.*<url branch="\([^"]*\)" type="repository">.*/\1/p' package.xml | head -1)
-          if [ "$BRANCH" != "v$VERSION" ]; then
-            echo "package.xml's repository url branch must be the release tag v$VERSION (found: $BRANCH)."
+          if [ "$BRANCH" != "release" ]; then
+            echo "package.xml's repository url branch must be release (found: $BRANCH)."
             echo "The Addon Manager installs that branch, not the Index's git_ref."
             exit 1
           fi
@@ -120,31 +115,25 @@ jobs:
       install_tag: ${{ needs.prepare.outputs.tag }}
       fail_fast: true
 
-  addons_index_pr:
-    name: Open FreeCAD Addon Index PR
+  promote:
+    name: Move the release branch to the verified commit
     needs: [prepare, install_verify_tag]
     runs-on: ubuntu-24.04
-    if: github.ref == 'refs/heads/main' && inputs.index_pr
-    continue-on-error: true
-    outputs:
-      index_pr_status: ${{ steps.index_pr.outputs.index_pr_status }}
-      index_pr_url: ${{ steps.index_pr.outputs.index_pr_url }}
+    if: github.ref == 'refs/heads/main'
     steps:
-      - name: Checkout scripts
+      - name: Checkout release candidate
         uses: actions/checkout@v7
         with:
-          sparse-checkout: scripts
-          sparse-checkout-cone-mode: false
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Dispatch Index PR on fork and update release notes
-        id: index_pr
+      - name: Fast-forward release
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ADDONS_INDEX_DISPATCH_TOKEN: ${{ secrets.ADDONS_INDEX_DISPATCH_TOKEN }}
-          ADDONS_INDEX_DISPATCH_AUTHORIZED: "true"
-          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
-          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
-        run: bash "${GITHUB_WORKSPACE}/scripts/trigger-addons-index-pr.sh"
+          RELEASE_SHA: ${{ needs.prepare.outputs.commit_sha }}
+        # A plain push: GitHub refuses it unless release is an ancestor of the
+        # verified commit, so release only ever moves forward.
+        run: git push origin "${RELEASE_SHA}:refs/heads/release"
 
   bump:
     name: Bump development patch on main

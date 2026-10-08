@@ -299,8 +299,10 @@ def build_addon_descriptor(
     addon_name: str, repo_url: str, tag: str, mode: str
 ) -> tuple[str, str]:
     if mode == "index_zip":
-        zip_url = f"{repo_url.rstrip('/')}/archive/refs/tags/{tag}.zip"
-        return zip_url, tag
+        # What the Index serves: the release branch's archive. The tag only
+        # names the version that branch is expected to hold.
+        zip_url = f"{repo_url.rstrip('/')}/archive/refs/heads/release.zip"
+        return zip_url, "release"
     if mode == "tag":
         return repo_url.rstrip("/"), tag
     if mode == "main":

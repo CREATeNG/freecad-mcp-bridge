@@ -52,9 +52,9 @@ Addon Manager installs from the Git repository URL with `branch` set to the rele
 
 Addon Manager installs from the GitHub archive ZIP URL:
 
-`{REPO}/archive/refs/tags/{TAG}.zip`
+`{REPO}/archive/refs/heads/release.zip`
 
-Use this mode to validate the same artifact shape the FreeCAD Addon Index serves via `zip_url`. After install, `flatten_install_dir()` still normalizes nested zip layouts to `Mod/freecad-mcp-bridge/`.
+Use this mode to validate the archive the FreeCAD Addon Index serves via `zip_url`. `RELEASE_INSTALL_TAG` names the version `release` is expected to hold. After install, `flatten_install_dir()` still normalizes nested zip layouts to `Mod/freecad-mcp-bridge/`.
 
 ### `main`
 
@@ -67,9 +67,9 @@ Addon Manager installs from the repository URL with `branch=main`. Used by the *
 **`release.yml`** calls **`install-verify.yml`** twice:
 
 1. **Pre-tag** (`install_mode: main`) — hard gate before tag creation. Fails **`release.yml`** if any OS fails.
-2. **Tag path** (`install_mode: tag`) — after tag and release notes; final sanity check that install works from the tag ref. Fails **`release.yml`** before the Index PR dispatch and patch bump if any OS fails.
+2. **Tag path** (`install_mode: tag`) — after tag and release notes; final sanity check that install works from the tag ref. Fails **`release.yml`** before `release` moves and the patch bumps if any OS fails.
 
-Full **`release.yml`** job order (build, publish, Index dispatch on [`CREATeNG/FreeCAD-Addons`](https://github.com/CREATeNG/FreeCAD-Addons), bump): see [MAINTAINING.md — `release.yml` job order](MAINTAINING.md#the-release-orchestrator-workflow-releaseyml).
+Full **`release.yml`** job order (build, publish, promote `release`, bump): see [MAINTAINING.md — `release.yml` job order](MAINTAINING.md#the-release-orchestrator-workflow-releaseyml).
 
 ---
 

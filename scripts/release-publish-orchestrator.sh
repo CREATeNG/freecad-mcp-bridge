@@ -81,7 +81,7 @@ echo "Created and pushed tag ${RELEASE_TAG} at ${VERIFIED_SHA}"
 
 gh release create "$RELEASE_TAG" \
   --title "$RELEASE_TAG" \
-  --notes "Release $RELEASE_TAG"
+  --notes 'Source-only addon; the Claude Desktop bundle is attached as `freecad-mcp-bridge.mcpb`.'
 
 echo "Published GitHub Release ${RELEASE_TAG}"
 
