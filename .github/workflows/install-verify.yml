@@ -279,7 +279,7 @@ jobs:
           rc="${RUNNER_TEMP}/coverage.rc"
           cat > "${rc}" <<EOF
           [run]
-          source_pkgs = freecad.mcp_bridge
+          include = */freecad/mcp_bridge/*
           parallel = True
           data_file = ${data_dir}/.coverage
           EOF
