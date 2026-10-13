@@ -83,6 +83,29 @@ def log_notice(message: str) -> None:
     _write_ci_log(message, level="PASS")
 
 
+def _save_coverage() -> None:
+    """Stop and save coverage, when a CI coverage run started it here.
+
+    os._exit skips coverage's atexit save. Does nothing when coverage is not
+    importable or not measuring this process.
+    """
+    try:
+        import coverage
+    except ImportError:
+        return
+    try:
+        cov = coverage.Coverage.current()
+        if cov is None:
+            if env("COVERAGE_PROCESS_START", ""):
+                log("COVERAGE_PROCESS_START is set but coverage is not active")
+            return
+        cov.stop()
+        cov.save()
+        log("Coverage data saved")
+    except Exception as exc:
+        log(f"Coverage save failed: {exc!r}")
+
+
 def quit_freecad(exit_code: int = 0) -> None:
     """Exit the FreeCAD process from a CI test script.
 
@@ -90,6 +113,7 @@ def quit_freecad(exit_code: int = 0) -> None:
     on headless runners (SIGSEGV, access violations, 15-minute hangs).
     """
     _drain_qt_events(500)
+    _save_coverage()
     os._exit(exit_code)
 
 
