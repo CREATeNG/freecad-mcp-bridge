@@ -73,7 +73,7 @@ def fetch(token, page_no, timeout_ms, page_size_chars, retention_ms):
         max_no = len(history) - 1
 
         # Stored page — idempotent replay.
-        if page_no <= max_no:
+        if 0 <= page_no <= max_no:
             snap = history[page_no]
             return {
                 "page": snap["page"],
