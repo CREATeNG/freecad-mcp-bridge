@@ -46,52 +46,6 @@ def _verify_addon_startup() -> None:
     common.log_notice(f"Addon command {command_id!r} registered on startup")
 
 
-def _find_toolbar_action():
-    import FreeCADGui as Gui
-    from PySide.QtCore import QCoreApplication, QThread
-    from PySide.QtWidgets import QToolBar
-
-    from freecad.mcp_bridge.constants import DISPLAY_NAME, TOOLBAR_OBJECT_NAME
-
-    action_label = "MCP Bridge On/Off"
-    timeout_ms = int(common.env("RELEASE_INSTALL_TOOLBAR_TIMEOUT_MS", "15000"))
-    interval_ms = 200
-    attempts = max(1, timeout_ms // interval_ms)
-
-    for _ in range(attempts):
-        QCoreApplication.processEvents()
-
-        mw = Gui.getMainWindow()
-        if mw:
-            for toolbar in mw.findChildren(QToolBar):
-                if (
-                    toolbar.windowTitle() == DISPLAY_NAME
-                    or toolbar.objectName() == TOOLBAR_OBJECT_NAME
-                ):
-                    for action in toolbar.actions():
-                        if action.text() == action_label:
-                            return action
-
-        QThread.msleep(interval_ms)
-
-    return None
-
-
-def _trigger_toolbar_toggle(log_message: str) -> None:
-    from PySide.QtCore import QCoreApplication
-
-    action = _find_toolbar_action()
-    if action is None:
-        common.fail(
-            'Toolbar action "MCP Bridge On/Off" not found after startup '
-            "(UI was not auto-injected)"
-        )
-
-    common.log(log_message)
-    action.trigger()
-    QCoreApplication.processEvents()
-
-
 def _report_view_text() -> str:
     """Return visible Report view text (where Console.PrintMessage appears)."""
     import FreeCADGui as Gui
@@ -120,22 +74,6 @@ def _report_view_text() -> str:
     return ""
 
 
-def _start_bridge() -> None:
-    """Start the HTTP server by triggering the real toolbar button."""
-    from freecad.mcp_bridge import bridge
-
-    if bridge.is_running():
-        common.log("Bridge HTTP server already running")
-        return
-
-    _trigger_toolbar_toggle('Triggering toolbar action "MCP Bridge On/Off" (start)')
-    common._drain_qt_events(1000)
-
-    if not bridge.is_running():
-        common.fail("Bridge HTTP server failed to start after toolbar click")
-    common.log_notice("Bridge HTTP server started via toolbar toggle")
-
-
 def _stop_bridge() -> None:
     """Stop the server via a second toolbar toggle, like a user would."""
     from freecad.mcp_bridge import bridge
@@ -144,7 +82,7 @@ def _stop_bridge() -> None:
     if not bridge.is_running():
         common.fail("Bridge HTTP server was not running before stop toggle")
 
-    _trigger_toolbar_toggle('Triggering toolbar action "MCP Bridge On/Off" (stop)')
+    common.trigger_toolbar_toggle('Triggering toolbar action "MCP Bridge On/Off" (stop)')
     common._drain_qt_events(1500)
 
     if bridge.is_running():
@@ -297,7 +235,7 @@ def _run() -> None:
     )
 
     _verify_addon_startup()
-    _start_bridge()
+    common.start_bridge()
     _verify_http_round_trip()
     _stop_bridge()
     common.log_notice("Verify passed")

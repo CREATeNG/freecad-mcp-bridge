@@ -21,6 +21,11 @@ on:
         required: false
         type: boolean
         default: false
+      acceptance:
+        description: Run the acceptance tests against the installed bridge
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       tag:
@@ -41,6 +46,11 @@ on:
         required: false
         type: boolean
         default: false
+      acceptance:
+        description: Run the acceptance tests against the installed bridge
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -197,9 +207,9 @@ jobs:
           echo "FC_CI_HOME=${RUNNER_TEMP}/freecad-ci-home" >> "${GITHUB_ENV}"
           mkdir -p "${RUNNER_TEMP}/freecad-ci-home"
 
-      - name: Set up runner Python (coverage trial)
+      - name: Set up runner Python
         id: runner_python
-        if: inputs.coverage
+        if: inputs.coverage || inputs.acceptance
         uses: actions/setup-python@v7
         with:
           python-version: "3.11"
@@ -299,6 +309,51 @@ jobs:
         env:
           ISOLATE_HOME: ${{ matrix.isolate_home }}
           QT_QPA_PLATFORM: ${{ matrix.qt_platform }}
+
+      # FreeCAD serves the bridge in the background while the runner's own
+      # Python runs the acceptance tests against it, as an MCP client would.
+      - name: Acceptance tests against the installed bridge
+        if: inputs.acceptance
+        shell: bash
+        env:
+          ISOLATE_HOME: ${{ matrix.isolate_home }}
+          QT_QPA_PLATFORM: ${{ matrix.qt_platform }}
+          RUNNER_PYTHON: ${{ steps.runner_python.outputs.python-path }}
+          ACCEPTANCE_READY_FILE: ${{ runner.temp }}/acceptance-ready
+          ACCEPTANCE_STOP_FILE: ${{ runner.temp }}/acceptance-stop
+          ACCEPTANCE_TIMEOUT_S: "600"
+        run: |
+          set -uo pipefail
+          rm -f "${ACCEPTANCE_READY_FILE}" "${ACCEPTANCE_STOP_FILE}"
+          bash "${GITHUB_WORKSPACE}/scripts/ci_run_freecad.sh" acceptance &
+          freecad_pid=$!
+
+          port=""
+          for _ in $(seq 1 300); do
+            if [[ -s "${ACCEPTANCE_READY_FILE}" ]]; then
+              port="$(tr -d '\r\n' < "${ACCEPTANCE_READY_FILE}")"
+              break
+            fi
+            kill -0 "${freecad_pid}" 2>/dev/null || break
+            sleep 1
+          done
+
+          tests_exit=1
+          if [[ -n "${port}" ]]; then
+            BRIDGE_URL="http://127.0.0.1:${port}/mcp" \
+              "${RUNNER_PYTHON}" -m unittest discover -s tests/acceptance -t . -v
+            tests_exit=$?
+          else
+            echo "::error title=Acceptance tests::FreeCAD did not report the bridge ready"
+          fi
+
+          touch "${ACCEPTANCE_STOP_FILE}"
+          freecad_exit=0
+          wait "${freecad_pid}" || freecad_exit=$?
+          if [[ "${tests_exit}" -ne 0 ]]; then
+            exit "${tests_exit}"
+          fi
+          exit "${freecad_exit}"
 
       - name: Report coverage (coverage trial)
         if: ${{ !cancelled() && inputs.coverage }}

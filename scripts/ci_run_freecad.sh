@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Run test_install.py or test_verify.py inside FreeCAD and publish the CI log.
+# Run test_install.py, test_verify.py or acceptance_serve.py inside FreeCAD and
+# publish the CI log.
 #
-# Usage: ci_run_freecad.sh install|verify
+# Usage: ci_run_freecad.sh install|verify|acceptance
 #
 # Expects GitHub Actions env: RUNNER_OS, RUNNER_TEMP, FC_CI_HOME, GITHUB_WORKSPACE
 # Optional: FREECAD_BIN, ISOLATE_HOME=true, QT_QPA_PLATFORM
@@ -9,8 +10,8 @@
 set -euo pipefail
 
 PHASE="${1:-}"
-if [[ "$PHASE" != "install" && "$PHASE" != "verify" ]]; then
-  echo "Usage: ci_run_freecad.sh install|verify" >&2
+if [[ "$PHASE" != "install" && "$PHASE" != "verify" && "$PHASE" != "acceptance" ]]; then
+  echo "Usage: ci_run_freecad.sh install|verify|acceptance" >&2
   exit 2
 fi
 
@@ -28,6 +29,11 @@ case "$PHASE" in
     SCRIPT="${REPO_ROOT}/scripts/test_verify.py"
     CI_LOG="${RUNNER_TEMP}/freecad-ci-verify.log"
     GROUP_TITLE="Verify addon after restart"
+    ;;
+  acceptance)
+    SCRIPT="${REPO_ROOT}/scripts/acceptance_serve.py"
+    CI_LOG="${RUNNER_TEMP}/freecad-ci-acceptance.log"
+    GROUP_TITLE="Serve the bridge for acceptance tests"
     ;;
 esac
 
