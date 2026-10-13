@@ -18,6 +18,10 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Requirements list
+        shell: bash
+        run: python scripts/list_requirements.py | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: Install coverage
         run: pip install coverage==7.6.1
 
