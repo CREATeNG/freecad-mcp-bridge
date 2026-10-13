@@ -16,6 +16,11 @@ on:
         required: false
         type: boolean
         default: false
+      coverage:
+        description: Measure addon line coverage during the FreeCAD runs (trial)
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       tag:
@@ -31,6 +36,11 @@ on:
           - tag
           - index_zip
           - main
+      coverage:
+        description: Measure addon line coverage during the FreeCAD runs (trial)
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -187,6 +197,95 @@ jobs:
           echo "FC_CI_HOME=${RUNNER_TEMP}/freecad-ci-home" >> "${GITHUB_ENV}"
           mkdir -p "${RUNNER_TEMP}/freecad-ci-home"
 
+      - name: Set up runner Python (coverage trial)
+        id: runner_python
+        if: inputs.coverage
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          update-environment: false
+
+      - name: Enable coverage in FreeCAD's Python (coverage trial)
+        if: inputs.coverage
+        continue-on-error: true
+        shell: bash
+        env:
+          RUNNER_PYTHON: ${{ steps.runner_python.outputs.python-path }}
+        run: |
+          set -euo pipefail
+          root=""
+          case "${RUNNER_OS}" in
+            Linux) root="${RUNNER_TEMP}/squashfs-root" ;;
+            macOS) root="$(dirname "$(dirname "$(dirname "${FREECAD_BIN}")")")" ;;
+            Windows)
+              for candidate in "${PROGRAMFILES:-}/FreeCAD 1.1" "${LOCALAPPDATA:-}/Programs/FreeCAD 1.1"; do
+                if [[ -d "${candidate}" ]]; then
+                  root="$(cygpath -u "${candidate}")"
+                  break
+                fi
+              done
+              ;;
+          esac
+          if [[ -z "${root}" || ! -d "${root}" ]]; then
+            echo "::warning title=Coverage trial::FreeCAD install root not found"
+            exit 0
+          fi
+          echo "FreeCAD install root: ${root}"
+
+          py=""
+          while IFS= read -r candidate; do
+            echo "--- ${candidate}"
+            if ! out="$("${candidate}" -c 'import site,sys;print(sys.version_info[:2]);print(site.getsitepackages())' 2>&1 | tr -d '\r')"; then
+              echo "${out}"
+              echo "(did not run)"
+              continue
+            fi
+            echo "${out}"
+            if [[ -z "${py}" && "$(head -n 1 <<< "${out}")" == "(3, 11)" ]]; then
+              py="${candidate}"
+            fi
+          done < <(find "${root}" \( -type f -o -type l \) \
+            \( -name python -o -name python3 -o -name python3.11 -o -name python.exe \) 2>/dev/null | sort)
+          if [[ -z "${py}" ]]; then
+            echo "::warning title=Coverage trial::No Python 3.11 found under ${root}"
+            exit 0
+          fi
+          sp="$("${py}" -c 'import site;print([p for p in site.getsitepackages() if p.endswith("site-packages")][0])' | tr -d '\r')"
+          sp_sh="${sp}"
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            sp_sh="$(cygpath -u "${sp}")"
+          fi
+          echo "FreeCAD's Python: ${py}"
+          echo "FreeCAD's site-packages: ${sp}"
+          if [[ ! -d "${sp_sh}" ]]; then
+            echo "::warning title=Coverage trial::site-packages is not a directory: ${sp}"
+            exit 0
+          fi
+
+          if "${py}" -m pip --version \
+            && "${py}" -m pip install --disable-pip-version-check --target "${sp}" coverage==7.6.1; then
+            echo "Installed coverage with FreeCAD's own pip"
+          else
+            echo "FreeCAD's pip unavailable or failed; installing with the runner's Python 3.11"
+            "${RUNNER_PYTHON}" -m pip install --disable-pip-version-check --target "${sp}" coverage==7.6.1
+          fi
+          "${py}" -c 'import coverage; print("coverage", coverage.__version__, "at", coverage.__file__)'
+          "${py}" -c 'import coverage.tracer; print("C tracer loads")' || echo "C tracer does not load (Python tracer fallback)"
+          printf '%s\n' 'import coverage; coverage.process_startup()' > "${sp_sh}/fc_coverage.pth"
+          "${py}" -c 'import sys; print("coverage imported at startup via .pth:", "coverage" in sys.modules)'
+
+          data_dir="${RUNNER_TEMP}/coverage-data"
+          mkdir -p "${data_dir}"
+          rc="${RUNNER_TEMP}/coverage.rc"
+          cat > "${rc}" <<EOF
+          [run]
+          source_pkgs = freecad.mcp_bridge
+          parallel = True
+          data_file = ${data_dir}/.coverage
+          EOF
+          cat "${rc}"
+          echo "COVERAGE_PROCESS_START=${rc}" >> "${GITHUB_ENV}"
+
       - name: Install addon via Addon Manager
         shell: bash
         run: bash "${GITHUB_WORKSPACE}/scripts/ci_run_freecad.sh" install
@@ -200,3 +299,83 @@ jobs:
         env:
           ISOLATE_HOME: ${{ matrix.isolate_home }}
           QT_QPA_PLATFORM: ${{ matrix.qt_platform }}
+
+      - name: Report coverage (coverage trial)
+        if: ${{ !cancelled() && inputs.coverage }}
+        continue-on-error: true
+        shell: bash
+        env:
+          RUNNER_PYTHON: ${{ steps.runner_python.outputs.python-path }}
+        run: |
+          set -euo pipefail
+          "${RUNNER_PYTHON}" -m pip install --disable-pip-version-check coverage==7.6.1
+          "${RUNNER_PYTHON}" - <<'EOF'
+          import glob
+          import os
+          import subprocess
+          import sys
+
+          from coverage.data import CoverageData
+
+          os_name = os.environ["RUNNER_OS"]
+          data_dir = os.path.join(os.environ["RUNNER_TEMP"], "coverage-data")
+          repo_pkg = os.path.join(os.environ["GITHUB_WORKSPACE"], "freecad", "mcp_bridge")
+
+
+          def to_summary(text):
+              with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
+                  handle.write(f"### Coverage trial ({os_name})\n\n{text}\n\n")
+
+
+          parts = sorted(glob.glob(os.path.join(data_dir, ".coverage.*")))
+          print(f"Coverage data files in {data_dir}: {len(parts)}")
+          installed = set()
+          for part in parts:
+              data = CoverageData(part)
+              data.read()
+              files = sorted(data.measured_files())
+              print(f"  {os.path.basename(part)}: {len(files)} measured files")
+              for path in files:
+                  print(f"    {path}")
+                  at = path.replace("\\", "/").find("/freecad/mcp_bridge/")
+                  if at >= 0:
+                      installed.add(path[: at + len("/freecad/mcp_bridge/")])
+
+          if not installed:
+              msg = f"NO COVERAGE DATA for freecad.mcp_bridge ({len(parts)} data files in {data_dir})"
+              print(f"::warning title=Coverage trial::{msg}")
+              to_summary(f"**{msg}**")
+              sys.exit(0)
+
+          rc = os.path.join(os.environ["RUNNER_TEMP"], "coverage-report.rc")
+          lines = ["[run]", f"data_file = {os.path.join(data_dir, '.coverage')}"]
+          lines += ["[paths]", "source =", f"    {repo_pkg}{os.sep}"]
+          lines += [f"    {prefix}" for prefix in sorted(installed)]
+          with open(rc, "w", encoding="utf-8") as handle:
+              handle.write("\n".join(lines) + "\n")
+          print(open(rc, encoding="utf-8").read())
+
+
+          def coverage(*args):
+              cmd = [sys.executable, "-m", "coverage", *args, f"--rcfile={rc}"]
+              proc = subprocess.run(cmd, capture_output=True, text=True)
+              print(proc.stdout + proc.stderr)
+              return proc
+
+
+          coverage("combine", "--keep")
+          report = coverage("report", "-m")
+          if report.returncode != 0:
+              print("::warning title=Coverage trial::coverage report failed")
+          to_summary(f"```text\n{report.stdout}{report.stderr}```")
+          EOF
+
+      - name: Upload coverage data (coverage trial)
+        if: ${{ !cancelled() && inputs.coverage }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-data-${{ matrix.os-name }}
+          path: ${{ runner.temp }}/coverage-data
+          include-hidden-files: true
+          if-no-files-found: warn
