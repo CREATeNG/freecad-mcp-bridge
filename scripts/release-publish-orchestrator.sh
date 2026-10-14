@@ -5,7 +5,7 @@
 # verified commit, creates a GitHub Release, then packs the Claude Desktop bundle and
 # uploads it as the release's one asset (freecad-mcp-bridge.mcpb).
 #
-# Does not bump package.xml (the bump job does that). No standalone entry point.
+# Does not change package.xml. No standalone entry point.
 
 set -euo pipefail
 

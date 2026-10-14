@@ -1,14 +1,9 @@
 #!/usr/bin/env bash
-# Increment package.xml patch (z) and <date>, and sync the shim's version fields —
-# INTERNAL to GitHub Actions only.
-# Triggered by bump-package-version.yml (workflow_dispatch), or post-release in release.yml publish job.
+# Write the next patch into package.xml and the shim's version fields.
+# Run it on a branch. Commit the three files and open a pull request.
+# This script does not commit or push.
 
 set -euo pipefail
-
-if [[ "${BUMP_PACKAGE_Z_AUTHORIZED:-}" != "true" ]]; then
-  echo "bump-package-z.sh is internal to GitHub Actions." >&2
-  exit 2
-fi
 
 PACKAGE_XML="${PACKAGE_XML:-package.xml}"
 SHIM_MANIFEST="${SHIM_MANIFEST:-mcp-stdio-shim/manifest.json}"
@@ -33,7 +28,7 @@ y="${BASH_REMATCH[2]}"
 z="${BASH_REMATCH[3]}"
 next_z=$((z + 1))
 next_version="${x}.${y}.${next_z}"
-today=$(TZ=Australia/Sydney date +%Y-%m-%d)  # the maintainer's date, not UTC
+today=$(date +%Y-%m-%d)  # the machine's local date
 
 python3 - <<'PY' "$next_version" "$today" "$PACKAGE_XML" "$SHIM_MANIFEST" "$SHIM_PACKAGE_JSON"
 import re
@@ -63,13 +58,5 @@ for json_path in (shim_manifest, shim_package_json):
     p.write_text(text, encoding="utf-8")
 PY
 
-if git diff --quiet "$PACKAGE_XML" "$SHIM_MANIFEST" "$SHIM_PACKAGE_JSON"; then
-  echo "Versions unchanged"
-  exit 0
-fi
-
-git add "$PACKAGE_XML" "$SHIM_MANIFEST" "$SHIM_PACKAGE_JSON"
-git commit -m "chore: bump version to ${next_version}"
-git push origin HEAD
-
-echo "Bumped package.xml, shim manifest, and shim package.json to ${next_version}"
+echo "Wrote ${next_version} into package.xml, the shim manifest, and the shim package.json."
+echo "Commit those files and open a pull request. This script does not commit or push."
