@@ -8,8 +8,11 @@ through execute_python, and restore it afterwards.
 """
 
 import math
+import os
+import tempfile
 import time
 import unittest
+from contextlib import contextmanager
 
 from freecad.mcp_bridge.mcp_protocol import serialized_page_length
 from tests.acceptance import mcp_client as mcp
@@ -25,6 +28,25 @@ LONG_JOB = (
     "for at in range(3000, len(text), 100):\n"
     "    sys.stdout.write(text[at:at + 100])\n"
 )
+# Under a 1 s response timeout and the small page size: quiet at first, so
+# the initiating response is empty and unnumbered; then several pages of
+# output; then quiet again, so the final page comes empty after a retry.
+QUIET_LONG_QUIET_JOB = (
+    "import time\ntime.sleep(2)\n" + LONG_JOB + "time.sleep(3)\n"
+)
+# The documented field sets (design/addon-hosted-mcp-server.md, "Result
+# shape"): page_no only on a stored page, job_token while the history
+# exists, error only when the tool cannot return output.
+STORED_PAGE_FIELDS = {"page", "page_no", "has_more", "job_token"}
+EMPTY_RETRY_FIELDS = {"page", "has_more", "job_token"}
+ERROR_FIELDS = {"page", "has_more", "error"}
+
+
+@contextmanager
+def quiet_long_quiet_job_settings():
+    with mcp.preference("MaxResponseTimeoutSeconds", 1):
+        with mcp.preference("MaxPageSize", SMALL_PAGE_KB):
+            yield
 
 
 def stored_pages(results):
@@ -110,6 +132,80 @@ class OutOfRangeTests(unittest.TestCase):
         self.assertEqual(result["error"], "unknown or expired job_token")
         self.assertEqual(result["page"], [])
         self.assertFalse(result["has_more"])
+
+
+class ResultFieldTests(unittest.TestCase):
+    def assertFields(self, result, expected, has_more):
+        self.assertEqual(set(result), expected)
+        self.assertIs(result["has_more"], has_more)
+
+    def test_each_tool_result_carries_exactly_its_documented_fields(self):
+        """Every tool result carries page and has_more; page_no only on a stored page, job_token only while the job's history exists, and error only when the tool cannot return output."""
+        with quiet_long_quiet_job_settings():
+            results = mcp.follow(mcp.execute(QUIET_LONG_QUIET_JOB))
+        retries = [result for result in results if "page_no" not in result]
+        pages = stored_pages(results)
+        self.assertTrue(retries, "precondition: a quiet unfinished response")
+        self.assertGreater(len(pages), 1, "precondition: several pages")
+        token = results[0]["job_token"]
+
+        for result in retries:
+            with self.subTest(kind="quiet unfinished response"):
+                self.assertFields(result, EMPTY_RETRY_FIELDS, has_more=True)
+                self.assertEqual(result["page"], [])
+        for result in pages[:-1]:
+            with self.subTest(kind="stored page", page_no=result["page_no"]):
+                self.assertFields(result, STORED_PAGE_FIELDS, has_more=True)
+        with self.subTest(kind="final page"):
+            self.assertFields(results[-1], STORED_PAGE_FIELDS, has_more=False)
+        with self.subTest(kind="final page of an initiating call"):
+            finished = mcp.execute("print('done at once')")
+            self.assertFields(finished, STORED_PAGE_FIELDS, has_more=False)
+        with self.subTest(kind="replayed page"):
+            again = mcp.get_page(token, 0)
+            self.assertFields(again, STORED_PAGE_FIELDS, has_more=True)
+
+        with tempfile.TemporaryDirectory() as folder:
+            unreadable = mcp.execute_file(os.path.join(folder, "missing.py"))
+        past_the_end = mcp.get_page(token, pages[-1]["page_no"] + 1)
+        unknown = mcp.get_page("0" * 32, 0)
+        errors = {
+            "unreadable file": unreadable,
+            "page_no out of range": past_the_end,
+            "unknown job_token": unknown,
+        }
+        for kind, result in errors.items():
+            with self.subTest(kind=f"error: {kind}"):
+                self.assertFields(result, ERROR_FIELDS, has_more=False)
+                self.assertEqual(result["page"], [])
+
+
+class PagePromiseTests(unittest.TestCase):
+    def test_has_more_true_is_always_followed_by_a_further_page_until_the_final_page(self):
+        """While the bridge runs, has_more true precedes at least one more fetchable page: the one numbered past the last, until the job's final page."""
+        with quiet_long_quiet_job_settings():
+            # follow() also checks this promise on every job it reads.
+            results = mcp.follow(mcp.execute(QUIET_LONG_QUIET_JOB))
+        # The job's shape: a quiet start, pages of output, a quiet end.
+        self.assertNotIn("page_no", results[0], "precondition: quiet start")
+        self.assertEqual(results[-1]["page"], [], "precondition: quiet end")
+
+        pages = stored_pages(results)
+        self.assertEqual(
+            [page["page_no"] for page in pages], list(range(len(pages)))
+        )
+        last_page_no = None
+        for at, result in enumerate(results):
+            last_page_no = result.get("page_no", last_page_no)
+            if not result["has_more"]:
+                continue
+            with self.subTest(after=at):
+                later = stored_pages(results[at + 1:])
+                expected = 0 if last_page_no is None else last_page_no + 1
+                self.assertTrue(later, "has_more true, but no further page")
+                self.assertEqual(later[0]["page_no"], expected)
+        self.assertFalse(results[-1]["has_more"])
+        self.assertIn("page_no", results[-1])
 
 
 class SharedHistoryTests(unittest.TestCase):
