@@ -2,9 +2,9 @@
 
 Each test name, and the first line of its docstring, states one requirement
 as an agent reading output through get_output_page experiences it, against a
-real bridge in a real FreeCAD. Tests that need a short response timeout or a
-small page size set the bridge's own preference through execute_python, and
-restore it afterwards.
+real bridge in a real FreeCAD. Tests that need a short response timeout, a
+small page size or no history retention set the bridge's own preference
+through execute_python, and restore it afterwards.
 """
 
 import math
@@ -135,6 +135,42 @@ class SharedHistoryTests(unittest.TestCase):
             x_text = mcp.text(mcp.follow(x))
         self.assertEqual(y_text, "y-only\n")
         self.assertEqual(x_text, "x-first\nx-last\n")
+
+
+# Zero minutes, below the preference page's minimum of one, so a history
+# it applies to expires at once instead of after a minute's wait.
+NO_RETENTION = 0
+# Outlasts a 1 s response timeout, so its final page comes from a later call.
+SLOW_JOB = "import time\nprint('first')\ntime.sleep(3)\nprint('last')\n"
+
+
+class RetentionTests(unittest.TestCase):
+    def assertExpired(self, final):
+        again = mcp.get_page(final["job_token"], final["page_no"])
+        self.assertEqual(again.get("error"), "unknown or expired job_token")
+
+    def assertKept(self, final):
+        again = mcp.get_page(final["job_token"], final["page_no"])
+        self.assertNotIn("error", again)
+        self.assertEqual(again["page"], final["page"])
+
+    def test_the_retention_in_effect_at_the_final_page_applies(self):
+        """The retention in effect when the final page returns applies."""
+        retention = "MaxHistoryRetentionMinutes"
+        with mcp.preference("MaxResponseTimeoutSeconds", 1):
+            # Started under the default retention, finished under none.
+            first = mcp.execute(SLOW_JOB)
+            self.assertTrue(first["has_more"])
+            with mcp.preference(retention, NO_RETENTION):
+                final = mcp.follow(first)[-1]
+                self.assertExpired(final)
+
+            # Started under none, finished under the default retention.
+            with mcp.preference(retention, NO_RETENTION):
+                first = mcp.execute(SLOW_JOB)
+                self.assertTrue(first["has_more"])
+            final = mcp.follow(first)[-1]
+            self.assertKept(final)
 
 
 if __name__ == "__main__":
