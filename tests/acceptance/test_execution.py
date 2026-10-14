@@ -13,6 +13,102 @@ import unittest
 
 from tests.acceptance import mcp_client as mcp
 
+# Prints a marker, then, still running, waits for FreeCAD's Report view to
+# show it, processing GUI events so the view can update.
+REPORT_VIEW_JOB = """
+import time
+import uuid
+from PySide.QtCore import QCoreApplication
+from PySide.QtWidgets import QDockWidget, QPlainTextEdit, QTextEdit
+
+
+def report_view_text():
+    dock = Gui.getMainWindow().findChild(QDockWidget, 'Report view')
+    if dock is None:
+        return ''
+    dock.show()
+    for kind in (QTextEdit, QPlainTextEdit):
+        for view in dock.findChildren(kind):
+            return view.toPlainText()
+    return ''
+
+
+marker = f'report-view-{uuid.uuid4().hex}'
+print(marker)
+seen = False
+deadline = time.monotonic() + 5
+while not seen and time.monotonic() < deadline:
+    QCoreApplication.processEvents()
+    seen = marker in report_view_text()
+    time.sleep(0.05)
+print('in the Report view while running:', seen)
+"""
+
+# Counts the paint events FreeCAD's widgets receive while the script asks
+# for a repaint and refreshes the GUI, as a long macro does, then carries on.
+REFRESHING_JOB = """
+import time
+from PySide.QtCore import QCoreApplication, QEvent, QObject
+
+
+class PaintCounter(QObject):
+    def __init__(self):
+        super().__init__()
+        self.count = 0
+
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.Paint:
+            self.count += 1
+        return False
+
+
+app = QCoreApplication.instance()
+counter = PaintCounter()
+app.installEventFilter(counter)
+try:
+    Gui.getMainWindow().update()
+    deadline = time.monotonic() + 5
+    while counter.count == 0 and time.monotonic() < deadline:
+        Gui.updateGui()
+        time.sleep(0.05)
+finally:
+    app.removeEventFilter(counter)
+print('repainted:', counter.count > 0)
+print('still running')
+"""
+
+
+def pumping_job(log):
+    """Job A: log its start, process GUI events until job B is in line
+    behind it and for a second more, as a script that keeps the GUI
+    responsive does, then log its end."""
+    return f"""
+import time
+from PySide.QtCore import QCoreApplication
+from freecad.mcp_bridge import bridge
+
+
+def log(line):
+    with open({log!r}, 'a') as f:
+        f.write(line + '\\n')
+
+
+def pump(seconds, until=lambda: False):
+    deadline = time.monotonic() + seconds
+    while not until() and time.monotonic() < deadline:
+        QCoreApplication.processEvents()
+        time.sleep(0.05)
+
+
+log('A start')
+# Precondition only: no public view of the job queue exists.
+line = bridge._server._executor._jobs
+pump(10, until=lambda: not line.empty())
+print('queued behind:', line.qsize())
+pump(1)
+log('A end')
+"""
+
 
 class ExecutionContextTests(unittest.TestCase):
     def test_code_can_use_app_and_gui_without_importing_them_and_create_a_document_object(self):
@@ -41,6 +137,20 @@ class ExecutionContextTests(unittest.TestCase):
         """A script's `if __name__ == "__main__":` block runs."""
         output = mcp.run('if __name__ == "__main__":\n    print("main block ran")\n')
         self.assertEqual(output, "main block ran\n")
+
+    def test_executed_code_is_not_sandboxed(self):
+        """Executed code is unsandboxed: it can import os and write a file."""
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "written.txt")
+            output = mcp.run(
+                "import os\n"
+                f"with open({path!r}, 'w') as handle:\n"
+                "    handle.write(str(os.getpid()))\n"
+                "print(os.getpid())\n"
+            )
+            with open(path, encoding="utf-8") as handle:
+                written = handle.read()
+        self.assertEqual(output, f"{written}\n")
 
 
 class ScriptFileTests(unittest.TestCase):
@@ -102,6 +212,14 @@ class OutputTests(unittest.TestCase):
         self.assertIn("Traceback", stderr)
         self.assertIn("ValueError: acceptance boom", stderr)
 
+    def test_output_also_appears_in_the_report_view_as_it_is_produced(self):
+        """Output also appears in FreeCAD's Report view as it is produced."""
+        output = mcp.run(REPORT_VIEW_JOB)
+        self.assertTrue(
+            output.endswith("in the Report view while running: True\n"),
+            output,
+        )
+
     def test_the_next_script_runs_after_one_that_raised(self):
         """After a script raises, the next script still runs."""
         mcp.run("raise RuntimeError('first fails')")
@@ -141,6 +259,40 @@ class OrderingTests(unittest.TestCase):
                 events = handle.read().splitlines()
         expected = [f"{what} {n}" for n in range(jobs) for what in ("start", "end")]
         self.assertEqual(events, expected)
+
+
+class GuiEventTests(unittest.TestCase):
+    def test_a_script_processing_gui_events_never_has_another_run_in_it(self):
+        """A later script never runs inside one that processes GUI events."""
+        with tempfile.TemporaryDirectory() as folder:
+            log = os.path.join(folder, "order.log")
+            outputs = {}
+
+            def submit(key, code):
+                outputs[key] = mcp.run(code)
+
+            pumping = threading.Thread(
+                target=submit, args=("a", pumping_job(log))
+            )
+            pumping.start()
+            time.sleep(1)
+            later = threading.Thread(
+                target=submit,
+                args=("b", f"open({log!r}, 'a').write('B\\n')"),
+            )
+            later.start()
+            pumping.join(timeout=60)
+            later.join(timeout=60)
+
+            with open(log, encoding="utf-8") as handle:
+                events = handle.read().splitlines()
+        self.assertIn("queued behind: 1", outputs["a"])
+        self.assertEqual(events, ["A start", "A end", "B"])
+
+    def test_a_script_that_refreshes_the_gui_lets_it_repaint(self):
+        """A script refreshing the GUI lets it repaint, and then continues."""
+        output = mcp.run(REFRESHING_JOB)
+        self.assertEqual(output, "repainted: True\nstill running\n")
 
 
 if __name__ == "__main__":
