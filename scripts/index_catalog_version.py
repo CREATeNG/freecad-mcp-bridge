@@ -33,7 +33,7 @@ def load_catalog(source: str) -> dict:
 
 
 def entry_version(catalog: dict, addon_id: str) -> tuple[str | None, dict]:
-    """Return the version the addon's first catalog entry states, and the entry."""
+    """Return the first catalog entry's version, and the entry."""
     entries = catalog.get(addon_id) or []
     if not entries:
         raise LookupError(f"No catalog entry for {addon_id!r}")
@@ -42,7 +42,10 @@ def entry_version(catalog: dict, addon_id: str) -> tuple[str | None, dict]:
     if isinstance(metadata, str):
         metadata = json.loads(metadata)
     package_xml = metadata.get("package_xml") or ""
-    return version_from_package_text(package_xml) if package_xml else None, entry
+    return (
+        version_from_package_text(package_xml) if package_xml else None,
+        entry,
+    )
 
 
 def main() -> int:
@@ -50,16 +53,31 @@ def main() -> int:
     source = sys.argv[2] if len(sys.argv) > 2 else CATALOG_URL
     try:
         version, entry = entry_version(load_catalog(source), addon_id)
-    except (OSError, KeyError, LookupError, ValueError, zipfile.BadZipFile) as exc:
-        print(f"Could not read {addon_id!r} from the catalog at {source}: {exc}", file=sys.stderr)
+    except (
+        OSError,
+        KeyError,
+        LookupError,
+        ValueError,
+        zipfile.BadZipFile,
+    ) as exc:
+        print(
+            f"Could not read {addon_id!r} from the catalog at {source}: "
+            f"{exc}",
+            file=sys.stderr,
+        )
         return 1
     print(
         f"Catalog entry for {addon_id}: git_ref={entry.get('git_ref')} "
-        f"last_update_time={entry.get('last_update_time')!r} version={version}",
+        f"last_update_time={entry.get('last_update_time')!r} "
+        f"version={version}",
         file=sys.stderr,
     )
     if not version:
-        print("The catalog entry states no version (no package.xml in its metadata)", file=sys.stderr)
+        print(
+            "The catalog entry states no version "
+            "(no package.xml in its metadata)",
+            file=sys.stderr,
+        )
         return 1
     print(version)
     return 0
