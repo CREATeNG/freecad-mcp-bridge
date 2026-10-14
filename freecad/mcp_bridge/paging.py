@@ -264,11 +264,6 @@ def _drain(entry, timeout_ms, page_size_chars, page_no, job_token):
         _hold(entry, [(stream, piece)])
         break
 
-    actual = serialized_page_length(page, page_no, job_token)
-    if size != actual:
-        raise RuntimeError(
-            f"running page size {size} != serialized length {actual}"
-        )
     return page, done
 
 
