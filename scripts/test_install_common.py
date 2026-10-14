@@ -383,6 +383,54 @@ def trigger_toolbar_toggle(log_message: str) -> None:
     QCoreApplication.processEvents()
 
 
+def check_bridge_off_at_startup() -> None:
+    """Fail unless the bridge is off at session start: not running, its
+    toolbar button not pressed, and nothing answering on its port."""
+    import socket
+
+    from freecad.mcp_bridge import bridge, config
+
+    action = find_toolbar_action()
+    if action is None:
+        fail(
+            'Toolbar action "MCP Bridge On/Off" not found after startup '
+            "(UI was not auto-injected)"
+        )
+    port = config.port()
+    try:
+        socket.create_connection(("127.0.0.1", port), timeout=5).close()
+    except OSError:
+        answered = False
+    else:
+        answered = True
+    if bridge.is_running() or action.isChecked() or answered:
+        fail(
+            "The bridge was on at session start, before any toolbar click "
+            f"(running={bridge.is_running()}, "
+            f"button pressed={action.isChecked()}, "
+            f"port {port} answered={answered})"
+        )
+    log_notice("Bridge off at session start, until the toolbar click")
+
+
+def check_listening_status() -> None:
+    """Fail unless the status bar shows the address and port the bridge
+    listens on."""
+    import FreeCADGui as Gui
+
+    from freecad.mcp_bridge import config
+
+    expected = f"MCP Bridge: Listening on 127.0.0.1:{config.port()}"
+    mw = Gui.getMainWindow()
+    status = mw.statusBar().currentMessage() if mw else ""
+    if expected not in status:
+        fail(
+            "Start toggle did not show the listening address in the status "
+            f"bar. Expected substring {expected!r}, got: {status!r}"
+        )
+    log_notice(f"Status bar shows {expected!r}")
+
+
 def start_bridge() -> None:
     """Start the HTTP server by triggering the real toolbar button."""
     from freecad.mcp_bridge import bridge

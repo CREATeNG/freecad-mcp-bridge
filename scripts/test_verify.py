@@ -235,7 +235,9 @@ def _run() -> None:
     )
 
     _verify_addon_startup()
+    common.check_bridge_off_at_startup()
     common.start_bridge()
+    common.check_listening_status()
     _verify_http_round_trip()
     _stop_bridge()
     common.log_notice("Verify passed")
