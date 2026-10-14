@@ -64,6 +64,10 @@ Addon Manager installs from the repository URL with `branch=main`. Used by the *
 
 Addon Manager installs from the repository URL with `branch` set to a named branch, as a user's custom repository does. The branch is the workflow's `branch` input (`install_branch` under `workflow_call`), or, when that is empty, the branch the run is on, so a branch can be installed and verified before anything from it is merged into `main`. With `branch` set to `release`, this is the README's custom-repository route. The branch must be pushed: Addon Manager fetches it from the repository, not from the run's checkout. `RELEASE_INSTALL_TAG` names the version the branch's `package.xml` is expected to hold.
 
+### `index`
+
+Addon Manager loads the live Addons Index catalog (`CreateAddonListWorker.get_remote_cache`, `AddonCatalog`), takes the `freecad-mcp-bridge` entry a clean install would, and installs it with default preferences, logging the entry, its ZIP URL and the Addon Manager's own console lines. The version is whatever the Index serves, checked against the version the catalog states; `RELEASE_INSTALL_TAG` is not checked, and the acceptance tests do not run.
+
 ---
 
 ## `release.yml` and install-verify

@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       install_mode:
-        description: RELEASE_INSTALL_MODE (tag, index_zip, main, or branch)
+        description: RELEASE_INSTALL_MODE (tag, index_zip, main, branch, or index)
         required: true
         type: string
       install_branch:
@@ -34,11 +34,11 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to install and verify
+        description: Release tag to install and verify (not checked in index mode)
         required: true
         default: v0.1.11
       mode:
-        description: Install mode (tag, index_zip, main, or branch)
+        description: Install mode (tag, index_zip, main, branch, or index)
         required: true
         default: tag
         type: choice
@@ -47,6 +47,7 @@ on:
           - index_zip
           - main
           - branch
+          - index
       branch:
         description: Branch to install in branch mode (empty for the branch this run is on)
         required: false
@@ -57,7 +58,7 @@ on:
         type: boolean
         default: false
       acceptance:
-        description: Run the acceptance tests against the installed bridge
+        description: Run the acceptance tests against the installed bridge (never in index mode)
         required: false
         type: boolean
         default: true
@@ -323,8 +324,9 @@ jobs:
 
       # FreeCAD serves the bridge in the background while the runner's own
       # Python runs the acceptance tests against it, as an MCP client would.
+      # Not in index mode: the Index serves a release older than these tests.
       - name: Acceptance tests against the installed bridge
-        if: inputs.acceptance
+        if: inputs.acceptance && env.RELEASE_INSTALL_MODE != 'index'
         shell: bash
         env:
           ISOLATE_HOME: ${{ matrix.isolate_home }}
