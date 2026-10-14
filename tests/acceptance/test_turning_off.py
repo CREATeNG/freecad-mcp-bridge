@@ -4,8 +4,9 @@ Each test name, and the first line of its docstring, states one requirement
 as a user and an agent experience it, against a real bridge in a real
 FreeCAD. The user's click on the toolbar toggle is made through the bridge
 itself (execute_python), the one route a client has into FreeCAD's GUI; the
-bridge is turned back on before the test ends. This module sorts last, so a
-failure to turn it back on cannot fail the other modules' tests.
+bridge is turned back on before the test ends. This module and
+test_turning_on sort last, so a failure to turn it back on can fail only
+their tests.
 """
 
 import os
