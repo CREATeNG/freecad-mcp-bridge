@@ -33,6 +33,7 @@ Shared helpers live in `scripts/test_install_common.py`.
 |---------|------------|-------------|
 | `workflow_call` from **`release.yml`** | `install_mode: main` or `tag`; `install_tag` from prepare; `acceptance: true` | Pre-tag gate (`main`) and post-tag sanity check (`tag` path) |
 | `workflow_call` from **`acceptance-main.yml`**, on every push to `main` | `install_mode: main`; `install_tag` from the pushed `package.xml`; `acceptance: true` | Acceptance tests on each change to `main` |
+| `workflow_call` from **`acceptance-pr.yml`**, on every pull request into `main` (opened, synchronize, reopened) | `install_mode: branch`; `install_branch` the PR's head branch; `install_tag` from the PR head's `package.xml`; `acceptance: true`; `coverage: true` | Acceptance tests on a change before it merges into `main`; skipped, with a notice, for PRs from forks |
 | `workflow_dispatch` | Inputs: `tag` (e.g. `v0.1.15`), `mode` (`tag`, `index_zip`, `main`, or `branch`), `branch` (branch mode only) | Ad-hoc CI run; iterate on scripts; prove a branch before it merges into `main` |
 
 Environment variables set by the workflow (overridable locally when debugging) fall into three groups. Exact names and defaults live in [`install-verify.yml`](.github/workflows/install-verify.yml) and each script's own module docstring (`test_install.py`, `test_verify.py`) — not repeated here to avoid the two copies drifting apart:
@@ -40,6 +41,20 @@ Environment variables set by the workflow (overridable locally when debugging) f
 - **Install source** — which tag/repo/mode/Mod-folder-name to install.
 - **Timing** — how long to wait for GUI startup, toolbar injection, the HTTP exec round-trip, and overall install completion.
 - **Expected strings** (verify phase only) — the probe code sent over HTTP, the expected output substring, and the expected Report-view message after stopping the bridge.
+
+### Required checks for pull requests
+
+Every change to `main` goes through a pull request. Require exactly these checks in the ruleset for `main`, and no others:
+
+| Check | Workflow |
+|-------|----------|
+| `Unit (Python)` | [`tests.yml`](.github/workflows/tests.yml) |
+| `Shim (Node)` | [`tests.yml`](.github/workflows/tests.yml) |
+| `Acceptance (PR) / Verify - linux` | [`acceptance-pr.yml`](.github/workflows/acceptance-pr.yml) calling `install-verify.yml` |
+| `Acceptance (PR) / Verify - windows` | [`acceptance-pr.yml`](.github/workflows/acceptance-pr.yml) calling `install-verify.yml` |
+| `Acceptance (PR) / Verify - macos` | [`acceptance-pr.yml`](.github/workflows/acceptance-pr.yml) calling `install-verify.yml` |
+
+Branch mode installs from this repository's URL, so the acceptance checks never report for a PR from a fork; push its branch to this repository to run them.
 
 ---
 
@@ -207,6 +222,7 @@ bash scripts/publish_ci_log.sh /tmp/freecad-ci-verify.log "Verify addon after re
 |------|------|
 | `.github/workflows/install-verify.yml` | Pre-tag and tag-path checks (`workflow_call` from `release.yml`), or `workflow_dispatch` |
 | `.github/workflows/acceptance-main.yml` | Install verify with acceptance on each push to `main` |
+| `.github/workflows/acceptance-pr.yml` | Install verify with acceptance on each pull request into `main`, from the PR's branch |
 | `scripts/ci_run_freecad.sh` | FreeCAD launcher + timeout + log path |
 | `scripts/publish_ci_log.sh` | Log file → GitHub annotations |
 | `scripts/test_install.py` | Addon Manager install phase |
