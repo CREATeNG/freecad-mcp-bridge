@@ -213,6 +213,8 @@ class HttpServer:
             self._httpd.server_close()
             self._httpd = None
         self._thread = None
+        if self._executor is not None:
+            self._executor.shutdown()
         self._executor = None
         paging.clear_all()
         FreeCAD.Console.PrintMessage(f"{LOG_PREFIX} HTTP server stopped\n")

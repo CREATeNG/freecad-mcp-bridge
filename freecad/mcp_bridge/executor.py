@@ -7,6 +7,8 @@ thread and drains the queue one job at a time, each job running to
 completion before the next is taken. A busy latch makes nested dispatcher
 invocations no-ops — executed code that pumps the Qt event loop would
 otherwise have the next queued exec delivered nested inside the current one.
+Stopping the bridge shuts the executor down: jobs still in the queue are
+dropped and never run; a job already running finishes.
 Output is teed to the page-buffer queue and FreeCAD's Report View as it is
 produced.
 """
@@ -45,10 +47,13 @@ class Executor(QObject):
         super().__init__()
         self._jobs = queue.Queue()  # (code, output_queue, filepath), FIFO
         self._busy = False  # main-thread only: True while a job is running
+        self._stopped = False  # set by shutdown(); no further job is taken
         self.wake_up.connect(self._dispatch, Qt.QueuedConnection)
 
     def submit(self, code, output_queue, filepath=None):
         """Queue the job and wake the dispatcher. Called from a request thread."""
+        if self._stopped:
+            return
         self._jobs.put((code, output_queue, filepath))
         self.wake_up.emit()
 
@@ -65,7 +70,7 @@ class Executor(QObject):
             return
         self._busy = True
         try:
-            while True:
+            while not self._stopped:
                 try:
                     code, output_queue, filepath = self._jobs.get_nowait()
                 except queue.Empty:
@@ -73,6 +78,19 @@ class Executor(QObject):
                 self._run(code, output_queue, filepath)
         finally:
             self._busy = False
+
+    def shutdown(self):
+        """Take no further job, and drop those still queued; they never run.
+
+        A job already running finishes. Called on the main thread when the
+        bridge stops.
+        """
+        self._stopped = True
+        while True:
+            try:
+                self._jobs.get_nowait()
+            except queue.Empty:
+                break
 
     def _run(self, code, output_queue, filepath=None):
         """Run one job to completion: exec, traceback on error, sentinel."""
