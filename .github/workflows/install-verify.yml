@@ -402,10 +402,19 @@ jobs:
               to_summary(f"**{msg}**")
               sys.exit(0)
 
+          # Report against the installed copy, the code that actually ran:
+          # the checkout can differ from what main or tag mode installed.
+          # The checkout is the fallback if no installed copy is on disk.
+          on_disk = [p for p in sorted(installed) if os.path.isdir(p)]
+          canonical = on_disk[0] if on_disk else f"{repo_pkg}{os.sep}"
+          print(f"Reporting against: {canonical}")
+          others = [p for p in sorted(installed) if p != canonical]
+          if canonical != f"{repo_pkg}{os.sep}":
+              others.append(f"{repo_pkg}{os.sep}")
           rc = os.path.join(os.environ["RUNNER_TEMP"], "coverage-report.rc")
           lines = ["[run]", f"data_file = {os.path.join(data_dir, '.coverage')}"]
-          lines += ["[paths]", "source =", f"    {repo_pkg}{os.sep}"]
-          lines += [f"    {prefix}" for prefix in sorted(installed)]
+          lines += ["[paths]", "source =", f"    {canonical}"]
+          lines += [f"    {prefix}" for prefix in others]
           with open(rc, "w", encoding="utf-8") as handle:
               handle.write("\n".join(lines) + "\n")
           print(open(rc, encoding="utf-8").read())
