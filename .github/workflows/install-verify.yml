@@ -348,7 +348,9 @@ jobs:
             echo "::error title=Acceptance tests::FreeCAD did not report the bridge ready"
           fi
 
-          touch "${ACCEPTANCE_STOP_FILE}"
+          # A redirection, not touch: it needs no fork, which can fail
+          # when the runner is short of memory.
+          : > "${ACCEPTANCE_STOP_FILE}"
           freecad_exit=0
           wait "${freecad_pid}" || freecad_exit=$?
           if [[ "${tests_exit}" -ne 0 ]]; then
