@@ -19,6 +19,7 @@ then swept.
 This module must be able to run outside FreeCAD.
 """
 
+import json
 import queue
 import threading
 import time
@@ -42,10 +43,10 @@ def start_page():
         _BUFFER[token] = {
             "queue": output_queue,
             "lock": threading.Lock(),
-            # (stream, text, offset) for a chunk that didn't fully fit in a
-            # page — checked before pulling a new item, so a chunk can be
-            # split across pages without re-copying its untaken remainder.
-            "pending": None,
+            # Writes held for the next page, oldest first. A cut at a
+            # newline can hold several, so a line built from many writes
+            # stays together.
+            "pending": [],
             "history": [],  # stored page snapshots, indexed by page_no
             "complete": False,
             "expire_at": None,  # monotonic deadline, set once complete
@@ -116,32 +117,56 @@ def fetch(token, page_no, timeout_ms, page_size_chars, retention_ms):
         }
 
 
-def _append_text(page, stream, text):
-    """Join `text` onto the last entry when it is the same stream."""
+def _json_text_len(text):
+    """Characters `text` adds inside a JSON string."""
+    return len(json.dumps(text)) - 2
+
+
+def _addition_cost(page, stream, text):
+    """Characters one write adds to the serialized tool result."""
+    if page and page[-1]["stream"] == stream:
+        return _json_text_len(text)
+    obj = len(json.dumps({"stream": stream, "text": text}))
+    if page:
+        return obj + 2
+    return obj
+
+
+def measured_page_length(page, page_no, job_token):
+    """Serialized length of `page`, summed one entry at a time.
+
+    Equals ``serialized_page_length`` for the same page.
+    """
+    size = serialized_page_length([], page_no, job_token)
+    built = []
+    for item in page:
+        size += _addition_cost(built, item["stream"], item["text"])
+        built.append({"stream": item["stream"], "text": item["text"]})
+    return size
+
+
+def _commit(page, stream, text, size):
+    """Append `text` and return the new serialized length."""
+    size += _addition_cost(page, stream, text)
     if page and page[-1]["stream"] == stream:
         page[-1]["text"] += text
     else:
         page.append({"stream": stream, "text": text})
+    return size
 
 
-def _longest_prefix(page, stream, text, page_no, job_token, cap):
-    """How many leading characters of `text` keep the page within `cap`.
-
-    `page` is not modified. Zero means even one character does not fit.
-    """
+def _prefix_that_fits(page, stream, text, size, cap):
+    """How many leading characters of `text` stay within `cap`."""
     if not text:
         return 0
-    trial = [dict(item) for item in page]
-    _append_text(trial, stream, text)
-    if serialized_page_length(trial, page_no, job_token) <= cap:
+    if size + _addition_cost(page, stream, text) <= cap:
         return len(text)
     lo, hi = 1, len(text)
     best = 0
     while lo <= hi:
         mid = (lo + hi) // 2
-        trial = [dict(item) for item in page]
-        _append_text(trial, stream, text[:mid])
-        if serialized_page_length(trial, page_no, job_token) <= cap:
+        cost = _addition_cost(page, stream, text[:mid])
+        if size + cost <= cap:
             best = mid
             lo = mid + 1
         else:
@@ -149,22 +174,46 @@ def _longest_prefix(page, stream, text, page_no, job_token, cap):
     return best
 
 
+def _cut_at_last_newline(page):
+    """End `page` at its last newline. Return the text that followed it."""
+    for index in range(len(page) - 1, -1, -1):
+        newline = page[index]["text"].rfind("\n")
+        if newline == -1:
+            continue
+        carried = []
+        tail = page[index]["text"][newline + 1:]
+        page[index]["text"] = page[index]["text"][: newline + 1]
+        if tail:
+            carried.append((page[index]["stream"], tail))
+        for later in page[index + 1:]:
+            carried.append((later["stream"], later["text"]))
+        del page[index + 1:]
+        return carried
+    return None
+
+
+def _hold(entry, pieces):
+    """Put `pieces` back, in front of anything already waiting."""
+    entry["pending"] = pieces + entry["pending"]
+
+
 def _drain(entry, timeout_ms, page_size_chars, page_no, job_token):
     """Fill one page from the entry's queue.
 
     The page closes at `page_size_chars` of serialized tool result, at
-    `timeout_ms`, or at the sentinel. Returns (page, done); done means
-    the sentinel was seen.
+    `timeout_ms`, or at the sentinel. A write that would pass the cap
+    ends the page at the newline already on it. Returns (page, done);
+    done means the sentinel was seen.
     """
     deadline = time.monotonic() + max(0.0, timeout_ms / 1000.0)
     output_queue = entry["queue"]
     page = []
     done = False
+    size = serialized_page_length([], page_no, job_token)
 
     while True:
-        if entry["pending"] is not None:
-            stream, text, offset = entry["pending"]
-            entry["pending"] = None
+        if entry["pending"]:
+            stream, piece = entry["pending"].pop(0)
         else:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -176,40 +225,50 @@ def _drain(entry, timeout_ms, page_size_chars, page_no, job_token):
             if item is SENTINEL:
                 done = True
                 break
-            stream, text = item
-            offset = 0
+            stream, piece = item
 
-        piece = text[offset:]
         if not piece:
             continue
-        fit = _longest_prefix(
-            page, stream, piece, page_no, job_token, page_size_chars
+        fit = _prefix_that_fits(
+            page, stream, piece, size, page_size_chars
         )
         if fit == len(piece):
-            _append_text(page, stream, piece)
+            size = _commit(page, stream, piece, size)
             continue
         if fit > 0:
             newline = piece[:fit].rfind("\n")
             if newline != -1:
                 take = newline + 1
-                _append_text(page, stream, piece[:take])
-                entry["pending"] = (stream, text, offset + take)
+                size = _commit(page, stream, piece[:take], size)
+                if piece[take:]:
+                    _hold(entry, [(stream, piece[take:])])
                 break
-            if not page:
-                _append_text(page, stream, piece[:fit])
-                entry["pending"] = (stream, text, offset + fit)
-                break
-        elif not page:
+        carried = _cut_at_last_newline(page)
+        if carried is not None:
+            _hold(entry, carried + [(stream, piece)])
+            size = serialized_page_length(page, page_no, job_token)
+            break
+        if fit > 0:
+            size = _commit(page, stream, piece[:fit], size)
+            if piece[fit:]:
+                _hold(entry, [(stream, piece[fit:])])
+            break
+        if not page:
             # The cap cannot hold the result's fixed JSON plus one
             # character. Take one so this drain cannot sit still.
-            _append_text(page, stream, piece[:1])
-            if len(piece) == 1:
-                continue
-            entry["pending"] = (stream, text, offset + 1)
-            break
-        entry["pending"] = (stream, text, offset)
+            size = _commit(page, stream, piece[:1], size)
+            if len(piece) > 1:
+                _hold(entry, [(stream, piece[1:])])
+                break
+            continue
+        _hold(entry, [(stream, piece)])
         break
 
+    actual = serialized_page_length(page, page_no, job_token)
+    if size != actual:
+        raise RuntimeError(
+            f"running page size {size} != serialized length {actual}"
+        )
     return page, done
 
 

@@ -92,11 +92,12 @@ the job has no more output to deliver. Both bounds apply to `execute_python`,
   is the number the page will carry. A newline counts as two
   characters, a backslash and an `n`. A fast job could otherwise
   return a page the client cannot read. The drain fills a page until
-  the next addition would pass the cap. Where a newline fits in the
-  room left, the page ends on that newline. A chunk with no newline
-  in that room waits, whole, for a fresh page. A line longer than the
-  cap is split only on an empty page, and the remainder continues
-  under the same stream. No output is dropped.
+  the next addition would pass the cap. A write that would pass the
+  cap ends the page at the last newline already on it, and the text
+  after that newline goes to the next page with the write. A line
+  longer than the cap, on a page that has no newline, is split, and
+  the remainder continues under the same stream. No output is
+  dropped.
 
 **Paging**
 

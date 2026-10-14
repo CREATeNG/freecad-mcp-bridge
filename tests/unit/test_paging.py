@@ -88,7 +88,9 @@ class PageBoundsTests(unittest.TestCase):
         started = time.monotonic()
         result = fetch(token, 0, wait_ms=LONG_WAIT_MS, page_size=135)
         self.assertLess(time.monotonic() - started, 1.0)
-        self.assertEqual(result["page"], [{"stream": "stdout", "text": "a" * 6}])
+        text = result["page"][0]["text"]
+        self.assertTrue(text.startswith("a" * 6))
+        self.assertLess(len(text), 12)
         self.assertLessEqual(wire_length(result), 135)
         self.assertTrue(result["has_more"])
 
@@ -151,6 +153,53 @@ class PageBoundsTests(unittest.TestCase):
             ],
         )
         self.assertEqual(fetch(token, 0), result)
+
+    def test_the_running_page_size_equals_the_serialized_tool_result(self):
+        """The running page size equals json.dumps of the tool result."""
+        page = [
+            {"stream": "stdout", "text": 'say "hi"\\\n'},
+            {"stream": "stderr", "text": "é"},
+        ]
+        token = "a" * 32
+        self.assertEqual(
+            paging.measured_page_length(page, 10, token),
+            serialized_page_length(page, 10, token),
+        )
+        self.assertEqual(
+            paging.measured_page_length([], 0, token),
+            serialized_page_length([], 0, token),
+        )
+
+    def test_a_line_written_in_several_pieces_is_not_split(self):
+        """A line written as several pieces stays whole when the page has a newline."""
+        cap = 200
+        chunks = []
+        for i in range(12):
+            chunks.extend(
+                (
+                    ("stdout", f"line {i}"),
+                    ("stdout", " "),
+                    ("stdout", "x" * 10),
+                    ("stdout", "\n"),
+                )
+            )
+        token, _ = new_job(*chunks, finished=True)
+        pages = read_all(token, page_size=cap)
+        self.assertGreater(len(pages), 1)
+        joined = []
+        for result in pages:
+            self.assertLessEqual(wire_length(result), cap)
+            self.assertEqual(
+                paging.measured_page_length(
+                    result["page"], result["page_no"], result["job_token"]
+                ),
+                wire_length(result),
+            )
+            text = "".join(chunk["text"] for chunk in result["page"])
+            joined.append(text)
+            if result["has_more"]:
+                self.assertTrue(text.endswith("\n"), text[-20:])
+        self.assertEqual("".join(joined), "".join(text for _, text in chunks))
 
     def test_a_long_line_waits_for_a_fresh_page_when_this_one_has_output(self):
         """A page that already has output leaves a line with no fitting newline for the next page."""
