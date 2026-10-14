@@ -5,6 +5,8 @@ as an MCP client experiences it, against a real bridge in a real FreeCAD.
 """
 
 import json
+import os
+import tempfile
 import unittest
 
 from tests.acceptance import mcp_client as mcp
@@ -57,6 +59,26 @@ class ConnectingTests(unittest.TestCase):
         reply = mcp.post({"jsonrpc": "2.0", "method": "notifications/initialized"})
         self.assertEqual(reply.status, 202)
         self.assertEqual(reply.body, b"")
+
+    def test_a_tool_call_with_no_id_gets_202_and_its_code_never_runs(self):
+        """A tool call with no id is a notification: it gets HTTP 202 with an empty body, and its code never runs."""
+        with tempfile.TemporaryDirectory() as folder:
+            marker = os.path.join(folder, "ran")
+            message = mcp.request(
+                "tools/call",
+                {
+                    "name": "execute_python",
+                    "arguments": {"code": f"open({marker!r}, 'w').close()"},
+                },
+            )
+            del message["id"]
+            reply = mcp.post(message)
+            self.assertEqual(reply.status, 202)
+            self.assertEqual(reply.body, b"")
+            # Jobs run in submission order, so had it been queued, it would
+            # have run before this one finishes.
+            self.assertEqual(mcp.run("print('after')"), "after\n")
+            self.assertFalse(os.path.exists(marker))
 
     def test_requests_need_no_session_and_the_server_issues_no_session_id(self):
         """Requests need no session: the server issues no Mcp-Session-Id, and every request works without one."""
