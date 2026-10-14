@@ -4,9 +4,14 @@ on:
   workflow_call:
     inputs:
       install_mode:
-        description: RELEASE_INSTALL_MODE (tag, index_zip, main, or release)
+        description: RELEASE_INSTALL_MODE (tag, index_zip, main, branch, or index)
         required: true
         type: string
+      install_branch:
+        description: Branch to install in branch mode (default the caller's branch)
+        required: false
+        type: string
+        default: ""
       install_tag:
         description: Expected release tag (e.g. v0.1.12) for package.xml version checks
         required: true
@@ -29,11 +34,11 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag to install and verify
+        description: Release tag to install and verify (not checked in index mode)
         required: true
         default: v0.1.11
       mode:
-        description: Install mode (tag, index_zip, main, or release)
+        description: Install mode (tag, index_zip, main, branch, or index)
         required: true
         default: tag
         type: choice
@@ -41,14 +46,19 @@ on:
           - tag
           - index_zip
           - main
-          - release
+          - branch
+          - index
+      branch:
+        description: Branch to install in branch mode (empty for the branch this run is on)
+        required: false
+        default: ""
       coverage:
         description: Measure addon line coverage during the FreeCAD runs (trial)
         required: false
         type: boolean
         default: false
       acceptance:
-        description: Run the acceptance tests against the installed bridge
+        description: Run the acceptance tests against the installed bridge (never in index mode)
         required: false
         type: boolean
         default: true
@@ -64,6 +74,7 @@ jobs:
     env:
       RELEASE_INSTALL_TAG: ${{ inputs.install_tag || github.event.inputs.tag || github.ref_name }}
       RELEASE_INSTALL_MODE: ${{ inputs.install_mode || github.event.inputs.mode || 'tag' }}
+      RELEASE_INSTALL_BRANCH: ${{ inputs.install_branch || github.event.inputs.branch || github.ref_name }}
       RELEASE_INSTALL_REPO: https://github.com/CREATeNG/freecad-mcp-bridge
       RELEASE_INSTALL_NAME: freecad-mcp-bridge
       RELEASE_INSTALL_GUI_DELAY_MS: "5000"
@@ -313,8 +324,9 @@ jobs:
 
       # FreeCAD serves the bridge in the background while the runner's own
       # Python runs the acceptance tests against it, as an MCP client would.
+      # Not in index mode: the Index serves a release older than these tests.
       - name: Acceptance tests against the installed bridge
-        if: inputs.acceptance
+        if: inputs.acceptance && env.RELEASE_INSTALL_MODE != 'index'
         shell: bash
         env:
           ISOLATE_HOME: ${{ matrix.isolate_home }}
@@ -348,7 +360,9 @@ jobs:
             echo "::error title=Acceptance tests::FreeCAD did not report the bridge ready"
           fi
 
-          touch "${ACCEPTANCE_STOP_FILE}"
+          # A redirection, not touch: it needs no fork, which can fail
+          # when the runner is short of memory.
+          : > "${ACCEPTANCE_STOP_FILE}"
           freecad_exit=0
           wait "${freecad_pid}" || freecad_exit=$?
           if [[ "${tests_exit}" -ne 0 ]]; then

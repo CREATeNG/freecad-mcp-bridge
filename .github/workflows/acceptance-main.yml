@@ -1,0 +1,38 @@
+name: Acceptance on main
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Read the pushed version
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Checkout the pushed commit
+        uses: actions/checkout@v7
+
+      - name: Resolve version from package.xml
+        id: version
+        run: |
+          VERSION=$(sed -n 's/.*<version>\([^<]*\)<\/version>.*/\1/p' package.xml | head -1)
+          if [ -z "$VERSION" ]; then
+            echo "Could not read <version> from package.xml"
+            exit 1
+          fi
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Pushed version: $VERSION (expected tag v$VERSION)"
+
+  install_verify:
+    name: Install verify (main)
+    needs: version
+    uses: ./.github/workflows/install-verify.yml
+    with:
+      install_mode: main
+      install_tag: ${{ needs.version.outputs.tag }}
+      acceptance: true

@@ -62,16 +62,18 @@ def restart_on(port):
 def start_on_occupied(port, restore_to, seen_file):
     """Code that, once the job has returned, turns the bridge off, saves
     `port` and turns it on, records what the user is shown, then puts the
-    Port preference back to `restore_to` and turns the bridge on again."""
+    Port preference back to `restore_to`, the Report view back as it was,
+    and turns the bridge on again."""
     return PREFERENCES + f"""
 import json
 from PySide.QtWidgets import QDockWidget, QPlainTextEdit, QTextEdit
 
 seen = {{}}
+dock = Gui.getMainWindow().findChild(QDockWidget, 'Report view')
+was_visible = dock is not None and dock.isVisible()
 
 
 def report_view_text():
-    dock = Gui.getMainWindow().findChild(QDockWidget, 'Report view')
     if dock is None:
         return ''
     dock.show()
@@ -91,6 +93,8 @@ def turn_on_at_the_occupied_port():
 
 def record_and_restore():
     seen['report'] = report_view_text()[seen.pop('report_before'):]
+    if dock is not None and not was_visible:
+        dock.hide()
     set_port({restore_to})
     if bridge.is_running():
         action.trigger()

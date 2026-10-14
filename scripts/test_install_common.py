@@ -157,6 +157,15 @@ def _version_from_package_root(root: ET.Element) -> str | None:
     return None
 
 
+def version_from_package_text(text: str) -> str | None:
+    """Return the version a package.xml's text names, or None."""
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        return None
+    return _version_from_package_root(root)
+
+
 def _package_version(package_xml: str) -> str | None:
     try:
         root = ET.parse(package_xml).getroot()
@@ -165,8 +174,13 @@ def _package_version(package_xml: str) -> str | None:
     return _version_from_package_root(root)
 
 
-def find_install_dir(addon_name: str, expected_version: str) -> str | None:
-    """Locate the installed addon, including nested GitHub zip layouts."""
+def find_install_dir(
+    addon_name: str, expected_version: str | None
+) -> str | None:
+    """Locate the installed addon, including nested GitHub zip layouts.
+
+    An expected_version of None accepts whatever version is installed.
+    """
     mod_root = mod_dir()
     if not os.path.isdir(mod_root):
         return None
@@ -192,13 +206,14 @@ def find_install_dir(addon_name: str, expected_version: str) -> str | None:
         package_xml = os.path.join(candidate, "package.xml")
         if not os.path.isfile(package_xml):
             continue
-        if _package_version(package_xml) == expected_version:
+        version = _package_version(package_xml)
+        if expected_version is None or version == expected_version:
             return candidate
     return None
 
 
 def wait_for_install_dir(
-    addon_name: str, expected_version: str, timeout_ms: int = 120000
+    addon_name: str, expected_version: str | None, timeout_ms: int = 120000
 ) -> str:
     from PySide.QtCore import QCoreApplication, QThread
 
@@ -276,6 +291,9 @@ def flatten_install_dir(resolved_dir: str) -> str:
 def installed_addon_dir() -> str:
     addon_name = env("RELEASE_INSTALL_NAME", "freecad-mcp-bridge")
     expected_version = version_from_tag(env("RELEASE_INSTALL_TAG", "v0.1.11"))
+    if env("RELEASE_INSTALL_MODE", "tag").lower() == "index":
+        # The Index decides the version; the install phase checked it.
+        expected_version = None
     found = find_install_dir(addon_name, expected_version)
     if found is not None:
         return flatten_install_dir(found)
@@ -292,7 +310,10 @@ def addon_manager_paths() -> list[str]:
     return [path for path in candidates if os.path.isdir(path)]
 
 
-def verify_install_tree(install_dir: str, expected_version: str) -> None:
+def verify_install_tree(
+    install_dir: str, expected_version: str | None
+) -> None:
+    """Check the installed tree; an expected_version of None accepts any."""
     required = [
         "package.xml",
         os.path.join("freecad", "mcp_bridge", "__init__.py"),
@@ -313,14 +334,14 @@ def verify_install_tree(install_dir: str, expected_version: str) -> None:
     found_version = _version_from_package_root(root)
     if found_version is None:
         fail("package.xml is missing <version>")
-    if found_version != expected_version:
+    if expected_version is not None and found_version != expected_version:
         fail(f"Expected version {expected_version}, found {found_version}")
 
-    log_notice(f"Install tree OK at {install_dir} (version {expected_version})")
+    log_notice(f"Install tree OK at {install_dir} (version {found_version})")
 
 
 def build_addon_descriptor(
-    addon_name: str, repo_url: str, tag: str, mode: str
+    addon_name: str, repo_url: str, tag: str, mode: str, branch: str = ""
 ) -> tuple[str, str]:
     if mode == "index_zip":
         # What the Index serves: the release branch's archive. The tag only
@@ -331,10 +352,13 @@ def build_addon_descriptor(
         return repo_url.rstrip("/"), tag
     if mode == "main":
         return repo_url.rstrip("/"), "main"
-    if mode == "release":
-        # The README's custom-repository route: the repository URL with
-        # branch `release`. The tag names the version it should hold.
-        return repo_url.rstrip("/"), "release"
+    if mode == "branch":
+        # A user's custom-repository route: the repository URL with a
+        # branch named, `release` in the README's case. The tag names the
+        # version the branch should hold.
+        if not branch:
+            fail("RELEASE_INSTALL_MODE=branch needs RELEASE_INSTALL_BRANCH")
+        return repo_url.rstrip("/"), branch
     fail(f"Unsupported RELEASE_INSTALL_MODE: {mode}")
     return "", ""
 

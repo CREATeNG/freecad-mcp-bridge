@@ -78,6 +78,7 @@ jobs:
       install_mode: main
       install_tag: ${{ needs.prepare.outputs.tag }}
       fail_fast: true
+      acceptance: true
 
   publish:
     name: Tag and publish release notes
@@ -114,6 +115,7 @@ jobs:
       install_mode: tag
       install_tag: ${{ needs.prepare.outputs.tag }}
       fail_fast: true
+      acceptance: true
 
   promote:
     name: Move the release branch to the verified commit
