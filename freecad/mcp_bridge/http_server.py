@@ -57,17 +57,18 @@ class McpRequestHandler(BaseHTTPRequestHandler):
             self._send_json(400, _parse_error())
             return
 
+        if mcp_protocol.is_notification(request):
+            # JSON-RPC never replies to a notification. MCP defines no
+            # notification that asks for work, so nothing runs either.
+            self.send_response(202)
+            self.end_headers()
+            return
+
         if request.get("method") == "tools/call":
             self._handle_tool_call(request)
             return
 
-        response = mcp_protocol.handle_request(request)
-        if response is None:
-            # Notification — acknowledge with no body.
-            self.send_response(202)
-            self.end_headers()
-            return
-        self._send_json(200, response)
+        self._send_json(200, mcp_protocol.handle_request(request))
 
     def _handle_tool_call(self, request):
         req_id = request.get("id")

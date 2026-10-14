@@ -15,22 +15,27 @@ from freecad.mcp_bridge.tools import TOOL_DEFINITIONS
 METHOD_NOT_FOUND = -32601
 
 
-def handle_request(request: dict):
-    """Return a JSON-RPC response dict, or None for a notification.
+def is_notification(request) -> bool:
+    """A JSON-RPC message with no `id` member is a notification.
 
-    `request` is the already-parsed JSON-RPC object.
+    It gets no reply.
+    """
+    return isinstance(request, dict) and "id" not in request
+
+
+def handle_request(request: dict) -> dict:
+    """Return the JSON-RPC response dict for a request (not a notification).
+
+    `request` is the already-parsed JSON-RPC object. Callers check
+    is_notification first, so a notification never reaches here.
     """
     method = request.get("method")
-    is_notification = "id" not in request
     req_id = request.get("id")
 
     if method == "initialize":
         return _result(req_id, _initialize_result())
     if method == "tools/list":
         return _result(req_id, {"tools": TOOL_DEFINITIONS})
-    if is_notification:
-        # Notifications (e.g. notifications/initialized) get no response.
-        return None
     return _error(req_id, METHOD_NOT_FOUND, f"Method not found: {method}")
 
 
