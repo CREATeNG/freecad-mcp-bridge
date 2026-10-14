@@ -86,7 +86,7 @@
       <item row="2" column="1">
        <widget class="Gui::PrefSpinBox" name="pageSizeSpinBox">
         <property name="toolTip">
-         <string>The maximum size of a single page of output, in units of 1,024 characters (64 means 65,536). Larger output is split across multiple pages, fetched automatically via get_output_page.</string>
+         <string>The maximum size of one page as the agent reads it, in units of 1,024 characters (32 means 32,768). The count is the JSON of the tool result, so a newline counts as a backslash and an n. Larger output is split across pages, fetched with get_output_page.</string>
         </property>
         <property name="suffix">
          <string> K characters</string>
@@ -101,7 +101,7 @@
          <number>1</number>
         </property>
         <property name="value">
-         <number>64</number>
+         <number>32</number>
         </property>
         <property name="prefEntry" stdset="0">
          <cstring>MaxPageSize</cstring>
@@ -177,7 +177,7 @@
    <item>
     <widget class="QGroupBox" name="helpGroup">
      <property name="title">
-      <string>Help &amp; feedback</string>
+      <string>Help &amp;&amp; feedback</string>
      </property>
      <layout class="QVBoxLayout" name="helpLayout">
       <item>

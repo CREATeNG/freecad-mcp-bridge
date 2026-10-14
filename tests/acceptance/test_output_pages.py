@@ -14,6 +14,7 @@ import time
 import unittest
 from contextlib import contextmanager
 
+from freecad.mcp_bridge.mcp_protocol import serialized_page_length
 from tests.acceptance import mcp_client as mcp
 
 SMALL_PAGE_KB = 1  # the smallest page size cap the preference allows
@@ -52,8 +53,10 @@ def stored_pages(results):
     return [result for result in results if "page_no" in result]
 
 
-def chars(result):
-    return sum(len(chunk["text"]) for chunk in result["page"])
+def wire_length(result):
+    return serialized_page_length(
+        result["page"], result["page_no"], result["job_token"]
+    )
 
 
 class SlowJobTests(unittest.TestCase):
@@ -75,13 +78,13 @@ class SlowJobTests(unittest.TestCase):
 
 class PageSizeTests(unittest.TestCase):
     def test_output_larger_than_the_page_size_cap_is_split_across_pages_without_loss(self):
-        """Output larger than the page size cap is split across pages of no more than the cap's characters, with no text lost or duplicated."""
+        """Output larger than the page size cap is split across pages whose JSON tool result stays within the cap, with no text lost or duplicated."""
         with mcp.preference("MaxPageSize", SMALL_PAGE_KB):
             results = mcp.follow(mcp.execute(LONG_JOB))
         pages = stored_pages(results)
         self.assertGreaterEqual(len(pages), math.ceil(len(LONG_TEXT) / SMALL_PAGE_CHARS))
-        for result in results:
-            self.assertLessEqual(chars(result), SMALL_PAGE_CHARS)
+        for result in pages:
+            self.assertLessEqual(wire_length(result), SMALL_PAGE_CHARS)
         self.assertEqual([r["page_no"] for r in pages], list(range(len(pages))))
         self.assertEqual(mcp.text(results), LONG_TEXT)
 

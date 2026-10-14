@@ -82,7 +82,7 @@ class PreferencePageTests(unittest.TestCase):
                 self.assertEqual(saved_in, PREF_GROUP)
 
     def test_the_page_shows_the_documented_defaults(self):
-        """The page shows defaults 39280, 15 s, 64 K characters and 5 min."""
+        """The page shows defaults 39280, 15 s, 32 K characters and 5 min."""
         settings = page_settings()
         shown = {
             name: (int(props["value"]), props.get("suffix"))
@@ -93,7 +93,7 @@ class PreferencePageTests(unittest.TestCase):
             {
                 "Port": (39280, None),
                 "MaxResponseTimeoutSeconds": (15, " s"),
-                "MaxPageSize": (64, " K characters"),
+                "MaxPageSize": (32, " K characters"),
                 "MaxHistoryRetentionMinutes": (5, " min"),
             },
         )
@@ -101,11 +101,11 @@ class PreferencePageTests(unittest.TestCase):
 
 class UnsetPreferenceTests(unittest.TestCase):
     def test_with_nothing_saved_the_bridge_uses_the_documented_defaults(self):
-        """With nothing saved: port 39280, 15 s, 65,536 chars, 5 min."""
+        """With nothing saved: port 39280, 15 s, 32,768 chars, 5 min."""
         config, params, groups = fresh_config()
         self.assertEqual(config.port(), 39280)
         self.assertEqual(config.max_response_timeout_ms(), 15_000)
-        self.assertEqual(config.max_page_size_chars(), 65_536)
+        self.assertEqual(config.max_page_size_chars(), 32_768)
         self.assertEqual(config.max_history_retention_ms(), 5 * 60_000)
         # What it read is what the preference page saves.
         self.assertEqual(set(groups), {PREF_GROUP})
