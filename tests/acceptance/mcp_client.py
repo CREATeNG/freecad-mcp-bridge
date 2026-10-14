@@ -1,9 +1,11 @@
 """A minimal MCP client for the acceptance tests, on urllib alone.
 
-It talks to a real bridge inside a real FreeCAD exactly as an MCP client does:
-one JSON-RPC message per POST to BRIDGE_URL (http://127.0.0.1:<port>/mcp).
-Lifecycle replies are plain JSON; tools/call replies are a single-event SSE
-stream whose `data:` line carries the JSON-RPC response.
+It talks to a real bridge inside a real FreeCAD exactly as an MCP 2026-07-28
+client does: one JSON-RPC message per POST to BRIDGE_URL
+(http://127.0.0.1:<port>/mcp), each request carrying the protocol version,
+client info and capabilities in its `_meta`, and the MCP-Protocol-Version,
+Mcp-Method and (for tools/call) Mcp-Name headers that mirror its body.
+Replies are plain JSON, except subscriptions/listen's SSE stream.
 """
 
 import json
@@ -22,11 +24,8 @@ if not BRIDGE_URL:
     )
 
 HTTP_TIMEOUT_S = 60
-INITIALIZE_PARAMS = {
-    "protocolVersion": "2025-03-26",
-    "capabilities": {},
-    "clientInfo": {"name": "acceptance-tests", "version": "0"},
-}
+PROTOCOL_VERSION = "2026-07-28"
+CLIENT_INFO = {"name": "acceptance-tests", "version": "0"}
 # Talk to the bridge directly, never through an environment-configured proxy.
 _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
@@ -60,16 +59,20 @@ def url_for(path):
 
 
 def send(body=b"", method="POST", url=None, headers=None):
-    """Send one raw HTTP request; return its Reply, whatever the status."""
+    """Send one raw HTTP request; return its Reply, whatever the status.
+
+    A header given as None is left out.
+    """
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+        **(headers or {}),
+    }
     request = urllib.request.Request(
         url or BRIDGE_URL,
         data=body if method == "POST" else None,
         method=method,
-        headers={
-            "Content-Type": "application/json",
-            "Accept": "application/json, text/event-stream",
-            **(headers or {}),
-        },
+        headers={k: v for k, v in headers.items() if v is not None},
     )
     try:
         with _opener.open(request, timeout=HTTP_TIMEOUT_S) as response:
@@ -79,20 +82,56 @@ def send(body=b"", method="POST", url=None, headers=None):
             return Reply(error.code, error.headers, error.read())
 
 
+def standard_headers(message):
+    """The headers a 2026-07-28 client sends with `message`: the protocol
+    version, and the method and tool name mirrored from the body."""
+    headers = {"MCP-Protocol-Version": PROTOCOL_VERSION}
+    if isinstance(message, dict) and "method" in message:
+        headers["Mcp-Method"] = message["method"]
+        if message["method"] == "tools/call":
+            headers["Mcp-Name"] = message["params"]["name"]
+    return headers
+
+
 def post(message, headers=None, url=None):
+    """POST a message with the standard headers, which `headers` override
+    (None leaves one out)."""
+    headers = {**standard_headers(message), **(headers or {})}
     return send(json.dumps(message).encode("utf-8"), headers=headers, url=url)
 
 
 _next_id = [0]
 
 
-def request(method, params=None):
-    """A JSON-RPC request message with a fresh id."""
+def request(method, params=None, client_info=CLIENT_INFO):
+    """A JSON-RPC request message with a fresh id, its params carrying the
+    client's protocol version, info and capabilities in `_meta`."""
     _next_id[0] += 1
-    message = {"jsonrpc": "2.0", "id": _next_id[0], "method": method}
-    if params is not None:
-        message["params"] = params
-    return message
+    meta = {
+        "io.modelcontextprotocol/protocolVersion": PROTOCOL_VERSION,
+        "io.modelcontextprotocol/clientInfo": client_info,
+        "io.modelcontextprotocol/clientCapabilities": {},
+    }
+    return {
+        "jsonrpc": "2.0",
+        "id": _next_id[0],
+        "method": method,
+        "params": {"_meta": meta, **(params or {})},
+    }
+
+
+def tool_result(reply, name="tool"):
+    """The tools/call result of a reply ({resultType, content, ...})."""
+    if reply.status != 200:
+        raise AssertionError(
+            f"tools/call {name}: HTTP {reply.status} {reply.body!r}"
+        )
+    return reply.json()["result"]
+
+
+def payload(result):
+    """The tool result payload ({page, has_more, ...}) a result carries."""
+    return json.loads(result["content"][0]["text"])
 
 
 def call_tool(name, arguments, headers=None):
@@ -101,11 +140,7 @@ def call_tool(name, arguments, headers=None):
         request("tools/call", {"name": name, "arguments": arguments}),
         headers=headers,
     )
-    if reply.status != 200:
-        raise AssertionError(f"tools/call {name}: HTTP {reply.status} {reply.body!r}")
-    (event,) = reply.sse_events()
-    envelope = json.loads(event)
-    return json.loads(envelope["result"]["content"][0]["text"])
+    return payload(tool_result(reply, name))
 
 
 def execute(code):
@@ -163,11 +198,12 @@ def preference(name, value):
 
 
 def wait_until_reachable(timeout_s=30):
-    """Wait for the bridge to answer initialize; True if it did in time."""
+    """Wait for the bridge to answer server/discover; True if it did in
+    time."""
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         try:
-            if post(request("initialize", INITIALIZE_PARAMS)).status == 200:
+            if post(request("server/discover")).status == 200:
                 return True
         except OSError:
             pass

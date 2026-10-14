@@ -31,9 +31,11 @@ def non_loopback_address():
 
 
 class EndpointTests(unittest.TestCase):
-    def test_get_on_the_endpoint_returns_405(self):
-        """GET on /mcp returns 405: the server offers no server-initiated stream."""
-        self.assertEqual(mcp.send(method="GET").status, 405)
+    def test_get_or_delete_on_the_endpoint_returns_405(self):
+        """GET or DELETE on /mcp returns 405: the server offers no standalone stream and no session to end."""
+        for method in ("GET", "DELETE"):
+            with self.subTest(method=method):
+                self.assertEqual(mcp.send(method=method).status, 405)
 
     def test_a_request_to_another_path_returns_404(self):
         """A request to any path other than /mcp returns 404."""
