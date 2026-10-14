@@ -1,11 +1,13 @@
 """A minimal MCP client for the acceptance tests, on urllib alone.
 
-It talks to a real bridge inside a real FreeCAD exactly as an MCP 2026-07-28
-client does: one JSON-RPC message per POST to BRIDGE_URL
-(http://127.0.0.1:<port>/mcp), each request carrying the protocol version,
-client info and capabilities in its `_meta`, and the MCP-Protocol-Version,
-Mcp-Method and (for tools/call) Mcp-Name headers that mirror its body.
-Replies are plain JSON, except subscriptions/listen's SSE stream.
+It talks to a real bridge inside a real FreeCAD exactly as an MCP client
+does, in either protocol version the bridge speaks: one JSON-RPC message
+per POST to BRIDGE_URL (http://127.0.0.1:<port>/mcp). A 2026-07-28 request,
+the default, carries the protocol version, client info and capabilities in
+its `_meta`, and the MCP-Protocol-Version, Mcp-Method and (for tools/call)
+Mcp-Name headers that mirror its body. A 2025-11-25 request, after
+initialize, carries only the MCP-Protocol-Version header. Replies are plain
+JSON, except subscriptions/listen's SSE stream.
 """
 
 import json
@@ -25,6 +27,7 @@ if not BRIDGE_URL:
 
 HTTP_TIMEOUT_S = 60
 PROTOCOL_VERSION = "2026-07-28"
+NOVEMBER_VERSION = "2025-11-25"
 CLIENT_INFO = {"name": "acceptance-tests", "version": "0"}
 # Talk to the bridge directly, never through an environment-configured proxy.
 _opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -82,10 +85,13 @@ def send(body=b"", method="POST", url=None, headers=None):
             return Reply(error.code, error.headers, error.read())
 
 
-def standard_headers(message):
-    """The headers a 2026-07-28 client sends with `message`: the protocol
-    version, and the method and tool name mirrored from the body."""
-    headers = {"MCP-Protocol-Version": PROTOCOL_VERSION}
+def standard_headers(message, version=PROTOCOL_VERSION):
+    """The headers a client sends with `message` in `version`: the protocol
+    version and, in 2026-07-28, the method and tool name mirrored from the
+    body."""
+    headers = {"MCP-Protocol-Version": version}
+    if version != PROTOCOL_VERSION:
+        return headers
     if isinstance(message, dict) and "method" in message:
         headers["Mcp-Method"] = message["method"]
         if message["method"] == "tools/call":
@@ -93,20 +99,28 @@ def standard_headers(message):
     return headers
 
 
-def post(message, headers=None, url=None):
-    """POST a message with the standard headers, which `headers` override
-    (None leaves one out)."""
-    headers = {**standard_headers(message), **(headers or {})}
+def post(message, headers=None, url=None, version=PROTOCOL_VERSION):
+    """POST a message with the standard headers of `version`, which
+    `headers` override (None leaves one out)."""
+    headers = {**standard_headers(message, version), **(headers or {})}
     return send(json.dumps(message).encode("utf-8"), headers=headers, url=url)
 
 
 _next_id = [0]
 
 
-def request(method, params=None, client_info=CLIENT_INFO):
-    """A JSON-RPC request message with a fresh id, its params carrying the
-    client's protocol version, info and capabilities in `_meta`."""
+def request(
+    method, params=None, client_info=CLIENT_INFO, version=PROTOCOL_VERSION
+):
+    """A JSON-RPC request message in `version` with a fresh id. In
+    2026-07-28 its params carry the client's protocol version, info and
+    capabilities in `_meta`; in 2025-11-25 they are `params` alone."""
     _next_id[0] += 1
+    if version != PROTOCOL_VERSION:
+        message = {"jsonrpc": "2.0", "id": _next_id[0], "method": method}
+        if params is not None:
+            message["params"] = params
+        return message
     meta = {
         "io.modelcontextprotocol/protocolVersion": PROTOCOL_VERSION,
         "io.modelcontextprotocol/clientInfo": client_info,
@@ -118,6 +132,21 @@ def request(method, params=None, client_info=CLIENT_INFO):
         "method": method,
         "params": {"_meta": meta, **(params or {})},
     }
+
+
+def initialize(requested=NOVEMBER_VERSION):
+    """Send initialize asking for `requested`, as a handshake client sends
+    it, with no version headers; return the Reply."""
+    message = request(
+        "initialize",
+        {
+            "protocolVersion": requested,
+            "capabilities": {},
+            "clientInfo": CLIENT_INFO,
+        },
+        version=NOVEMBER_VERSION,
+    )
+    return send(json.dumps(message).encode("utf-8"))
 
 
 def tool_result(reply, name="tool"):
@@ -134,35 +163,45 @@ def payload(result):
     return json.loads(result["content"][0]["text"])
 
 
-def call_tool(name, arguments, headers=None):
-    """Call a tool; return the tool result payload ({page, has_more, ...})."""
+def call_tool(name, arguments, headers=None, version=PROTOCOL_VERSION):
+    """Call a tool in `version`; return the tool result payload
+    ({page, has_more, ...})."""
     reply = post(
-        request("tools/call", {"name": name, "arguments": arguments}),
+        request(
+            "tools/call",
+            {"name": name, "arguments": arguments},
+            version=version,
+        ),
         headers=headers,
+        version=version,
     )
     return payload(tool_result(reply, name))
 
 
-def execute(code):
-    return call_tool("execute_python", {"code": code})
+def execute(code, version=PROTOCOL_VERSION):
+    return call_tool("execute_python", {"code": code}, version=version)
 
 
 def execute_file(filepath):
     return call_tool("execute_python_file", {"filepath": filepath})
 
 
-def get_page(job_token, page_no):
-    return call_tool("get_output_page", {"job_token": job_token, "page_no": page_no})
+def get_page(job_token, page_no, version=PROTOCOL_VERSION):
+    return call_tool(
+        "get_output_page",
+        {"job_token": job_token, "page_no": page_no},
+        version=version,
+    )
 
 
-def follow(first):
+def follow(first, version=PROTOCOL_VERSION):
     """Follow the agent loop from an initiating result until has_more is
-    false; return every result received, in order."""
+    false, in `version`; return every result received, in order."""
     results = [first]
     last_page_no = first.get("page_no")
     while results[-1]["has_more"]:
         next_no = 0 if last_page_no is None else last_page_no + 1
-        result = get_page(first["job_token"], next_no)
+        result = get_page(first["job_token"], next_no, version)
         if "error" in result:
             raise AssertionError(f"get_output_page failed: {result}")
         results.append(result)
