@@ -226,21 +226,85 @@ data access, but tool support is universal while resource support varies by clie
 
 ## Connection
 
-**Transport — Streamable HTTP with SSE**
+**Transport — Streamable HTTP, MCP 2026-07-28**
 
-The in-process server uses Streamable HTTP (MCP spec 2025-03-26). Tool call responses
-use POST SSE (`Content-Type: text/event-stream`). The server returns HTTP 405 on GET; it
-does not offer a server-initiated SSE stream. Each POST carries one JSON-RPC message;
-batched arrays are not accepted.
+The in-process server uses the Streamable HTTP transport of MCP
+protocol version 2026-07-28, and speaks no other version. Each POST
+carries one JSON-RPC message; a batched array gets `400` and an
+invalid-request error. Every reply to a request is plain JSON
+(`Content-Type: application/json`), except the one to
+`subscriptions/listen` (below). The server returns `405` on GET and on
+DELETE: the protocol has no standalone stream and no sessions.
 
-Job output and paging are delivered on POST through `tools/call` — not through GET.
+Job output and paging are delivered on POST through `tools/call`.
+
+**Per-request validation**
+
+The protocol has no handshake: each request carries its own protocol
+version and client capabilities, and the server checks every request
+on its own, in this order. The first failure decides the reply, which
+is `400 Bad Request` with a JSON-RPC error; nothing runs.
+
+- An `initialize` request, which opens the earlier handshake-based
+  versions, gets the unsupported-version error (`-32022`), whose `data`
+  names `2026-07-28` as the one supported version and echoes the
+  version the client requested. A client that also speaks 2026-07-28
+  learns to use it; one that does not can at least show which version
+  the server needs.
+- A missing `MCP-Protocol-Version` header, or one that differs from
+  `_meta["io.modelcontextprotocol/protocolVersion"]`, gets a header
+  mismatch (`-32020`).
+- Any version other than `2026-07-28` gets the unsupported-version
+  error (`-32022`).
+- A `_meta` lacking `io.modelcontextprotocol/protocolVersion` or
+  `io.modelcontextprotocol/clientCapabilities` gets invalid params
+  (`-32602`).
+- A missing `Mcp-Method` header, or one that differs from the body's
+  `method`, gets a header mismatch (`-32020`). So does a `tools/call`
+  whose `Mcp-Name` header is missing or differs from the tool name,
+  after decoding a value sent in the `=?base64?…?=` form.
+
+Header names match case-insensitively; header values match exactly.
+
+A notification (no `id`) gets an empty `202` before any of these
+checks, since the protocol sets no header requirements for
+notifications, and nothing runs.
+
+**Methods**
+
+- `server/discover` answers with `supportedVersions: ["2026-07-28"]`,
+  `capabilities: {"tools": {}}` and caching hints.
+- `tools/list` answers with the three tools and caching hints.
+- `tools/call` runs a tool (see *Tools*).
+- `subscriptions/listen` is answered on a short SSE stream. The server
+  sends no notifications, so the acknowledgment carries an empty
+  `notifications` filter; the graceful-closure result follows at once,
+  and the stream closes.
+- Any other method, `ping` among them, gets `404 Not Found` and
+  method-not-found (`-32601`).
+
+**Results**
+
+Every result carries `resultType: "complete"` and the server's name
+and version in `_meta["io.modelcontextprotocol/serverInfo"]`. The
+caching hints on `server/discover` and `tools/list` are `ttlMs: 0` and
+`cacheScope: "public"`: a client asks again whenever it needs either
+answer, one loopback round trip, and never carries one across a
+FreeCAD restart or an addon update.
+
+A tool result is one JSON text block holding the tool payload. A
+failed tool call (an unknown or expired `job_token`, an out-of-range
+`page_no`, a file that cannot be read) sets `isError: true` as well as
+the payload's `error`. An exception raised by executed code is not a
+failed tool call: its traceback is ordinary output. An unknown tool
+name is a protocol error, invalid params (`-32602`).
 
 **Transport distinction — direct HTTP clients vs stdio clients**
 
-HTTP-capable clients connect to the endpoint directly and receive responses over SSE.
-Stdio clients (via the shim) receive responses as single stdio messages — SSE does not
-exist on that transport. Tool-call results and paging are otherwise identical on both
-transports: each waits up to the configured timeout for the first page, then polls via
+HTTP-capable clients connect to the endpoint directly. Stdio clients
+(via the shim) receive responses as single stdio messages. Tool-call
+results and paging are otherwise identical on both transports: each
+waits up to the configured timeout for the first page, then polls via
 `get_output_page` if needed.
 
 **Port**
