@@ -45,12 +45,20 @@ class LifecycleTests(unittest.TestCase):
             ["execute_python", "execute_python_file", "get_output_page"],
         )
 
-    def test_a_notification_gets_no_response(self):
-        """A notification (no id) such as notifications/initialized gets no response."""
-        response = mcp_protocol.handle_request(
-            {"jsonrpc": "2.0", "method": "notifications/initialized"}
+    def test_a_message_with_no_id_is_a_notification(self):
+        """Any message with no id is a notification, whatever its method."""
+        methods = (
+            "notifications/initialized",
+            "initialize",
+            "tools/list",
+            "tools/call",
         )
-        self.assertIsNone(response)
+        for method in methods:
+            with self.subTest(method=method):
+                message = {"jsonrpc": "2.0", "method": method}
+                self.assertTrue(mcp_protocol.is_notification(message))
+        request = {"jsonrpc": "2.0", "id": 1, "method": "initialize"}
+        self.assertFalse(mcp_protocol.is_notification(request))
 
     def test_an_unknown_method_gets_method_not_found(self):
         """An unknown method gets a JSON-RPC method-not-found error."""
