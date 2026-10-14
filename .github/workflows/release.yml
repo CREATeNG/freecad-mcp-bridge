@@ -6,6 +6,12 @@ on:
 permissions:
   contents: write
 
+# Queue, never cancel: a second run waits rather than shipping over
+# the first.
+concurrency:
+  group: release-orchestrator
+  cancel-in-progress: false
+
 jobs:
   prepare:
     name: Stage release candidate on main

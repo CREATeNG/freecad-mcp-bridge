@@ -32,7 +32,9 @@ Shared helpers live in `scripts/test_install_common.py`.
 | Trigger | Tag / mode | Typical use |
 |---------|------------|-------------|
 | `workflow_call` from **`release.yml`** | `install_mode: main` or `tag`; `install_tag` from prepare; `acceptance: true` | Pre-tag gate (`main`) and post-tag sanity check (`tag` path) |
+| `workflow_call` from **`index-after-release.yml`**, on a schedule or `workflow_dispatch` | `install_mode: index`; `install_tag` from `release`'s `package.xml` | What Index users receive, once the catalog serves the release |
 | `workflow_call` from **`acceptance-main.yml`**, on every push to `main` | `install_mode: main`; `install_tag` from the pushed `package.xml`; `acceptance: true` | Acceptance tests on each change to `main` |
+| `workflow_call` from **`acceptance-pr.yml`**, on every pull request into `main` (opened, synchronize, reopened) | `install_mode: branch`; `install_branch` the PR's head branch; `install_tag` from the PR head's `package.xml`; `acceptance: true`; `coverage: true` | Acceptance tests on a change before it merges into `main`; skipped, with a notice, for PRs from forks |
 | `workflow_dispatch` | Inputs: `tag` (e.g. `v0.1.15`), `mode` (`tag`, `index_zip`, `main`, or `branch`), `branch` (branch mode only) | Ad-hoc CI run; iterate on scripts; prove a branch before it merges into `main` |
 
 Environment variables set by the workflow (overridable locally when debugging) fall into three groups. Exact names and defaults live in [`install-verify.yml`](.github/workflows/install-verify.yml) and each script's own module docstring (`test_install.py`, `test_verify.py`) — not repeated here to avoid the two copies drifting apart:
@@ -40,6 +42,20 @@ Environment variables set by the workflow (overridable locally when debugging) f
 - **Install source** — which tag/repo/mode/Mod-folder-name to install.
 - **Timing** — how long to wait for GUI startup, toolbar injection, the HTTP exec round-trip, and overall install completion.
 - **Expected strings** (verify phase only) — the probe code sent over HTTP, the expected output substring, and the expected Report-view message after stopping the bridge.
+
+### Required checks for pull requests
+
+Every change to `main` goes through a pull request. Require exactly these checks in the ruleset for `main`, and no others:
+
+| Check | Workflow |
+|-------|----------|
+| `Unit (Python)` | [`tests.yml`](.github/workflows/tests.yml) |
+| `Shim (Node)` | [`tests.yml`](.github/workflows/tests.yml) |
+| `Acceptance (PR) / Verify - linux` | [`acceptance-pr.yml`](.github/workflows/acceptance-pr.yml) calling `install-verify.yml` |
+| `Acceptance (PR) / Verify - windows` | [`acceptance-pr.yml`](.github/workflows/acceptance-pr.yml) calling `install-verify.yml` |
+| `Acceptance (PR) / Verify - macos` | [`acceptance-pr.yml`](.github/workflows/acceptance-pr.yml) calling `install-verify.yml` |
+
+Branch mode installs from this repository's URL, so the acceptance checks never report for a PR from a fork; push its branch to this repository to run them.
 
 ---
 
@@ -78,7 +94,18 @@ Addon Manager loads the live Addons Index catalog (`CreateAddonListWorker.get_re
 1. **Pre-tag** (`install_mode: main`) — hard gate before tag creation. Fails **`release.yml`** if any OS fails.
 2. **Tag path** (`install_mode: tag`) — after tag and release notes; final sanity check that install works from the tag ref. Fails **`release.yml`** before `release` moves and the patch bumps if any OS fails.
 
+Runs of **`release.yml`** queue rather than overlap, so a second run waits out the first.
+
 Full **`release.yml`** job order (build, publish, promote `release`, bump): see [MAINTAINING.md — `release.yml` job order](MAINTAINING.md#the-release-orchestrator-workflow-releaseyml).
+
+---
+
+## `index-after-release.yml`
+
+**`index-after-release.yml`** checks what Index users receive. Nothing waits on it. Every three hours, and on `workflow_dispatch`, it compares the version `release`'s `package.xml` names with the version the live catalog states for our entry ([`index_catalog_version.py`](scripts/index_catalog_version.py)):
+
+- **Catalog behind** — exits quietly, or fails once the release has been published for 7 days.
+- **Catalog caught up** — calls **`install-verify.yml`** with `install_mode: index` on all three OSes, then uploads an artifact named `index-checked-{version}`. That artifact marks the version as checked, and later runs skip it; the `force` input installs again regardless.
 
 ---
 
@@ -207,6 +234,9 @@ bash scripts/publish_ci_log.sh /tmp/freecad-ci-verify.log "Verify addon after re
 |------|------|
 | `.github/workflows/install-verify.yml` | Pre-tag and tag-path checks (`workflow_call` from `release.yml`), or `workflow_dispatch` |
 | `.github/workflows/acceptance-main.yml` | Install verify with acceptance on each push to `main` |
+| `.github/workflows/acceptance-pr.yml` | Install verify with acceptance on each pull request into `main`, from the PR's branch |
+| `.github/workflows/index-after-release.yml` | Install verify from the Index once its catalog serves the release |
+| `scripts/index_catalog_version.py` | Prints the version the Index catalog states for the addon |
 | `scripts/ci_run_freecad.sh` | FreeCAD launcher + timeout + log path |
 | `scripts/publish_ci_log.sh` | Log file → GitHub annotations |
 | `scripts/test_install.py` | Addon Manager install phase |

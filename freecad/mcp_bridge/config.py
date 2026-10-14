@@ -32,7 +32,7 @@ def max_response_timeout_ms() -> int:
 
 
 def max_page_size_chars() -> int:
-    """Max size of a single page's output before returning has_more=True."""
+    """Max serialized tool-result length of one page, in characters."""
     kb = _params().GetInt("MaxPageSize", DEFAULT_MAX_PAGE_SIZE_KB)
     return kb * 1024
 

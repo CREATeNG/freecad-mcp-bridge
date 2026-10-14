@@ -280,11 +280,8 @@ def _unsupported(req_id, requested):
     )
 
 
-def tool_call_response(req_id, result, version) -> dict:
-    """Wrap a tool result ({page, has_more, [page_no], [job_token], [error]})
-    as an MCP tools/call result in `version` — a single JSON text content
-    block. A result carrying an `error` is a failed tool call, flagged
-    isError."""
+def tool_result_payload(result) -> dict:
+    """The tool result an agent reads, before the content-block wrap."""
     payload = {
         "page": result.get("page", []),
         "has_more": result.get("has_more", False),
@@ -295,10 +292,35 @@ def tool_call_response(req_id, result, version) -> dict:
         payload["job_token"] = result["job_token"]
     if result.get("error"):
         payload["error"] = result["error"]
-    result = {"content": [{"type": "text", "text": json.dumps(payload)}]}
+    return payload
+
+
+def serialized_page_length(page, page_no, job_token) -> int:
+    """Character length of the tool result for this page.
+
+    ``has_more`` is false, the longer spelling, so a page that fits
+    here still fits when the job ends. ``page_no`` is the number the
+    page will carry.
+    """
+    payload = tool_result_payload({
+        "page": page,
+        "has_more": False,
+        "page_no": page_no,
+        "job_token": job_token,
+    })
+    return len(json.dumps(payload))
+
+
+def tool_call_response(req_id, result, version) -> dict:
+    """Wrap a tool result ({page, has_more, [page_no], [job_token], [error]})
+    as an MCP tools/call result in `version` — a single JSON text content
+    block. A result carrying an `error` is a failed tool call, flagged
+    isError."""
+    payload = tool_result_payload(result)
+    wrapped = {"content": [{"type": "text", "text": json.dumps(payload)}]}
     if "error" in payload:
-        result["isError"] = True
-    return _result(req_id, result, version)
+        wrapped["isError"] = True
+    return _result(req_id, wrapped, version)
 
 
 def error_response(req_id, code, message) -> dict:

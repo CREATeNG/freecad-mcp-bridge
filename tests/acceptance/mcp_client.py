@@ -196,7 +196,12 @@ def get_page(job_token, page_no, version=PROTOCOL_VERSION):
 
 def follow(first, version=PROTOCOL_VERSION):
     """Follow the agent loop from an initiating result until has_more is
-    false, in `version`; return every result received, in order."""
+    false, in `version`; return every result received, in order.
+
+    Checks on the way that has_more true precedes a further page: each
+    result after it is either an empty unnumbered retry or the page
+    numbered one past the last, and the loop can end only on such a page.
+    """
     results = [first]
     last_page_no = first.get("page_no")
     while results[-1]["has_more"]:
@@ -204,6 +209,15 @@ def follow(first, version=PROTOCOL_VERSION):
         result = get_page(first["job_token"], next_no, version)
         if "error" in result:
             raise AssertionError(f"get_output_page failed: {result}")
+        further_page = result.get("page_no") == next_no
+        retry = "page_no" not in result and result["has_more"] and (
+            result["page"] == []
+        )
+        if not (further_page or retry):
+            raise AssertionError(
+                "has_more true must precede a further page: expected "
+                f"page {next_no} or an empty retry, got {result}"
+            )
         results.append(result)
         if "page_no" in result:
             last_page_no = result["page_no"]

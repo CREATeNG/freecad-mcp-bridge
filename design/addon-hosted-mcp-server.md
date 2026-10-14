@@ -12,10 +12,12 @@ addon, and there are no user-side dependencies beyond the addon itself.
 - **Job** — one Python run inside the live FreeCAD session, initiated by a tool call.
   See [job-lifecycle.md](job-lifecycle.md).
 
-- **Chunk** — a job's output is captured in chunks. Each chunk is one `write()` of the job's stdout or stderr.
+- **Chunk** — one `write()` of the job's stdout or stderr. A page
+  joins adjacent chunks of the same stream into one entry. A chunk
+  longer than the page size cap continues on the next page.
 
-- **Page** — a capped array of output chunks. A single chunk may span more than one page when
-  it exceeds the page size cap.
+- **Page** — a capped array of `{stream, text}` entries from the
+  job's stdout and stderr.
 
 - **Page history** — the append-only record of every page a job emits. Stays
   retrievable for a configured period of time after the job's final page.
@@ -83,12 +85,19 @@ the job has no more output to deliver. Both bounds apply to `execute_python`,
   (default 15 s) for more output or for the job to finish before returning. A quiet or
   slow job may therefore yield `has_more: true` with little or no output once the timeout
   elapses.
-- **Page size cap** — bounded by the sum of `text` character lengths in the page
-  (`max_page_size_chars`, configurable, default 64 K characters, that is 65,536), independent of JSON framing. A
-  fast-producing job could otherwise return an arbitrarily large single page. The drain
-  logic fills a page until the cap is reached; if a single chunk's
-  `text` does not fully fit, the remainder is held as pending and continued on the next
-  page under the same `stream` — no data loss, cost proportional to the output's size.
+- **Page size cap** — the character length of the JSON tool result
+  the agent reads (`json.dumps` of `page`, `has_more`, `page_no` and
+  `job_token`). Configurable, default 32 K characters, that is 32,768.
+  `has_more` is measured as false, the longer spelling, and `page_no`
+  is the number the page will carry. A newline counts as two
+  characters, a backslash and an `n`. A fast job could otherwise
+  return a page the client cannot read. The drain fills a page until
+  the next addition would pass the cap. A write that would pass the
+  cap ends the page at the last newline already on it, and the text
+  after that newline goes to the next page with the write. A line
+  longer than the cap, on a page that has no newline, is split, and
+  the remainder continues under the same stream. No output is
+  dropped.
 
 **Paging**
 
@@ -534,5 +543,5 @@ Preferences → MCP Bridge. FreeCAD wires widgets to the parameter store automat
 |-----------|---------|-------|
 | Port | 39280 | Error logged on conflict at startup |
 | Max response timeout (s) | 15 | Max wait in `execute_python` and `get_output_page` before returning with `has_more: true` |
-| Max page size (K characters) | 64 | Max sum of chunk `text` lengths per page before returning with `has_more: true`, independent of JSON framing and the timeout |
+| Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |
 | Page history retention (min) | 5 | How long a job's page history remains readable after its final page (`has_more: false`) |
