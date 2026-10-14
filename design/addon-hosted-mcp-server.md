@@ -226,36 +226,52 @@ data access, but tool support is universal while resource support varies by clie
 
 ## Connection
 
-**Transport — Streamable HTTP, MCP 2026-07-28**
+**Transport — Streamable HTTP, MCP 2026-07-28 and 2025-11-25**
 
-The in-process server uses the Streamable HTTP transport of MCP
-protocol version 2026-07-28, and speaks no other version. Each POST
-carries one JSON-RPC message; a batched array gets `400` and an
-invalid-request error. Every reply to a request is plain JSON
-(`Content-Type: application/json`), except the one to
-`subscriptions/listen` (below). The server returns `405` on GET and on
-DELETE: the protocol has no standalone stream and no sessions.
+The in-process server uses the Streamable HTTP transport and speaks
+exactly two MCP protocol versions: 2026-07-28, in which every request
+carries its own version, and 2025-11-25, which opens with an
+`initialize` handshake. Both are served on the same endpoint, each
+request in its own version. Each POST carries one JSON-RPC message; a
+batched array gets `400` and an invalid-request error. Every reply to a
+request is plain JSON (`Content-Type: application/json`), except the
+one to `subscriptions/listen` (below). The server returns `405` on GET
+and on DELETE: it offers no standalone stream and keeps no sessions.
 
 Job output and paging are delivered on POST through `tools/call`.
 
-**Per-request validation**
+**Choosing the version of a request**
 
-The protocol has no handshake: each request carries its own protocol
-version and client capabilities, and the server checks every request
-on its own, in this order. The first failure decides the reply, which
-is `400 Bad Request` with a JSON-RPC error; nothing runs.
+The server keeps no state between requests, so each request's own
+method, `MCP-Protocol-Version` header and
+`_meta["io.modelcontextprotocol/protocolVersion"]` decide its version,
+in this order. A rejection is `400 Bad Request` with a JSON-RPC error,
+and nothing runs.
 
-- An `initialize` request, which opens the earlier handshake-based
-  versions, gets the unsupported-version error (`-32022`), whose `data`
-  names `2026-07-28` as the one supported version and echoes the
-  version the client requested. A client that also speaks 2026-07-28
-  learns to use it; one that does not can at least show which version
-  the server needs.
-- A missing `MCP-Protocol-Version` header, or one that differs from
-  `_meta["io.modelcontextprotocol/protocolVersion"]`, gets a header
+- An `initialize` request is 2025-11-25, whatever its headers.
+- A missing `MCP-Protocol-Version` header gets a header mismatch
+  (`-32020`). Such a request is in a version older than 2025-06-18,
+  which the server does not speak.
+- A header that differs from the `_meta` version gets a header
   mismatch (`-32020`).
-- Any version other than `2026-07-28` gets the unsupported-version
-  error (`-32022`).
+- A `2025-11-25` header with no `_meta` version is 2025-11-25.
+- A `2026-07-28` header is 2026-07-28, validated as below.
+- Any other version gets the unsupported-version error (`-32022`),
+  whose `data` names `2026-07-28` and `2025-11-25` as the supported
+  versions and echoes the version requested. So does a `2025-11-25`
+  header with a `_meta` version: only 2026-07-28 carries its version in
+  `_meta`.
+
+Header names match case-insensitively; header values match exactly.
+
+A notification (no `id`) gets an empty `202` before any of these
+checks, in either version, and nothing runs.
+
+**2026-07-28 validation**
+
+A 2026-07-28 request is further checked in this order; the first
+failure decides the reply, with `400`.
+
 - A `_meta` lacking `io.modelcontextprotocol/protocolVersion` or
   `io.modelcontextprotocol/clientCapabilities` gets invalid params
   (`-32602`).
@@ -264,15 +280,13 @@ is `400 Bad Request` with a JSON-RPC error; nothing runs.
   whose `Mcp-Name` header is missing or differs from the tool name,
   after decoding a value sent in the `=?base64?…?=` form.
 
-Header names match case-insensitively; header values match exactly.
+A 2025-11-25 request carries no `_meta` version, method or name
+headers, and none are checked.
 
-A notification (no `id`) gets an empty `202` before any of these
-checks, since the protocol sets no header requirements for
-notifications, and nothing runs.
+**Methods — 2026-07-28**
 
-**Methods**
-
-- `server/discover` answers with `supportedVersions: ["2026-07-28"]`,
+- `server/discover` answers with
+  `supportedVersions: ["2026-07-28", "2025-11-25"]`,
   `capabilities: {"tools": {}}` and caching hints.
 - `tools/list` answers with the three tools and caching hints.
 - `tools/call` runs a tool (see *Tools*).
@@ -283,21 +297,36 @@ notifications, and nothing runs.
 - Any other method, `ping` among them, gets `404 Not Found` and
   method-not-found (`-32601`).
 
+**Methods — 2025-11-25**
+
+- `initialize` answers with `protocolVersion: "2025-11-25"`,
+  `capabilities: {"tools": {}}` and the server's name and version in
+  `serverInfo`. An `initialize` asking for any other version gets the
+  same answer: 2025-11-25 is the version the server offers in the
+  handshake. The answer issues no session id.
+- `tools/list` answers with the three tools.
+- `tools/call` runs a tool (see *Tools*).
+- `ping` answers with an empty result.
+- Any other method gets method-not-found (`-32601`) with `200`, since
+  2025-11-25 reserves `404` for an expired session.
+
 **Results**
 
-Every result carries `resultType: "complete"` and the server's name
-and version in `_meta["io.modelcontextprotocol/serverInfo"]`. The
+A 2026-07-28 result carries `resultType: "complete"` and the server's
+name and version in `_meta["io.modelcontextprotocol/serverInfo"]`. The
 caching hints on `server/discover` and `tools/list` are `ttlMs: 0` and
 `cacheScope: "public"`: a client asks again whenever it needs either
 answer, one loopback round trip, and never carries one across a
-FreeCAD restart or an addon update.
+FreeCAD restart or an addon update. A 2025-11-25 result carries none of
+these.
 
-A tool result is one JSON text block holding the tool payload. A
-failed tool call (an unknown or expired `job_token`, an out-of-range
-`page_no`, a file that cannot be read) sets `isError: true` as well as
-the payload's `error`. An exception raised by executed code is not a
-failed tool call: its traceback is ordinary output. An unknown tool
-name is a protocol error, invalid params (`-32602`).
+In both versions, a tool result is one JSON text block holding the
+tool payload. A failed tool call (an unknown or expired `job_token`, an
+out-of-range `page_no`, a file that cannot be read) sets
+`isError: true` as well as the payload's `error`. An exception raised
+by executed code is not a failed tool call: its traceback is ordinary
+output. An unknown tool name is a protocol error, invalid params
+(`-32602`).
 
 **Transport distinction — direct HTTP clients vs stdio clients**
 
