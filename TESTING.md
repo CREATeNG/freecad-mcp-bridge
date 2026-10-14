@@ -31,7 +31,7 @@ Shared helpers live in `scripts/test_install_common.py`.
 
 | Trigger | Tag / mode | Typical use |
 |---------|------------|-------------|
-| `workflow_call` from **`release.yml`** | `install_mode: main`, `tag`, or `branch` (`install_branch: release-candidate`); `install_tag` from prepare; `acceptance: true` | Pre-tag gate (`main`), post-tag sanity check (`tag` path), and the custom-repository route before `release` moves (`branch`) |
+| `workflow_call` from **`release.yml`** | `install_mode: main` or `tag`; `install_tag` from prepare; `acceptance: true` | Pre-tag gate (`main`) and post-tag sanity check (`tag` path) |
 | `workflow_call` from **`index-after-release.yml`**, on a schedule or `workflow_dispatch` | `install_mode: index`; `install_tag` from `release`'s `package.xml` | What Index users receive, once the catalog serves the release |
 | `workflow_call` from **`acceptance-main.yml`**, on every push to `main` | `install_mode: main`; `install_tag` from the pushed `package.xml`; `acceptance: true` | Acceptance tests on each change to `main` |
 | `workflow_dispatch` | Inputs: `tag` (e.g. `v0.1.15`), `mode` (`tag`, `index_zip`, `main`, or `branch`), `branch` (branch mode only) | Ad-hoc CI run; iterate on scripts; prove a branch before it merges into `main` |
@@ -74,13 +74,12 @@ Addon Manager loads the live Addons Index catalog (`CreateAddonListWorker.get_re
 
 ## `release.yml` and install-verify
 
-**`release.yml`** calls **`install-verify.yml`** three times:
+**`release.yml`** calls **`install-verify.yml`** twice:
 
 1. **Pre-tag** (`install_mode: main`) — hard gate before tag creation. Fails **`release.yml`** if any OS fails.
 2. **Tag path** (`install_mode: tag`) — after tag and release notes; final sanity check that install works from the tag ref. Fails **`release.yml`** before `release` moves and the patch bumps if any OS fails.
-3. **Branch path** (`install_mode: branch`, `install_branch: release-candidate`) — the verified commit is pushed to **`release-candidate`** and installed through the branch route that `release` serves, so the exact commit is proven there before **`release`** moves. Fails **`release.yml`** before `release` moves if any OS fails.
 
-Runs of **`release.yml`** queue rather than overlap, so one run never moves `release-candidate` while another is installing it.
+Runs of **`release.yml`** queue rather than overlap, so a second run waits out the first.
 
 Full **`release.yml`** job order (build, publish, promote `release`, bump): see [MAINTAINING.md — `release.yml` job order](MAINTAINING.md#the-release-orchestrator-workflow-releaseyml).
 

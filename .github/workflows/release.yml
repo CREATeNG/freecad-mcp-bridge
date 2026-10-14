@@ -6,8 +6,8 @@ on:
 permissions:
   contents: write
 
-# Queue, never cancel: a second run waits rather than overwriting
-# release-candidate while the first is still installing it.
+# Queue, never cancel: a second run waits rather than shipping over
+# the first.
 concurrency:
   group: release-orchestrator
   cancel-in-progress: false
@@ -123,40 +123,9 @@ jobs:
       fail_fast: true
       acceptance: true
 
-  stage_candidate:
-    name: Push the verified commit to release-candidate
-    needs: [prepare, install_verify_tag]
-    runs-on: ubuntu-24.04
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - name: Checkout release candidate
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.prepare.outputs.commit_sha }}
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Fast-forward release-candidate
-        env:
-          RELEASE_SHA: ${{ needs.prepare.outputs.commit_sha }}
-        # A plain push, as promote's: every release commit descends from the
-        # last, so release-candidate only ever moves forward.
-        run: git push origin "${RELEASE_SHA}:refs/heads/release-candidate"
-
-  install_verify_candidate:
-    name: Install verify (branch path, release-candidate)
-    needs: [prepare, stage_candidate]
-    uses: ./.github/workflows/install-verify.yml
-    with:
-      install_mode: branch
-      install_branch: release-candidate
-      install_tag: ${{ needs.prepare.outputs.tag }}
-      fail_fast: true
-      acceptance: true
-
   promote:
     name: Move the release branch to the verified commit
-    needs: [prepare, install_verify_candidate]
+    needs: [prepare, install_verify_tag]
     runs-on: ubuntu-24.04
     if: github.ref == 'refs/heads/main'
     steps:
