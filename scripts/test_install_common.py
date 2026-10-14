@@ -331,6 +331,10 @@ def build_addon_descriptor(
         return repo_url.rstrip("/"), tag
     if mode == "main":
         return repo_url.rstrip("/"), "main"
+    if mode == "release":
+        # The README's custom-repository route: the repository URL with
+        # branch `release`. The tag names the version it should hold.
+        return repo_url.rstrip("/"), "release"
     fail(f"Unsupported RELEASE_INSTALL_MODE: {mode}")
     return "", ""
 

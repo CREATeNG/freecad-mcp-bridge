@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       install_mode:
-        description: RELEASE_INSTALL_MODE (tag, index_zip, or main)
+        description: RELEASE_INSTALL_MODE (tag, index_zip, main, or release)
         required: true
         type: string
       install_tag:
@@ -33,7 +33,7 @@ on:
         required: true
         default: v0.1.11
       mode:
-        description: Install mode (tag, index_zip, or main)
+        description: Install mode (tag, index_zip, main, or release)
         required: true
         default: tag
         type: choice
@@ -41,6 +41,7 @@ on:
           - tag
           - index_zip
           - main
+          - release
       coverage:
         description: Measure addon line coverage during the FreeCAD runs (trial)
         required: false
