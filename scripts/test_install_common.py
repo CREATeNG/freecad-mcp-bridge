@@ -320,7 +320,7 @@ def verify_install_tree(install_dir: str, expected_version: str) -> None:
 
 
 def build_addon_descriptor(
-    addon_name: str, repo_url: str, tag: str, mode: str
+    addon_name: str, repo_url: str, tag: str, mode: str, branch: str = ""
 ) -> tuple[str, str]:
     if mode == "index_zip":
         # What the Index serves: the release branch's archive. The tag only
@@ -331,10 +331,13 @@ def build_addon_descriptor(
         return repo_url.rstrip("/"), tag
     if mode == "main":
         return repo_url.rstrip("/"), "main"
-    if mode == "release":
-        # The README's custom-repository route: the repository URL with
-        # branch `release`. The tag names the version it should hold.
-        return repo_url.rstrip("/"), "release"
+    if mode == "branch":
+        # A user's custom-repository route: the repository URL with a
+        # branch named, `release` in the README's case. The tag names the
+        # version the branch should hold.
+        if not branch:
+            fail("RELEASE_INSTALL_MODE=branch needs RELEASE_INSTALL_BRANCH")
+        return repo_url.rstrip("/"), branch
     fail(f"Unsupported RELEASE_INSTALL_MODE: {mode}")
     return "", ""
 

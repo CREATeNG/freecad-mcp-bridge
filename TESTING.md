@@ -32,7 +32,7 @@ Shared helpers live in `scripts/test_install_common.py`.
 | Trigger | Tag / mode | Typical use |
 |---------|------------|-------------|
 | `workflow_call` from **`release.yml`** | `install_mode: main` or `tag`; `install_tag` from prepare | Pre-tag gate (`main`) and post-tag sanity check (`tag` path) |
-| `workflow_dispatch` | Inputs: `tag` (e.g. `v0.1.15`), `mode` (`tag`, `index_zip`, or `main`) | Ad-hoc CI run; iterate on scripts |
+| `workflow_dispatch` | Inputs: `tag` (e.g. `v0.1.15`), `mode` (`tag`, `index_zip`, `main`, or `branch`), `branch` (branch mode only) | Ad-hoc CI run; iterate on scripts; prove a branch before it merges into `main` |
 
 Environment variables set by the workflow (overridable locally when debugging) fall into three groups. Exact names and defaults live in [`install-verify.yml`](.github/workflows/install-verify.yml) and each script's own module docstring (`test_install.py`, `test_verify.py`) — not repeated here to avoid the two copies drifting apart:
 
@@ -59,6 +59,10 @@ Use this mode to validate the archive the FreeCAD Addon Index serves via `zip_ur
 ### `main`
 
 Addon Manager installs from the repository URL with `branch=main`. Used by the **`release.yml` verify gate**: install-verify installs `main` as it stands when the leg runs, **before** the release tag is created, and publish then refuses to tag unless `main` is still the commit prepare recorded — the last chance to catch a broken install before an irreversible tag gets cut (tags are permanent; see [MAINTAINING.md — Why these rules exist](MAINTAINING.md#why-these-rules-exist)). `RELEASE_INSTALL_TAG` still supplies the expected `package.xml` version for on-disk checks.
+
+### `branch`
+
+Addon Manager installs from the repository URL with `branch` set to a named branch, as a user's custom repository does. The branch is the workflow's `branch` input (`install_branch` under `workflow_call`), or, when that is empty, the branch the run is on, so a branch can be installed and verified before anything from it is merged into `main`. With `branch` set to `release`, this is the README's custom-repository route. The branch must be pushed: Addon Manager fetches it from the repository, not from the run's checkout. `RELEASE_INSTALL_TAG` names the version the branch's `package.xml` is expected to hold.
 
 ---
 

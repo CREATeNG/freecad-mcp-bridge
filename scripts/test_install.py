@@ -9,7 +9,8 @@ Environment:
   RELEASE_INSTALL_TAG     Git tag to install (default: v0.1.11)
   RELEASE_INSTALL_REPO    Repository URL
   RELEASE_INSTALL_NAME    Installed Mod folder name (default: freecad-mcp-bridge)
-  RELEASE_INSTALL_MODE    tag | index_zip | main | release (default: tag)
+  RELEASE_INSTALL_MODE    tag | index_zip | main | branch (default: tag)
+  RELEASE_INSTALL_BRANCH  Branch to install in branch mode
   RELEASE_INSTALL_GUI_DELAY_MS  Delay before work starts (default: 3000)
 """
 
@@ -37,6 +38,7 @@ def _run() -> None:
     )
     addon_name = common.env("RELEASE_INSTALL_NAME", "freecad-mcp-bridge")
     mode = common.env("RELEASE_INSTALL_MODE", "tag").lower()
+    branch = common.env("RELEASE_INSTALL_BRANCH", "")
     expected_version = common.version_from_tag(tag)
 
     common.log(
@@ -64,8 +66,9 @@ def _run() -> None:
                 shutil.rmtree(stale, ignore_errors=True)
 
     addon_url, addon_branch = common.build_addon_descriptor(
-        addon_name, repo_url, tag, mode
+        addon_name, repo_url, tag, mode, branch
     )
+    common.log(f"Installing {addon_url} at {addon_branch}")
     addon = Addon(addon_name, addon_url, branch=addon_branch)
     installer = AddonInstaller(addon)
     if not installer.run(InstallationMethod.ANY):

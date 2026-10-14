@@ -4,9 +4,14 @@ on:
   workflow_call:
     inputs:
       install_mode:
-        description: RELEASE_INSTALL_MODE (tag, index_zip, main, or release)
+        description: RELEASE_INSTALL_MODE (tag, index_zip, main, or branch)
         required: true
         type: string
+      install_branch:
+        description: Branch to install in branch mode (default the caller's branch)
+        required: false
+        type: string
+        default: ""
       install_tag:
         description: Expected release tag (e.g. v0.1.12) for package.xml version checks
         required: true
@@ -33,7 +38,7 @@ on:
         required: true
         default: v0.1.11
       mode:
-        description: Install mode (tag, index_zip, main, or release)
+        description: Install mode (tag, index_zip, main, or branch)
         required: true
         default: tag
         type: choice
@@ -41,7 +46,11 @@ on:
           - tag
           - index_zip
           - main
-          - release
+          - branch
+      branch:
+        description: Branch to install in branch mode (empty for the branch this run is on)
+        required: false
+        default: ""
       coverage:
         description: Measure addon line coverage during the FreeCAD runs (trial)
         required: false
@@ -64,6 +73,7 @@ jobs:
     env:
       RELEASE_INSTALL_TAG: ${{ inputs.install_tag || github.event.inputs.tag || github.ref_name }}
       RELEASE_INSTALL_MODE: ${{ inputs.install_mode || github.event.inputs.mode || 'tag' }}
+      RELEASE_INSTALL_BRANCH: ${{ inputs.install_branch || github.event.inputs.branch || github.ref_name }}
       RELEASE_INSTALL_REPO: https://github.com/CREATeNG/freecad-mcp-bridge
       RELEASE_INSTALL_NAME: freecad-mcp-bridge
       RELEASE_INSTALL_GUI_DELAY_MS: "5000"
