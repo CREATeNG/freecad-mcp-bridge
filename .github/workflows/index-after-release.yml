@@ -1,0 +1,101 @@
+name: Index install after release
+
+# Once FreeCAD's Addons Index catalog serves the version the release branch
+# holds, install it from the Index on all three OSes. Nothing waits on this:
+# the release has already shipped; this checks what Index users receive.
+on:
+  schedule:
+    - cron: "23 */3 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Install from the Index even if this version already passed
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: index-after-release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Compare the Index catalog with release
+    runs-on: ubuntu-24.04
+    outputs:
+      run: ${{ steps.compare.outputs.run }}
+      version: ${{ steps.compare.outputs.version }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Compare versions
+        id: compare
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORCE: ${{ inputs.force == true }}
+          # How long the catalog may lag a release before this fails.
+          MAX_LAG_DAYS: "7"
+        run: |
+          set -euo pipefail
+          git fetch --depth=1 origin release
+          VERSION=$(git show FETCH_HEAD:package.xml | sed -n 's/.*<version>\([^<]*\)<\/version>.*/\1/p' | head -1)
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not read <version> from release's package.xml"
+            exit 1
+          fi
+          INDEX_VERSION=$(python3 scripts/index_catalog_version.py)
+          echo "release holds $VERSION; the Index catalog states $INDEX_VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          if [ "$INDEX_VERSION" != "$VERSION" ]; then
+            PUBLISHED=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/v${VERSION}" --jq .published_at)
+            AGE_DAYS=$(( ($(date -u +%s) - $(date -u -d "$PUBLISHED" +%s)) / 86400 ))
+            if [ "$AGE_DAYS" -ge "$MAX_LAG_DAYS" ]; then
+              echo "::error::The Index catalog still states $INDEX_VERSION, $AGE_DAYS days after v$VERSION was published ($PUBLISHED)"
+              exit 1
+            fi
+            echo "The Index catalog has not caught up with v$VERSION yet (published $PUBLISHED); nothing to install"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # A passing install leaves an artifact named for its version.
+          CHECKED=$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=index-checked-${VERSION}" --jq .total_count)
+          if [ "$CHECKED" -gt 0 ] && [ "$FORCE" != "true" ]; then
+            echo "v$VERSION already passed an install from the Index; nothing to do"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "run=true" >> "$GITHUB_OUTPUT"
+
+  install_verify:
+    name: Install verify (index)
+    needs: check
+    if: needs.check.outputs.run == 'true'
+    uses: ./.github/workflows/install-verify.yml
+    with:
+      install_mode: index
+      install_tag: v${{ needs.check.outputs.version }}
+      acceptance: false
+
+  mark_checked:
+    name: Record the version as checked
+    needs: [check, install_verify]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Write the marker
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+        run: echo "$VERSION" > index-checked.txt
+
+      - name: Upload the marker
+        uses: actions/upload-artifact@v7
+        with:
+          name: index-checked-${{ needs.check.outputs.version }}
+          path: index-checked.txt
+          retention-days: 90
