@@ -5,13 +5,20 @@ as an agent reading output through get_output_page experiences it. The job's
 output queue is fed directly, standing in for the executor.
 """
 
+import json
 import time
 import unittest
 from unittest import mock
 
 from freecad.mcp_bridge import paging
+from freecad.mcp_bridge.mcp_protocol import (
+    serialized_page_length,
+    tool_call_response,
+)
 
-PAGE_SIZE = 10  # characters
+# Serialized tool-result characters. Small outputs fit; the tight caps
+# below are for the tests that need a page to close early.
+PAGE_SIZE = 400
 SHORT_WAIT_MS = 50
 LONG_WAIT_MS = 5000
 RETENTION_MS = 60_000
@@ -43,8 +50,10 @@ def read_all(token, wait_ms=SHORT_WAIT_MS, page_size=PAGE_SIZE):
             return pages
 
 
-def chars(page):
-    return sum(len(chunk["text"]) for chunk in page)
+def wire_length(result):
+    return serialized_page_length(
+        result["page"], result["page_no"], result["job_token"]
+    )
 
 
 class FakeClock:
@@ -74,11 +83,13 @@ class PageBoundsTests(unittest.TestCase):
 
     def test_a_page_closes_as_soon_as_it_is_full(self):
         """A page closes as soon as it is full, without waiting out the limit."""
+        # 135 fits six "a"s and not those six plus six "b"s.
         token, _ = new_job(("stdout", "a" * 6), ("stdout", "b" * 6))
         started = time.monotonic()
-        result = fetch(token, 0, wait_ms=LONG_WAIT_MS)
+        result = fetch(token, 0, wait_ms=LONG_WAIT_MS, page_size=135)
         self.assertLess(time.monotonic() - started, 1.0)
-        self.assertEqual(chars(result["page"]), PAGE_SIZE)
+        self.assertEqual(result["page"], [{"stream": "stdout", "text": "a" * 6}])
+        self.assertLessEqual(wire_length(result), 135)
         self.assertTrue(result["has_more"])
 
     def test_a_page_closes_as_soon_as_the_job_output_is_complete(self):
@@ -101,22 +112,92 @@ class PageBoundsTests(unittest.TestCase):
         self.assertEqual(result["page_no"], 0)
         self.assertFalse(result["has_more"])
 
-    def test_a_page_never_holds_more_text_than_the_page_size_cap(self):
-        """A page holds no more than the configured number of text characters, independent of JSON size."""
-        # Quotes, backslashes, newlines and non-ASCII all grow when encoded as
-        # JSON; the cap counts characters of text, not encoded bytes.
-        token, _ = new_job(("stdout", '"\\\né' * 10), finished=True)
-        pages = read_all(token)
+    def test_a_page_stays_within_the_serialized_tool_result_cap(self):
+        """A page's JSON tool result stays within the cap, quotes and newlines included."""
+        cap = 160
+        text = '"\\\né' * 10
+        token, _ = new_job(("stdout", text), finished=True)
+        pages = read_all(token, page_size=cap)
+        self.assertGreater(len(pages), 1)
+        joined = ""
         for result in pages:
-            self.assertLessEqual(chars(result["page"]), PAGE_SIZE)
-        self.assertEqual(chars(pages[0]["page"]), PAGE_SIZE)
+            self.assertLessEqual(wire_length(result), cap)
+            joined += "".join(chunk["text"] for chunk in result["page"])
+            if not result["has_more"]:
+                response = tool_call_response(1, result)
+                inner = response["result"]["content"][0]["text"]
+                self.assertEqual(len(inner), wire_length(result))
+                self.assertEqual(json.loads(inner)["page"], result["page"])
+        self.assertEqual(joined, text)
+
+    def test_adjacent_writes_of_one_stream_arrive_as_one_entry(self):
+        """Adjacent writes of one stream arrive as one entry; another stream stays its own, in order."""
+        token, _ = new_job(
+            ("stdout", "a"),
+            ("stdout", " "),
+            ("stdout", "b"),
+            ("stdout", "\n"),
+            ("stderr", "e"),
+            ("stdout", "c"),
+            finished=True,
+        )
+        result = fetch(token, 0)
+        self.assertEqual(
+            result["page"],
+            [
+                {"stream": "stdout", "text": "a b\n"},
+                {"stream": "stderr", "text": "e"},
+                {"stream": "stdout", "text": "c"},
+            ],
+        )
+        self.assertEqual(fetch(token, 0), result)
+
+    def test_a_long_line_waits_for_a_fresh_page_when_this_one_has_output(self):
+        """A page that already has output leaves a line with no fitting newline for the next page."""
+        cap = 140
+        token, _ = new_job(
+            ("stdout", "hello\n"), ("stdout", "x" * 20), finished=True
+        )
+        pages = read_all(token, page_size=cap)
+        self.assertEqual(
+            pages[0]["page"], [{"stream": "stdout", "text": "hello\n"}]
+        )
+        rest = "".join(
+            chunk["text"] for result in pages[1:] for chunk in result["page"]
+        )
+        self.assertEqual(rest, "x" * 20)
+        for result in pages:
+            self.assertLessEqual(wire_length(result), cap)
+
+    def test_a_line_longer_than_the_cap_splits_on_an_empty_page(self):
+        """A line longer than the cap splits on an empty page, and the text is not lost."""
+        cap = 140
+        text = "x" * 20
+        token, _ = new_job(("stdout", text), finished=True)
+        pages = read_all(token, page_size=cap)
+        self.assertGreater(len(pages), 1)
+        first = pages[0]["page"]
+        self.assertEqual(len(first), 1)
+        self.assertEqual(first[0]["stream"], "stdout")
+        self.assertNotIn("\n", first[0]["text"])
+        self.assertLess(len(first[0]["text"]), len(text))
+        joined = "".join(
+            chunk["text"] for result in pages for chunk in result["page"]
+        )
+        self.assertEqual(joined, text)
+        for result in pages:
+            self.assertLessEqual(wire_length(result), cap)
 
     def test_an_oversized_chunk_is_split_across_pages_intact(self):
         """An oversized output chunk is split across pages without losing or duplicating text or changing its stream label."""
         long_out = "".join(str(i % 10) for i in range(25))
         chunks = [("stdout", long_out), ("stderr", "err-1234567")]
         token, _ = new_job(*chunks, finished=True)
-        pieces = [c for result in read_all(token) for c in result["page"]]
+        pieces = [
+            c
+            for result in read_all(token, page_size=140)
+            for c in result["page"]
+        ]
         self.assertGreater(len(pieces), len(chunks))  # it really was split
         rejoined = []
         for piece in pieces:
@@ -180,8 +261,8 @@ class PageHistoryTests(unittest.TestCase):
         jobs = [
             new_job(finished=True),  # no output at all
             new_job(("stdout", "abc"), finished=True),  # end after a part page
-            new_job(("stdout", "a" * PAGE_SIZE), finished=True),  # after a full page
-            new_job(("stdout", "a" * 25), finished=True),  # after a split chunk
+            new_job(("stdout", "a" * 400), finished=True),  # longer than the cap
+            new_job(("stdout", "a" * 25), finished=True),
         ]
         for token, _ in jobs:
             for result in read_all(token):
