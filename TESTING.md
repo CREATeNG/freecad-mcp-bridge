@@ -31,7 +31,8 @@ Shared helpers live in `scripts/test_install_common.py`.
 
 | Trigger | Tag / mode | Typical use |
 |---------|------------|-------------|
-| `workflow_call` from **`release.yml`** | `install_mode: main` or `tag`; `install_tag` from prepare | Pre-tag gate (`main`) and post-tag sanity check (`tag` path) |
+| `workflow_call` from **`release.yml`** | `install_mode: main` or `tag`; `install_tag` from prepare; `acceptance: true` | Pre-tag gate (`main`) and post-tag sanity check (`tag` path) |
+| `workflow_call` from **`acceptance-main.yml`**, on every push to `main` | `install_mode: main`; `install_tag` from the pushed `package.xml`; `acceptance: true` | Acceptance tests on each change to `main` |
 | `workflow_dispatch` | Inputs: `tag` (e.g. `v0.1.15`), `mode` (`tag`, `index_zip`, `main`, or `branch`), `branch` (branch mode only) | Ad-hoc CI run; iterate on scripts; prove a branch before it merges into `main` |
 
 Environment variables set by the workflow (overridable locally when debugging) fall into three groups. Exact names and defaults live in [`install-verify.yml`](.github/workflows/install-verify.yml) and each script's own module docstring (`test_install.py`, `test_verify.py`) — not repeated here to avoid the two copies drifting apart:
@@ -205,6 +206,7 @@ bash scripts/publish_ci_log.sh /tmp/freecad-ci-verify.log "Verify addon after re
 | File | Role |
 |------|------|
 | `.github/workflows/install-verify.yml` | Pre-tag and tag-path checks (`workflow_call` from `release.yml`), or `workflow_dispatch` |
+| `.github/workflows/acceptance-main.yml` | Install verify with acceptance on each push to `main` |
 | `scripts/ci_run_freecad.sh` | FreeCAD launcher + timeout + log path |
 | `scripts/publish_ci_log.sh` | Log file → GitHub annotations |
 | `scripts/test_install.py` | Addon Manager install phase |
