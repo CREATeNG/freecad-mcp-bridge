@@ -14,16 +14,20 @@ import unittest
 from tests.acceptance import mcp_client as mcp
 
 # Prints a marker, then, still running, waits for FreeCAD's Report view to
-# show it, processing GUI events so the view can update.
+# show it, processing GUI events so the view can update. Hides the Report
+# view again if it was hidden: a shown one repaints for every message, and
+# where painting fails, as on a Windows runner, each failure is a message.
 REPORT_VIEW_JOB = """
 import time
 import uuid
 from PySide.QtCore import QCoreApplication
 from PySide.QtWidgets import QDockWidget, QPlainTextEdit, QTextEdit
 
+dock = Gui.getMainWindow().findChild(QDockWidget, 'Report view')
+was_visible = dock is not None and dock.isVisible()
+
 
 def report_view_text():
-    dock = Gui.getMainWindow().findChild(QDockWidget, 'Report view')
     if dock is None:
         return ''
     dock.show()
@@ -37,10 +41,14 @@ marker = f'report-view-{uuid.uuid4().hex}'
 print(marker)
 seen = False
 deadline = time.monotonic() + 5
-while not seen and time.monotonic() < deadline:
-    QCoreApplication.processEvents()
-    seen = marker in report_view_text()
-    time.sleep(0.05)
+try:
+    while not seen and time.monotonic() < deadline:
+        QCoreApplication.processEvents()
+        seen = marker in report_view_text()
+        time.sleep(0.05)
+finally:
+    if dock is not None and not was_visible:
+        dock.hide()
 print('in the Report view while running:', seen)
 """
 
