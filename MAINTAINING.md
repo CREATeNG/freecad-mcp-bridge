@@ -29,7 +29,7 @@ The bump runs once each new tag has passed its install-verify, pushing `main` ah
 - **Every component in a release carries the same version.** Matching numbers across `package.xml`, `manifest.json`, and `package.json` are what make "version X" mean one coherent thing, not a mismatched patchwork.
 - **Version numbers only increase.** A newer version must always sort higher than an older one, or "is this an update" becomes unanswerable — for Addon Manager, for users, for anyone comparing releases.
 - **The release pipeline is automated and gated, to help ensure the above.**
-- **What we verify is what we tag.** The prepare job pins the release-candidate commit; publish refuses to tag if `main` has moved since; the tag is then re-verified by installing it, and only then does `release` move. The Addon Index listing, which follows `release`, can therefore never point at an untested snapshot.
+- **What we verify is what we tag.** The prepare job pins the release-candidate commit; publish refuses to tag if `main` has moved since; the tag is then re-verified by installing it, then the same commit through the `release-candidate` branch, and only then does `release` move. The Addon Index listing, which follows `release`, can therefore never point at an untested snapshot.
 - **`release` only moves forward.** Promote pushes without force, so GitHub refuses any move that isn't a fast-forward; what Index users already have is never rewritten.
 - **The tag's zip is the tag.** GitHub archives the same tree the tag names, so the two install forms can never differ in content — only in install-layout mechanics. Verifying the zip form is about layout handling, never a second content gate.
 
@@ -88,7 +88,9 @@ flowchart TD
   verify -->|pass| pub[publish — tag + notes + pack/upload .mcpb]
   pub --> postverify[install_verify tag path]
   postverify -->|fail| stop2[release unchanged / no patch bump]
-  postverify -->|pass| promote[promote — fast-forward release]
+  postverify -->|pass| candverify[install_verify branch path — release-candidate]
+  candverify -->|fail| stop3[release unchanged]
+  candverify -->|pass| promote[promote — fast-forward release]
   postverify -->|pass| zbump[post-release patch bump on main]
 ```
 
@@ -98,8 +100,9 @@ flowchart TD
 2. **Install-verify** (pre-tag) — [`install-verify.yml`](.github/workflows/install-verify.yml) with `install_mode: main`: full Addon Manager install + restart verify on all three OSes against `main`. **No tag if this fails.**
 3. **Publish** — push the matching tag (`v{x.y.z}`) on the verified commit, create a **GitHub Release**, then pack the Claude Desktop bundle (`mcpb pack`) and upload it as a release asset. Uses [`release-publish-orchestrator.sh`](scripts/release-publish-orchestrator.sh) (`RELEASE_PUBLISH_AUTHORIZED=true`; not runnable standalone).
 4. **Install-verify** (tag path) — same workflow with `install_mode: tag`: final sanity check that install works from the tag ref. **`release` doesn't move and no patch bump if this fails.**
-5. **Promote** — push the verified commit to **`release`** as a plain push, which GitHub refuses unless it fast-forwards. This is the step that ships to Index users.
-6. **Bump** — increment patch on `main` for the next dev cycle via [`bump-package-z.sh`](scripts/bump-package-z.sh), syncing the shim's `manifest.json`/`package.json` too. Runs in parallel with step 5.
+5. **Install-verify** (branch path) — push the verified commit to **`release-candidate`** as a plain push (fast-forward only, as promote's), then the same workflow with `install_mode: branch` from that branch: the route `release` serves, proven on the exact commit. **`release` doesn't move if this fails.**
+6. **Promote** — push the verified commit to **`release`** as a plain push, which GitHub refuses unless it fast-forwards. This is the step that ships to Index users.
+7. **Bump** — increment patch on `main` for the next dev cycle via [`bump-package-z.sh`](scripts/bump-package-z.sh), syncing the shim's `manifest.json`/`package.json` too. Runs in parallel with steps 5 and 6.
 
 Re-running **`release.yml`** while `package.xml` still names a tag that already exists on GitHub will fail at **prepare**.
 
