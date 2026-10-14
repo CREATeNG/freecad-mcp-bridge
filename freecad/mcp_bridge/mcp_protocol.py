@@ -1,11 +1,14 @@
-"""MCP protocol handling for protocol version 2026-07-28, the only one spoken.
+"""MCP protocol handling for protocol versions 2026-07-28 and 2025-11-25.
 
-check_request() validates each request's protocol version, its `_meta` and
-the HTTP headers that mirror its body, and rejects an `initialize` from the
-handshake-based versions. handle_request() answers server/discover and
-tools/list; listen_messages() answers subscriptions/listen. The HTTP layer
-dispatches tools/call itself, since it needs the Executor and paging buffer,
-and frames its replies with tool_call_response() and error_response().
+check_request() decides which version each request is in, from its HTTP
+headers and `_meta`, and validates it: a 2026-07-28 request carries its
+version in `_meta` and headers that mirror its body; `initialize` opens the
+2025-11-25 handshake, and later 2025-11-25 requests carry only the version
+header. handle_request() answers server/discover and tools/list in
+2026-07-28, and initialize, tools/list and ping in 2025-11-25;
+listen_messages() answers subscriptions/listen. The HTTP layer dispatches
+tools/call itself, since it needs the Executor and paging buffer, and frames
+its replies with tool_call_response() and error_response().
 check_request() and handle_request() return the HTTP status with the reply.
 """
 
@@ -13,7 +16,12 @@ import base64
 import binascii
 import json
 
-from freecad.mcp_bridge.constants import PROTOCOL_VERSION, SERVER_NAME
+from freecad.mcp_bridge.constants import (
+    LEGACY_PROTOCOL_VERSION,
+    PROTOCOL_VERSION,
+    SERVER_NAME,
+    SUPPORTED_PROTOCOL_VERSIONS,
+)
 from freecad.mcp_bridge.resources import addon_version
 from freecad.mcp_bridge.tools import TOOL_DEFINITIONS
 
@@ -54,7 +62,8 @@ def is_notification(request) -> bool:
 
 
 def check_request(request: dict, headers):
-    """Return (status, error response) for a request to reject, else None.
+    """Return (version, None) for a request to serve in that protocol
+    version, or (None, (status, error response)) for one to reject.
 
     `request` is a parsed JSON-RPC request (not a notification); `headers`
     are its HTTP headers, whose get() matches names case-insensitively.
@@ -63,18 +72,18 @@ def check_request(request: dict, headers):
     method = request.get("method")
     params = request.get("params")
     if not isinstance(method, str):
-        return 400, _error(req_id, INVALID_REQUEST, "Invalid request")
+        return None, (400, _error(req_id, INVALID_REQUEST, "Invalid request"))
     if params is None:
         params = {}
     if not isinstance(params, dict):
-        return 400, _error(req_id, INVALID_PARAMS, "params must be an object")
+        return None, (
+            400,
+            _error(req_id, INVALID_PARAMS, "params must be an object"),
+        )
     if method == "initialize":
-        # The handshake-based versions open with initialize. Name the
-        # version this server speaks: it may be all such a client can show.
-        requested = params.get("protocolVersion")
-        if not isinstance(requested, str):
-            requested = ""
-        return _unsupported(req_id, requested)
+        # initialize opens the 2025-11-25 handshake, whatever version it
+        # asks for: the answer offers 2025-11-25.
+        return LEGACY_PROTOCOL_VERSION, None
     meta = params.get("_meta")
     if not isinstance(meta, dict):
         meta = {}
@@ -82,16 +91,33 @@ def check_request(request: dict, headers):
     header_version = headers.get("MCP-Protocol-Version")
     body_version = meta.get(META_PROTOCOL_VERSION)
     if header_version is None:
-        return _mismatch(req_id, "MCP-Protocol-Version header is missing")
+        # A request without the header is in a version before 2025-06-18,
+        # which this server does not speak.
+        return None, _mismatch(
+            req_id, "MCP-Protocol-Version header is missing"
+        )
     if body_version is not None and body_version != header_version:
-        return _mismatch(
+        return None, _mismatch(
             req_id,
             f"MCP-Protocol-Version header value '{header_version}' does "
             f"not match body value '{body_version}'",
         )
+    if header_version == LEGACY_PROTOCOL_VERSION and body_version is None:
+        return LEGACY_PROTOCOL_VERSION, None
     if header_version != PROTOCOL_VERSION:
-        return _unsupported(req_id, header_version)
-    if body_version is None:
+        # Only 2026-07-28 carries its version in _meta, so a 2025-11-25
+        # request that does is asking for a version not spoken here.
+        return None, _unsupported(req_id, header_version)
+    rejection = _check_2026_request(req_id, method, params, meta, headers)
+    if rejection is not None:
+        return None, rejection
+    return PROTOCOL_VERSION, None
+
+
+def _check_2026_request(req_id, method, params, meta, headers):
+    """Return (status, error response) for a 2026-07-28 request whose
+    `_meta`, or method and name headers, fail validation, else None."""
+    if meta.get(META_PROTOCOL_VERSION) is None:
         return 400, _error(
             req_id, INVALID_PARAMS, f"_meta is missing {META_PROTOCOL_VERSION}"
         )
@@ -128,14 +154,16 @@ def check_request(request: dict, headers):
     return None
 
 
-def handle_request(request: dict):
-    """Return (status, response) for an accepted server/discover, tools/list
-    or unknown-method request; check_request has already passed it."""
+def handle_request(request: dict, version: str):
+    """Return (status, response) for a request other than tools/call and
+    subscriptions/listen, which check_request has accepted in `version`."""
     method = request.get("method")
     req_id = request.get("id")
+    if version == LEGACY_PROTOCOL_VERSION:
+        return _handle_legacy_request(req_id, method)
 
     if method == "server/discover":
-        return 200, _result(req_id, _discover_result())
+        return 200, _result(req_id, _discover_result(), version)
     if method == "tools/list":
         return 200, _result(
             req_id,
@@ -144,8 +172,29 @@ def handle_request(request: dict):
                 "ttlMs": CACHE_TTL_MS,
                 "cacheScope": CACHE_SCOPE,
             },
+            version,
         )
     return 404, _error(req_id, METHOD_NOT_FOUND, f"Method not found: {method}")
+
+
+def _handle_legacy_request(req_id, method):
+    """Answer a 2025-11-25 request. That version gives HTTP 404 a session
+    meaning, so an unknown method gets method-not-found with 200."""
+    if method == "initialize":
+        result = {
+            "protocolVersion": LEGACY_PROTOCOL_VERSION,
+            "capabilities": {"tools": {}},
+            "serverInfo": _server_info(),
+        }
+    elif method == "tools/list":
+        result = {"tools": TOOL_DEFINITIONS}
+    elif method == "ping":
+        result = {}
+    else:
+        return 200, _error(
+            req_id, METHOD_NOT_FOUND, f"Method not found: {method}"
+        )
+    return 200, _result(req_id, result, LEGACY_PROTOCOL_VERSION)
 
 
 def listen_messages(request: dict) -> list:
@@ -165,13 +214,15 @@ def listen_messages(request: dict) -> list:
             "notifications": {},
         },
     }
-    closed = _result(req_id, {"_meta": {META_SUBSCRIPTION_ID: req_id}})
+    closed = _result(
+        req_id, {"_meta": {META_SUBSCRIPTION_ID: req_id}}, PROTOCOL_VERSION
+    )
     return [acknowledged, closed]
 
 
 def _discover_result() -> dict:
     return {
-        "supportedVersions": [PROTOCOL_VERSION],
+        "supportedVersions": list(SUPPORTED_PROTOCOL_VERSIONS),
         "capabilities": {"tools": {}},
         "ttlMs": CACHE_TTL_MS,
         "cacheScope": CACHE_SCOPE,
@@ -192,13 +243,17 @@ def _decode_header(value):
         return None
 
 
-def _result(req_id, result) -> dict:
-    """A result response: resultType "complete", and serverInfo in _meta."""
-    meta = {
-        META_SERVER_INFO: {"name": SERVER_NAME, "version": addon_version()}
-    }
-    meta.update(result.get("_meta", {}))
-    result = {**result, "resultType": "complete", "_meta": meta}
+def _server_info() -> dict:
+    return {"name": SERVER_NAME, "version": addon_version()}
+
+
+def _result(req_id, result, version) -> dict:
+    """A result response in `version`. A 2026-07-28 result carries
+    resultType "complete", and serverInfo in _meta."""
+    if version == PROTOCOL_VERSION:
+        meta = {META_SERVER_INFO: _server_info()}
+        meta.update(result.get("_meta", {}))
+        result = {**result, "resultType": "complete", "_meta": meta}
     return {"jsonrpc": "2.0", "id": req_id, "result": result}
 
 
@@ -218,14 +273,18 @@ def _unsupported(req_id, requested):
         req_id,
         UNSUPPORTED_PROTOCOL_VERSION,
         "Unsupported protocol version",
-        {"supported": [PROTOCOL_VERSION], "requested": requested},
+        {
+            "supported": list(SUPPORTED_PROTOCOL_VERSIONS),
+            "requested": requested,
+        },
     )
 
 
-def tool_call_response(req_id, result) -> dict:
+def tool_call_response(req_id, result, version) -> dict:
     """Wrap a tool result ({page, has_more, [page_no], [job_token], [error]})
-    as an MCP tools/call result — a single JSON text content block. A result
-    carrying an `error` is a failed tool call, flagged isError."""
+    as an MCP tools/call result in `version` — a single JSON text content
+    block. A result carrying an `error` is a failed tool call, flagged
+    isError."""
     payload = {
         "page": result.get("page", []),
         "has_more": result.get("has_more", False),
@@ -239,7 +298,7 @@ def tool_call_response(req_id, result) -> dict:
     result = {"content": [{"type": "text", "text": json.dumps(payload)}]}
     if "error" in payload:
         result["isError"] = True
-    return _result(req_id, result)
+    return _result(req_id, result, version)
 
 
 def error_response(req_id, code, message) -> dict:

@@ -1,12 +1,13 @@
 """In-process HTTP server hosting the MCP endpoint on loopback.
 
 A ThreadingHTTPServer runs on a background thread, binding 127.0.0.1 only.
-Every request is checked against MCP 2026-07-28 (see mcp_protocol.py) and
-answered as plain JSON. Tool calls (execute_python, execute_python_file,
-get_output_page) run code on the Qt main thread via the Executor. Output is
-paged through the job's page history (see paging.py) when it outlasts the
-response timeout or exceeds the max page size. subscriptions/listen alone
-answers as an SSE stream, which ends as soon as it is acknowledged.
+Each request is served in MCP 2026-07-28 or 2025-11-25, whichever it is
+in, or rejected (see mcp_protocol.py), and answered as plain JSON. Tool
+calls (execute_python, execute_python_file, get_output_page) run code on the
+Qt main thread via the Executor. Output is paged through the job's page
+history (see paging.py) when it outlasts the response timeout or exceeds the
+max page size. A 2026-07-28 subscriptions/listen alone answers as an SSE
+stream, which ends as soon as it is acknowledged.
 """
 
 import json
@@ -18,7 +19,11 @@ from urllib.parse import urlparse
 import FreeCAD
 
 from freecad.mcp_bridge import config, mcp_protocol, paging
-from freecad.mcp_bridge.constants import ENDPOINT_PATH, LOG_PREFIX
+from freecad.mcp_bridge.constants import (
+    ENDPOINT_PATH,
+    LOG_PREFIX,
+    PROTOCOL_VERSION,
+)
 from freecad.mcp_bridge.executor import Executor
 
 _LOOPBACK_HOSTS = ("localhost", "127.0.0.1")
@@ -38,7 +43,7 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         return urlparse(origin).hostname in _LOOPBACK_HOSTS
 
     def do_GET(self):
-        # MCP 2026-07-28 has no GET stream, and no sessions to DELETE.
+        # The server offers no GET stream, and has no sessions to DELETE.
         self.send_error(405, "Method Not Allowed")
 
     do_DELETE = do_GET
@@ -70,20 +75,25 @@ class McpRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        rejection = mcp_protocol.check_request(request, self.headers)
+        version, rejection = mcp_protocol.check_request(
+            request, self.headers
+        )
         if rejection is not None:
             self._send_json(*rejection)
             return
 
         method = request.get("method")
         if method == "tools/call":
-            self._handle_tool_call(request)
-        elif method == "subscriptions/listen":
+            self._handle_tool_call(request, version)
+        elif (
+            method == "subscriptions/listen"
+            and version == PROTOCOL_VERSION
+        ):
             self._send_sse(mcp_protocol.listen_messages(request))
         else:
-            self._send_json(*mcp_protocol.handle_request(request))
+            self._send_json(*mcp_protocol.handle_request(request, version))
 
-    def _handle_tool_call(self, request):
+    def _handle_tool_call(self, request, version):
         req_id = request.get("id")
         params = request.get("params") or {}
         name = params.get("name")
@@ -95,7 +105,7 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         )
 
         if name == "execute_python":
-            self._run_code(req_id, args.get("code", ""), drain_args)
+            self._run_code(req_id, version, args.get("code", ""), drain_args)
         elif name == "execute_python_file":
             filepath = args.get("filepath", "")
             try:
@@ -104,6 +114,7 @@ class McpRequestHandler(BaseHTTPRequestHandler):
             except (OSError, UnicodeDecodeError) as exc:
                 self._send_tool_result(
                     req_id,
+                    version,
                     {
                         "page": [],
                         "has_more": False,
@@ -111,7 +122,9 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                     },
                 )
                 return
-            self._run_code(req_id, code, drain_args, os.path.abspath(filepath))
+            self._run_code(
+                req_id, version, code, drain_args, os.path.abspath(filepath)
+            )
         elif name == "get_output_page":
             page_no = _as_page_no(args.get("page_no"))
             if page_no is None:
@@ -124,7 +137,7 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                 result = paging.fetch(
                     args.get("job_token", ""), page_no, *drain_args
                 )
-            self._send_tool_result(req_id, result)
+            self._send_tool_result(req_id, version, result)
         else:
             self._send_json(
                 200,
@@ -135,15 +148,17 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                 ),
             )
 
-    def _run_code(self, req_id, code, drain_args, filepath=None):
+    def _run_code(self, req_id, version, code, drain_args, filepath=None):
         token, output_queue = paging.start_page()
         self.server.executor.submit(code, output_queue, filepath)
         # The initiating call returns page 0 — the first page the job produces.
         result = paging.fetch(token, 0, *drain_args)
-        self._send_tool_result(req_id, result)
+        self._send_tool_result(req_id, version, result)
 
-    def _send_tool_result(self, req_id, result):
-        self._send_json(200, mcp_protocol.tool_call_response(req_id, result))
+    def _send_tool_result(self, req_id, version, result):
+        self._send_json(
+            200, mcp_protocol.tool_call_response(req_id, result, version)
+        )
 
     def _send_json(self, status, payload):
         body = json.dumps(payload).encode("utf-8")
