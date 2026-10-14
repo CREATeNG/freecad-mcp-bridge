@@ -443,21 +443,29 @@ present and is not `localhost` or `127.0.0.1`.
 
 **Stdio shim**
 
-Some MCP clients speak only stdio for local servers. A small zero-dependency
-Node.js shim (`mcp-stdio-shim/index.js`) ships with the addon as a stdio ↔ HTTP
-proxy: each newline-delimited JSON-RPC message arriving on stdin is forwarded as an
-HTTP POST to the in-process server; the JSON or single-event SSE reply is unwrapped
-and written back on stdout as one line. It interprets as little of the protocol as
-possible: it forwards any JSON-RPC message, and unwraps only a plain JSON or
-single-event SSE reply. Node stdlib only (global
-`fetch`, Node ≥ 18); Claude Desktop bundles Node.js — no user-side runtime install
-needed. The shim reads the port from the `FREECAD_MCP_PORT` environment variable
-(default 39280). Notifications (no `id`) get no reply. If the bridge is unreachable,
-the shim answers `initialize` and `tools/list` itself, from `tools.json`, a copy of
-the addon's tool list that release preparation checks against `tools.py`, so a
-client started before FreeCAD comes up cleanly. A `tools/call` then gets a tool
-result whose `error` says to start FreeCAD and turn the bridge on; any other request
-gets a JSON-RPC error saying the same.
+Some MCP clients speak only stdio for local servers. A small
+zero-dependency Node.js shim (`mcp-stdio-shim/index.js`) ships with
+the addon as a stdio ↔ HTTP proxy. Each newline-delimited JSON-RPC
+message on stdin is forwarded as an HTTP POST, body unchanged. The
+JSON or single-event SSE reply is unwrapped and written back on
+stdout as one line. Stdio carries no headers, so the shim sets
+`MCP-Protocol-Version` from
+`params._meta["io.modelcontextprotocol/protocolVersion"]` when that
+field is present, and to `2025-11-25` when it is not. When the
+version is `2026-07-28` it also sets `Mcp-Method` from the message's
+method and, for `tools/call`, `Mcp-Name` from `params.name`. Node
+stdlib only (global `fetch`, Node ≥ 18); Claude Desktop bundles
+Node.js, so no user-side runtime install is needed. The shim reads
+the port from the `FREECAD_MCP_PORT` environment variable (default
+39280). Notifications (no `id`) get no reply. While the bridge
+answers, `initialize` is forwarded with every other message. If the
+bridge is unreachable, the shim answers `initialize` itself with
+`protocolVersion` `2025-11-25`, and `tools/list` from `tools.json`,
+a copy of the addon's tool list that release preparation checks
+against `tools.py`, so a client started before FreeCAD comes up
+cleanly. A `tools/call` then gets a tool result whose `error` says
+to start FreeCAD and turn the bridge on; any other request gets a
+JSON-RPC error saying the same.
 
 **Shim — no SDK**
 

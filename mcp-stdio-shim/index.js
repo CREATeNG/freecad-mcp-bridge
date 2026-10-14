@@ -19,7 +19,9 @@ const path = require("path");
 
 const PORT = process.env.FREECAD_MCP_PORT || "39280";
 const ENDPOINT = `http://127.0.0.1:${PORT}/mcp`;
-const PROTOCOL_VERSION = "2025-03-26";
+const LEGACY_PROTOCOL_VERSION = "2025-11-25";
+const MODERN_PROTOCOL_VERSION = "2026-07-28";
+const META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion";
 const TOOLS = JSON.parse(fs.readFileSync(path.join(__dirname, "tools.json"), "utf8"));
 const VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf8")).version;
 const UNREACHABLE_HINT =
@@ -34,7 +36,7 @@ function offlineResult(message, err) {
   switch (message.method) {
     case "initialize":
       return {
-        protocolVersion: PROTOCOL_VERSION,
+        protocolVersion: LEGACY_PROTOCOL_VERSION,
         capabilities: { tools: {} },
         serverInfo: { name: "freecad-mcp-bridge", version: VERSION },
       };
@@ -59,6 +61,24 @@ function offlineResult(message, err) {
   }
 }
 
+function bridgeHeaders(message) {
+  // Stdio has no headers. The version the body already declares is the
+  // one the bridge checks; a body with none is the legacy handshake.
+  const headers = { "Content-Type": "application/json" };
+  const meta = message.params && message.params._meta;
+  const declared = meta && meta[META_PROTOCOL_VERSION];
+  const version = typeof declared === "string" ? declared : LEGACY_PROTOCOL_VERSION;
+  headers["MCP-Protocol-Version"] = version;
+  if (version === MODERN_PROTOCOL_VERSION) {
+    if (typeof message.method === "string") headers["Mcp-Method"] = message.method;
+    const name = message.params && message.params.name;
+    if (message.method === "tools/call" && typeof name === "string") {
+      headers["Mcp-Name"] = name;
+    }
+  }
+  return headers;
+}
+
 async function forward(rawLine, message) {
   // JSON-RPC notifications omit "id" entirely and get no reply.
   const isNotification = message.id === undefined;
@@ -67,7 +87,7 @@ async function forward(rawLine, message) {
   try {
     res = await fetch(ENDPOINT, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: bridgeHeaders(message),
       body: rawLine,
     });
   } catch (err) {

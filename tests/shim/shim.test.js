@@ -144,6 +144,63 @@ test("each stdin line is POSTed unchanged to /mcp", async () => {
   bridge.close();
 });
 
+test("a message with no protocol version is forwarded as 2025-11-25", async () => {
+  const bridge = await startBridge(echo);
+  const shim = startShim(bridge.port);
+  const line = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" });
+  shim.send(line + "\n");
+  await shim.waitForLines(1);
+  const sent = bridge.requests[0];
+  assert.equal(sent.body, line);
+  assert.equal(sent.headers["mcp-protocol-version"], "2025-11-25");
+  assert.equal(sent.headers["mcp-method"], undefined);
+  await shim.stop();
+  bridge.close();
+});
+
+test("a 2026 message is forwarded with its own protocol version and method", async () => {
+  const bridge = await startBridge(echo);
+  const shim = startShim(bridge.port);
+  const line = JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "server/discover",
+    params: { _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" } },
+  });
+  shim.send(line + "\n");
+  await shim.waitForLines(1);
+  const sent = bridge.requests[0];
+  assert.equal(sent.body, line);
+  assert.equal(sent.headers["mcp-protocol-version"], "2026-07-28");
+  assert.equal(sent.headers["mcp-method"], "server/discover");
+  assert.equal(sent.headers["mcp-name"], undefined);
+  await shim.stop();
+  bridge.close();
+});
+
+test("a 2026 tools/call carries the tool name", async () => {
+  const bridge = await startBridge(echo);
+  const shim = startShim(bridge.port);
+  const line = JSON.stringify({
+    jsonrpc: "2.0",
+    id: 4,
+    method: "tools/call",
+    params: {
+      name: "execute_python",
+      _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" },
+    },
+  });
+  shim.send(line + "\n");
+  await shim.waitForLines(1);
+  const sent = bridge.requests[0];
+  assert.equal(sent.body, line);
+  assert.equal(sent.headers["mcp-protocol-version"], "2026-07-28");
+  assert.equal(sent.headers["mcp-method"], "tools/call");
+  assert.equal(sent.headers["mcp-name"], "execute_python");
+  await shim.stop();
+  bridge.close();
+});
+
 test("a plain JSON reply comes back as one JSON-RPC line", async () => {
   const reply = { jsonrpc: "2.0", id: 7, result: { content: [{ type: "text", text: "hi\nthere" }] } };
   const bridge = await startBridge(() => ({ text: JSON.stringify(reply) }));
@@ -202,7 +259,7 @@ async function askOffline(message) {
 test("with the bridge unreachable, initialize is still answered", async () => {
   const reply = await askOffline({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} });
   const constants = fs.readFileSync(path.join(ROOT, "freecad", "mcp_bridge", "constants.py"), "utf8");
-  const declared = constants.match(/PROTOCOL_VERSION = "([^"]+)"/)[1];
+  const declared = constants.match(/LEGACY_PROTOCOL_VERSION = "([^"]+)"/)[1];
   assert.equal(reply.id, 1);
   assert.equal(reply.result.protocolVersion, declared);
   assert.deepEqual(reply.result.serverInfo, {
