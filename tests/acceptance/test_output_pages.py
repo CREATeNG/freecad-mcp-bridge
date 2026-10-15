@@ -272,6 +272,17 @@ def _job_that_sets_retention(minutes, tail):
     )
 
 
+def _apply_retention(minutes):
+    """Set retention from a job, without reading that job's output.
+
+    preference() reads the current value and restores it on exit. After
+    a job has written zero, that read can expire before it is fetched,
+    and the restore puts that zero back.
+    """
+    mcp.execute(_set_retention(minutes))
+    time.sleep(1)
+
+
 class RetentionTests(unittest.TestCase):
     def test_the_retention_in_effect_when_execution_finishes_applies(self):
         """The retention in effect when execution finishes applies to that job."""
@@ -285,8 +296,8 @@ class RetentionTests(unittest.TestCase):
                 first = mcp.execute(code)
                 self.assertTrue(first["has_more"])
                 time.sleep(4)
-                with mcp.preference(RETENTION, 5):
-                    expired = mcp.get_page(first["job_token"], 1)
+                _apply_retention(5)
+                expired = mcp.get_page(first["job_token"], 1)
                 self.assertEqual(
                     expired.get("error"), "unknown or expired job_token"
                 )
@@ -299,15 +310,18 @@ class RetentionTests(unittest.TestCase):
                 first = mcp.execute(SLOW_JOB)
                 self.assertTrue(first["has_more"])
                 time.sleep(4)
-                with mcp.preference(RETENTION, NO_RETENTION):
-                    final = mcp.get_page(first["job_token"], 1)
-                    self.assertNotIn("error", final)
-                    self.assertFalse(final["has_more"])
-                    replay = mcp.get_page(
-                        final["job_token"], final["page_no"]
-                    )
+                _apply_retention(NO_RETENTION)
+                final = mcp.get_page(first["job_token"], 1)
+                self.assertNotIn("error", final)
+                self.assertFalse(final["has_more"])
+                replay = mcp.get_page(
+                    final["job_token"], final["page_no"]
+                )
                 self.assertNotIn("error", replay)
                 self.assertEqual(replay["page"], final["page"])
+                # preference() restores by reading. Leave a non-zero
+                # interval in force first, so that read cannot expire.
+                _apply_retention(5)
 
     def test_every_script_exit_notifies_paging_without_a_fetch(self):
         """Success, a raised exception and sys.exit each start retention before the next fetch."""
@@ -323,8 +337,10 @@ class RetentionTests(unittest.TestCase):
                     first = mcp.execute(code)
                     self.assertTrue(first["has_more"], tail)
                     time.sleep(4)
-                    with mcp.preference(RETENTION, 5):
-                        page = mcp.get_page(first["job_token"], 1)
+                    # Raise it again without preference(): that would
+                    # capture the zero this job wrote and restore it.
+                    _apply_retention(5)
+                    page = mcp.get_page(first["job_token"], 1)
                     self.assertEqual(
                         page.get("error"),
                         "unknown or expired job_token",
