@@ -14,12 +14,22 @@ The version number format is `x.y.z`; tags are named `v{x.y.z}` — e.g. shippin
 
 | Part | Meaning | Who changes it |
 |------|---------|----------------|
-| **`x.y`** (major.minor line) | e.g. `0.1` in `0.1.42` | Repo maintainers, manually, when starting a new line |
-| **`z`** (patch) | e.g. `42` in `0.1.42` | GitHub Actions only, via `bump-package-z.sh` |
+| **`x.y`** (major.minor line) | e.g. `0.1` in `0.1.42` | A maintainer, by editing the version files in a version pull request |
+| **`z`** (patch) | e.g. `42` in `0.1.42` | A maintainer, via `bump-package-z.sh` on a branch |
 
-The version number is stored in `package.xml`, `manifest.json`, and `package.json` — kept in lockstep automatically by the bump process, which syncs the current version across all three whenever it runs, so none of them should ever need a manual edit just to match the others.
+The version is stored in `package.xml`,
+`mcp-stdio-shim/manifest.json`, and
+`mcp-stdio-shim/package.json`. A version pull request changes
+only those files. `bump-package-z.sh` writes the next patch into
+all three, and the date in `package.xml`. A new major or minor
+line is the same pull request with those files edited by hand.
+The maintainer commits the files and opens the pull request.
+The script does not commit or push.
 
-The bump runs once each new tag has passed its install-verify, pushing `main` ahead of the last shipped version — this is what keeps tag collisions rare, not continuous policing of `main` (which is expected to be unstable between releases; see [Branches, tags, and the FreeCAD Addon Index](#branches-tags-and-the-freecad-addon-index) below).
+The release workflow pushes nothing to `main`. The next version
+is another version pull request. Between releases, `main` holds
+whatever those pull requests leave there; see
+[Branches, tags, and the FreeCAD Addon Index](#branches-tags-and-the-freecad-addon-index).
 
 ---
 
@@ -54,12 +64,10 @@ The bump runs once each new tag has passed its install-verify, pushing `main` ah
 
 ## When `package.xml` updates
 
-| Field | Trigger | Mechanism |
-|-------|---------|-----------|
-| **Patch (post-release)** | After **`release.yml`** ships | Bump job increments patch + `<date>` (and syncs the shim's `manifest.json`/`package.json`) |
-| **Patch (opt-in)** | Run **version-bump workflow** on `main` | Increments patch + `<date>` (and syncs the shim's `manifest.json`/`package.json`) |
-
-Ordinary pushes do not change `package.xml`. Run **Bump package version** from Actions only when you deliberately want `main` on the next patch before shipping again (uncommon).
+A version pull request is the only change to the version. It
+changes `package.xml`, `mcp-stdio-shim/manifest.json`, and
+`mcp-stdio-shim/package.json`, and nothing else. Merging it
+starts the release.
 
 `package.xml`'s repository url names branch **`release`**: the Addon Manager installs that branch rather than the Index's `git_ref`, so the two must agree. **prepare** refuses to run otherwise. The Addon Manager offers an update when the `<version>` on `release` changes, which every release does.
 
@@ -69,39 +77,54 @@ Ordinary pushes do not change `package.xml`. Run **Bump package version** from A
 
 | Name | File | Role |
 |------|------|------|
-| **Release orchestrator workflow** | [`release.yml`](.github/workflows/release.yml) | Ships a version; see the [job order](#the-release-orchestrator-workflow-releaseyml) below. Actions UI: **Release Orchestrator** → Run workflow. |
+| **Release orchestrator workflow** | [`release.yml`](.github/workflows/release.yml) | Ships a version when a version pull request merges. Actions UI: **Release Orchestrator** → Run workflow, to retry a release that failed after that merge. |
 | **Install-verify workflow** | [`install-verify.yml`](.github/workflows/install-verify.yml) | Confirms addon installation works on Linux, macOS, and Windows. Can be run at any time; `release.yml` calls it before tag (`main`) and after (`tag` path). Actions UI: **Install verify**. |
-| **Version-bump workflow** | [`bump-package-version.yml`](.github/workflows/bump-package-version.yml) | Actions UI: **Bump package version** → Run workflow. |
 
 ---
 
 ## The release orchestrator workflow (`release.yml`)
 
-The **release orchestrator workflow** is what you run to ship a version. It owns validating the release candidate, the verify gate, tagging, GitHub Release notes (plus packing and uploading the `.mcpb` bundle), moving `release` to the verified commit, and the post-release patch bump on `main`. There is no standalone tag path.
+A push to `main` starts the release orchestrator. Prepare
+releases that push only when `package.xml`'s version differs from
+the previous tip and the push changes only the three version
+files. Any other push stops there. **Run workflow** is the retry
+for a release that failed after its version merged: it ships the
+current `main` when that version's tag does not exist yet. The
+workflow then tags the commit, runs install-verify before and
+after the tag, and moves `release`. It pushes nothing to `main`.
 
 ```mermaid
 flowchart TD
   R[release.yml]
-  R --> prep[prepare — resolve version, validate mcpb manifest]
-  prep --> verify[install_verify pre-tag — main]
+  R --> prep[prepare — version gate, then validate]
+  prep -->|not a version push| skip[Stop. main unchanged]
+  prep -->|version pull request, or a retry| verify[install_verify pre-tag — main]
   verify -->|fail| stop[No tag / no GitHub Release]
   verify -->|pass| pub[publish — tag + notes + pack/upload .mcpb]
   pub --> postverify[install_verify tag path]
-  postverify -->|fail| stop2[release unchanged / no patch bump]
+  postverify -->|fail| stop2[release unchanged]
   postverify -->|pass| promote[promote — fast-forward release]
-  postverify -->|pass| zbump[post-release patch bump on main]
 ```
 
 **`release.yml` job order:**
 
-1. **Prepare** — resolve the version from `package.xml`, verify the tag does not already exist, validate the Claude Desktop bundle manifest (`mcpb validate`), record the release-candidate commit SHA.
+1. **Prepare** — on a push, compare `package.xml`'s version with
+   the previous tip (`github.event.before`) and fail the run
+   unless its diff is only the three version files. On **Run
+   workflow**, take the current `main`. Then resolve the version,
+   verify the tag does not already exist, validate the Claude
+   Desktop bundle manifest (`mcpb validate`), and record the
+   release-candidate commit SHA.
 2. **Install-verify** (pre-tag) — [`install-verify.yml`](.github/workflows/install-verify.yml) with `install_mode: main`: full Addon Manager install + restart verify on all three OSes against `main`. **No tag if this fails.**
 3. **Publish** — push the matching tag (`v{x.y.z}`) on the verified commit, create a **GitHub Release**, then pack the Claude Desktop bundle (`mcpb pack`) and upload it as a release asset. Uses [`release-publish-orchestrator.sh`](scripts/release-publish-orchestrator.sh) (`RELEASE_PUBLISH_AUTHORIZED=true`; not runnable standalone).
-4. **Install-verify** (tag path) — same workflow with `install_mode: tag`: final sanity check that install works from the tag ref. **`release` doesn't move and no patch bump if this fails.**
+4. **Install-verify** (tag path) — same workflow with
+   `install_mode: tag`: final sanity check that install works
+   from the tag ref. **`release` does not move if this fails.**
 5. **Promote** — push the verified commit to **`release`** as a plain push, which GitHub refuses unless it fast-forwards. This is the step that ships to Index users.
-6. **Bump** — increment patch on `main` for the next dev cycle via [`bump-package-z.sh`](scripts/bump-package-z.sh), syncing the shim's `manifest.json`/`package.json` too. Runs in parallel with step 5.
 
-Re-running **`release.yml`** while `package.xml` still names a tag that already exists on GitHub will fail at **prepare**.
+A push whose version is unchanged stops in prepare without
+releasing. Running the workflow by hand while that version's tag
+already exists fails at prepare.
 
 ---
 
@@ -113,12 +136,28 @@ Each GitHub Release carries one uploaded asset: **`freecad-mcp-bridge.mcpb`** �
 
 ## Shipping a release (checklist)
 
-1. Merge finished work into `main` (topic branches for larger changes).
-2. Ensure `package.xml` on `main` is the version you intend to ship. Ordinary pushes do not advance the patch number; the **release orchestrator** bumps the patch after a successful ship.
-3. GitHub → **Actions** → **Release Orchestrator** → **Run workflow** — runs **`release.yml`** (branch: **`main`** only).
-4. Wait for **`release.yml`** to finish (tag-path install-verify, **promote**, and patch bump). Index users get the release once the FreeCAD Addon Index cache refreshes, which can take up to **four hours**.
+1. On a branch, run
+   [`scripts/bump-package-z.sh`](scripts/bump-package-z.sh),
+   or edit the three version files to the version you intend
+   to ship. The files are `package.xml`,
+   `mcp-stdio-shim/manifest.json`, and
+   `mcp-stdio-shim/package.json`.
+2. Open a pull request that changes only those files. It runs
+   every test a pull request runs.
+3. Merge it. `release.yml` tags that commit, verifies it, and
+   moves `release`. It does not push to `main`.
+4. If that run fails after the merge, GitHub → **Actions** →
+   **Release Orchestrator** → **Run workflow**, on `main`.
+   That retries the current `main`. Index users get the
+   release once the FreeCAD Addon Index cache refreshes,
+   which can take up to **four hours**.
 
-**Duplicate versions are blocked.** **`release.yml`** reads `package.xml`, checks that `v{x.y.z}` does not already exist (**prepare**), and **publish** checks again before tagging. If the tag is already on GitHub, **`release.yml`** fails — no second tag, no partial publish. After shipping, the post-release patch bump on `main` advances the patch; run **`release.yml`** again only when `package.xml` names the version you intend to ship next.
+**Duplicate versions are blocked.** **`release.yml`** reads
+`package.xml`, checks that `v{x.y.z}` does not already exist
+(**prepare**), and **publish** checks again before tagging. If
+the tag is already on GitHub, the run fails. No second tag, no
+partial publish. A push that does not change the version does
+not release. The next version is another version pull request.
 
 ---
 

@@ -1,6 +1,9 @@
 name: Release Orchestrator
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -21,6 +24,7 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
       commit_sha: ${{ steps.commit_sha.outputs.sha }}
+      do_release: ${{ steps.gate.outputs.do_release }}
     steps:
       - name: Checkout main
         uses: actions/checkout@v7
@@ -29,11 +33,78 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Sync with origin main
-        run: git pull --ff-only origin main
+      # A push releases only when the version changed since the previous
+      # tip and the diff is the version files alone. Dispatch is the
+      # retry: it ships the current main when that version has no tag.
+      - name: Decide whether this run releases
+        id: gate
+        run: |
+          set -eu
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "do_release=true" >> "$GITHUB_OUTPUT"
+            echo "Dispatch: retry the release of the current main."
+            exit 0
+          fi
+          BEFORE="${{ github.event.before }}"
+          SHA="${{ github.sha }}"
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "do_release=false" >> "$GITHUB_OUTPUT"
+            echo "No previous tip to compare. Not a release."
+            exit 0
+          fi
+          if ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            echo "Previous tip $BEFORE is not in this checkout."
+            exit 1
+          fi
+          version_at() {
+            local xml
+            xml="$(git show "$1:package.xml")"
+            printf '%s\n' "$xml" \
+              | sed -n 's/.*<version>\([^<]*\)<\/version>.*/\1/p' \
+              | head -1
+          }
+          OLD="$(version_at "$BEFORE")"
+          NEW="$(version_at "$SHA")"
+          if [ "$OLD" = "$NEW" ]; then
+            echo "do_release=false" >> "$GITHUB_OUTPUT"
+            echo "package.xml version unchanged ($NEW). Not a release."
+            exit 0
+          fi
+          if [ -z "$NEW" ]; then
+            echo "package.xml on $SHA has no <version>."
+            exit 1
+          fi
+          diff_names="$(git diff --name-only "$BEFORE" "$SHA")"
+          while IFS= read -r changed; do
+            [ -z "$changed" ] && continue
+            case "$changed" in
+              package.xml|mcp-stdio-shim/manifest.json|mcp-stdio-shim/package.json)
+                ;;
+              *)
+                echo "Version changed ($OLD -> $NEW) but the push also changes $changed."
+                echo "A version pull request changes only the version files."
+                exit 1
+                ;;
+            esac
+          done <<EOF
+          $diff_names
+          EOF
+          echo "do_release=true" >> "$GITHUB_OUTPUT"
+          echo "Version release $OLD -> $NEW at $SHA"
+
+      - name: Pin the commit this run releases
+        if: steps.gate.outputs.do_release == 'true'
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            git pull --ff-only origin main
+          else
+            git checkout --detach "${{ github.sha }}"
+          fi
 
       - name: Resolve version from package.xml
         id: version
+        if: steps.gate.outputs.do_release == 'true'
         run: |
           VERSION=$(sed -n 's/.*<version>\([^<]*\)<\/version>.*/\1/p' package.xml | head -1)
           if [ -z "$VERSION" ]; then
@@ -55,6 +126,7 @@ jobs:
           echo "Release version: $VERSION (tag v$VERSION)"
 
       - name: Verify tag does not exist
+        if: steps.gate.outputs.do_release == 'true'
         run: |
           TAG="${{ steps.version.outputs.tag }}"
           if git rev-parse "$TAG" >/dev/null 2>&1; then
@@ -67,18 +139,22 @@ jobs:
           fi
 
       - name: Validate Claude Desktop bundle manifest
+        if: steps.gate.outputs.do_release == 'true'
         run: npx --yes @anthropic-ai/mcpb@2.1.2 validate mcp-stdio-shim/manifest.json
 
       - name: Check the Claude Desktop shim's tool list matches the addon's
+        if: steps.gate.outputs.do_release == 'true'
         run: python3 scripts/check_shim_tools.py
 
       - name: Record release candidate commit
         id: commit_sha
+        if: steps.gate.outputs.do_release == 'true'
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   install_verify:
     name: Install verify (pre-tag gate)
     needs: prepare
+    if: needs.prepare.outputs.do_release == 'true'
     uses: ./.github/workflows/install-verify.yml
     with:
       install_mode: main
@@ -90,7 +166,7 @@ jobs:
     name: Tag and publish release notes
     needs: [prepare, install_verify]
     runs-on: ubuntu-24.04
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && needs.prepare.outputs.do_release == 'true'
     steps:
       - name: Checkout release candidate
         uses: actions/checkout@v7
@@ -116,6 +192,7 @@ jobs:
   install_verify_tag:
     name: Install verify (tag path)
     needs: [prepare, publish]
+    if: needs.prepare.outputs.do_release == 'true'
     uses: ./.github/workflows/install-verify.yml
     with:
       install_mode: tag
@@ -127,7 +204,7 @@ jobs:
     name: Move the release branch to the verified commit
     needs: [prepare, install_verify_tag]
     runs-on: ubuntu-24.04
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && needs.prepare.outputs.do_release == 'true'
     steps:
       - name: Checkout release candidate
         uses: actions/checkout@v7
@@ -142,27 +219,3 @@ jobs:
         # A plain push: GitHub refuses it unless release is an ancestor of the
         # verified commit, so release only ever moves forward.
         run: git push origin "${RELEASE_SHA}:refs/heads/release"
-
-  bump:
-    name: Bump development patch on main
-    needs: [prepare, install_verify_tag]
-    runs-on: ubuntu-24.04
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - name: Checkout main
-        uses: actions/checkout@v7
-        with:
-          ref: main
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Configure git
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git pull --ff-only origin main
-
-      - name: Bump development patch on main
-        env:
-          BUMP_PACKAGE_Z_AUTHORIZED: "true"
-        run: bash "${GITHUB_WORKSPACE}/scripts/bump-package-z.sh"
