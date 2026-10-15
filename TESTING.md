@@ -61,7 +61,9 @@ HTTP and Origin validation, loopback binding, port changes and stopping
 the bridge with running or queued jobs. When `BUNDLE_MCPB`
 names a packed `.mcpb`, `test_bundle_mcp.py` calls that shim
 over stdio, in both protocol versions, and then expects it
-to exit. With no bundle named, that test skips.
+to exit. With no bundle named, that test skips;
+`verify_bundle: true`, as release and pull-request runs
+set it, always names one.
 
 Use a disposable FreeCAD session and test profile. The suite creates
 documents and temporary files, changes preferences and toggles the

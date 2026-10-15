@@ -344,7 +344,13 @@ def _one_version(version, command, args, port, root):
 class BundleShimTests(unittest.TestCase):
     def test_the_packed_shim_pages_both_protocol_versions(self):
         """Hello and all 3000 lines come back in both versions."""
+        requested = os.environ.get("VERIFY_BUNDLE", "")
         bundle = os.environ.get("BUNDLE_MCPB", "")
+        if requested == "true" and not bundle:
+            _fail(
+                "FAIL: verify_bundle was requested but "
+                "BUNDLE_MCPB is missing or empty"
+            )
         if not bundle:
             self.skipTest("verify_bundle did not supply a bundle")
         with tempfile.TemporaryDirectory() as tmp:

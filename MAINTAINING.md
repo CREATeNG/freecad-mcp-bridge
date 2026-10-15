@@ -96,7 +96,7 @@ after the tag, and moves `release`. It pushes nothing to `main`.
 ```mermaid
 flowchart TD
   R[release.yml]
-  R --> prep[prepare — version gate, pack .mcpb]
+  R --> prep[prepare — version gate, validate, pack .mcpb]
   prep -->|not a version push| skip[Stop. main unchanged]
   prep -->|version pull request, or a retry| verify[install_verify pre-tag — main and the bundle]
   verify -->|fail| stop[No tag / no GitHub Release]
@@ -122,9 +122,9 @@ flowchart TD
    Addon Manager install and restart verify on all three OSes
    against `main`, then the packed shim called over stdio while
    that bridge is still up. **No tag if this fails.**
-3. **Publish** — push the matching tag (`v{x.y.z}`) on the
-   verified commit, create a **GitHub Release**, check the
-   packed bundle's sha256, and upload that same file. Uses
+3. **Publish** — check the packed bundle's sha256, push the
+   matching tag (`v{x.y.z}`) on the verified commit, create a
+   **GitHub Release**, and upload that same file. Uses
    [`release-publish-orchestrator.sh`](scripts/release-publish-orchestrator.sh)
    (`RELEASE_PUBLISH_AUTHORIZED=true`; not runnable standalone).
 4. **Install-verify** (tag path) — same workflow with
