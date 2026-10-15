@@ -2,7 +2,7 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security issue in MCP Bridge (FreeCAD MCP Bridge), please report it privately rather than opening a public issue.
+If you discover any security issue in MCP Bridge (FreeCAD MCP Bridge), use this repository's [Report a vulnerability](https://github.com/CREATeNG/freecad-mcp-bridge/security/advisories/new) form on GitHub, rather than creating a public issue.
 
 **Contact:** chris@createng.com
 
