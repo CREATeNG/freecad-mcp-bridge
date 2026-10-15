@@ -34,14 +34,18 @@ makes that wake-up do nothing, so the order still holds.)
 
 ## 4. Running
 
-The job owns the main thread. Everything printed while it runs flows into its
-output queue — and the Report View — as it is produced. The redirect of
-`sys.stdout` and `sys.stderr` is process-wide, so that includes anything else
-that prints during the job, and output from a thread the job started lands in
-whichever job is running when the thread prints. If its code refreshes the GUI,
-repaints happen, but no other job can slip in. Nothing preempts it; it runs
-until it is done. Its own output can never interleave with another job's,
-because jobs run one at a time.
+The job owns the main thread. Everything printed while it runs flows
+into its output queue — and the Report View — as it is produced. The
+redirect of `sys.stdout` and `sys.stderr` is process-wide while a job
+runs, so the job's queue also takes anything else written to them in
+that time, from any thread. A thread the job started can outlive it:
+what that thread writes later lands in whichever job is then running, or
+in the normal streams when none is. Output that doesn't go through
+`sys.stdout` or `sys.stderr`, such as FreeCAD's Console messages or
+writes from C++ code, isn't captured. If its code refreshes the GUI,
+repaints happen, but no other job can slip in. Nothing preempts it; it
+runs until it is done. Its own output can never interleave with another
+job's, because jobs run one at a time.
 
 ## 5. Finished
 
