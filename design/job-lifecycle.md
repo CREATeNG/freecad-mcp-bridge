@@ -59,19 +59,23 @@ turn.
 
 ## 6. Afterlife
 
-The job is done, but its page history remains. Every page with content, and
-the final page, was stored as an immutable snapshot at emit time — replayable by
-`page_no`, readable by any client that holds the token. While the job was
-still running, forward fetches drained the live output queue into new pages
-appended to the history.
+The job has finished running. Paging knows this from the runner's finish
+notification, even if nobody fetches another page. The retention clock
+starts at that point (see
+[addon-hosted-mcp-server.md](addon-hosted-mcp-server.md)
+*Configuration*). Stored pages remain replayable, and unread output can
+still be drained into new pages, until retention expires. Each valid
+fetch after execution finishes restarts the same interval; invalid
+tokens and out-of-range requests do not.
 
-When the final page is emitted, the retention clock starts (see
-[addon-hosted-mcp-server.md](addon-hosted-mcp-server.md) *Configuration*).
-The history stays retrievable for that period whether or not anyone has read
-every page yet. After that it is deleted the next time a job starts or a page
-is fetched; until then it is unreadable but still in memory. If the bridge
-stops first, the history is
-cleared with everything else and the token dies.
+After a gap that reaches the retention interval, the remaining output is
+lost, even if the client is waiting for human approval. A later fetch
+gets `"unknown or expired job_token"`; it cannot revive the history. A
+fetch admitted before expiry can finish. The server removes the expired
+history during regular maintenance without waiting for another request;
+output held by an admitted fetch is released when that fetch finishes.
+If the bridge stops first, its histories are cleared and their tokens
+die.
 
 ## The unhappy path
 
@@ -84,8 +88,9 @@ cleared at stop, so undelivered output is lost and its token dies the same
 way.
 
 If the client stops polling before the final page, the job still runs to
-completion, but its history never reaches the retention clock: nothing drains
-the sentinel, so the history stays in memory until the bridge stops.
+completion. Its retention clock starts when execution finishes. Without
+another valid fetch, the history and unread output expire after that
+interval.
 
 ## Terms
 

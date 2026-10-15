@@ -19,8 +19,9 @@ addon, and there are no user-side dependencies beyond the addon itself.
 - **Page** — a capped array of `{stream, text}` entries from the
   job's stdout and stderr.
 
-- **Page history** — the append-only record of every page a job emits. Stays
-  retrievable for a configured period of time after the job's final page.
+- **Page history** — the append-only record of every page a job emits.
+  It stays readable for a configured period after the job finishes
+  running.
 
 ---
 
@@ -46,8 +47,9 @@ Every call of the three tools returns a response with the same shape.
 The fields are serialized in this order, with `page` last, so a
 client that keeps only the start can still continue.
 
-- **`has_more`** — always present. When `true`, at least one higher-numbered page exists
-  or will exist for this job.
+- **`has_more`** — always present. When `true`, at least one
+  higher-numbered page exists or will exist for this job, while its
+  history remains readable.
 - **`page_no`** — 0-based index of this page in the job's page history; present exactly
   when the response is a stored page (it carries content, or is the job's final page).
   Page 0 is the job's first stored page — usually in the response of the initiating
@@ -81,10 +83,12 @@ and runs while the handler drains the queue.
 
 **Page bounds**
 
-A page is closed when either **Response timeout** or **Page size cap** is reached, or when
-the job has no more output to deliver. Both bounds apply to `execute_python`,
-`execute_python_file`, and `get_output_page` — whichever comes first closes the page (with
-`has_more: true` unless the job has also finished).
+A page is closed when either **Response timeout** or **Page size cap**
+is reached, or when the job has no more output to deliver. Both bounds
+apply to `execute_python`, `execute_python_file`, and `get_output_page`
+— whichever comes first closes the page. Without an error, a newly
+collected page has `has_more: false` only when its drain consumes the
+sentinel.
 
 - **Response timeout** — each drain waits up to the configured max response timeout
   (default 15 s) for more output or for the job to finish before returning. A quiet or
@@ -141,7 +145,7 @@ the stdio shim.
     ]
   }
 
-// final page — job output complete; history retained for configured retention period
+// final page — job output complete; history readable until expiry
 → {
     "has_more": false,
     "page_no": 2,
@@ -173,30 +177,45 @@ consumes no page number: the response returns `has_more: true`
 and `page: []`, and no `page_no`. `page_no` therefore counts
 output, not polling rhythm.
 
-A job is **complete** when its sentinel (see
-[job-lifecycle.md](job-lifecycle.md) *Terms*) has been drained into a
-page. The drain that consumes the sentinel produces the job's final
+A job finishes running when its runner places the sentinel (see
+[job-lifecycle.md](job-lifecycle.md) *Terms*) on its output queue. The
+runner notifies paging at that point, without waiting for a fetch. Page
+delivery is **complete** when a fetch drains the sentinel into the final
 page, possibly with an empty `page` array, returning `has_more: false`.
-While the server runs, `has_more: true` therefore always precedes at
-least one more fetchable page. That promise assumes the job ends.
+
+While the server runs and the token stays readable, `has_more: true`
+always precedes at least one more fetchable page. That promise assumes
+the job ends.
 
 The history is shared: any client with the `job_token` may read any stored page.
 Capability is the token itself (typically passed from the initiating agent to a
 sub-agent).
 
-While a job is incomplete, its page history persists until its final
-page is fetched or the server stops. A job whose final page is never
-fetched (an agent that stops polling) therefore keeps its history until
-the server stops. After the final page (`has_more: false`), the
-retention clock starts (see *Configuration*); the history remains
-readable until retention expires or the server stops, whichever comes
-first. The client need not have fetched every page before retention
-begins — only the job must be complete.
+Queued and running jobs do not expire. The retention clock starts when
+the job finishes running (see *Configuration*), whether or not its final
+page is fetched. After execution finishes, each valid page fetch or
+replay restarts the clock at that fetch's admission, using the same
+retention interval. Invalid tokens and out-of-range requests do not
+extend retention. An expired token cannot be revived.
 
-Histories are held in memory, a job's full output from job start; once
-the final page is fetched, retention bounds a history's readable
-lifetime, not its size. Accepted for a local, single-user tool; users
-needing a smaller footprint can shorten the retention period.
+At expiry, the history becomes unreadable, including output not yet
+fetched. A fetch admitted before expiry can finish. A fetch waiting for
+the job's page-history lock is admitted only after it acquires that
+lock, and is refused if expiry has passed by then. Later fetches return
+the `unknown or expired job_token` error. A reader whose gap after
+execution finishes or between valid fetches reaches the retention
+interval loses access to unread output.
+
+The HTTP server removes expired histories during regular maintenance,
+even when no requests arrive. Removal releases the history's stored
+pages, pending fragments and unread output when no admitted fetch still
+holds them. Stopping the bridge invalidates its histories.
+
+Histories are held in memory, a job's full output from job start;
+retention limits how long output remains readable without a valid fetch
+after execution finishes, not its size. Users needing a smaller
+footprint can shorten the retention period; users needing longer to read
+can lengthen it.
 
 Requesting an unknown or expired `job_token` returns
 `{"has_more": false, "error": "unknown or expired job_token", "page": []}` — never an
@@ -207,27 +226,32 @@ exception.
 `get_output_page` requires `job_token` and `page_no`. Let `max` be the highest `page_no` currently in
 the history for that job.
 
-- **`page_no` in the history** — return the stored snapshot (idempotent replay).
-- **`page_no == max + 1`** and the job is not yet complete — drain forward; if the drain
-  yields content or the sentinel, store and return the new page; otherwise return an
-  unstored empty response (`page: []`, `has_more: true`, no `page_no`).
-- **`page_no > max`** and the job is complete — error.
-- **`page_no > max + 1`** and the job is not yet complete — error.
+- **`page_no` in the history** — return the stored snapshot
+  (idempotent replay).
+- **`page_no == max + 1`** and page delivery is not yet complete —
+  drain forward; if the drain yields content or the sentinel, store
+  and return the new page; otherwise return an unstored empty response
+  (`page: []`, `has_more: true`, no `page_no`).
+- **`page_no > max`** and page delivery is complete — error.
+- **`page_no > max + 1`** and page delivery is not yet complete — error.
 - Out-of-range `page_no` (either case above) returns `"page_no out of range"`.
 
-Because completion is only recorded by the drain that produces the final page, an agent
-that follows `has_more` never receives `"page_no out of range"` — that error always
-indicates a genuinely out-of-range request.
+Because page-delivery completion is recorded only by the drain that
+produces the final page, an agent following `has_more` with a readable
+token never receives `"page_no out of range"` — that error indicates an
+out-of-range request.
 
-While a job is running, only one forward poller per `job_token` should request
-`page_no == max + 1`; other clients (e.g. sub-agents) should use explicit lower
-`page_no` values to read from the history.
+While page delivery is incomplete and the token is readable, only one
+forward poller per `job_token` should request `page_no == max + 1`;
+other clients (e.g. sub-agents) should use explicit lower `page_no`
+values to read from the history.
 
 **Agent loop**
 
-Append each response's `page` chunks in order. If `error` is present, read it and stop
-(tool-level failure — no job output to collect). If the initiating call returns
-`has_more: false` without `error`, the job is complete — no polling.
+Append each response's `page` chunks in order. If `error` is present,
+read it and stop (tool-level failure — no job output to collect). If the
+initiating call returns `has_more: false` without `error`, page delivery
+is complete — no polling.
 
 Otherwise, keep `job_token` and apply one rule: call `get_output_page` with `page_no`
 equal to the last `page_no` received plus one — 0 if none has been received yet — until
@@ -545,14 +569,21 @@ asset for Claude Desktop users.
 
 ## Configuration
 
-Stored at `User parameter:BaseApp/Preferences/Mod/freecad-mcp-bridge`. The port is read
-at server start; the timeout, page size and retention are read per request, so changes to
-them take effect immediately. Preference page registered as a `.ui` file; appears in Edit →
-Preferences → MCP Bridge. FreeCAD wires widgets to the parameter store automatically.
+Stored at `User parameter:BaseApp/Preferences/Mod/freecad-mcp-bridge`.
+
+The port is read at server start; timeout and page size are read per
+request. Retention is read when each job finishes running and fixes that
+job's retention interval, also used for later extensions. Preference
+changes affect jobs that finish afterwards, not histories whose
+intervals are already set.
+
+The preference page is registered as a `.ui` file and appears in Edit →
+Preferences → MCP Bridge. FreeCAD wires widgets to the parameter store
+automatically.
 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
 | Port | 39280 | Error logged on conflict at startup |
 | Max response timeout (s) | 15 | Max wait in `execute_python` and `get_output_page` before returning with `has_more: true` |
 | Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |
-| Page history retention (min) | 5 | How long a job's page history remains readable after its final page (`has_more: false`) |
+| Page history retention (min) | 5 | How long output stays readable after the job finishes running, or after its last valid page fetch or replay. |

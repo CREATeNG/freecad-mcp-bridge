@@ -64,7 +64,9 @@ Once connected, the agent has these tools:
 - **Port** — the loopback port the server listens on (default 39280).
 - **Max response timeout** — how long a request waits for output before returning what it has so far; the agent fetches the rest with `get_output_page` (default 15 s).
 - **Max page size** — the most one page may be, as the JSON the agent reads, in units of 1,024 characters (default 32, that is 32,768). Larger output is split into pages the agent fetches with `get_output_page`.
-- **Page history retention** — how long a finished job's output stays readable after its last page is fetched (default 5 min).
+- **Page history retention** — starts when the job finishes running
+  (default 5 min). Each page your agent reads restarts that interval;
+  after a gap that long without a fetch, unread output is gone.
 
 ---
 

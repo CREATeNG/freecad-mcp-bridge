@@ -11,10 +11,10 @@ stream are joined as the page is built. A chunk that does not fit is
 held in "pending", with its stream, and continued on the next page.
 
 Only pages with content — and the job's final page — are stored and numbered;
-an empty non-final drain is not stored and consumes no page number. A job is
-complete once its SENTINEL has been drained into a page; that final page
-carries has_more=False. Completed histories are retained for retention_ms,
-then swept.
+an empty non-final drain is not stored and consumes no page number. Page
+delivery is complete once SENTINEL has been drained into a page; that final
+page carries has_more=False. The retention clock starts when execution
+finishes, and each valid fetch after that restarts the same interval.
 
 This module must be able to run outside FreeCAD.
 """
@@ -24,6 +24,7 @@ import queue
 import threading
 import time
 import uuid
+from http.server import ThreadingHTTPServer
 
 from freecad.mcp_bridge.mcp_protocol import serialized_page_length
 
@@ -48,16 +49,84 @@ def start_page():
             # stays together.
             "pending": [],
             "history": [],  # stored page snapshots, indexed by page_no
-            "complete": False,
-            "expire_at": None,  # monotonic deadline, set once complete
+            "complete": False,  # sentinel drained; not execution finish
+            "finished": False,
+            "retention_s": None,  # seconds, sampled once at finish
+            "expire_at": None,  # monotonic deadline; None until finish
         }
     return token, output_queue
 
 
-def fetch(token, page_no, timeout_ms, page_size_chars, retention_ms):
-    """Return the page at `page_no` from the job's history, draining the live
-    queue forward if it is the next page and the job is still running.
-    `page_size_chars` is the maximum serialized tool-result length.
+def note_execution_finished(token, output_queue, retention_ms):
+    """Publish SENTINEL and start this job's retention clock.
+
+    Both happen under the buffer lock, after the caller has restored
+    the original streams. This does not take the history's reader lock:
+    a reader may hold that lock while it waits for SENTINEL. A token
+    already cleared is not put back; the sentinel is still published
+    so a reader blocked on the old queue can wake.
+    """
+    interval = max(0.0, retention_ms / 1000.0)
+    with _BUFFER_LOCK:
+        output_queue.put(SENTINEL)
+        entry = None if token is None else _BUFFER.get(token)
+        if entry is None or entry["queue"] is not output_queue:
+            return
+        entry["finished"] = True
+        entry["retention_s"] = interval
+        entry["expire_at"] = time.monotonic() + interval
+
+
+def _expired_result():
+    """Tool result for an unknown or expired token."""
+    return {
+        "has_more": False,
+        "error": "unknown or expired job_token",
+        "page": [],
+    }
+
+
+def _out_of_range():
+    """Tool result for a page_no this history will not serve."""
+    return {
+        "has_more": False,
+        "error": "page_no out of range",
+        "page": [],
+    }
+
+
+def _admit(token, entry, page_no):
+    """Re-check identity and deadline, then extend a valid cursor.
+
+    Caller holds the history's reader lock. Returns ("replay", None),
+    ("forward", None), or ("reject", result). Extension and the
+    deadline check share the buffer lock with the sweep.
+    """
+    with _BUFFER_LOCK:
+        if _BUFFER.get(token) is not entry:
+            return "reject", _expired_result()
+        now = time.monotonic()
+        expire_at = entry["expire_at"]
+        if expire_at is not None and now >= expire_at:
+            return "reject", _expired_result()
+        max_no = len(entry["history"]) - 1
+        if 0 <= page_no <= max_no:
+            kind = "replay"
+        elif page_no == max_no + 1 and not entry["complete"]:
+            kind = "forward"
+        else:
+            return "reject", _out_of_range()
+        if entry["finished"]:
+            entry["expire_at"] = now + entry["retention_s"]
+        return kind, None
+
+
+def fetch(token, page_no, timeout_ms, page_size_chars):
+    """Return the page at `page_no` from the job's history.
+
+    Drains the live queue when `page_no` is the next page and page
+    delivery is not yet complete. `page_size_chars` is the maximum
+    serialized tool-result length.
 
     Result: {has_more, [page_no], [job_token], [error], page}, page last.
     A stored page carries page_no and job_token. An unstored empty
@@ -68,18 +137,14 @@ def fetch(token, page_no, timeout_ms, page_size_chars, retention_ms):
     with _BUFFER_LOCK:
         entry = _BUFFER.get(token)
     if entry is None:
-        return {
-            "has_more": False,
-            "error": "unknown or expired job_token",
-            "page": [],
-        }
+        return _expired_result()
 
     with entry["lock"]:  # one reader at a time
+        kind, rejected = _admit(token, entry, page_no)
+        if rejected is not None:
+            return rejected
         history = entry["history"]
-        max_no = len(history) - 1
-
-        # Stored page — idempotent replay.
-        if 0 <= page_no <= max_no:
+        if kind == "replay":
             snap = history[page_no]
             return {
                 "has_more": snap["has_more"],
@@ -87,35 +152,23 @@ def fetch(token, page_no, timeout_ms, page_size_chars, retention_ms):
                 "job_token": token,
                 "page": snap["page"],
             }
-
-        # Next page, job still running — drain the live queue forward.
-        if page_no == max_no + 1 and not entry["complete"]:
-            page, done = _drain(
-                entry, timeout_ms, page_size_chars, page_no, token
+        page, done = _drain(
+            entry, timeout_ms, page_size_chars, page_no, token
+        )
+        if page or done:
+            history.append(
+                {"page_no": page_no, "page": page, "has_more": not done}
             )
-            if page or done:
-                history.append(
-                    {"page_no": page_no, "page": page, "has_more": not done}
-                )
-                if done:
-                    entry["complete"] = True
-                    entry["expire_at"] = time.monotonic() + max(
-                        0.0, retention_ms / 1000.0
-                    )
-                return {
-                    "has_more": not done,
-                    "page_no": page_no,
-                    "job_token": token,
-                    "page": page,
-                }
-            # Empty non-final drain: not stored, no page_no.
-            return {"has_more": True, "job_token": token, "page": []}
-
-        return {
-            "has_more": False,
-            "error": "page_no out of range",
-            "page": [],
-        }
+            if done:
+                entry["complete"] = True
+            return {
+                "has_more": not done,
+                "page_no": page_no,
+                "job_token": token,
+                "page": page,
+            }
+        # Empty non-final drain: not stored, no page_no.
+        return {"has_more": True, "job_token": token, "page": []}
 
 
 def _json_text_len(text):
@@ -269,7 +322,7 @@ def _drain(entry, timeout_ms, page_size_chars, page_no, job_token):
 
 
 def _sweep_expired():
-    """Delete completed histories whose retention period has elapsed."""
+    """Delete histories whose retention deadline has passed."""
     now = time.monotonic()
     with _BUFFER_LOCK:
         expired = [
@@ -284,3 +337,16 @@ def _sweep_expired():
 def clear_all():
     with _BUFFER_LOCK:
         _BUFFER.clear()
+
+
+class MaintenanceHTTPServer(ThreadingHTTPServer):
+    """Serve HTTP, and drop expired histories from the same loop.
+
+    ``serve_forever`` already calls ``service_actions`` each pass. No
+    extra thread or timer. A reader that was admitted keeps the entry
+    it borrowed until that fetch returns.
+    """
+
+    def service_actions(self):
+        _sweep_expired()
+        super().service_actions()

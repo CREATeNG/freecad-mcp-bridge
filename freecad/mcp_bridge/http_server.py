@@ -13,7 +13,7 @@ stream, which ends as soon as it is acknowledged.
 import json
 import os
 import threading
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
 import FreeCAD
@@ -101,7 +101,6 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         drain_args = (
             config.max_response_timeout_ms(),
             config.max_page_size_chars(),
-            config.max_history_retention_ms(),
         )
 
         if name == "execute_python":
@@ -150,7 +149,9 @@ class McpRequestHandler(BaseHTTPRequestHandler):
 
     def _run_code(self, req_id, version, code, drain_args, filepath=None):
         token, output_queue = paging.start_page()
-        self.server.executor.submit(code, output_queue, filepath)
+        self.server.executor.submit(
+            code, output_queue, filepath, token=token
+        )
         # The initiating call returns page 0 — the first page the job produces.
         result = paging.fetch(token, 0, *drain_args)
         self._send_tool_result(req_id, version, result)
@@ -225,7 +226,7 @@ class HttpServer:
         self._executor = Executor()
         bind_port = config.port()
         try:
-            self._httpd = ThreadingHTTPServer(
+            self._httpd = paging.MaintenanceHTTPServer(
                 ("127.0.0.1", bind_port), McpRequestHandler
             )
         except OSError as exc:

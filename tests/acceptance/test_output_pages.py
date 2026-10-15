@@ -249,35 +249,88 @@ class SharedHistoryTests(unittest.TestCase):
 NO_RETENTION = 0
 # Outlasts a 1 s response timeout, so its final page comes from a later call.
 SLOW_JOB = "import time\nprint('first')\ntime.sleep(3)\nprint('last')\n"
+RETENTION = "MaxHistoryRetentionMinutes"
+
+
+def _set_retention(minutes):
+    """Script text that sets retention before the running job returns."""
+    return (
+        "from freecad.mcp_bridge.constants import PREF_GROUP\n"
+        "App.ParamGet(PREF_GROUP).SetInt("
+        f"'MaxHistoryRetentionMinutes', {int(minutes)})\n"
+    )
+
+
+def _job_that_sets_retention(minutes, tail):
+    """Print, wait out the first page, set retention, then `tail`."""
+    return (
+        "import time\n"
+        "print('first')\n"
+        "time.sleep(3)\n"
+        + _set_retention(minutes)
+        + tail
+    )
 
 
 class RetentionTests(unittest.TestCase):
-    def assertExpired(self, final):
-        again = mcp.get_page(final["job_token"], final["page_no"])
-        self.assertEqual(again.get("error"), "unknown or expired job_token")
-
-    def assertKept(self, final):
-        again = mcp.get_page(final["job_token"], final["page_no"])
-        self.assertNotIn("error", again)
-        self.assertEqual(again["page"], final["page"])
-
-    def test_the_retention_in_effect_at_the_final_page_applies(self):
-        """The retention in effect when the final page returns applies."""
-        retention = "MaxHistoryRetentionMinutes"
+    def test_the_retention_in_effect_when_execution_finishes_applies(self):
+        """The retention in effect when execution finishes applies to that job."""
         with mcp.preference("MaxResponseTimeoutSeconds", 1):
-            # Started under the default retention, finished under none.
-            first = mcp.execute(SLOW_JOB)
-            self.assertTrue(first["has_more"])
-            with mcp.preference(retention, NO_RETENTION):
-                final = mcp.follow(first)[-1]
-                self.assertExpired(final)
+            with mcp.preference(RETENTION, 5):
+                # The script sets zero before it returns. Raising the
+                # preference after that must not revive the history.
+                code = _job_that_sets_retention(
+                    NO_RETENTION, "print('last')\n"
+                )
+                first = mcp.execute(code)
+                self.assertTrue(first["has_more"])
+                time.sleep(4)
+                with mcp.preference(RETENTION, 5):
+                    expired = mcp.get_page(first["job_token"], 1)
+                self.assertEqual(
+                    expired.get("error"), "unknown or expired job_token"
+                )
+                self.assertFalse(expired["has_more"])
+                self.assertEqual(expired["page"], [])
 
-            # Started under none, finished under the default retention.
-            with mcp.preference(retention, NO_RETENTION):
+                # Finish under five minutes, then set zero before the
+                # final fetch. That later value controls neither the
+                # interval sampled at finish nor the extension on a read.
                 first = mcp.execute(SLOW_JOB)
                 self.assertTrue(first["has_more"])
-            final = mcp.follow(first)[-1]
-            self.assertKept(final)
+                time.sleep(4)
+                with mcp.preference(RETENTION, NO_RETENTION):
+                    final = mcp.get_page(first["job_token"], 1)
+                    self.assertNotIn("error", final)
+                    self.assertFalse(final["has_more"])
+                    replay = mcp.get_page(
+                        final["job_token"], final["page_no"]
+                    )
+                self.assertNotIn("error", replay)
+                self.assertEqual(replay["page"], final["page"])
+
+    def test_every_script_exit_notifies_paging_without_a_fetch(self):
+        """Success, a raised exception and sys.exit each start retention before the next fetch."""
+        tails = (
+            "print('last')\n",
+            "raise RuntimeError('boom')\n",
+            "import sys\nsys.exit(0)\n",
+        )
+        with mcp.preference("MaxResponseTimeoutSeconds", 1):
+            with mcp.preference(RETENTION, 5):
+                for tail in tails:
+                    code = _job_that_sets_retention(NO_RETENTION, tail)
+                    first = mcp.execute(code)
+                    self.assertTrue(first["has_more"], tail)
+                    time.sleep(4)
+                    with mcp.preference(RETENTION, 5):
+                        page = mcp.get_page(first["job_token"], 1)
+                    self.assertEqual(
+                        page.get("error"),
+                        "unknown or expired job_token",
+                        tail,
+                    )
+                    self.assertEqual(page["page"], [], tail)
 
 
 if __name__ == "__main__":

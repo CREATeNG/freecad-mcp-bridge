@@ -1,8 +1,8 @@
 """Runtime configuration for the MCP Bridge, read from FreeCAD preferences.
 
-Values live under PREF_GROUP and are read fresh on each access: a port change
-takes effect at the next server start; timeout, page size and retention changes
-take effect on the next request.
+Values live under PREF_GROUP and are read fresh on each access. The port
+is read at server start. Timeout and page size are read per request.
+Retention is read when a job finishes running.
 """
 
 import FreeCAD
@@ -38,7 +38,7 @@ def max_page_size_chars() -> int:
 
 
 def max_history_retention_ms() -> int:
-    """How long a completed job's page history stays readable, in ms."""
+    """Retention interval in ms, sampled when a job finishes."""
     minutes = _params().GetInt(
         "MaxHistoryRetentionMinutes", DEFAULT_MAX_HISTORY_RETENTION_MIN
     )
