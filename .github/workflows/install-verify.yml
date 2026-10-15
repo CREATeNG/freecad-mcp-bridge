@@ -38,7 +38,7 @@ on:
         required: true
         default: v0.1.11
       mode:
-        description: Install mode (tag, index_zip, main, branch, or index)
+        description: Install mode (tag, index_zip, main, branch, index, copy)
         required: true
         default: tag
         type: choice
@@ -48,6 +48,7 @@ on:
           - main
           - branch
           - index
+          - copy
       branch:
         description: Branch to install in branch mode (empty for the branch this run is on)
         required: false
@@ -308,7 +309,7 @@ jobs:
           cat "${rc}"
           echo "COVERAGE_PROCESS_START=${rc}" >> "${GITHUB_ENV}"
 
-      - name: Install addon via Addon Manager
+      - name: Install addon
         shell: bash
         run: bash "${GITHUB_WORKSPACE}/scripts/ci_run_freecad.sh" install
         env:

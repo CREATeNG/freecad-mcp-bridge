@@ -1,6 +1,11 @@
 # Automated install verification (CI)
 
-This document describes the GitHub Actions workflow that installs a release candidate (branch `main`) or a tagged release through FreeCAD's Addon Manager, restarts FreeCAD, and verifies that the addon auto-initializes and the bridge works end-to-end over HTTP.
+This document describes the GitHub Actions workflow that installs
+a release candidate (branch `main`) or a tagged release through
+FreeCAD's Addon Manager, or, when the run is started by hand, by
+copying the checkout into FreeCAD's Mod folder. It then restarts
+FreeCAD and verifies that the addon auto-initializes and the
+bridge works end-to-end over HTTP.
 
 For release tagging, Index updates, and workflows, see [MAINTAINING.md](MAINTAINING.md).
 
@@ -35,7 +40,7 @@ Shared helpers live in `scripts/test_install_common.py`.
 | `workflow_call` from **`index-after-release.yml`**, on a schedule or `workflow_dispatch` | `install_mode: index`; `install_tag` from `release`'s `package.xml` | What Index users receive, once the catalog serves the release |
 | `workflow_call` from **`acceptance-main.yml`**, on every push to `main` | `install_mode: main`; `install_tag` from the pushed `package.xml`; `acceptance: true` | Acceptance tests on each change to `main` |
 | `workflow_call` from **`acceptance-pr.yml`**, on every pull request into `main` (opened, synchronize, reopened) | `install_mode: branch`; `install_branch` the PR's head branch; `install_tag` from the PR head's `package.xml`; `acceptance: true`; `coverage: true` | Acceptance tests on a change before it merges into `main`; skipped, with a notice, for PRs from forks |
-| `workflow_dispatch` | Inputs: `tag` (e.g. `v0.1.15`), `mode` (`tag`, `index_zip`, `main`, or `branch`), `branch` (branch mode only) | Ad-hoc CI run; iterate on scripts; prove a branch before it merges into `main` |
+| `workflow_dispatch` | Inputs: `tag` (e.g. `v0.1.15`), `mode` (`tag`, `index_zip`, `main`, `branch`, `index`, or `copy`), `branch` (branch mode only) | Ad-hoc CI run; iterate on scripts; prove a branch before it merges into `main`. `copy` runs only when started by hand |
 
 Environment variables set by the workflow (overridable locally when debugging) fall into three groups. Exact names and defaults live in [`install-verify.yml`](.github/workflows/install-verify.yml) and each script's own module docstring (`test_install.py`, `test_verify.py`) — not repeated here to avoid the two copies drifting apart:
 
@@ -84,6 +89,28 @@ Addon Manager installs from the repository URL with `branch` set to a named bran
 ### `index`
 
 Addon Manager loads the live Addons Index catalog (`CreateAddonListWorker.get_remote_cache`, `AddonCatalog`), takes the `freecad-mcp-bridge` entry a clean install would, and installs it with default preferences, logging the entry, its ZIP URL and the Addon Manager's own console lines. The version is whatever the Index serves, checked against the version the catalog states; `RELEASE_INSTALL_TAG` is not checked, and the acceptance tests do not run.
+
+### `copy`
+
+`copy` copies this run's checkout into FreeCAD's user Mod folder
+as `freecad-mcp-bridge`, the way a developer places the addon,
+then runs the same on-disk check, restart verify, and acceptance
+phases as the other modes. The checkout is the repo root, which
+holds `package.xml` and `freecad/` (`init_gui.py` is
+`freecad/mcp_bridge/init_gui.py`). The copy leaves out the
+checkout's `.git` and `.github` directories. On FreeCAD 1.1
+the Mod folder is the versioned `v1-1` directory (on Windows,
+`%APPDATA%\FreeCAD\v1-1\Mod`). `RELEASE_INSTALL_TAG` names the
+version that `package.xml` is expected to hold.
+
+A hand-started `workflow_dispatch` run selects `copy` from its
+mode list. `acceptance-pr.yml`, `acceptance-main.yml`,
+`release.yml` and `index-after-release.yml` do not pass
+`copy`.
+
+`copy` covers row 3 of the bridge requirements, installing by
+copying into Mod, which was left as later work when the
+test-coverage work closed.
 
 ---
 
@@ -239,6 +266,6 @@ bash scripts/publish_ci_log.sh /tmp/freecad-ci-verify.log "Verify addon after re
 | `scripts/index_catalog_version.py` | Prints the version the Index catalog states for the addon |
 | `scripts/ci_run_freecad.sh` | FreeCAD launcher + timeout + log path |
 | `scripts/publish_ci_log.sh` | Log file → GitHub annotations |
-| `scripts/test_install.py` | Addon Manager install phase |
+| `scripts/test_install.py` | Install phase: Addon Manager, or a copy into the Mod folder |
 | `scripts/test_verify.py` | Post-restart UI + HTTP phase |
 | `scripts/test_install_common.py` | Shared helpers, CI log, `quit_freecad()` |
