@@ -100,7 +100,7 @@ flowchart TD
   prep -->|not a version push| skip[Stop. main unchanged]
   prep -->|version pull request, or a retry| verify[install_verify pre-tag — main and the bundle]
   verify -->|fail| stop[No tag / no GitHub Release]
-  verify -->|pass| pub[publish — tag, check sha, upload .mcpb]
+  verify -->|pass| pub[publish — check sha, tag, upload .mcpb]
   pub --> postverify[install_verify tag path]
   postverify -->|fail| stop2[release unchanged]
   postverify -->|pass| promote[promote — fast-forward release]
