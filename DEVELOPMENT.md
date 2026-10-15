@@ -5,7 +5,8 @@ Developer tips and guidelines for coding and local testing.
 | If you are… | Read |
 |-------------|------|
 | **Installing and using the addon** | [README.md](README.md) |
-| **Cutting releases, versioning, Index, CI** | [MAINTAINING.md](MAINTAINING.md) and [TESTING.md](TESTING.md) |
+| **Cutting releases, versioning, Index** | [MAINTAINING.md](MAINTAINING.md) |
+| **Running tests locally or in CI** | [TESTING.md](TESTING.md) |
 | **Developers** | This document |
 
 For general guidelines on FreeCAD addon development setup—such as cloning, symlinking, or copying files into FreeCAD's versioned `Mod/` directory—please refer to the [FreeCAD Addon Academy](https://freecad.github.io/Addon-Academy/).
