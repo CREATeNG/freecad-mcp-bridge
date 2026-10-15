@@ -37,25 +37,45 @@ from pathlib import Path
 
 version, date, package_xml, shim_manifest, shim_package_json = sys.argv[1:6]
 
+
+def read_text(path):
+    """The file's text, and the newline it already uses."""
+    raw = Path(path).read_bytes()
+    newline = "\r\n" if b"\r\n" in raw else "\n"
+    text = raw.decode("utf-8")
+    if newline != "\n":
+        text = text.replace("\r\n", "\n")
+    return text, newline
+
+
+def write_text(path, text, newline):
+    """Write text back with the newline the file already used."""
+    if newline != "\n":
+        text = text.replace("\n", "\r\n")
+    Path(path).write_bytes(text.encode("utf-8"))
+
+
 path = Path(package_xml)
-text = path.read_text(encoding="utf-8")
+text, newline = read_text(path)
 text, n1 = re.subn(
     r"(<version>)[^<]*(</version>)", rf"\g<1>{version}\g<2>", text, count=1
 )
-text, n2 = re.subn(r"(<date>)[^<]*(</date>)", rf"\g<1>{date}\g<2>", text, count=1)
+text, n2 = re.subn(
+    r"(<date>)[^<]*(</date>)", rf"\g<1>{date}\g<2>", text, count=1
+)
 if n1 != 1 or n2 != 1:
     raise SystemExit("Failed to update version/date in package.xml")
-path.write_text(text, encoding="utf-8")
+write_text(path, text, newline)
 
 for json_path in (shim_manifest, shim_package_json):
     p = Path(json_path)
-    text = p.read_text(encoding="utf-8")
+    text, newline = read_text(p)
     text, n = re.subn(
         r'("version":\s*")[^"]*(")', rf"\g<1>{version}\g<2>", text, count=1
     )
     if n != 1:
         raise SystemExit(f"Failed to update version in {json_path}")
-    p.write_text(text, encoding="utf-8")
+    write_text(p, text, newline)
 PY
 
 echo "Wrote ${next_version} into package.xml, the shim manifest, and the shim package.json."
