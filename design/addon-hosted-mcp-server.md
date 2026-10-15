@@ -65,17 +65,19 @@ client that keeps only the start can still continue.
 
 **Non-blocking**
 
-`execute_python` and `execute_python_file` (once the file is read successfully) queue a
-job for the Qt main thread, then return a response — even if the job is still queued or
-running. The response carries the job's first page when the job has produced output or
-finished; a quiet job's first response is empty and unnumbered (see *Page history*). A
-response always arrives within the configured max response timeout; the agent polls for
-remaining output via `get_output_page`. FreeCAD operations can be long-running; this pattern
-gives the agent an acknowledgment within that timeout, rather than a silent wait that may
-look like a hang.
+`execute_python` and `execute_python_file` (once the file is read
+successfully) queue a job for the Qt main thread, then return a response
+— even if the job is still queued or running. The response carries the
+job's first page when the job has produced output or finished; a quiet
+job's first response is empty and unnumbered (see *Page history*). The
+agent polls for remaining output via `get_output_page`. FreeCAD
+operations can be long-running; this pattern gives the agent an
+acknowledgment rather than a silent wait that may look like a hang.
 
-The timeout bounds the wait for output, not the whole request: its clock starts once the
-job is queued, after any file read, and runs while the handler drains the output queue.
+The timeout bounds the wait for output, not the whole request: its clock
+starts when the handler begins to drain the output queue, after any
+file read, the queueing and the wait for the job's page-history lock,
+and runs while the handler drains the queue.
 
 **Page bounds**
 
@@ -171,27 +173,30 @@ consumes no page number: the response returns `has_more: true`
 and `page: []`, and no `page_no`. `page_no` therefore counts
 output, not polling rhythm.
 
-A job is **complete** when its sentinel (see [job-lifecycle.md](job-lifecycle.md)
-*Terms*) has been drained into a page. The drain that consumes the
-sentinel produces the job's final page, possibly with an empty `page` array, returning
-`has_more: false`. While the server runs, `has_more: true` therefore always precedes
-at least one more fetchable page: the promise holds by construction.
+A job is **complete** when its sentinel (see
+[job-lifecycle.md](job-lifecycle.md) *Terms*) has been drained into a
+page. The drain that consumes the sentinel produces the job's final
+page, possibly with an empty `page` array, returning `has_more: false`.
+While the server runs, `has_more: true` therefore always precedes at
+least one more fetchable page. That promise assumes the job ends.
 
 The history is shared: any client with the `job_token` may read any stored page.
 Capability is the token itself (typically passed from the initiating agent to a
 sub-agent).
 
-While a job is incomplete, its page history persists until its final page is fetched or
-the server stops. A job whose final page is never fetched (an agent that stops polling)
-therefore keeps its history until the server stops. After the final page (`has_more: false`), the retention clock starts (see
-*Configuration*); the history is then deleted when retention expires or the server stops,
-whichever comes first. The client need not have fetched every page before retention
+While a job is incomplete, its page history persists until its final
+page is fetched or the server stops. A job whose final page is never
+fetched (an agent that stops polling) therefore keeps its history until
+the server stops. After the final page (`has_more: false`), the
+retention clock starts (see *Configuration*); the history remains
+readable until retention expires or the server stops, whichever comes
+first. The client need not have fetched every page before retention
 begins — only the job must be complete.
 
-Histories are held in memory; once the final page is fetched, retention bounds a history's
-lifetime, not its size — a job's full output is held from job start until retention
-expires. Accepted for a local,
-single-user tool; users needing a smaller footprint can shorten the retention period.
+Histories are held in memory, a job's full output from job start; once
+the final page is fetched, retention bounds a history's readable
+lifetime, not its size. Accepted for a local, single-user tool; users
+needing a smaller footprint can shorten the retention period.
 
 Requesting an unknown or expired `job_token` returns
 `{"has_more": false, "error": "unknown or expired job_token", "page": []}` — never an
@@ -382,8 +387,9 @@ thread:
 - **Notifications** (requests with no `id`) get an empty `202` reply on the request
   thread.
 
-- **`get_output_page`** is answered on the request thread: it replays a stored page or
-  drains the job's output queue, and never touches FreeCAD.
+- **`get_output_page`** is answered on the request thread: it replays a
+  stored page or drains the job's output queue, and touches FreeCAD only
+  to read the preferences.
 
 - **Execution calls** (`execute_python` and `execute_python_file`) must run on the Qt
   main thread. For `execute_python_file`, the HTTP handler reads the file first; a
