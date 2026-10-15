@@ -75,7 +75,7 @@ MCP Bridge is designed for **local** control of FreeCAD.
 - The bridge opens a loopback-only port (`127.0.0.1`), and only while you toggle it on — an explicit action each session. The open port isn't exclusive to your MCP client — any process on your machine can reach it.
 - Your agent can run code in your live FreeCAD session — macro-level access, with no sandbox on the bridge side. That makes your MCP client the guardrail: with one you trust, set to ask for your approval before running the agent's tool calls, you stay in control.
 - The bridge rejects requests whose `Origin` names a host other than `localhost` or `127.0.0.1`, so web pages from other sites can't reach it through your browser.
-- The addon collects no telemetry, and the bridge itself never connects out to the internet. Code the agent runs can, as any macro can. Any data an AI provider receives is sent by your MCP client, not by the bridge.
+- The addon collects no telemetry, and the bridge itself never connects out to the internet. Code the agent runs in FreeCAD can still connect to the internet, as any macro can. Any data an AI provider receives is sent by your MCP client, not by the bridge.
 
 For security reports, see [SECURITY.md](SECURITY.md).
 
