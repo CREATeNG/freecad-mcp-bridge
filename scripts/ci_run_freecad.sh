@@ -23,7 +23,11 @@ case "$PHASE" in
   install)
     SCRIPT="${REPO_ROOT}/scripts/test_install.py"
     CI_LOG="${RUNNER_TEMP}/freecad-ci-install.log"
-    GROUP_TITLE="Install addon via Addon Manager"
+    if [[ "${RELEASE_INSTALL_MODE:-}" == "copy" ]]; then
+      GROUP_TITLE="Install addon by copying into Mod"
+    else
+      GROUP_TITLE="Install addon via Addon Manager"
+    fi
     ;;
   verify)
     SCRIPT="${REPO_ROOT}/scripts/test_verify.py"
