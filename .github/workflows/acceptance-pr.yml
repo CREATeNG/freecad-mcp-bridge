@@ -47,9 +47,29 @@ jobs:
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
           echo "PR head version: $VERSION (expected tag v$VERSION)"
 
+  pack:
+    name: Pack the bundle
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout the PR head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Pack the Claude Desktop bundle
+        run: npx --yes @anthropic-ai/mcpb@2.1.2 pack mcp-stdio-shim freecad-mcp-bridge.mcpb
+
+      - name: Upload the packed bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: freecad-mcp-bridge.mcpb
+          path: freecad-mcp-bridge.mcpb
+          if-no-files-found: error
+
   install_verify:
     name: Acceptance (PR)
-    needs: version
+    needs: [version, pack]
     uses: ./.github/workflows/install-verify.yml
     with:
       install_mode: branch
@@ -57,3 +77,4 @@ jobs:
       install_tag: ${{ needs.version.outputs.tag }}
       acceptance: true
       coverage: true
+      verify_bundle: true

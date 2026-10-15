@@ -25,6 +25,7 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
       commit_sha: ${{ steps.commit_sha.outputs.sha }}
       do_release: ${{ steps.gate.outputs.do_release }}
+      bundle_sha256: ${{ steps.bundle.outputs.bundle_sha256 }}
     steps:
       - name: Checkout main
         uses: actions/checkout@v7
@@ -151,6 +152,24 @@ jobs:
         if: steps.gate.outputs.do_release == 'true'
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      - name: Pack the Claude Desktop bundle
+        id: bundle
+        if: steps.gate.outputs.do_release == 'true'
+        run: |
+          set -euo pipefail
+          npx --yes @anthropic-ai/mcpb@2.1.2 pack mcp-stdio-shim freecad-mcp-bridge.mcpb
+          sha="$(sha256sum freecad-mcp-bridge.mcpb | awk '{print $1}')"
+          echo "bundle_sha256=${sha}" >> "$GITHUB_OUTPUT"
+          echo "Packed freecad-mcp-bridge.mcpb (${sha})"
+
+      - name: Upload the packed bundle
+        if: steps.gate.outputs.do_release == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: freecad-mcp-bridge.mcpb
+          path: freecad-mcp-bridge.mcpb
+          if-no-files-found: error
+
   install_verify:
     name: Install verify (pre-tag gate)
     needs: prepare
@@ -161,6 +180,7 @@ jobs:
       install_tag: ${{ needs.prepare.outputs.tag }}
       fail_fast: true
       acceptance: true
+      verify_bundle: true
 
   publish:
     name: Tag and publish release notes
@@ -180,6 +200,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+      - name: Download the tested bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: freecad-mcp-bridge.mcpb
+          path: ${{ runner.temp }}/bundle
+
       - name: Push tag and publish release notes
         id: publish
         env:
@@ -187,6 +213,8 @@ jobs:
           RELEASE_PUBLISH_AUTHORIZED: "true"
           RELEASE_VERIFIED_SHA: ${{ needs.prepare.outputs.commit_sha }}
           RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_BUNDLE_PATH: ${{ runner.temp }}/bundle/freecad-mcp-bridge.mcpb
+          RELEASE_BUNDLE_SHA256: ${{ needs.prepare.outputs.bundle_sha256 }}
         run: bash "${GITHUB_WORKSPACE}/scripts/release-publish-orchestrator.sh"
 
   install_verify_tag:

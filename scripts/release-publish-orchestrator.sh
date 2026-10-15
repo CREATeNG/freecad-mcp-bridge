@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Release publish step — INTERNAL to .github/workflows/release.yml only.
 #
-# Runs only after install-verify has passed on main. Pushes the release tag on the
-# verified commit, creates a GitHub Release, then packs the Claude Desktop bundle and
-# uploads it as the release's one asset (freecad-mcp-bridge.mcpb).
+# Runs only after install-verify has passed on main. Pushes the release tag
+# on the verified commit, creates a GitHub Release, then checks the bundle
+# prepare packed and uploads it as the release's one asset
+# (freecad-mcp-bridge.mcpb).
 #
 # Does not change package.xml. No standalone entry point.
 
@@ -21,6 +22,8 @@ fi
 
 VERIFIED_SHA="${RELEASE_VERIFIED_SHA:?RELEASE_VERIFIED_SHA is required}"
 RELEASE_TAG="${RELEASE_TAG:?RELEASE_TAG is required}"
+BUNDLE_PATH="${RELEASE_BUNDLE_PATH:?RELEASE_BUNDLE_PATH is required}"
+BUNDLE_SHA="${RELEASE_BUNDLE_SHA256:?RELEASE_BUNDLE_SHA256 is required}"
 PACKAGE_XML="${PACKAGE_XML:-package.xml}"
 
 require_clean_tree() {
@@ -85,9 +88,9 @@ gh release create "$RELEASE_TAG" \
 
 echo "Published GitHub Release ${RELEASE_TAG}"
 
-echo "Packing and uploading the Claude Desktop bundle (.mcpb)"
-npx --yes @anthropic-ai/mcpb@2.1.2 pack mcp-stdio-shim freecad-mcp-bridge.mcpb
-gh release upload "$RELEASE_TAG" freecad-mcp-bridge.mcpb
+echo "Checking the bundle prepare packed"
+printf '%s  %s\n' "$BUNDLE_SHA" "$BUNDLE_PATH" | sha256sum -c -
+gh release upload "$RELEASE_TAG" "$BUNDLE_PATH"
 echo "Uploaded freecad-mcp-bridge.mcpb to ${RELEASE_TAG}"
 
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
