@@ -146,6 +146,45 @@ def install_dir() -> str:
     return os.path.join(mod_dir(), addon_name)
 
 
+# A developer copy of the checkout leaves these out: git's own
+# directory, and the workflows, which exist only for CI.
+COPY_SKIP_NAMES = (".git", ".github")
+
+
+def checkout_source() -> str:
+    """The run's checkout, or this repo when no workspace is set."""
+    workspace = os.environ.get("GITHUB_WORKSPACE", "").strip()
+    if workspace:
+        return workspace
+    here = os.path.dirname(os.path.abspath(__file__))
+    return os.path.dirname(here)
+
+
+def copy_addon_checkout(source: str, target: str) -> None:
+    """Copy the checkout into the Mod folder, without .git or .github."""
+    import shutil
+
+    source = os.path.normpath(source)
+    target = os.path.normpath(target)
+    has_package = os.path.isfile(os.path.join(source, "package.xml"))
+    has_freecad = os.path.isdir(os.path.join(source, "freecad"))
+    if not has_package or not has_freecad:
+        fail(
+            "copy mode needs a checkout root with package.xml "
+            f"and freecad/: {source}"
+        )
+
+    def _ignore(directory: str, names: list[str]) -> list[str]:
+        if os.path.normpath(directory) != source:
+            return []
+        return [name for name in names if name in COPY_SKIP_NAMES]
+
+    parent = os.path.dirname(target)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    shutil.copytree(source, target, ignore=_ignore)
+
+
 def _version_from_package_root(root: ET.Element) -> str | None:
     for tag in (f"{{{PACKAGE_NS}}}version", "version"):
         version_el = root.find(tag)

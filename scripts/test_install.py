@@ -1,4 +1,4 @@
-"""Install a tagged release through FreeCAD + Addon Manager.
+"""Install the addon into FreeCAD's Mod folder, then check the tree.
 
 Run inside a FreeCAD GUI process (first of two launches; CI restarts FreeCAD
 before scripts/test_verify.py):
@@ -9,7 +9,7 @@ Environment:
   RELEASE_INSTALL_TAG     Git tag to install (default: v0.1.11)
   RELEASE_INSTALL_REPO    Repository URL
   RELEASE_INSTALL_NAME    Installed Mod folder name (default: freecad-mcp-bridge)
-  RELEASE_INSTALL_MODE    tag | index_zip | main | branch | index
+  RELEASE_INSTALL_MODE    tag | index_zip | main | branch | index | copy
                           (default: tag)
   RELEASE_INSTALL_BRANCH  Branch to install in branch mode
   RELEASE_INSTALL_GUI_DELAY_MS  Delay before work starts (default: 3000)
@@ -150,8 +150,6 @@ def _index_addon(addon_name: str):
 def _run() -> None:
     import FreeCAD as App
 
-    common.log_group_start("Install addon via Addon Manager")
-
     tag = common.env("RELEASE_INSTALL_TAG", "v0.1.11")
     repo_url = common.env(
         "RELEASE_INSTALL_REPO", "https://github.com/CREATeNG/freecad-mcp-bridge"
@@ -160,11 +158,37 @@ def _run() -> None:
     mode = common.env("RELEASE_INSTALL_MODE", "tag").lower()
     branch = common.env("RELEASE_INSTALL_BRANCH", "")
     expected_version = common.version_from_tag(tag)
+    title = (
+        "Install addon by copying into Mod"
+        if mode == "copy"
+        else "Install addon via Addon Manager"
+    )
+    common.log_group_start(title)
 
     common.log(
         f"Install phase (mode={mode}, tag={tag}, repo={repo_url}, "
         f"user_data={App.getUserAppDataDir()})"
     )
+
+    mod_root = common.mod_dir()
+    if os.path.isdir(mod_root):
+        for entry in os.listdir(mod_root):
+            if entry == addon_name or "mcp-bridge" in entry.lower():
+                stale = os.path.join(mod_root, entry)
+                common.log(f"Removing previous install at {stale}")
+                shutil.rmtree(stale, ignore_errors=True)
+
+    if mode == "copy":
+        common.copy_addon_checkout(
+            common.checkout_source(), common.install_dir()
+        )
+        common.verify_install_tree(common.install_dir(), expected_version)
+        common.log_notice(
+            "Install passed; restart FreeCAD and run scripts/test_verify.py"
+        )
+        common.log_group_end()
+        common.quit_freecad(0)
+        return
 
     am_paths = common.addon_manager_paths()
     if not am_paths:
@@ -176,14 +200,6 @@ def _run() -> None:
 
     from Addon import Addon
     from addonmanager_installer import AddonInstaller, InstallationMethod
-
-    mod_root = common.mod_dir()
-    if os.path.isdir(mod_root):
-        for entry in os.listdir(mod_root):
-            if entry == addon_name or "mcp-bridge" in entry.lower():
-                stale = os.path.join(mod_root, entry)
-                common.log(f"Removing previous install at {stale}")
-                shutil.rmtree(stale, ignore_errors=True)
 
     with _addon_manager_console_to_ci_log():
         if mode == "index":
