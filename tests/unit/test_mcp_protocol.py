@@ -456,6 +456,56 @@ class ToolResultTests(unittest.TestCase):
                 payload = json.loads(result["content"][0]["text"])
                 self.assertEqual(payload["error"], "page_no out of range")
 
+    def test_continuation_fields_come_before_the_page_at_the_same_length(self):
+        """A tool result lists has_more, page_no, job_token and error before page, at the same length as page-first."""
+        cases = [
+            (
+                {
+                    "page": [{"stream": "stdout", "text": "hi\n"}],
+                    "has_more": True,
+                    "page_no": 0,
+                    "job_token": "t",
+                },
+                ["has_more", "page_no", "job_token", "page"],
+            ),
+            (
+                {"page": [], "has_more": True, "job_token": "t"},
+                ["has_more", "job_token", "page"],
+            ),
+            (
+                {
+                    "page": [],
+                    "has_more": False,
+                    "error": "unknown or expired job_token",
+                },
+                ["has_more", "error", "page"],
+            ),
+            (
+                {
+                    "page": [],
+                    "has_more": False,
+                    "page_no": 1,
+                    "job_token": "t",
+                    "error": "page_no out of range",
+                },
+                ["has_more", "page_no", "job_token", "error", "page"],
+            ),
+        ]
+        for result, order in cases:
+            with self.subTest(order=order):
+                payload = mcp_protocol.tool_result_payload(result)
+                self.assertEqual(list(payload), order)
+                former = {
+                    "page": payload["page"],
+                    "has_more": payload["has_more"],
+                }
+                for key in ("page_no", "job_token", "error"):
+                    if key in payload:
+                        former[key] = payload[key]
+                self.assertEqual(
+                    len(json.dumps(payload)), len(json.dumps(former))
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

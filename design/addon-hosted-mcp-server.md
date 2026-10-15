@@ -31,27 +31,27 @@ The MCP server exposes three tools (schemas in `tools.py`).
 - **`execute_python(code)`** — initiates a job that runs Python inside the live FreeCAD
   session, with `App`/`Gui` pre-bound and `__name__` set to `"__main__"`. Stdout and stderr
   are captured as tagged output chunks.
-- **`execute_python_file(filepath)`** — initiates a job that reads a local file (absolute
-  path) and runs it the same way, with `__file__` set to the file's path. The bridge
-  reads the file before the job is queued. If the file cannot be read, the tool returns
-  `page: []`, `has_more: false`, and `error` with a message describing the failure — no
-  job, no page history, and no `job_token`.
+- **`execute_python_file(filepath)`** — initiates a job that
+  reads a local file (absolute path) and runs it the same way,
+  with `__file__` set to the file's path. The bridge reads the
+  file before the job is queued. If the file cannot be read,
+  the tool returns `has_more: false`, an `error` message, and
+  `page: []` — no job, no page history, and no `job_token`.
 - **`get_output_page(job_token, page_no)`** — fetches the requested page from a job's page
   history. Both arguments are required.
 
 **Result shape**
 
 Every call of the three tools returns a response with the same shape.
+The fields are serialized in this order, with `page` last, so a
+client that keeps only the start can still continue.
 
-- **`page`** — an ordered array of `{stream, text}` chunks captured from the running
-  job's stdout and stderr. Read the array in order; concatenate `text` values for a flat
-  transcript. Empty when the response is a tool-level `error` (no exec output).
+- **`has_more`** — always present. When `true`, at least one higher-numbered page exists
+  or will exist for this job.
 - **`page_no`** — 0-based index of this page in the job's page history; present exactly
   when the response is a stored page (it carries content, or is the job's final page).
   Page 0 is the job's first stored page — usually in the response of the initiating
   call. Empty non-final responses and tool-level `error` responses carry no `page_no`.
-- **`has_more`** — always present. When `true`, at least one higher-numbered page exists
-  or will exist for this job.
 - **`job_token`** — present while the job's page history exists, except on an `error`
   response. Pass it to `get_output_page`. The token names the history for replay and for sub-agents
   that read the same job.
@@ -59,6 +59,9 @@ Every call of the three tools returns a response with the same shape.
   when the bridge cannot read the file (human-readable message), and `get_output_page`
   with `"unknown or expired job_token"` or `"page_no out of range"`. Python failures
   inside a running job are not `error` — they appear as `stderr` chunks in `page`.
+- **`page`** — an ordered array of `{stream, text}` chunks captured from the running
+  job's stdout and stderr. Read the array in order; concatenate `text` values for a flat
+  transcript. Empty when the response is a tool-level `error` (no exec output).
 
 **Non-blocking**
 
@@ -86,8 +89,9 @@ the job has no more output to deliver. Both bounds apply to `execute_python`,
   slow job may therefore yield `has_more: true` with little or no output once the timeout
   elapses.
 - **Page size cap** — the character length of the JSON tool result
-  the agent reads (`json.dumps` of `page`, `has_more`, `page_no` and
-  `job_token`). Configurable, default 32 K characters, that is 32,768.
+  the agent reads (`json.dumps` of `has_more`, `page_no`,
+  `job_token` and `page`). Configurable, default 32 K
+  characters, that is 32,768.
   `has_more` is measured as false, the longer spelling, and `page_no`
   is the number the page will carry. A newline counts as two
   characters, a backslash and an `n`. A fast job could otherwise
@@ -115,42 +119,42 @@ the stdio shim.
 // execution call
 { "tool": "execute_python", "code": "..." }
 → {
+    "has_more": true,
     "page_no": 0,
+    "job_token": "abc123",
     "page": [
       { "stream": "stdout", "text": "Creating box...\n" }
-    ],
-    "job_token": "abc123",
-    "has_more": true
+    ]
   }
 
 // forward fetch — page_no required
 { "tool": "get_output_page", "job_token": "abc123", "page_no": 1 }
 → {
+    "has_more": true,
     "page_no": 1,
+    "job_token": "abc123",
     "page": [
       { "stream": "stdout", "text": "...more stdout..." },
       { "stream": "stderr", "text": "DeprecationWarning: ...\n" }
-    ],
-    "job_token": "abc123",
-    "has_more": true
+    ]
   }
 
 // final page — job output complete; history retained for configured retention period
 → {
+    "has_more": false,
     "page_no": 2,
+    "job_token": "abc123",
     "page": [
       { "stream": "stderr", "text": "Traceback (most recent call last):\n  ..." }
-    ],
-    "job_token": "abc123",
-    "has_more": false
+    ]
   }
 
 // execute_python_file — bridge cannot read filepath (no job started)
 { "tool": "execute_python_file", "filepath": "/missing.py" }
 → {
-    "page": [],
     "has_more": false,
-    "error": "Error reading file '/missing.py': [Errno 2] No such file or directory"
+    "error": "Error reading file '/missing.py': [Errno 2] No such file or directory",
+    "page": []
   }
 ```
 
@@ -161,10 +165,11 @@ is stored as an immutable snapshot (`page_no`, `page`, and the `has_more` value 
 time) before the response is returned. The live output queue feeds forward fetches while
 the job is still running; stored snapshots serve replay.
 
-Only pages with content — and the job's final page — are stored and numbered. An empty
-non-final drain is not stored and consumes no page number: the response returns
-`page: []`, `has_more: true`, and no `page_no`. `page_no` therefore counts output, not
-polling rhythm.
+Only pages with content — and the job's final page — are stored
+and numbered. An empty non-final drain is not stored and
+consumes no page number: the response returns `has_more: true`
+and `page: []`, and no `page_no`. `page_no` therefore counts
+output, not polling rhythm.
 
 A job is **complete** when its sentinel (see [job-lifecycle.md](job-lifecycle.md)
 *Terms*) has been drained into a page. The drain that consumes the
@@ -189,7 +194,7 @@ expires. Accepted for a local,
 single-user tool; users needing a smaller footprint can shorten the retention period.
 
 Requesting an unknown or expired `job_token` returns
-`{"page": [], "has_more": false, "error": "unknown or expired job_token"}` — never an
+`{"has_more": false, "error": "unknown or expired job_token", "page": []}` — never an
 exception.
 
 **Fetching pages**

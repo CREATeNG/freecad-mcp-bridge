@@ -116,9 +116,9 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                     req_id,
                     version,
                     {
-                        "page": [],
                         "has_more": False,
                         "error": f"Error reading file '{filepath}': {exc}",
+                        "page": [],
                     },
                 )
                 return
@@ -129,9 +129,9 @@ class McpRequestHandler(BaseHTTPRequestHandler):
             page_no = _as_page_no(args.get("page_no"))
             if page_no is None:
                 result = {
-                    "page": [],
                     "has_more": False,
                     "error": "page_no out of range",
+                    "page": [],
                 }
             else:
                 result = paging.fetch(

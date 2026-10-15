@@ -281,17 +281,19 @@ def _unsupported(req_id, requested):
 
 
 def tool_result_payload(result) -> dict:
-    """The tool result an agent reads, before the content-block wrap."""
-    payload = {
-        "page": result.get("page", []),
-        "has_more": result.get("has_more", False),
-    }
+    """The tool result an agent reads, before the content-block wrap.
+
+    has_more, page_no, job_token and error come before page, so the
+    start of the text still says how to continue.
+    """
+    payload = {"has_more": result.get("has_more", False)}
     if result.get("page_no") is not None:
         payload["page_no"] = result["page_no"]
     if result.get("job_token"):
         payload["job_token"] = result["job_token"]
     if result.get("error"):
         payload["error"] = result["error"]
+    payload["page"] = result.get("page", [])
     return payload
 
 

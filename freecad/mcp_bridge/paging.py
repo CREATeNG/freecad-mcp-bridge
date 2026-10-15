@@ -59,18 +59,19 @@ def fetch(token, page_no, timeout_ms, page_size_chars, retention_ms):
     queue forward if it is the next page and the job is still running.
     `page_size_chars` is the maximum serialized tool-result length.
 
-    Result: {page, has_more}; plus `page_no` and `job_token` for a stored
-    page, or `job_token` alone for an unstored empty non-final response. An
-    unknown/expired token or out-of-range page_no yields an `error` string.
+    Result: {has_more, [page_no], [job_token], [error], page}, page last.
+    A stored page carries page_no and job_token. An unstored empty
+    non-final response carries job_token and no page_no. An unknown
+    or expired token, or an out-of-range page_no, yields error.
     """
     _sweep_expired()
     with _BUFFER_LOCK:
         entry = _BUFFER.get(token)
     if entry is None:
         return {
-            "page": [],
             "has_more": False,
             "error": "unknown or expired job_token",
+            "page": [],
         }
 
     with entry["lock"]:  # one reader at a time
@@ -81,10 +82,10 @@ def fetch(token, page_no, timeout_ms, page_size_chars, retention_ms):
         if 0 <= page_no <= max_no:
             snap = history[page_no]
             return {
-                "page": snap["page"],
-                "page_no": page_no,
                 "has_more": snap["has_more"],
+                "page_no": page_no,
                 "job_token": token,
+                "page": snap["page"],
             }
 
         # Next page, job still running — drain the live queue forward.
@@ -102,18 +103,18 @@ def fetch(token, page_no, timeout_ms, page_size_chars, retention_ms):
                         0.0, retention_ms / 1000.0
                     )
                 return {
-                    "page": page,
-                    "page_no": page_no,
                     "has_more": not done,
+                    "page_no": page_no,
                     "job_token": token,
+                    "page": page,
                 }
             # Empty non-final drain: not stored, no page_no.
-            return {"page": [], "has_more": True, "job_token": token}
+            return {"has_more": True, "job_token": token, "page": []}
 
         return {
-            "page": [],
             "has_more": False,
             "error": "page_no out of range",
+            "page": [],
         }
 
 
