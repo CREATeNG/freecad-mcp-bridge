@@ -235,21 +235,114 @@ data access, but tool support is universal while resource support varies by clie
 
 ## Connection
 
-**Transport — Streamable HTTP with SSE**
+**Transport — Streamable HTTP, MCP 2026-07-28 and 2025-11-25**
 
-The in-process server uses Streamable HTTP (MCP spec 2025-03-26). Tool call responses
-use POST SSE (`Content-Type: text/event-stream`). The server returns HTTP 405 on GET; it
-does not offer a server-initiated SSE stream. Each POST carries one JSON-RPC message;
-batched arrays are not accepted.
+The in-process server uses the Streamable HTTP transport and speaks
+exactly two MCP protocol versions: 2026-07-28, in which every request
+carries its own version, and 2025-11-25, which opens with an
+`initialize` handshake. Both are served on the same endpoint, each
+request in its own version. Each POST carries one JSON-RPC message; a
+batched array gets `400` and an invalid-request error. Every reply to a
+request is plain JSON (`Content-Type: application/json`), except the
+one to `subscriptions/listen` (below). The server returns `405` on GET
+and on DELETE: it offers no standalone stream and keeps no sessions.
 
-Job output and paging are delivered on POST through `tools/call` — not through GET.
+Job output and paging are delivered on POST through `tools/call`.
+
+**Choosing the version of a request**
+
+The server keeps no state between requests, so each request's own
+method, `MCP-Protocol-Version` header and
+`_meta["io.modelcontextprotocol/protocolVersion"]` decide its version,
+in this order. A rejection is `400 Bad Request` with a JSON-RPC error,
+and nothing runs.
+
+- An `initialize` request is 2025-11-25, whatever its headers.
+- A missing `MCP-Protocol-Version` header gets a header mismatch
+  (`-32020`). Such a request is in a version older than 2025-06-18,
+  which the server does not speak.
+- A header that differs from the `_meta` version gets a header
+  mismatch (`-32020`).
+- A `2025-11-25` header with no `_meta` version is 2025-11-25.
+- A `2026-07-28` header is 2026-07-28, validated as below.
+- Any other version gets the unsupported-version error (`-32022`),
+  whose `data` names `2026-07-28` and `2025-11-25` as the supported
+  versions and echoes the version requested. So does a `2025-11-25`
+  header with a `_meta` version: only 2026-07-28 carries its version in
+  `_meta`.
+
+Header names match case-insensitively; header values match exactly.
+
+A notification (no `id`) gets an empty `202` before any of these
+checks, in either version, and nothing runs.
+
+**2026-07-28 validation**
+
+A 2026-07-28 request is further checked in this order; the first
+failure decides the reply, with `400`.
+
+- A `_meta` lacking `io.modelcontextprotocol/protocolVersion` or
+  `io.modelcontextprotocol/clientCapabilities` gets invalid params
+  (`-32602`).
+- A missing `Mcp-Method` header, or one that differs from the body's
+  `method`, gets a header mismatch (`-32020`). So does a `tools/call`
+  whose `Mcp-Name` header is missing or differs from the tool name,
+  after decoding a value sent in the `=?base64?…?=` form.
+
+A 2025-11-25 request carries no `_meta` version, method or name
+headers, and none are checked.
+
+**Methods — 2026-07-28**
+
+- `server/discover` answers with
+  `supportedVersions: ["2026-07-28", "2025-11-25"]`,
+  `capabilities: {"tools": {}}` and caching hints.
+- `tools/list` answers with the three tools and caching hints.
+- `tools/call` runs a tool (see *Tools*).
+- `subscriptions/listen` is answered on a short SSE stream. The server
+  sends no notifications, so the acknowledgment carries an empty
+  `notifications` filter; the graceful-closure result follows at once,
+  and the stream closes.
+- Any other method, `ping` among them, gets `404 Not Found` and
+  method-not-found (`-32601`).
+
+**Methods — 2025-11-25**
+
+- `initialize` answers with `protocolVersion: "2025-11-25"`,
+  `capabilities: {"tools": {}}` and the server's name and version in
+  `serverInfo`. An `initialize` asking for any other version gets the
+  same answer: 2025-11-25 is the version the server offers in the
+  handshake. The answer issues no session id.
+- `tools/list` answers with the three tools.
+- `tools/call` runs a tool (see *Tools*).
+- `ping` answers with an empty result.
+- Any other method gets method-not-found (`-32601`) with `200`, since
+  2025-11-25 reserves `404` for an expired session.
+
+**Results**
+
+A 2026-07-28 result carries `resultType: "complete"` and the server's
+name and version in `_meta["io.modelcontextprotocol/serverInfo"]`. The
+caching hints on `server/discover` and `tools/list` are `ttlMs: 0` and
+`cacheScope: "public"`: a client asks again whenever it needs either
+answer, one loopback round trip, and never carries one across a
+FreeCAD restart or an addon update. A 2025-11-25 result carries none of
+these.
+
+In both versions, a tool result is one JSON text block holding the
+tool payload. A failed tool call (an unknown or expired `job_token`, an
+out-of-range `page_no`, a file that cannot be read) sets
+`isError: true` as well as the payload's `error`. An exception raised
+by executed code is not a failed tool call: its traceback is ordinary
+output. An unknown tool name is a protocol error, invalid params
+(`-32602`).
 
 **Transport distinction — direct HTTP clients vs stdio clients**
 
-HTTP-capable clients connect to the endpoint directly and receive responses over SSE.
-Stdio clients (via the shim) receive responses as single stdio messages — SSE does not
-exist on that transport. Tool-call results and paging are otherwise identical on both
-transports: each waits up to the configured timeout for the first page, then polls via
+HTTP-capable clients connect to the endpoint directly. Stdio clients
+(via the shim) receive responses as single stdio messages. Tool-call
+results and paging are otherwise identical on both transports: each
+waits up to the configured timeout for the first page, then polls via
 `get_output_page` if needed.
 
 **Port**
@@ -359,21 +452,29 @@ present and is not `localhost` or `127.0.0.1`.
 
 **Stdio shim**
 
-Some MCP clients speak only stdio for local servers. A small zero-dependency
-Node.js shim (`mcp-stdio-shim/index.js`) ships with the addon as a stdio ↔ HTTP
-proxy: each newline-delimited JSON-RPC message arriving on stdin is forwarded as an
-HTTP POST to the in-process server; the JSON or single-event SSE reply is unwrapped
-and written back on stdout as one line. It interprets as little of the protocol as
-possible: it forwards any JSON-RPC message, and unwraps only a plain JSON or
-single-event SSE reply. Node stdlib only (global
-`fetch`, Node ≥ 18); Claude Desktop bundles Node.js — no user-side runtime install
-needed. The shim reads the port from the `FREECAD_MCP_PORT` environment variable
-(default 39280). Notifications (no `id`) get no reply. If the bridge is unreachable,
-the shim answers `initialize` and `tools/list` itself, from `tools.json`, a copy of
-the addon's tool list that release preparation checks against `tools.py`, so a
-client started before FreeCAD comes up cleanly. A `tools/call` then gets a tool
-result whose `error` says to start FreeCAD and turn the bridge on; any other request
-gets a JSON-RPC error saying the same.
+Some MCP clients speak only stdio for local servers. A small
+zero-dependency Node.js shim (`mcp-stdio-shim/index.js`) ships with
+the addon as a stdio ↔ HTTP proxy. Each newline-delimited JSON-RPC
+message on stdin is forwarded as an HTTP POST, body unchanged. The
+JSON or single-event SSE reply is unwrapped and written back on
+stdout as one line. Stdio carries no headers, so the shim sets
+`MCP-Protocol-Version` from
+`params._meta["io.modelcontextprotocol/protocolVersion"]` when that
+field is present, and to `2025-11-25` when it is not. When the
+version is `2026-07-28` it also sets `Mcp-Method` from the message's
+method and, for `tools/call`, `Mcp-Name` from `params.name`. Node
+stdlib only (global `fetch`, Node ≥ 18); Claude Desktop bundles
+Node.js, so no user-side runtime install is needed. The shim reads
+the port from the `FREECAD_MCP_PORT` environment variable (default
+39280). Notifications (no `id`) get no reply. While the bridge
+answers, `initialize` is forwarded with every other message. If the
+bridge is unreachable, the shim answers `initialize` itself with
+`protocolVersion` `2025-11-25`, and `tools/list` from `tools.json`,
+a copy of the addon's tool list that release preparation checks
+against `tools.py`, so a client started before FreeCAD comes up
+cleanly. A `tools/call` then gets a tool result whose `error` says
+to start FreeCAD and turn the bridge on; any other request gets a
+JSON-RPC error saying the same.
 
 **Shim — no SDK**
 

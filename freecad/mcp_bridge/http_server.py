@@ -1,11 +1,13 @@
 """In-process HTTP server hosting the MCP endpoint on loopback.
 
 A ThreadingHTTPServer runs on a background thread, binding 127.0.0.1 only.
-Lifecycle methods (initialize, tools/list) return plain JSON; tool calls
-(execute_python, execute_python_file, get_output_page) run code on the Qt main
-thread via the Executor and return the result over SSE. Output is paged through
-the job's page history (see paging.py) when it outlasts the response timeout or
-exceeds the max page size.
+Each request is served in MCP 2026-07-28 or 2025-11-25, whichever it is
+in, or rejected (see mcp_protocol.py), and answered as plain JSON. Tool
+calls (execute_python, execute_python_file, get_output_page) run code on the
+Qt main thread via the Executor. Output is paged through the job's page
+history (see paging.py) when it outlasts the response timeout or exceeds the
+max page size. A 2026-07-28 subscriptions/listen alone answers as an SSE
+stream, which ends as soon as it is acknowledged.
 """
 
 import json
@@ -17,12 +19,15 @@ from urllib.parse import urlparse
 import FreeCAD
 
 from freecad.mcp_bridge import config, mcp_protocol, paging
-from freecad.mcp_bridge.constants import ENDPOINT_PATH, LOG_PREFIX
+from freecad.mcp_bridge.constants import (
+    ENDPOINT_PATH,
+    LOG_PREFIX,
+    PROTOCOL_VERSION,
+)
 from freecad.mcp_bridge.executor import Executor
 
 _LOOPBACK_HOSTS = ("localhost", "127.0.0.1")
 PARSE_ERROR = -32700
-INVALID_PARAMS = -32602
 
 
 class McpRequestHandler(BaseHTTPRequestHandler):
@@ -38,8 +43,10 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         return urlparse(origin).hostname in _LOOPBACK_HOSTS
 
     def do_GET(self):
-        # Server-initiated push is out of scope.
+        # The server offers no GET stream, and has no sessions to DELETE.
         self.send_error(405, "Method Not Allowed")
+
+    do_DELETE = do_GET
 
     def do_POST(self):
         if not self._origin_ok():
@@ -57,6 +64,10 @@ class McpRequestHandler(BaseHTTPRequestHandler):
             self._send_json(400, _parse_error())
             return
 
+        if not isinstance(request, dict):
+            self._send_json(400, _invalid_request())
+            return
+
         if mcp_protocol.is_notification(request):
             # JSON-RPC never replies to a notification. MCP defines no
             # notification that asks for work, so nothing runs either.
@@ -64,13 +75,25 @@ class McpRequestHandler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        if request.get("method") == "tools/call":
-            self._handle_tool_call(request)
+        version, rejection = mcp_protocol.check_request(
+            request, self.headers
+        )
+        if rejection is not None:
+            self._send_json(*rejection)
             return
 
-        self._send_json(200, mcp_protocol.handle_request(request))
+        method = request.get("method")
+        if method == "tools/call":
+            self._handle_tool_call(request, version)
+        elif (
+            method == "subscriptions/listen"
+            and version == PROTOCOL_VERSION
+        ):
+            self._send_sse(mcp_protocol.listen_messages(request))
+        else:
+            self._send_json(*mcp_protocol.handle_request(request, version))
 
-    def _handle_tool_call(self, request):
+    def _handle_tool_call(self, request, version):
         req_id = request.get("id")
         params = request.get("params") or {}
         name = params.get("name")
@@ -82,25 +105,26 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         )
 
         if name == "execute_python":
-            self._run_code(req_id, args.get("code", ""), drain_args)
+            self._run_code(req_id, version, args.get("code", ""), drain_args)
         elif name == "execute_python_file":
             filepath = args.get("filepath", "")
             try:
                 with open(filepath, "r", encoding="utf-8") as handle:
                     code = handle.read()
             except (OSError, UnicodeDecodeError) as exc:
-                self._send_sse(
-                    mcp_protocol.tool_call_response(
-                        req_id,
-                        {
-                            "page": [],
-                            "has_more": False,
-                            "error": f"Error reading file '{filepath}': {exc}",
-                        },
-                    )
+                self._send_tool_result(
+                    req_id,
+                    version,
+                    {
+                        "page": [],
+                        "has_more": False,
+                        "error": f"Error reading file '{filepath}': {exc}",
+                    },
                 )
                 return
-            self._run_code(req_id, code, drain_args, os.path.abspath(filepath))
+            self._run_code(
+                req_id, version, code, drain_args, os.path.abspath(filepath)
+            )
         elif name == "get_output_page":
             page_no = _as_page_no(args.get("page_no"))
             if page_no is None:
@@ -113,20 +137,28 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                 result = paging.fetch(
                     args.get("job_token", ""), page_no, *drain_args
                 )
-            self._send_sse(mcp_protocol.tool_call_response(req_id, result))
+            self._send_tool_result(req_id, version, result)
         else:
-            self._send_sse(
+            self._send_json(
+                200,
                 mcp_protocol.error_response(
-                    req_id, INVALID_PARAMS, f"Unknown tool: {name}"
-                )
+                    req_id,
+                    mcp_protocol.INVALID_PARAMS,
+                    f"Unknown tool: {name}",
+                ),
             )
 
-    def _run_code(self, req_id, code, drain_args, filepath=None):
+    def _run_code(self, req_id, version, code, drain_args, filepath=None):
         token, output_queue = paging.start_page()
         self.server.executor.submit(code, output_queue, filepath)
         # The initiating call returns page 0 — the first page the job produces.
         result = paging.fetch(token, 0, *drain_args)
-        self._send_sse(mcp_protocol.tool_call_response(req_id, result))
+        self._send_tool_result(req_id, version, result)
+
+    def _send_tool_result(self, req_id, version, result):
+        self._send_json(
+            200, mcp_protocol.tool_call_response(req_id, result, version)
+        )
 
     def _send_json(self, status, payload):
         body = json.dumps(payload).encode("utf-8")
@@ -136,14 +168,17 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _send_sse(self, payload):
-        body = json.dumps(payload).encode("utf-8")
+    def _send_sse(self, messages):
+        """Stream the messages as SSE events, one each, then close."""
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-Accel-Buffering", "no")
         self.send_header("Connection", "close")
         self.end_headers()
-        self.wfile.write(b"event: message\ndata: " + body + b"\n\n")
+        for message in messages:
+            body = json.dumps(message).encode("utf-8")
+            self.wfile.write(b"event: message\ndata: " + body + b"\n\n")
 
 
 def _as_page_no(value):
@@ -163,6 +198,12 @@ def _parse_error():
         "id": None,
         "error": {"code": PARSE_ERROR, "message": "Parse error"},
     }
+
+
+def _invalid_request():
+    return mcp_protocol.error_response(
+        None, mcp_protocol.INVALID_REQUEST, "Invalid request"
+    )
 
 
 class HttpServer:

@@ -212,12 +212,20 @@ class SharedHistoryTests(unittest.TestCase):
     def test_any_client_holding_a_job_token_can_read_that_jobs_pages(self):
         """Any client holding a job token can read that job's pages, from its own connection."""
         first = mcp.execute("print('shared output')")
-        # A second client: its own handshake; every request is its own
+        # A second client, by its own identity; every request is its own
         # HTTP connection, sharing nothing with the first client but the token.
-        self.assertEqual(
-            mcp.post(mcp.request("initialize", mcp.INITIALIZE_PARAMS)).status, 200
+        message = mcp.request(
+            "tools/call",
+            {
+                "name": "get_output_page",
+                "arguments": {
+                    "job_token": first["job_token"],
+                    "page_no": first["page_no"],
+                },
+            },
+            client_info={"name": "another-client", "version": "0"},
         )
-        again = mcp.get_page(first["job_token"], first["page_no"])
+        again = mcp.payload(mcp.tool_result(mcp.post(message)))
         self.assertEqual(again["page"], first["page"])
         self.assertEqual(mcp.text([again]), "shared output\n")
 

@@ -12,6 +12,8 @@ from unittest import mock
 
 from freecad.mcp_bridge import paging
 from freecad.mcp_bridge.mcp_protocol import (
+    LEGACY_PROTOCOL_VERSION,
+    PROTOCOL_VERSION,
     serialized_page_length,
     tool_call_response,
 )
@@ -126,10 +128,13 @@ class PageBoundsTests(unittest.TestCase):
             self.assertLessEqual(wire_length(result), cap)
             joined += "".join(chunk["text"] for chunk in result["page"])
             if not result["has_more"]:
-                response = tool_call_response(1, result)
-                inner = response["result"]["content"][0]["text"]
-                self.assertEqual(len(inner), wire_length(result))
-                self.assertEqual(json.loads(inner)["page"], result["page"])
+                for version in (LEGACY_PROTOCOL_VERSION, PROTOCOL_VERSION):
+                    response = tool_call_response(1, result, version)
+                    inner = response["result"]["content"][0]["text"]
+                    self.assertEqual(len(inner), wire_length(result))
+                    self.assertEqual(
+                        json.loads(inner)["page"], result["page"]
+                    )
         self.assertEqual(joined, text)
 
     def test_adjacent_writes_of_one_stream_arrive_as_one_entry(self):

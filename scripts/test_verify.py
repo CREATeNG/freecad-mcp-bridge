@@ -130,19 +130,38 @@ def _http_exec_probe(code: str, timeout_ms: int) -> dict:
     from PySide.QtCore import QCoreApplication, QThread
 
     from freecad.mcp_bridge import config
+    from freecad.mcp_bridge.constants import PROTOCOL_VERSION
 
     url = f"http://127.0.0.1:{config.port()}/mcp"
     timeout_s = timeout_ms / 1000.0
     result: dict = {}
 
     def _post(payload):
+        # A valid request in the bridge's protocol version: version, client
+        # info and capabilities in _meta, mirrored in the headers.
+        params = payload["params"]
+        params["_meta"] = {
+            "io.modelcontextprotocol/protocolVersion": PROTOCOL_VERSION,
+            "io.modelcontextprotocol/clientInfo": {
+                "name": "test-verify",
+                "version": "0",
+            },
+            "io.modelcontextprotocol/clientCapabilities": {},
+        }
         req = urllib.request.Request(
             url,
             data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
+                "MCP-Protocol-Version": PROTOCOL_VERSION,
+                "Mcp-Method": payload["method"],
+                "Mcp-Name": params["name"],
+            },
         )
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
             body = resp.read().decode("utf-8")
+        # Plain JSON; a release older than 2026-07-28 answers over SSE.
         for line in body.splitlines():
             if line.startswith("data:"):
                 body = line[len("data:"):].strip()

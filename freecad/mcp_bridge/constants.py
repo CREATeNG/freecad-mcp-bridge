@@ -7,7 +7,12 @@ TOOLBAR_OBJECT_NAME = "MCP_Bridge"
 
 # MCP server identity (serverInfo.version is read live from package.xml)
 SERVER_NAME = "freecad-mcp-bridge"
-PROTOCOL_VERSION = "2025-03-26"
+# The MCP protocol versions the server speaks; it rejects every other.
+# 2026-07-28 carries its version on every request; 2025-11-25, the legacy
+# version, opens with an initialize handshake.
+PROTOCOL_VERSION = "2026-07-28"
+LEGACY_PROTOCOL_VERSION = "2025-11-25"
+SUPPORTED_PROTOCOL_VERSIONS = (PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION)
 
 # HTTP endpoint path the MCP server answers on
 ENDPOINT_PATH = "/mcp"
