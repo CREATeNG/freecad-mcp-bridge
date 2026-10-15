@@ -10,19 +10,19 @@ vocabulary (chunk, page, page history) is defined there.
 
 ## 1. Born
 
-A job comes into existence on an HTTP request thread, the moment the tool
-call arrives: code, a fresh empty output queue, and a token are bundled
-together. It exists before any decision about *when* it will run.
+A job comes into existence on an HTTP request thread: code, a fresh
+empty output queue, and a token are bundled together. It exists before
+any decision about *when* it will run.
 
 ## 2. In line
 
 The job is appended to the tail of the job queue. Everything ahead of it must
 fully complete before its turn.
 
-While it waits, someone may already be asking about it: the agent got the
-token back within the response timeout and may poll `get_output_page`, finding
-an empty queue and `has_more: true`. From the outside, *waiting in line*
-looks identical to *running but quiet*.
+While it waits, someone may already be asking about it: the agent got
+the token back and may poll `get_output_page`, finding an empty queue
+and `has_more: true`. From the outside, *waiting in line* looks
+identical to *running but quiet*.
 
 ## 3. Taken
 
