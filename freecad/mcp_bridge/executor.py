@@ -20,7 +20,7 @@ import traceback
 import FreeCAD
 from PySide.QtCore import QObject, Qt, Signal
 
-from freecad.mcp_bridge.paging import SENTINEL
+from freecad.mcp_bridge import config, paging
 
 
 class TeeWriter:
@@ -45,16 +45,17 @@ class Executor(QObject):
 
     def __init__(self):
         super().__init__()
-        self._jobs = queue.Queue()  # (code, output_queue, filepath), FIFO
+        # (code, output_queue, filepath, token), FIFO
+        self._jobs = queue.Queue()
         self._busy = False  # main-thread only: True while a job is running
         self._stopped = False  # set by shutdown(); no further job is taken
         self.wake_up.connect(self._dispatch, Qt.QueuedConnection)
 
-    def submit(self, code, output_queue, filepath=None):
+    def submit(self, code, output_queue, filepath=None, token=None):
         """Queue the job and wake the dispatcher. Called from a request thread."""
         if self._stopped:
             return
-        self._jobs.put((code, output_queue, filepath))
+        self._jobs.put((code, output_queue, filepath, token))
         self.wake_up.emit()
 
     def _dispatch(self):
@@ -72,10 +73,12 @@ class Executor(QObject):
         try:
             while not self._stopped:
                 try:
-                    code, output_queue, filepath = self._jobs.get_nowait()
+                    code, output_queue, filepath, token = (
+                        self._jobs.get_nowait()
+                    )
                 except queue.Empty:
                     break
-                self._run(code, output_queue, filepath)
+                self._run(code, output_queue, filepath, token)
         finally:
             self._busy = False
 
@@ -92,7 +95,7 @@ class Executor(QObject):
             except queue.Empty:
                 break
 
-    def _run(self, code, output_queue, filepath=None):
+    def _run(self, code, output_queue, filepath=None, token=None):
         """Run one job to completion: exec, traceback on error, sentinel."""
         import FreeCADGui
 
@@ -119,4 +122,8 @@ class Executor(QObject):
             stderr_tee.write("\n" + traceback.format_exc())
         finally:
             sys.stdout, sys.stderr = old_out, old_err
-            output_queue.put(SENTINEL)
+            paging.note_execution_finished(
+                token,
+                output_queue,
+                config.max_history_retention_ms(),
+            )
