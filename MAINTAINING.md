@@ -96,11 +96,11 @@ after the tag, and moves `release`. It pushes nothing to `main`.
 ```mermaid
 flowchart TD
   R[release.yml]
-  R --> prep[prepare — version gate, then validate]
+  R --> prep[prepare — version gate, validate, pack .mcpb]
   prep -->|not a version push| skip[Stop. main unchanged]
-  prep -->|version pull request, or a retry| verify[install_verify pre-tag — main]
+  prep -->|version pull request, or a retry| verify[install_verify pre-tag — main and the bundle]
   verify -->|fail| stop[No tag / no GitHub Release]
-  verify -->|pass| pub[publish — tag + notes + pack/upload .mcpb]
+  verify -->|pass| pub[publish — check sha, tag, upload .mcpb]
   pub --> postverify[install_verify tag path]
   postverify -->|fail| stop2[release unchanged]
   postverify -->|pass| promote[promote — fast-forward release]
@@ -113,10 +113,20 @@ flowchart TD
    unless its diff is only the three version files. On **Run
    workflow**, take the current `main`. Then resolve the version,
    verify the tag does not already exist, validate the Claude
-   Desktop bundle manifest (`mcpb validate`), and record the
-   release-candidate commit SHA.
-2. **Install-verify** (pre-tag) — [`install-verify.yml`](.github/workflows/install-verify.yml) with `install_mode: main`: full Addon Manager install + restart verify on all three OSes against `main`. **No tag if this fails.**
-3. **Publish** — push the matching tag (`v{x.y.z}`) on the verified commit, create a **GitHub Release**, then pack the Claude Desktop bundle (`mcpb pack`) and upload it as a release asset. Uses [`release-publish-orchestrator.sh`](scripts/release-publish-orchestrator.sh) (`RELEASE_PUBLISH_AUTHORIZED=true`; not runnable standalone).
+   Desktop bundle manifest (`mcpb validate`), record the
+   release-candidate commit SHA, pack `freecad-mcp-bridge.mcpb`,
+   record its sha256, and upload that file.
+2. **Install-verify** (pre-tag) —
+   [`install-verify.yml`](.github/workflows/install-verify.yml)
+   with `install_mode: main` and `verify_bundle: true`: full
+   Addon Manager install and restart verify on all three OSes
+   against `main`, then the packed shim called over stdio while
+   that bridge is still up. **No tag if this fails.**
+3. **Publish** — check the packed bundle's sha256, push the
+   matching tag (`v{x.y.z}`) on the verified commit, create a
+   **GitHub Release**, and upload that same file. Uses
+   [`release-publish-orchestrator.sh`](scripts/release-publish-orchestrator.sh)
+   (`RELEASE_PUBLISH_AUTHORIZED=true`; not runnable standalone).
 4. **Install-verify** (tag path) — same workflow with
    `install_mode: tag`: final sanity check that install works
    from the tag ref. **`release` does not move if this fails.**
@@ -130,7 +140,13 @@ already exists fails at prepare.
 
 ## Release assets
 
-Each GitHub Release carries one uploaded asset: **`freecad-mcp-bridge.mcpb`** — the packed Claude Desktop bundle, built from `mcp-stdio-shim/` via `mcpb pack` during the **publish** step. The addon itself isn't a release asset — it ships as plain Python source, installed directly from the repo tree (via the tag or its zip), not from anything attached to the release page.
+Each GitHub Release carries one uploaded asset:
+**`freecad-mcp-bridge.mcpb`** — the Claude Desktop bundle,
+packed from `mcp-stdio-shim/` in prepare and attached, after
+its sha256 matches, during publish. The addon itself isn't a
+release asset — it ships as plain Python source, installed
+directly from the repo tree (via the tag or its zip), not
+from anything attached to the release page.
 
 ---
 

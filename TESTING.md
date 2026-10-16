@@ -58,7 +58,12 @@ behaviors it checks are execution and file execution, stdout/stderr and
 tracebacks, output paging and replay, retention preferences, execution
 order, GUI event handling, the two supported MCP protocol versions,
 HTTP and Origin validation, loopback binding, port changes and stopping
-the bridge with running or queued jobs.
+the bridge with running or queued jobs. When `BUNDLE_MCPB`
+names a packed `.mcpb`, `test_bundle_mcp.py` calls that shim
+over stdio, in both protocol versions, and then expects it
+to exit. With no bundle named, that test skips;
+`verify_bundle: true`, as release and pull-request runs
+set it, always names one.
 
 Use a disposable FreeCAD session and test profile. The suite creates
 documents and temporary files, changes preferences and toggles the
@@ -147,10 +152,10 @@ Shared helpers live in
 
 | Trigger | Tag / mode | Typical use |
 |---------|------------|-------------|
-| `workflow_call` from **[release.yml](.github/workflows/release.yml)** | `install_mode: main` or `tag`; `install_tag` from prepare; `acceptance: true` | Pre-tag gate (`main`) and post-tag sanity check (`tag` path) |
+| `workflow_call` from **[release.yml](.github/workflows/release.yml)** | `install_mode: main` or `tag`; `install_tag` from prepare; `acceptance: true`; pre-tag also `verify_bundle: true` | Pre-tag gate (`main`, including the packed shim) and post-tag sanity check (`tag` path) |
 | `workflow_call` from **[index-after-release.yml](.github/workflows/index-after-release.yml)**, on a schedule or `workflow_dispatch` | `install_mode: index`; `install_tag` from `release`'s `package.xml` | What Index users receive, once the catalog serves the release |
 | `workflow_call` from **[acceptance-main.yml](.github/workflows/acceptance-main.yml)**, on every push to `main` | `install_mode: main`; `install_tag` from the pushed `package.xml`; `acceptance: true` | Acceptance tests on each change to `main` |
-| `workflow_call` from **[acceptance-pr.yml](.github/workflows/acceptance-pr.yml)**, on every pull request into `main` (opened, synchronize, reopened) | `install_mode: branch`; `install_branch` the PR's head branch; `install_tag` from the PR head's `package.xml`; `acceptance: true`; `coverage: true` | Acceptance tests on a change before it merges into `main`; skipped, with a notice, for PRs from forks |
+| `workflow_call` from **[acceptance-pr.yml](.github/workflows/acceptance-pr.yml)**, on every pull request into `main` (opened, synchronize, reopened) | `install_mode: branch`; `install_branch` the PR's head branch; `install_tag` from the PR head's `package.xml`; `acceptance: true`; `coverage: true`; `verify_bundle: true` | Packs that branch's `.mcpb` and runs acceptance, including the packed shim, before the change merges into `main`; skipped, with a notice, for PRs from forks |
 | `workflow_dispatch` | Inputs: `tag` (e.g. `v0.1.15`), `mode` (`tag`, `index_zip`, `main`, `branch`, `index`, or `copy`), `branch` (branch mode only) | Ad-hoc CI run; iterate on scripts; prove a branch before it merges into `main`. `copy` runs only when started by hand |
 
 For a hand-started run, set `tag` to the version expected from the

@@ -31,6 +31,13 @@ on:
         required: false
         type: boolean
         default: false
+      verify_bundle:
+        description: >
+          Call the packed freecad-mcp-bridge.mcpb over stdio against
+          this bridge. The caller uploads that artifact first.
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       tag:
@@ -323,9 +330,25 @@ jobs:
           ISOLATE_HOME: ${{ matrix.isolate_home }}
           QT_QPA_PLATFORM: ${{ matrix.qt_platform }}
 
+      - name: Bundle verification requires acceptance
+        if: inputs.verify_bundle && !inputs.acceptance
+        shell: bash
+        run: |
+          echo "verify_bundle requires acceptance. The bundle is called against the bridge that step holds."
+          exit 1
+
+      - name: Download the packed bundle
+        if: inputs.verify_bundle && inputs.acceptance && env.RELEASE_INSTALL_MODE != 'index'
+        uses: actions/download-artifact@v4
+        with:
+          name: freecad-mcp-bridge.mcpb
+          path: ${{ runner.temp }}/bundle
+
       # FreeCAD serves the bridge in the background while the runner's own
       # Python runs the acceptance tests against it, as an MCP client would.
       # Not in index mode: the Index serves a release older than these tests.
+      # The bundle call, when asked for, runs in that same step, before the
+      # stop file is written.
       - name: Acceptance tests against the installed bridge
         if: inputs.acceptance && env.RELEASE_INSTALL_MODE != 'index'
         shell: bash
@@ -336,6 +359,8 @@ jobs:
           ACCEPTANCE_READY_FILE: ${{ runner.temp }}/acceptance-ready
           ACCEPTANCE_STOP_FILE: ${{ runner.temp }}/acceptance-stop
           ACCEPTANCE_TIMEOUT_S: "600"
+          VERIFY_BUNDLE: "${{ inputs.verify_bundle }}"
+          BUNDLE_MCPB: "${{ inputs.verify_bundle && format('{0}/bundle/freecad-mcp-bridge.mcpb', runner.temp) || '' }}"
         run: |
           set -uo pipefail
           rm -f "${ACCEPTANCE_READY_FILE}" "${ACCEPTANCE_STOP_FILE}"
