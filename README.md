@@ -37,9 +37,16 @@ That's the whole setup for most clients.
 
 Claude Desktop can't open an HTTP endpoint the way Claude Code and others can, but it can reach the bridge through a small stdio↔HTTP relay (the shim in [`mcp-stdio-shim/`](mcp-stdio-shim/)) — packaged as a bundle you install in Claude Desktop:
 
-1. Download **`freecad-mcp-bridge.mcpb`** from the [latest release](https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest).
-2. In Claude Desktop, open **Settings → Extensions** and install the downloaded file. Accept the warning it shows to continue.
-3. Set the **port** to match FreeCAD's (default `39280`), and check the extension is **Enabled**.
+1. Download **`freecad-mcp-bridge.mcpb`** from the
+   [latest release](https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest).
+2. Open **Settings → Extensions** and install the downloaded bundle.
+   On the Linux beta, either drag it into the pane or choose
+   **Advanced settings → Install extension** to select the file.
+   Accept the installation warning to continue.
+3. In the Extensions list, open **FreeCAD MCP Bridge**. Its **port**
+   is pre-filled with `39280`; set it to match FreeCAD and check that
+   the extension is **Enabled**. On the Linux beta, the extension's
+   tools default to **Needs approval**.
 
 It forwards to the same `http://127.0.0.1:39280/mcp` endpoint.
 
