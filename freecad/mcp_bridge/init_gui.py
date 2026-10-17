@@ -40,6 +40,7 @@ class MCPBridgeCommand:
 
         from freecad.mcp_bridge import config
 
+        started = False
         try:
             if bridge.is_running():
                 bridge.stop()
@@ -47,13 +48,16 @@ class MCPBridgeCommand:
             else:
                 bridge.start()
                 status = f"{DISPLAY_NAME}: Listening on 127.0.0.1:{config.port()}"
+                started = True
         except Exception as e:
             App.Console.PrintError(f"{LOG_PREFIX} Error toggling bridge: {e}\n")
             status = f"{DISPLAY_NAME}: Could not start ({e})"
         mw = Gui.getMainWindow()
         if mw:
             mw.statusBar().showMessage(status)
-        show_toggle_state(status)
+        show_toggle_state(None if started else status)
+        if started:
+            App.Console.PrintNotification(status + "\n")
 
 
 def _refresh_status_button(running, tip):
