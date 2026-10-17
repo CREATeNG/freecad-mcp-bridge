@@ -74,19 +74,100 @@ def _report_view_text() -> str:
     return ""
 
 
+_PREFS_LINE = (
+    "To start or stop the bridge, click <b>MCP Bridge On/Off</b> "
+    "in the <b>MCP Bridge</b> toolbar. While active, it listens "
+    "on the port configured below."
+)
+
+
+def _verify_preferences_line() -> None:
+    """The installed Preferences page carries the switch-on line."""
+    from freecad.mcp_bridge.resources import preferences_ui_path
+
+    path = preferences_ui_path()
+    try:
+        raw = open(path, encoding="utf-8").read()
+    except OSError as exc:
+        common.fail(f"Preferences page is missing ({path}): {exc}")
+    text = raw.replace("&lt;", "<").replace("&gt;", ">")
+    if _PREFS_LINE not in text:
+        common.fail(
+            "Preferences page is missing the switch-on line. "
+            f"Looked in {path}"
+        )
+    common.log_notice("Preferences page has the switch-on line")
+
+
+def _status_button():
+    """The permanent status-bar button, or None if it was not added."""
+    import FreeCADGui as Gui
+    from PySide.QtWidgets import QToolButton
+
+    from freecad.mcp_bridge.constants import STATUS_BUTTON_OBJECT_NAME
+
+    mw = Gui.getMainWindow()
+    if mw is None:
+        return None
+    return mw.statusBar().findChild(
+        QToolButton, STATUS_BUTTON_OBJECT_NAME
+    )
+
+
+def _assert_status_button(running: bool) -> None:
+    """The status-bar button matches the bridge, and so does the toolbar."""
+    import FreeCAD as App
+
+    button = _status_button()
+    if button is None:
+        common.fail("Status-bar button is missing")
+    expected = "MCP: On" if running else "MCP: Off"
+    if button.text() != expected:
+        common.fail(
+            "Status-bar button text is out of step. "
+            f"Expected {expected!r}, got {button.text()!r}"
+        )
+    tip = (
+        "MCP Bridge: on (click to stop)"
+        if running
+        else "MCP Bridge: off (click to start)"
+    )
+    if button.toolTip() != tip:
+        common.fail(
+            "Status-bar button tooltip is out of step. "
+            f"Expected {tip!r}, got {button.toolTip()!r}"
+        )
+    action = getattr(App, "MCPBridgeAction", None)
+    pressed = None if action is None else action.isChecked()
+    if pressed != running:
+        common.fail(
+            "Toolbar button is out of step with the status-bar button "
+            f"(pressed={pressed}, bridge running={running})"
+        )
+
+
 def _stop_bridge() -> None:
-    """Stop the server via a second toolbar toggle, like a user would."""
+    """Stop the server via the status-bar button, like a user would."""
+    from PySide.QtCore import QCoreApplication
+
     from freecad.mcp_bridge import bridge
     from freecad.mcp_bridge.constants import DISPLAY_NAME, LOG_PREFIX
 
     if not bridge.is_running():
         common.fail("Bridge HTTP server was not running before stop toggle")
 
-    common.trigger_toolbar_toggle('Triggering toolbar action "MCP Bridge On/Off" (stop)')
+    button = _status_button()
+    if button is None:
+        common.fail("Status-bar button is missing")
+    common.log('Clicking status-bar button "MCP: On" (stop)')
+    button.click()
+    QCoreApplication.processEvents()
     common._drain_qt_events(1500)
 
     if bridge.is_running():
-        common.fail("Bridge HTTP server still running after stop toolbar click")
+        common.fail(
+            "Bridge HTTP server still running after the status-bar click"
+        )
 
     expected = common.env(
         "RELEASE_INSTALL_STOP_MESSAGE",
@@ -110,8 +191,10 @@ def _stop_bridge() -> None:
             f"Expected substring {expected_status!r}, got: {status_message!r}"
         )
 
+    _assert_status_button(False)
     common.log_notice(
-        f"Bridge stopped via toolbar toggle (saw {expected!r} in Report view)"
+        "Bridge stopped via the status-bar button "
+        f"(saw {expected!r} in Report view)"
     )
 
 
@@ -254,8 +337,11 @@ def _run() -> None:
     )
 
     _verify_addon_startup()
+    _verify_preferences_line()
     common.check_bridge_off_at_startup()
+    _assert_status_button(False)
     common.start_bridge()
+    _assert_status_button(True)
     common.check_listening_status()
     _verify_http_round_trip()
     _stop_bridge()

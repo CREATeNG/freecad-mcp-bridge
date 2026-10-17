@@ -9,6 +9,7 @@ from freecad.mcp_bridge.constants import (
     COMMAND_ID,
     DISPLAY_NAME,
     LOG_PREFIX,
+    STATUS_BUTTON_OBJECT_NAME,
     TOOLBAR_OBJECT_NAME,
 )
 from freecad.mcp_bridge.resources import icon_path, preferences_ui_path
@@ -55,25 +56,78 @@ class MCPBridgeCommand:
         show_toggle_state(status)
 
 
+def _refresh_status_button(running, tip):
+    """Set the status-bar button's text, tooltip and emphasis."""
+    import FreeCADGui as Gui
+    from PySide.QtWidgets import QToolButton
+
+    mw = Gui.getMainWindow()
+    if mw is None:
+        return
+    button = mw.statusBar().findChild(
+        QToolButton, STATUS_BUTTON_OBJECT_NAME
+    )
+    if button is None:
+        return
+    button.setText("MCP: On" if running else "MCP: Off")
+    button.setToolTip(tip)
+    if running:
+        button.setStyleSheet(
+            "QToolButton { color: palette(highlight); }"
+        )
+    else:
+        button.setStyleSheet(
+            "QToolButton { color: palette(window-text); }"
+        )
+
+
+def _ensure_status_button(mw):
+    """Add the permanent status-bar button once; return it."""
+    import FreeCAD as App
+    import FreeCADGui as Gui
+    from PySide.QtCore import QSize, Qt
+    from PySide.QtGui import QIcon
+    from PySide.QtWidgets import QToolButton
+
+    bar = mw.statusBar()
+    button = bar.findChild(QToolButton, STATUS_BUTTON_OBJECT_NAME)
+    if button is not None:
+        return button
+    button = QToolButton(bar)
+    button.setObjectName(STATUS_BUTTON_OBJECT_NAME)
+    button.setAutoRaise(True)
+    button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+    button.setIcon(QIcon(App.MCPBridgeIconPath))
+    button.setIconSize(QSize(16, 16))
+    command = App.MCPBridgeCommand
+    button.clicked.connect(lambda *_: Gui.runCommand(command))
+    bar.addPermanentWidget(button)
+    return button
+
+
 def show_toggle_state(message=None):
-    """Make the toolbar button show whether the bridge is on: pressed while it
-    runs, with a matching tooltip, and a brief popup beside it for `message`."""
+    """Show whether the bridge is on, on the toolbar and the status bar.
+
+    The toolbar button stays pressed while it runs. Both use the same
+    tooltip. A brief popup appears beside the toolbar for `message`.
+    """
     import FreeCAD as App
     import FreeCADGui as Gui
     from PySide.QtWidgets import QToolBar, QToolTip
 
-    action = getattr(App, "MCPBridgeAction", None)
-    if action is None:
-        return
     running = bridge.is_running()
-    action.setChecked(running)
-    action.setToolTip(
+    tip = (
         f"{DISPLAY_NAME}: on (click to stop)"
         if running
         else f"{DISPLAY_NAME}: off (click to start)"
     )
+    action = getattr(App, "MCPBridgeAction", None)
+    if action is not None:
+        action.setChecked(running)
+        action.setToolTip(tip)
+    _refresh_status_button(running, tip)
     mw = Gui.getMainWindow()
-    if not message or mw is None:
+    if action is None or not message or mw is None:
         return
     for toolbar in mw.findChildren(QToolBar):
         widget = toolbar.widgetForAction(action)
@@ -126,7 +180,9 @@ def inject_ui():
         action.setCheckable(True)
         action.triggered.connect(lambda *_: Gui.runCommand(command))
         App.MCPBridgeAction = action
-        show_toggle_state()
+
+    _ensure_status_button(mw)
+    show_toggle_state()
 
     target_tb.setVisible(True)
     target_tb.show()
