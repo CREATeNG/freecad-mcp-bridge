@@ -12,14 +12,27 @@
       <string>Server</string>
      </property>
      <layout class="QFormLayout" name="formLayout">
-      <item row="0" column="0">
+      <item row="0" column="0" colspan="2">
+       <widget class="QLabel" name="serverHint">
+        <property name="textFormat">
+         <enum>Qt::RichText</enum>
+        </property>
+        <property name="text">
+         <string>To start or stop the bridge, click &lt;b&gt;MCP Bridge On/Off&lt;/b&gt; in the &lt;b&gt;MCP Bridge&lt;/b&gt; toolbar. While active, it listens on the port configured below.</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
        <widget class="QLabel" name="portLabel">
         <property name="text">
          <string>Port</string>
         </property>
        </widget>
       </item>
-      <item row="0" column="1">
+      <item row="1" column="1">
        <widget class="Gui::PrefSpinBox" name="portSpinBox">
         <property name="toolTip">
          <string>The port the MCP server listens on (127.0.0.1). Changes take effect next time you start the bridge.</string>
@@ -41,14 +54,14 @@
         </property>
        </widget>
       </item>
-      <item row="1" column="0">
+      <item row="2" column="0">
        <widget class="QLabel" name="timeoutLabel">
         <property name="text">
          <string>Max response timeout</string>
         </property>
        </widget>
       </item>
-      <item row="1" column="1">
+      <item row="2" column="1">
        <widget class="Gui::PrefSpinBox" name="timeoutSpinBox">
         <property name="toolTip">
          <string>The maximum time a request waits for output before returning what it has so far. The client fetches any remaining output automatically.</string>
@@ -76,14 +89,14 @@
         </property>
        </widget>
       </item>
-      <item row="2" column="0">
+      <item row="3" column="0">
        <widget class="QLabel" name="pageSizeLabel">
         <property name="text">
          <string>Max page size</string>
         </property>
        </widget>
       </item>
-      <item row="2" column="1">
+      <item row="3" column="1">
        <widget class="Gui::PrefSpinBox" name="pageSizeSpinBox">
         <property name="toolTip">
          <string>The maximum size of one page as the agent reads it, in units of 1,024 characters (32 means 32,768). The count is the JSON of the tool result, so a newline counts as a backslash and an n. Larger output is split across pages, fetched with get_output_page.</string>
@@ -111,14 +124,14 @@
         </property>
        </widget>
       </item>
-      <item row="3" column="0">
+      <item row="4" column="0">
        <widget class="QLabel" name="retentionLabel">
         <property name="text">
          <string>Page history retention</string>
         </property>
        </widget>
       </item>
-      <item row="3" column="1">
+      <item row="4" column="1">
        <widget class="Gui::PrefSpinBox" name="retentionSpinBox">
         <property name="toolTip">
          <string>How long a finished job's output pages remain readable via get_output_page before being discarded.</string>

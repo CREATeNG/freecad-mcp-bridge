@@ -4,6 +4,7 @@ DISPLAY_NAME = "MCP Bridge"
 LOG_PREFIX = "[MCP Bridge]"
 COMMAND_ID = "MCP_Bridge_Toggle"
 TOOLBAR_OBJECT_NAME = "MCP_Bridge"
+STATUS_BUTTON_OBJECT_NAME = "MCPBridgeStatusButton"
 
 # MCP server identity (serverInfo.version is read live from package.xml)
 SERVER_NAME = "freecad-mcp-bridge"
