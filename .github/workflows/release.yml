@@ -35,8 +35,9 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       # A push releases only when the version changed since the previous
-      # tip and the diff is the version files alone. Dispatch is the
-      # retry: it ships the current main when that version has no tag.
+      # tip and the diff is the version files plus CHANGELOG.md.
+      # Dispatch is the retry: it ships the current main when that
+      # version has no tag.
       - name: Decide whether this run releases
         id: gate
         run: |
@@ -79,19 +80,27 @@ jobs:
           while IFS= read -r changed; do
             [ -z "$changed" ] && continue
             case "$changed" in
-              package.xml|mcp-stdio-shim/manifest.json|mcp-stdio-shim/package.json)
+              package.xml|mcp-stdio-shim/manifest.json|mcp-stdio-shim/package.json|CHANGELOG.md)
                 ;;
               *)
                 echo "Version changed ($OLD -> $NEW) but the push also changes $changed."
-                echo "A version pull request changes only the version files."
+                echo "A version pull request changes only the version files and CHANGELOG.md."
                 exit 1
                 ;;
             esac
           done <<EOF
           $diff_names
           EOF
+          if ! printf '%s\n' "$diff_names" | grep -qx 'CHANGELOG.md'; then
+            echo "Version changed ($OLD -> $NEW) but CHANGELOG.md is not in the diff."
+            exit 1
+          fi
           echo "do_release=true" >> "$GITHUB_OUTPUT"
           echo "Version release $OLD -> $NEW at $SHA"
+
+      - name: Check the changelog section
+        if: steps.gate.outputs.do_release == 'true'
+        run: python3 -m unittest tests/unit/test_version_files.py -q
 
       - name: Pin the commit this run releases
         if: steps.gate.outputs.do_release == 'true'

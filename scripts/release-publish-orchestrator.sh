@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Release publish step — INTERNAL to .github/workflows/release.yml only.
 #
-# Runs only after install-verify has passed on main. Checks the bundle
-# prepare packed, then pushes the release tag on the verified commit,
-# creates a GitHub Release, and uploads that bundle as the release's
-# one asset (freecad-mcp-bridge.mcpb).
+# Runs only after install-verify has passed on main. Checks the
+# changelog section and the bundle prepare packed, then pushes the
+# release tag on the verified commit, creates a GitHub Release from
+# that section, and uploads the bundle as the release's one asset
+# (freecad-mcp-bridge.mcpb).
 #
 # Does not change package.xml. No standalone entry point.
 
@@ -77,6 +78,10 @@ if [[ -n "$(git ls-remote --tags origin "${RELEASE_TAG}")" ]]; then
   exit 1
 fi
 
+echo "Checking the changelog section"
+notes_file="${RUNNER_TEMP:-/tmp}/release-notes.md"
+python3 tests/unit/test_version_files.py --body > "$notes_file"
+
 echo "Checking the bundle prepare packed"
 printf '%s  %s\n' "$BUNDLE_SHA" "$BUNDLE_PATH" | sha256sum -c -
 
@@ -87,7 +92,7 @@ echo "Created and pushed tag ${RELEASE_TAG} at ${VERIFIED_SHA}"
 
 gh release create "$RELEASE_TAG" \
   --title "$RELEASE_TAG" \
-  --notes 'Source-only addon; the Claude Desktop bundle is attached as `freecad-mcp-bridge.mcpb`.'
+  --notes-file "$notes_file"
 
 echo "Published GitHub Release ${RELEASE_TAG}"
 

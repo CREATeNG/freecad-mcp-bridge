@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Write the next patch into package.xml and the shim's version fields.
-# Run it on a branch. Commit the three files and open a pull request.
+# Write the next patch into package.xml, the shim's version fields,
+# and a new CHANGELOG.md section. Run it on a branch. Fill in the
+# notes, commit those files, and open a pull request.
 # This script does not commit or push.
 
 set -euo pipefail
@@ -30,12 +31,13 @@ next_z=$((z + 1))
 next_version="${x}.${y}.${next_z}"
 today=$(date +%Y-%m-%d)  # the machine's local date
 
-python3 - <<'PY' "$next_version" "$today" "$PACKAGE_XML" "$SHIM_MANIFEST" "$SHIM_PACKAGE_JSON"
+python3 - <<'PY' "$version" "$next_version" "$today" "$PACKAGE_XML" "$SHIM_MANIFEST" "$SHIM_PACKAGE_JSON"
 import re
 import sys
 from pathlib import Path
 
-version, date, package_xml, shim_manifest, shim_package_json = sys.argv[1:6]
+current, version, date, package_xml, shim_manifest, shim_package_json = sys.argv[1:7]
+changelog = "CHANGELOG.md"
 
 
 def read_text(path):
@@ -76,7 +78,34 @@ for json_path in (shim_manifest, shim_package_json):
     if n != 1:
         raise SystemExit(f"Failed to update version in {json_path}")
     write_text(p, text, newline)
+
+path = Path(changelog)
+if not path.is_file():
+    raise SystemExit(f"Missing {changelog}")
+text, newline = read_text(path)
+credit = next(
+    (line for line in text.splitlines() if line.startswith("Built ")),
+    "",
+)
+if not credit:
+    raise SystemExit(f"No Built credit line in {changelog}")
+placeholder = (
+    f"<!-- Write the release notes for {version} as bullet points "
+    "here and delete this comment. -->"
+)
+stub = (
+    f"## {version}\n"
+    "\n"
+    f"**What's new since {current}**\n"
+    "\n"
+    f"{placeholder}\n"
+    "\n"
+    f"{credit}\n"
+    "\n"
+)
+write_text(path, stub + text, newline)
 PY
 
-echo "Wrote ${next_version} into package.xml, the shim manifest, and the shim package.json."
-echo "Commit those files and open a pull request. This script does not commit or push."
+echo "Wrote ${next_version} into package.xml, the shim manifest, the shim package.json, and CHANGELOG.md."
+echo "Replace the placeholder in CHANGELOG.md, then commit those files and open a pull request."
+echo "This script does not commit or push."
