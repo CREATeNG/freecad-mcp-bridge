@@ -1,0 +1,10 @@
+**What's new since 0.1.22**
+
+- **Switching the bridge on is easier to find:** a status-bar button shows **MCP: Off** or **MCP: On**, and clicking it switches the bridge. The Preferences page says how to switch it on, and a successful start shows FreeCAD's own notification.
+- **Page history now expires from when a job finishes:** a job's page history is kept for the Page history retention time from when the job finishes, and each page read restarts that time. A gap longer than that between reads loses the output not yet read. Expired output is released even while the bridge is idle.
+- **Docs:** the README says more about installing the Claude Desktop extension, and says in full what code run by an agent can reach. Security issues can be reported privately through the repository's **Report a vulnerability** form.
+- **Behind the scenes:** each release now tests the packed Claude Desktop extension against the real bridge on Linux, macOS and Windows before tagging, and attaches that same file. A unit test keeps the three version files in step, and TESTING.md describes how testing works. Before this release, the extension was also checked by hand in Claude Desktop on Linux.
+
+Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini (Google) and Codex (OpenAI), with Cursor among their tools.
+
+Source-only addon; the Claude Desktop bundle is attached as `freecad-mcp-bridge.mcpb`.

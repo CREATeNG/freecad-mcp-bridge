@@ -19,12 +19,15 @@ The version number format is `x.y.z`; tags are named `v{x.y.z}` — e.g. shippin
 
 The version is stored in `package.xml`,
 `mcp-stdio-shim/manifest.json`, and
-`mcp-stdio-shim/package.json`. A version pull request changes
-only those files. `bump-package-z.sh` writes the next patch into
-all three, and the date in `package.xml`. A new major or minor
-line is the same pull request with those files edited by hand.
-The maintainer commits the files and opens the pull request.
-The script does not commit or push.
+`mcp-stdio-shim/package.json`. The notes for that version are
+the top section of `CHANGELOG.md`. A version pull request
+changes only those three files and `CHANGELOG.md`.
+`bump-package-z.sh` writes the next patch into all three,
+the date in `package.xml`, and a new changelog section with
+a placeholder. A new major or minor line is the same pull
+request with those four files edited by hand.
+The maintainer replaces the placeholder, commits the files,
+and opens the pull request. The script does not commit or push.
 
 The release workflow pushes nothing to `main`. The next version
 is another version pull request. Between releases, `main` holds
@@ -65,9 +68,9 @@ whatever those pull requests leave there; see
 ## When `package.xml` updates
 
 A version pull request is the only change to the version. It
-changes `package.xml`, `mcp-stdio-shim/manifest.json`, and
-`mcp-stdio-shim/package.json`, and nothing else. Merging it
-starts the release.
+changes `package.xml`, `mcp-stdio-shim/manifest.json`,
+`mcp-stdio-shim/package.json`, and `CHANGELOG.md`, and nothing
+else. Merging it starts the release.
 
 `package.xml`'s repository url names branch **`release`**: the Addon Manager installs that branch rather than the Index's `git_ref`, so the two must agree. **prepare** refuses to run otherwise. The Addon Manager offers an update when the `<version>` on `release` changes, which every release does.
 
@@ -86,8 +89,9 @@ starts the release.
 
 A push to `main` starts the release orchestrator. Prepare
 releases that push only when `package.xml`'s version differs from
-the previous tip and the push changes only the three version
-files. Any other push stops there. **Run workflow** is the retry
+the previous tip and the push changes only the version files
+and `CHANGELOG.md`, which the push must include. Any other
+push stops there. **Run workflow** is the retry
 for a release that failed after its version merged: it ships the
 current `main` when that version's tag does not exist yet. The
 workflow then tags the commit, runs install-verify before and
@@ -110,9 +114,12 @@ flowchart TD
 
 1. **Prepare** — on a push, compare `package.xml`'s version with
    the previous tip (`github.event.before`) and fail the run
-   unless its diff is only the three version files. On **Run
-   workflow**, take the current `main`. Then resolve the version,
-   verify the tag does not already exist, validate the Claude
+   unless its diff is the version files and `CHANGELOG.md`.
+   On **Run workflow**, take the current `main`. Either way,
+   check that `CHANGELOG.md`'s top section is this version's
+   and is filled in (no placeholder, at least one note, the
+   credit line). Then resolve the version, verify the tag
+   does not already exist, validate the Claude
    Desktop bundle manifest (`mcpb validate`), record the
    release-candidate commit SHA, pack `freecad-mcp-bridge.mcpb`,
    record its sha256, and upload that file.
@@ -122,9 +129,10 @@ flowchart TD
    Addon Manager install and restart verify on all three OSes
    against `main`, then the packed shim called over stdio while
    that bridge is still up. **No tag if this fails.**
-3. **Publish** — check the packed bundle's sha256, push the
-   matching tag (`v{x.y.z}`) on the verified commit, create a
-   **GitHub Release**, and upload that same file. Uses
+3. **Publish** — check the changelog section and the packed
+   bundle's sha256, push the matching tag (`v{x.y.z}`) on the
+   verified commit, create a **GitHub Release** from that
+   section, and upload that same file. Uses
    [`release-publish-orchestrator.sh`](scripts/release-publish-orchestrator.sh)
    (`RELEASE_PUBLISH_AUTHORIZED=true`; not runnable standalone).
 4. **Install-verify** (tag path) — same workflow with
@@ -154,11 +162,13 @@ from anything attached to the release page.
 
 1. On a branch, run
    [`scripts/bump-package-z.sh`](scripts/bump-package-z.sh),
-   or edit the three version files to the version you intend
-   to ship. The files are `package.xml`,
+   or edit the version files and `CHANGELOG.md` to the version
+   you intend to ship. The version files are `package.xml`,
    `mcp-stdio-shim/manifest.json`, and
-   `mcp-stdio-shim/package.json`.
-2. Open a pull request that changes only those files. It runs
+   `mcp-stdio-shim/package.json`. The script starts the new
+   changelog section with a placeholder.
+2. Replace that placeholder with the release notes, then open
+   a pull request that changes only those files. It runs
    every test a pull request runs.
 3. Merge it. `release.yml` tags that commit, verifies it, and
    moves `release`. It does not push to `main`.

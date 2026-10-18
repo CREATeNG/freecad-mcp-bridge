@@ -47,6 +47,9 @@ jobs:
           echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
           echo "PR head version: $VERSION (expected tag v$VERSION)"
 
+      - name: Check the changelog section
+        run: python3 -m unittest tests/unit/test_version_files.py -q
+
   pack:
     name: Pack the bundle
     if: github.event.pull_request.head.repo.full_name == github.repository
