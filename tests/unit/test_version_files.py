@@ -175,6 +175,14 @@ def release_body(root: Path) -> str:
     return f"{body}\n\n{STOCK_LINE}\n"
 
 
+def _from_heading(text: str, heading: str) -> str:
+    """`text` from the line `heading` starts, through the end."""
+    for index, line in enumerate(text.splitlines(keepends=True)):
+        if line.startswith(heading):
+            return "".join(text.splitlines(keepends=True)[index:])
+    raise AssertionError(f"{heading} is not in the changelog")
+
+
 def _write_tree(root: Path, version: str, changelog: str) -> None:
     """Three version files and a changelog, all naming `version`."""
     (root / "mcp-stdio-shim").mkdir()
@@ -215,11 +223,48 @@ class VersionFileTests(unittest.TestCase):
         self.assertIsNone(problem, problem)
 
     def test_the_release_body_matches_the_published_0_1_23_notes(self):
-        """The assembled body is the published v0.1.23 notes."""
+        """The 0.1.23 section still assembles the published notes."""
+        changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        older = _from_heading(changelog, "## 0.1.23")
         expected = (
             ROOT / "tests" / "unit" / "v0.1.23-release-body.txt"
         ).read_text(encoding="utf-8")
-        self.assertEqual(release_body(ROOT), expected)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_tree(root, "0.1.23", older)
+            self.assertIsNone(notes_problem(root))
+            self.assertEqual(release_body(root), expected)
+
+    def test_a_newer_section_keeps_the_published_0_1_23_body(self):
+        """A ready 0.1.24 section on top leaves the 0.1.23 body."""
+        changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        newer = (
+            "## 0.1.24\n"
+            "\n"
+            "**What's new since 0.1.23**\n"
+            "\n"
+            "- A later note.\n"
+            "\n"
+            "Built by a team: example.\n"
+            "\n"
+        ) + changelog
+        expected = (
+            ROOT / "tests" / "unit" / "v0.1.23-release-body.txt"
+        ).read_text(encoding="utf-8")
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            current = base / "current"
+            current.mkdir()
+            _write_tree(current, "0.1.24", newer)
+            self.assertIsNone(notes_problem(current))
+            published = base / "published"
+            published.mkdir()
+            _write_tree(
+                published,
+                "0.1.23",
+                _from_heading(newer, "## 0.1.23"),
+            )
+            self.assertEqual(release_body(published), expected)
 
 
 class ChangelogSectionTests(unittest.TestCase):

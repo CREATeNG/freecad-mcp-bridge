@@ -98,10 +98,6 @@ jobs:
           echo "do_release=true" >> "$GITHUB_OUTPUT"
           echo "Version release $OLD -> $NEW at $SHA"
 
-      - name: Check the changelog section
-        if: steps.gate.outputs.do_release == 'true'
-        run: python3 -m unittest tests/unit/test_version_files.py -q
-
       - name: Pin the commit this run releases
         if: steps.gate.outputs.do_release == 'true'
         run: |
@@ -111,6 +107,10 @@ jobs:
           else
             git checkout --detach "${{ github.sha }}"
           fi
+
+      - name: Check the changelog section
+        if: steps.gate.outputs.do_release == 'true'
+        run: python3 -m unittest tests/unit/test_version_files.py -q
 
       - name: Resolve version from package.xml
         id: version

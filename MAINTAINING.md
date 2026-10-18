@@ -21,10 +21,11 @@ The version is stored in `package.xml`,
 `mcp-stdio-shim/manifest.json`, and
 `mcp-stdio-shim/package.json`. The notes for that version are
 the top section of `CHANGELOG.md`. A version pull request
-changes only those files. `bump-package-z.sh` writes the next
-patch into all three, the date in `package.xml`, and a new
-changelog section with a placeholder. A new major or minor
-line is the same pull request with those files edited by hand.
+changes only those three files and `CHANGELOG.md`.
+`bump-package-z.sh` writes the next patch into all three,
+the date in `package.xml`, and a new changelog section with
+a placeholder. A new major or minor line is the same pull
+request with those four files edited by hand.
 The maintainer replaces the placeholder, commits the files,
 and opens the pull request. The script does not commit or push.
 
@@ -115,8 +116,10 @@ flowchart TD
    the previous tip (`github.event.before`) and fail the run
    unless its diff is the version files and `CHANGELOG.md`.
    On **Run workflow**, take the current `main`. Either way,
-   check the changelog section. Then resolve the version,
-   verify the tag does not already exist, validate the Claude
+   check that `CHANGELOG.md`'s top section is this version's
+   and is filled in (no placeholder, at least one note, the
+   credit line). Then resolve the version, verify the tag
+   does not already exist, validate the Claude
    Desktop bundle manifest (`mcpb validate`), record the
    release-candidate commit SHA, pack `freecad-mcp-bridge.mcpb`,
    record its sha256, and upload that file.
