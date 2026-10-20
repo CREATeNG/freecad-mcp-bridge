@@ -170,8 +170,9 @@ from anything attached to the release page.
 2. Replace that placeholder with the release notes, then open
    a pull request that changes only those files. It runs
    every test a pull request runs.
-3. Wait for the Claude Desktop check. Ricky Boy runs it as a
-   routine that starts when a version pull request opens. The
+3. Wait for the Claude Desktop check. The agent holding the
+   freecad-desktop-checker seat on the agent hub runs the check
+   as a routine that starts when a version pull request opens. The
    routine takes the `.mcpb` that the pull request's checks
    packed, installs it in Claude Desktop, runs a hello call
    through it (`print('hello')` in FreeCAD), and comments the
