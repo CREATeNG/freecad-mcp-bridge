@@ -11,7 +11,7 @@ The server runs only while you toggle it on, and only on your own machine.
 ## Quick start
 
 1. Install **MCP Bridge** from the FreeCAD **Addon Manager** and restart FreeCAD.
-2. A **MCP Bridge** toolbar button appears. Click it to start the server — the status bar shows `MCP Bridge: Listening on 127.0.0.1:39280`.
+2. An **MCP Bridge** toolbar button appears, and the status bar shows **MCP: Off**. Click either one to start the server. The status bar then reads **MCP: On**, and FreeCAD shows a notification, `MCP Bridge: Listening on 127.0.0.1:39280`.
 3. Point your MCP client at the bridge with:
    - **Transport:** Streamable HTTP
    - **URL:** `http://127.0.0.1:39280/mcp`
