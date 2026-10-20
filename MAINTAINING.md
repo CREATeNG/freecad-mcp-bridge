@@ -170,9 +170,17 @@ from anything attached to the release page.
 2. Replace that placeholder with the release notes, then open
    a pull request that changes only those files. It runs
    every test a pull request runs.
-3. Merge it. `release.yml` tags that commit, verifies it, and
+3. Wait for the Claude Desktop check. Ricky Boy runs it as a
+   routine that starts when a version pull request opens. The
+   routine takes the `.mcpb` that the pull request's checks
+   packed, installs it in Claude Desktop, runs a hello call
+   through it (`print('hello')` in FreeCAD), and comments the
+   result on the pull request. If no result is posted, run the
+   check by hand and post it the same way. Merge only after it
+   passes.
+4. Merge it. `release.yml` tags that commit, verifies it, and
    moves `release`. It does not push to `main`.
-4. If that run fails after the merge, GitHub → **Actions** →
+5. If that run fails after the merge, GitHub → **Actions** →
    **Release Orchestrator** → **Run workflow**, on `main`.
    That retries the current `main`. Index users get the
    release once the FreeCAD Addon Index cache refreshes,
