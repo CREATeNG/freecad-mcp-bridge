@@ -178,8 +178,8 @@ from anything attached to the release page.
    result on the pull request. If no result is posted, run the
    check by hand and post it the same way. Merge only after it
    passes.
-4. Merge it. `release.yml` tags that commit, verifies it, and
-   moves `release`. It does not push to `main`.
+4. Merge the pull request. `release.yml` tags that commit,
+   verifies it, and moves `release`. It does not push to `main`.
 5. If that run fails after the merge, GitHub → **Actions** →
    **Release Orchestrator** → **Run workflow**, on `main`.
    That retries the current `main`. Index users get the
