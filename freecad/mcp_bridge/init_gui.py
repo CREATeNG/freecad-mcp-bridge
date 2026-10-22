@@ -63,7 +63,13 @@ class MCPBridgeCommand:
         if started or stopped:
             App.Console.PrintNotification(status + "\n")
         else:
-            App.Console.PrintWarning(status + "\n")
+            warning = status
+            if isinstance(e, OSError):
+                warning += (
+                    ". Change the port in Edit → "
+                    "Preferences → MCP Bridge."
+                )
+            App.Console.PrintWarning(warning + "\n")
 
 
 def _refresh_status_button(running, tip):

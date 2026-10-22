@@ -232,7 +232,7 @@ class HttpServer:
         except OSError as exc:
             self._httpd = None
             self._executor = None
-            FreeCAD.Console.PrintError(
+            FreeCAD.Console.PrintDeveloperError(
                 f"{LOG_PREFIX} Could not bind 127.0.0.1:{bind_port} ({exc}). "
                 "Change the port in Edit → Preferences → MCP Bridge.\n"
             )
