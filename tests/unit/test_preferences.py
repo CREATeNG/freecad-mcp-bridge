@@ -317,6 +317,40 @@ class StatusBarWidgetsTests(unittest.TestCase):
                 init_gui._status_bar_widgets(bar_gap), (None, None)
             )
 
+            empty_row = FakeHBox(parent=vbox, total=3, indices={})
+            bar_empty = FakeBar([empty_row], [])
+            vbox._parent = bar_empty
+            self.assertEqual(
+                init_gui._status_bar_widgets(bar_empty), ([], [])
+            )
+
+            normal_only = FakeHBox(
+                parent=vbox, total=4, indices={n1: 1}
+            )
+            bar_normal = FakeBar([normal_only], [n1])
+            vbox._parent = bar_normal
+            self.assertEqual(
+                init_gui._status_bar_widgets(bar_normal), ([n1], [])
+            )
+
+            collapsed_one = FakeHBox(
+                parent=vbox, total=3, indices={n1: 1}
+            )
+            bar_c1 = FakeBar([collapsed_one], [n1])
+            vbox._parent = bar_c1
+            self.assertEqual(
+                init_gui._status_bar_widgets(bar_c1), (None, None)
+            )
+
+            collapsed_two = FakeHBox(
+                parent=vbox, total=3, indices={n1: 1, p1: 2}
+            )
+            bar_c2 = FakeBar([collapsed_two], [n1, p1])
+            vbox._parent = bar_c2
+            self.assertEqual(
+                init_gui._status_bar_widgets(bar_c2), (None, None)
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -161,7 +161,7 @@ def _status_bar_widgets(bar):
     expected = set(range(1, separator)) | set(
         range(separator + 1, count - 1)
     )
-    if count < 3 or set(slots) != expected:
+    if separator >= count - 1 or set(slots) != expected:
         return None, None
     return (
         [slots[i] for i in range(1, separator)],
@@ -203,7 +203,8 @@ def _ensure_status_button(mw):
             App.MCPBridgeLayoutErrorReported = True
             App.Console.PrintDeveloperError(
                 f"{LOG_PREFIX} Status-bar layout unavailable; "
-                "appending button on the right.\n"
+                "the On/Off button may not be first among the "
+                "right-hand items.\n"
             )
 
     bar = mw.statusBar()
