@@ -17,16 +17,20 @@ the changelog section for that version. These
 checks include fake clocks, output queues and a stand-in parameter
 store where those replace the running application.
 
-Use Python 3.11, matching CI, and Git for the tracked-file distribution
-check:
+The tracked-file distribution check needs Git, and the version-bump
+script test needs Bash with `python3` on its `PATH`. Use Python 3.11,
+matching CI:
 
 ```bash
 python -m unittest discover -s tests/unit -t . -v
 ```
 
 [tests.yml](.github/workflows/tests.yml) runs this as **Unit (Python)**
-on Ubuntu for every push and pull request. It runs the suite under
-coverage and writes the addon line-coverage report to the job summary.
+on Ubuntu for every push and pull request. The job runs
+[list_requirements.py](scripts/list_requirements.py), which fails if
+any acceptance test lacks a docstring, then runs the suite under
+coverage. It writes the requirement list and the addon line-coverage
+report to the job summary.
 
 ## Stdio shim tests
 
@@ -99,8 +103,9 @@ a third FreeCAD process with
 [acceptance_serve.py](scripts/acceptance_serve.py). That process turns
 the installed bridge on through its toolbar action and writes its port
 to `ACCEPTANCE_READY_FILE`. The runner's Python runs the suite, then
-creates `ACCEPTANCE_STOP_FILE` so FreeCAD exits. The helper also has a
-hard serving timeout.
+creates `ACCEPTANCE_STOP_FILE` so FreeCAD exits. The helper also checks
+a serving deadline on the GUI event loop. Any outer process timeout is
+set by the launcher in [ci_run_freecad.sh](scripts/ci_run_freecad.sh).
 
 Acceptance runs on Linux, Windows and macOS when the caller enables
 the workflow's `acceptance` input. The push-to-main, same-repository PR
@@ -157,13 +162,17 @@ Shared helpers live in
 | `workflow_call` from **[index-after-release.yml](.github/workflows/index-after-release.yml)**, on a schedule or `workflow_dispatch` | `install_mode: index`; `install_tag` from `release`'s `package.xml` | What Index users receive, once the catalog serves the release |
 | `workflow_call` from **[acceptance-main.yml](.github/workflows/acceptance-main.yml)**, on every push to `main` | `install_mode: main`; `install_tag` from the pushed `package.xml`; `acceptance: true` | Acceptance tests on each change to `main` |
 | `workflow_call` from **[acceptance-pr.yml](.github/workflows/acceptance-pr.yml)**, on every pull request into `main` (opened, synchronize, reopened) | `install_mode: branch`; `install_branch` the PR's head branch; `install_tag` from the PR head's `package.xml`; `acceptance: true`; `coverage: true`; `verify_bundle: true` | Packs that branch's `.mcpb` and runs acceptance, including the packed shim, before the change merges into `main`; skipped, with a notice, for PRs from forks |
-| `workflow_dispatch` | Inputs: `tag` (e.g. `v0.1.15`), `mode` (`tag`, `index_zip`, `main`, `branch`, `index`, or `copy`), `branch` (branch mode only) | Ad-hoc CI run; iterate on scripts; prove a branch before it merges into `main`. `copy` runs only when started by hand |
+| `workflow_dispatch` | Inputs: `tag` (e.g. `v0.1.15`), `mode` (`tag`, `index_zip`, `main`, `branch`, `index`, or `copy`), `branch` (branch mode only), `coverage`, `acceptance` | Ad-hoc CI run; iterate on scripts; prove a branch before it merges into `main`. `copy` runs only when started by hand |
 
 For a hand-started run, set `tag` to the version expected from the
 chosen source; the form's default does not follow that source. Index
 mode ignores the tag input.
 
-Environment variables set by the workflow (overridable locally when debugging) fall into three groups. Exact names and defaults live in [`install-verify.yml`](.github/workflows/install-verify.yml) and each script's own module docstring (`test_install.py`, `test_verify.py`) — not repeated here to avoid the two copies drifting apart:
+[`install-verify.yml`](.github/workflows/install-verify.yml) sets the
+install-source and timing variables, and the scripts (`test_install.py`,
+`test_verify.py`) hold the local defaults. The variables listed in each
+script's module docstring (overridable when debugging) fall into three
+groups:
 
 - **Install source** — which tag/repo/mode/Mod-folder-name to install.
 - **Timing** — how long to wait for GUI startup, toolbar injection, the HTTP exec round-trip, and overall install completion.
@@ -247,8 +256,11 @@ manual clone operation.
 
 ## Release gates
 
-The [release orchestrator](.github/workflows/release.yml) calls
-[install-verify](.github/workflows/install-verify.yml) twice:
+In `prepare`, the [release orchestrator](.github/workflows/release.yml)
+checks that the shim's bundled tool list matches the addon's
+([`check_shim_tools.py`](scripts/check_shim_tools.py)). The workflow
+then calls [install-verify](.github/workflows/install-verify.yml)
+twice:
 
 1. **Pre-tag** (`install_mode: main`) — hard gate before tag creation.
    The release workflow fails if any OS fails.
@@ -268,7 +280,8 @@ For the release job order, see
 
 The [after-release Index workflow](.github/workflows/index-after-release.yml) checks what Index users receive. Nothing waits on it. Every three hours, and on `workflow_dispatch`, it compares the version `release`'s `package.xml` names with the version the live catalog states for our entry ([`index_catalog_version.py`](scripts/index_catalog_version.py)):
 
-- **Catalog behind** — exits quietly, or fails once the release has been published for 7 days.
+- **Catalog version differs** — exits quietly, or fails once the release
+  has been published for 7 days.
 - **Catalog caught up** — calls **[install-verify.yml](.github/workflows/install-verify.yml)** with `install_mode: index` on all three OSes, then uploads an artifact named `index-checked-{version}`. That artifact marks the version as checked, and later runs skip it; the `force` input repeats the install when the catalog matches, even if a marker exists.
 
 ---
@@ -308,12 +321,14 @@ FreeCAD process after restart. Does **not** call `App.MCPBridgeInjectUi()` — i
 |------|--------|
 | Auto-registration | The addon's command registers on startup with no manual injection — `init_gui.py`'s own startup hooks ran |
 | Install dir | The installed addon directory exists |
+| Preferences page | The installed `preferences.ui` contains the line telling the user how to start or stop the bridge |
 | Toolbar injection | The **MCP Bridge On/Off** toolbar action is found without manual injection |
 | Off at startup | The bridge is not running, its button is unchecked and nothing answers on its port before the first click |
+| Status-bar button | The permanent status-bar button shows `MCP: Off` at startup and after stop, and `MCP: On` while running, with matching tooltip and toolbar state |
 | Start bridge | First toolbar click starts the HTTP server |
 | Listening status | The status bar shows the loopback address and configured port |
 | HTTP round-trip | A client-shaped request — `tools/call` → `execute_python` over HTTP, sent from a worker thread while the main thread pumps the Qt event loop, paginating via `get_output_page` if the response is chunked — returns the expected probe output. Same code path a real MCP client uses. |
-| Stop bridge | Second toolbar click actually stops the HTTP server |
+| Stop bridge | Clicking the `MCP: On` status-bar button stops the HTTP server |
 | Report view | Shows the expected "stopped" message (`RELEASE_INSTALL_STOP_MESSAGE`, defaults to the bridge's own stop log line) |
 | Status bar | Shows `MCP Bridge: Offline` |
 
@@ -415,9 +430,9 @@ file paths that
 shows the external runner and stop-file coordination.
 
 The launcher expects `RUNNER_TEMP` for its logs. With
-`ISOLATE_HOME=true`, it also requires `FC_CI_HOME`; set `FREECAD_BIN`
-when FreeCAD is not on `PATH`. See the launcher's header for its
-workflow environment.
+`ISOLATE_HOME=true`, or with `RUNNER_OS=Windows`, it also requires
+`FC_CI_HOME`. Set `FREECAD_BIN` when FreeCAD is not on `PATH`. See the
+launcher's header for its workflow environment.
 
 To preview GitHub-style output from a captured log:
 
@@ -447,3 +462,4 @@ bash scripts/publish_ci_log.sh /tmp/freecad-ci-verify.log "Verify addon after re
 | [scripts/test_install_common.py](scripts/test_install_common.py) | Shared helpers, CI log, `quit_freecad()` |
 | [scripts/acceptance_serve.py](scripts/acceptance_serve.py) | FreeCAD host for the external acceptance runner |
 | [scripts/list_requirements.py](scripts/list_requirements.py) | Requirement lines from the acceptance tests |
+| [scripts/check_shim_tools.py](scripts/check_shim_tools.py) | Checks that the shim's bundled tool list matches the addon's |
