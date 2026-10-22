@@ -158,7 +158,7 @@ def _assert_status_button(running: bool) -> None:
 
 
 def _verify_status_button_hide() -> None:
-    """Status-bar button preferences move and hide the button without restart."""
+    """Status-bar preferences move and hide the button without restart."""
     import FreeCAD as App
     import FreeCADGui as Gui
 
@@ -181,7 +181,8 @@ def _verify_status_button_hide() -> None:
             names = [w.objectName() or type(w).__name__ for w in permanent]
             common.fail(
                 "Status-bar button is not first among permanent widgets "
-                f"with StatusButtonPosition=STATUS_BUTTON_LEFT (permanent={names})"
+                "with StatusButtonPosition=STATUS_BUTTON_LEFT "
+                f"(permanent={names})"
             )
     finally:
         params.RemInt("StatusButtonPosition")
