@@ -149,5 +149,81 @@ class UnsetPreferenceTests(unittest.TestCase):
         self.assertEqual(params.read, set(SETTINGS))
 
 
+def fresh_init_gui():
+    """Import init_gui.py against stand-in FreeCAD and Qt modules."""
+    freecad = types.SimpleNamespace(
+        Console=types.SimpleNamespace(PrintWarning=lambda *_: None)
+    )
+    gui = types.SimpleNamespace(
+        addIconPath=lambda *_: None,
+        listCommands=lambda: [],
+        addCommand=lambda *_: None,
+        addPreferencePage=lambda *_: None,
+        addWorkbenchManipulator=lambda *_: None,
+    )
+    qtcore = types.SimpleNamespace(
+        QTimer=types.SimpleNamespace(singleShot=lambda *_: None)
+    )
+    stubs = {
+        "FreeCAD": freecad,
+        "FreeCADGui": gui,
+        "PySide": types.SimpleNamespace(QtCore=qtcore),
+        "PySide.QtCore": qtcore,
+        "freecad.mcp_bridge.bridge": types.SimpleNamespace(),
+    }
+    with mock.patch.dict(sys.modules, stubs):
+        sys.modules.pop("freecad.mcp_bridge.init_gui", None)
+        module = importlib.import_module("freecad.mcp_bridge.init_gui")
+        sys.modules.pop("freecad.mcp_bridge.init_gui", None)
+    return module
+
+
+def _hex_to_rgb(hex_color):
+    value = hex_color.lstrip("#")
+    return (
+        int(value[0:2], 16),
+        int(value[2:4], 16),
+        int(value[4:6], 16),
+    )
+
+
+def _contrast_ratio(rgb_a, rgb_b):
+    def _lum(rgb):
+        lin = [
+            (c / 255.0) / 12.92
+            if c / 255.0 <= 0.04045
+            else ((c / 255.0 + 0.055) / 1.055) ** 2.4
+            for c in rgb
+        ]
+        return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+    lum_a, lum_b = _lum(rgb_a), _lum(rgb_b)
+    hi, lo = max(lum_a, lum_b), min(lum_a, lum_b)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+class StatusButtonColorTests(unittest.TestCase):
+    def test_on_green_suits_dark_and_light_status_bar_themes(self):
+        """The 'On' button picks a brighter green on dark status bars and a
+        darker green on light ones, reaching at least 4.5:1 on each."""
+        init_gui = fresh_init_gui()
+        dark_bars = ("#1e1e1e", "#2b2b2b", "#303030")
+        light_bars = ("#efefef", "#ffffff")
+        for bg_hex in dark_bars:
+            with self.subTest(bg=bg_hex):
+                bg_rgb = _hex_to_rgb(bg_hex)
+                picked = init_gui._status_button_on_color(bg_rgb)
+                self.assertEqual(picked, "#3fb950")
+                ratio = _contrast_ratio(_hex_to_rgb(picked), bg_rgb)
+                self.assertGreaterEqual(ratio, 4.5)
+        for bg_hex in light_bars:
+            with self.subTest(bg=bg_hex):
+                bg_rgb = _hex_to_rgb(bg_hex)
+                picked = init_gui._status_button_on_color(bg_rgb)
+                self.assertEqual(picked, "#116329")
+                ratio = _contrast_ratio(_hex_to_rgb(picked), bg_rgb)
+                self.assertGreaterEqual(ratio, 4.5)
+
+
 if __name__ == "__main__":
     unittest.main()

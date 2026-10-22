@@ -79,9 +79,22 @@ class MCPBridgeCommand:
             App.Console.PrintWarning(warning + "\n")
 
 
+def _status_button_on_color(rgb):
+    """Return the 'On' green hex for a status-bar background (r, g, b)."""
+    lin = [
+        (c / 255.0) / 12.92
+        if c / 255.0 <= 0.04045
+        else ((c / 255.0 + 0.055) / 1.055) ** 2.4
+        for c in rgb
+    ]
+    lum = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+    return "#3fb950" if lum < 0.1923 else "#116329"
+
+
 def _refresh_status_button(running, tip):
     """Set the status-bar button's presence, position, text and colour."""
     import FreeCADGui as Gui
+    from PySide.QtGui import QPalette
 
     mw = Gui.getMainWindow()
     if mw is None:
@@ -92,7 +105,9 @@ def _refresh_status_button(running, tip):
     button.setText("On" if running else "Off")
     button.setToolTip(tip)
     if running:
-        button.setStyleSheet("QToolButton { color: #2ea043; }")
+        bg = mw.statusBar().palette().color(QPalette.Window)
+        color = _status_button_on_color((bg.red(), bg.green(), bg.blue()))
+        button.setStyleSheet(f"QToolButton {{ color: {color}; }}")
     else:
         button.setStyleSheet(
             "QToolButton { color: palette(window-text); }"
