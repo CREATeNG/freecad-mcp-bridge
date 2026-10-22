@@ -13,6 +13,7 @@ Environment:
                           (default: tag)
   RELEASE_INSTALL_BRANCH  Branch to install in branch mode
   RELEASE_INSTALL_GUI_DELAY_MS  Delay before work starts (default: 3000)
+  RELEASE_INSTALL_WAIT_MS       Install completion timeout (default: 180000)
 """
 
 from __future__ import annotations
