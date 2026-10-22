@@ -3,7 +3,7 @@
 Values live under PREF_GROUP and are read fresh on each access. The port
 is read at server start. Timeout and page size are read per request.
 Retention is read when a job finishes running. Status-bar button settings
-are read when the status-bar button is shown or updated.
+are read when the status-bar button is created or refreshed.
 """
 
 import FreeCAD

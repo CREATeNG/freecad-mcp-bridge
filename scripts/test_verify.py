@@ -117,16 +117,20 @@ def _status_button():
 def _assert_status_button(running: bool) -> None:
     """The status-bar button matches the bridge, and so does the toolbar."""
     import FreeCAD as App
+    import FreeCADGui as Gui
 
-    from freecad.mcp_bridge.constants import STATUS_BUTTON_RIGHT
+    from freecad.mcp_bridge.init_gui import _status_bar_widgets
 
+    mw = Gui.getMainWindow()
     button = _status_button()
-    if button is None or not button.isVisible():
+    if mw is None or button is None or not button.isVisible():
         common.fail("Status-bar button is missing or hidden")
-    if button.property("mcp_position") != STATUS_BUTTON_RIGHT:
+    _, permanent = _status_bar_widgets(mw.statusBar())
+    if len(permanent) < 2 or permanent[-1] is not button:
+        names = [w.objectName() or type(w).__name__ for w in permanent]
         common.fail(
-            "Status-bar button is not in its default right-hand position "
-            f"(mcp_position={button.property('mcp_position')!r})"
+            "Status-bar button is not to the right of FreeCAD's permanent "
+            f"widgets (permanent={names})"
         )
     expected = "On" if running else "Off"
     if button.text() != expected:
@@ -154,12 +158,35 @@ def _assert_status_button(running: bool) -> None:
 
 
 def _verify_status_button_hide() -> None:
-    """Turning ShowStatusButton off hides the button without a restart."""
+    """Status-bar button preferences move and hide the button without restart."""
     import FreeCAD as App
+    import FreeCADGui as Gui
 
-    from freecad.mcp_bridge.constants import PREF_GROUP
+    from freecad.mcp_bridge.constants import PREF_GROUP, STATUS_BUTTON_LEFT
+    from freecad.mcp_bridge.init_gui import _status_bar_widgets
 
+    mw = Gui.getMainWindow()
     params = App.ParamGet(PREF_GROUP)
+    params.SetInt("StatusButtonPosition", STATUS_BUTTON_LEFT)
+    try:
+        button = _status_button()
+        _, permanent = (
+            _status_bar_widgets(mw.statusBar()) if mw else ([], [])
+        )
+        if (
+            button is None
+            or len(permanent) < 2
+            or permanent[0] is not button
+        ):
+            names = [w.objectName() or type(w).__name__ for w in permanent]
+            common.fail(
+                "Status-bar button is not first among permanent widgets "
+                f"with StatusButtonPosition=STATUS_BUTTON_LEFT (permanent={names})"
+            )
+    finally:
+        params.RemInt("StatusButtonPosition")
+    _assert_status_button(False)
+
     params.SetBool("ShowStatusButton", False)
     try:
         if _status_button() is not None:
@@ -175,7 +202,7 @@ def _verify_status_button_hide() -> None:
         params.RemBool("ShowStatusButton")
     _assert_status_button(False)
     common.log_notice(
-        "Status-bar button hides and returns on preference change"
+        "Status-bar button moves, hides and returns on preference change"
     )
 
 

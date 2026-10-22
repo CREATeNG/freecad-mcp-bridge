@@ -99,6 +99,39 @@ def _refresh_status_button(running, tip):
         )
 
 
+def _status_bar_widgets(bar):
+    """Return (normal, permanent) widget lists in left-to-right bar order."""
+    from PySide.QtWidgets import QHBoxLayout
+
+    def _find_hbox(layout):
+        for i in range(layout.count()):
+            sub = layout.itemAt(i).layout()
+            if sub is not None:
+                found = _find_hbox(sub)
+                if found is not None:
+                    return found
+        return layout if isinstance(layout, QHBoxLayout) else None
+
+    box = bar.layout()
+    hbox = _find_hbox(box) if box is not None else None
+    normal = []
+    permanent = []
+    if hbox is None:
+        return normal, permanent
+    past_stretch = False
+    for i in range(hbox.count()):
+        item = hbox.itemAt(i)
+        widget = item.widget()
+        if widget is not None:
+            if past_stretch:
+                permanent.append(widget)
+            else:
+                normal.append(widget)
+        elif item.spacerItem() is not None and i > 0:
+            past_stretch = True
+    return normal, permanent
+
+
 def _ensure_status_button(mw):
     """Place or remove the permanent status-bar button; return it."""
     import FreeCAD as App
@@ -119,7 +152,13 @@ def _ensure_status_button(mw):
         return None
     position = config.status_button_position()
     if button is not None:
-        if button.property("mcp_position") == position:
+        _, permanent = _status_bar_widgets(bar)
+        in_place = (
+            bool(permanent) and permanent[0] is button
+            if position == STATUS_BUTTON_LEFT
+            else button.property("mcp_position") == position
+        )
+        if in_place and button.property("mcp_position") == position:
             return button
         bar.removeWidget(button)
         button.setParent(None)
@@ -134,7 +173,8 @@ def _ensure_status_button(mw):
     command = App.MCPBridgeCommand
     button.clicked.connect(lambda *_: Gui.runCommand(command))
     if position == STATUS_BUTTON_LEFT:
-        bar.insertPermanentWidget(0, button)
+        normal, _ = _status_bar_widgets(bar)
+        bar.insertPermanentWidget(len(normal), button)
     else:
         bar.addPermanentWidget(button)
     button.show()

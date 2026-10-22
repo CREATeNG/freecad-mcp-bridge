@@ -325,7 +325,7 @@ FreeCAD process after restart. Does **not** call `App.MCPBridgeInjectUi()` — i
 | Toolbar injection | The **MCP Bridge On/Off** toolbar action is found without manual injection |
 | Off at startup | The bridge is not running, its button is unchecked and nothing answers on its port before the first click |
 | Status-bar button | The permanent status-bar button sits on the right by default and shows `Off` at startup and after stop, and `On` while running, with matching tooltip and toolbar state |
-| Hide status-bar button | Turning `ShowStatusButton` off in preferences removes the status-bar button without a restart, leaving the toolbar button in place, and restoring the preference puts the button back |
+| Hide status-bar button | Setting **Show the On/Off button** (`ShowStatusButton`) to `False` removes the status-bar button without a restart, leaving the toolbar button in place, and restoring it puts the button back |
 | Start bridge | First toolbar click starts the HTTP server |
 | Listening status | The status bar shows the loopback address and configured port |
 | HTTP round-trip | A client-shaped request — `tools/call` → `execute_python` over HTTP, sent from a worker thread while the main thread pumps the Qt event loop, paginating via `get_output_page` if the response is chunked — returns the expected probe output. Same code path a real MCP client uses. |

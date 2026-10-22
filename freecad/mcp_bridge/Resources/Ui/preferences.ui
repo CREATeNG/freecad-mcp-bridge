@@ -171,7 +171,7 @@
       <item row="0" column="0" colspan="2">
        <widget class="Gui::PrefCheckBox" name="showStatusButtonCheckBox">
         <property name="toolTip">
-         <string>Show the bridge On/Off button on FreeCAD's status bar. The toolbar button remains available when this is off.</string>
+         <string>Show the bridge On/Off button on FreeCAD's status bar. The toolbar button remains available when this box is unticked.</string>
         </property>
         <property name="text">
          <string>Show the On/Off button</string>
