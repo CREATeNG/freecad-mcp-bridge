@@ -116,18 +116,42 @@ def _refresh_status_button(running, tip):
 
 def _status_bar_widgets(bar):
     """Return (normal, permanent) widget lists in left-to-right bar order."""
-    from PySide.QtWidgets import QHBoxLayout
+    from PySide.QtWidgets import QHBoxLayout, QLayout, QSpacerItem
+
+    try:
+        from shiboken6 import invalidate as _invalidate
+    except ImportError:
+        def _invalidate(_obj):
+            return None
+
+    def _as_layout(fn):
+        obj = fn()
+        if obj is not None and not isinstance(obj, QLayout):
+            _invalidate(obj)
+            obj = fn()
+        return obj if isinstance(obj, QLayout) else None
 
     def _find_hbox(layout):
+        if not isinstance(layout, QLayout):
+            return None
         for i in range(layout.count()):
-            sub = layout.itemAt(i).layout()
-            if sub is not None:
+            item = layout.itemAt(i)
+            if item is None:
+                continue
+            if item.widget() is not None or item.spacerItem() is not None:
+                if not isinstance(item, QLayout):
+                    _invalidate(item)
+                continue
+            sub = _as_layout(item.layout)
+            if not isinstance(item, QLayout):
+                _invalidate(item)
+            if isinstance(sub, QLayout):
                 found = _find_hbox(sub)
                 if found is not None:
                     return found
         return layout if isinstance(layout, QHBoxLayout) else None
 
-    box = bar.layout()
+    box = _as_layout(bar.layout)
     hbox = _find_hbox(box) if box is not None else None
     normal = []
     permanent = []
@@ -136,14 +160,21 @@ def _status_bar_widgets(bar):
     past_stretch = False
     for i in range(hbox.count()):
         item = hbox.itemAt(i)
+        if item is None:
+            continue
         widget = item.widget()
+        spacer = item.spacerItem()
         if widget is not None:
             if past_stretch:
                 permanent.append(widget)
             else:
                 normal.append(widget)
-        elif item.spacerItem() is not None and i > 0:
+        elif (spacer is not None or isinstance(item, QSpacerItem)) and i > 0:
             past_stretch = True
+        if spacer is not None and spacer is not item:
+            _invalidate(spacer)
+        if not isinstance(item, QLayout):
+            _invalidate(item)
     return normal, permanent
 
 
@@ -158,12 +189,22 @@ def _ensure_status_button(mw):
     from freecad.mcp_bridge import config
 
     class _BarThemeFilter(QObject):
+        _reported = False
+
         def eventFilter(self, _obj, event):
             if event.type() in (
                 QEvent.PaletteChange,
                 QEvent.StyleChange,
             ):
-                show_toggle_state()
+                try:
+                    show_toggle_state()
+                except Exception as exc:
+                    if not self._reported:
+                        self._reported = True
+                        App.Console.PrintDeveloperError(
+                            f"{LOG_PREFIX} Error refreshing status-bar "
+                            f"button: {exc}\n"
+                        )
             return False
 
     bar = mw.statusBar()
