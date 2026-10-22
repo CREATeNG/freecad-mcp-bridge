@@ -4,15 +4,20 @@ import FreeCAD as App
 import FreeCADGui as Gui
 
 from freecad.mcp_bridge import bridge
-from freecad.mcp_bridge.resources import _mod_root
 from freecad.mcp_bridge.constants import (
     COMMAND_ID,
     DISPLAY_NAME,
     LOG_PREFIX,
+    PREF_GROUP,
+    STATUS_BUTTON_LEFT,
     STATUS_BUTTON_OBJECT_NAME,
     TOOLBAR_OBJECT_NAME,
 )
-from freecad.mcp_bridge.resources import icon_path, preferences_ui_path
+from freecad.mcp_bridge.resources import (
+    _mod_root,
+    icon_path,
+    preferences_ui_path,
+)
 
 App.MCPBridgeIconPath = icon_path()
 App.MCPBridgeCommand = COMMAND_ID
@@ -74,52 +79,180 @@ class MCPBridgeCommand:
             App.Console.PrintWarning(warning + "\n")
 
 
+def _status_button_on_color(rgb):
+    """Return the 'On' green hex for a status-bar background (r, g, b)."""
+    lin = [
+        (c / 255.0) / 12.92
+        if c / 255.0 <= 0.04045
+        else ((c / 255.0 + 0.055) / 1.055) ** 2.4
+        for c in rgb
+    ]
+    lum = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+    return "#56d364" if lum < 0.2282 else "#116329"
+
+
 def _refresh_status_button(running, tip):
-    """Set the status-bar button's text, tooltip and emphasis."""
+    """Set the status-bar button's presence, position, text and colour."""
     import FreeCADGui as Gui
-    from PySide.QtWidgets import QToolButton
+    from PySide.QtGui import QPalette
 
     mw = Gui.getMainWindow()
     if mw is None:
         return
-    button = mw.statusBar().findChild(
-        QToolButton, STATUS_BUTTON_OBJECT_NAME
-    )
+    button = _ensure_status_button(mw)
     if button is None:
         return
-    button.setText("MCP: On" if running else "MCP: Off")
+    button.setText("On" if running else "Off")
     button.setToolTip(tip)
     if running:
-        button.setStyleSheet(
-            "QToolButton { color: palette(highlight); }"
-        )
+        bg = mw.statusBar().palette().color(QPalette.Window)
+        color = _status_button_on_color((bg.red(), bg.green(), bg.blue()))
+        button.setStyleSheet(f"QToolButton {{ color: {color}; }}")
     else:
         button.setStyleSheet(
             "QToolButton { color: palette(window-text); }"
         )
 
 
+def _status_bar_widgets(bar):
+    """Return (normal, permanent) widget lists in left-to-right bar order.
+
+    Returns (None, None) if the status bar's internal row layout does not
+    match Qt's QStatusBar schema.
+    """
+    from PySide.QtCore import Qt
+    from PySide.QtWidgets import QHBoxLayout, QLayout, QWidget
+
+    if bar is None:
+        return None, None
+    candidates = []
+    for layout in bar.findChildren(QHBoxLayout):
+        if not isinstance(layout, QLayout):
+            continue
+        current = layout
+        depth = 0
+        while isinstance(current, QLayout):
+            depth += 1
+            current = current.parent()
+        if current is bar:
+            candidates.append((depth, layout))
+    if not candidates:
+        return None, None
+    max_depth = max(depth for depth, _ in candidates)
+    deepest = [
+        layout for depth, layout in candidates if depth == max_depth
+    ]
+    if len(deepest) != 1:
+        return None, None
+    box = deepest[0]
+    slots = {}
+    for widget in bar.findChildren(
+        QWidget, options=Qt.FindDirectChildrenOnly
+    ):
+        index = box.indexOf(widget)
+        if index >= 0:
+            if index in slots:
+                return None, None
+            slots[index] = widget
+    separator = 1
+    while separator in slots:
+        separator += 1
+    count = box.count()
+    expected = set(range(1, separator)) | set(
+        range(separator + 1, count - 1)
+    )
+    if separator >= count - 1 or set(slots) != expected:
+        return None, None
+    return (
+        [slots[i] for i in range(1, separator)],
+        [slots[i] for i in range(separator + 1, count - 1)],
+    )
+
+
 def _ensure_status_button(mw):
-    """Add the permanent status-bar button once; return it."""
+    """Place or remove the permanent status-bar button; return it."""
     import FreeCAD as App
     import FreeCADGui as Gui
-    from PySide.QtCore import QSize, Qt
+    from PySide.QtCore import QEvent, QObject, QSize, Qt
     from PySide.QtGui import QIcon
     from PySide.QtWidgets import QToolButton
 
+    from freecad.mcp_bridge import config
+
+    class _BarThemeFilter(QObject):
+        _reported = False
+
+        def eventFilter(self, _obj, event):
+            if event.type() in (
+                QEvent.PaletteChange,
+                QEvent.StyleChange,
+            ):
+                try:
+                    show_toggle_state()
+                except Exception as exc:
+                    if not self._reported:
+                        self._reported = True
+                        App.Console.PrintDeveloperError(
+                            f"{LOG_PREFIX} Error refreshing status-bar "
+                            f"button: {exc}\n"
+                        )
+            return False
+
+    def _report_layout_unavailable():
+        if not getattr(App, "MCPBridgeLayoutErrorReported", False):
+            App.MCPBridgeLayoutErrorReported = True
+            App.Console.PrintDeveloperError(
+                f"{LOG_PREFIX} Status-bar layout unavailable; "
+                "the On/Off button may not be first among the "
+                "right-hand items.\n"
+            )
+
     bar = mw.statusBar()
     button = bar.findChild(QToolButton, STATUS_BUTTON_OBJECT_NAME)
+    if not config.show_status_button():
+        if button is not None:
+            bar.removeWidget(button)
+            button.setParent(None)
+            button.deleteLater()
+        return None
+    position = config.status_button_position()
     if button is not None:
-        return button
+        if position == STATUS_BUTTON_LEFT:
+            _, permanent = _status_bar_widgets(bar)
+            if permanent is None:
+                _report_layout_unavailable()
+            in_place = permanent is None or (
+                bool(permanent) and permanent[0] is button
+            )
+        else:
+            in_place = button.property("mcp_position") == position
+        if in_place and button.property("mcp_position") == position:
+            return button
+        bar.removeWidget(button)
+        button.setParent(None)
+        button.deleteLater()
     button = QToolButton(bar)
     button.setObjectName(STATUS_BUTTON_OBJECT_NAME)
+    button.setProperty("mcp_position", position)
     button.setAutoRaise(True)
     button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
     button.setIcon(QIcon(App.MCPBridgeIconPath))
     button.setIconSize(QSize(16, 16))
     command = App.MCPBridgeCommand
     button.clicked.connect(lambda *_: Gui.runCommand(command))
-    bar.addPermanentWidget(button)
+    theme_filter = _BarThemeFilter(button)
+    button._theme_filter = theme_filter
+    bar.installEventFilter(theme_filter)
+    if position == STATUS_BUTTON_LEFT:
+        normal, _ = _status_bar_widgets(bar)
+        if normal is None:
+            _report_layout_unavailable()
+            bar.addPermanentWidget(button)
+        else:
+            bar.insertPermanentWidget(len(normal), button)
+    else:
+        bar.addPermanentWidget(button)
+    button.show()
     return button
 
 
@@ -208,6 +341,14 @@ class MCPBridgeUiManipulator:
         return {}
 
 
+class _StatusBarPrefObserver:
+    """Refresh the status-bar button when its preferences are saved."""
+
+    def onChange(self, _grp, param=None):
+        if param in (None, "ShowStatusButton", "StatusButtonPosition"):
+            show_toggle_state()
+
+
 def ensure_startup_ui():
     """Wait for the main window, then inject and hook workbench changes."""
     import FreeCAD as App
@@ -228,6 +369,9 @@ def ensure_startup_ui():
     if not getattr(App, "MCPBridgeHooksConnected", False):
         App.MCPBridgeHooksConnected = True
         mw.workbenchActivated.connect(lambda *_args: App.MCPBridgeInjectUi())
+        App.MCPBridgePrefGroup = App.ParamGet(PREF_GROUP)
+        App.MCPBridgePrefObserver = _StatusBarPrefObserver()
+        App.MCPBridgePrefGroup.Attach(App.MCPBridgePrefObserver)
 
     App.MCPBridgeInjectUi()
 
