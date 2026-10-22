@@ -41,10 +41,12 @@ class MCPBridgeCommand:
         from freecad.mcp_bridge import config
 
         started = False
+        stopped = False
         try:
             if bridge.is_running():
                 bridge.stop()
                 status = f"{DISPLAY_NAME}: Offline"
+                stopped = True
             else:
                 bridge.start()
                 status = f"{DISPLAY_NAME}: Listening on 127.0.0.1:{config.port()}"
@@ -55,9 +57,11 @@ class MCPBridgeCommand:
         mw = Gui.getMainWindow()
         if mw:
             mw.statusBar().showMessage(status)
-        show_toggle_state(None if started else status)
-        if started:
+        show_toggle_state()
+        if started or stopped:
             App.Console.PrintNotification(status + "\n")
+        else:
+            App.Console.PrintWarning(status + "\n")
 
 
 def _refresh_status_button(running, tip):
@@ -109,15 +113,13 @@ def _ensure_status_button(mw):
     return button
 
 
-def show_toggle_state(message=None):
+def show_toggle_state():
     """Show whether the bridge is on, on the toolbar and the status bar.
 
     The toolbar button stays pressed while it runs. Both use the same
-    tooltip. A brief popup appears beside the toolbar for `message`.
+    tooltip.
     """
     import FreeCAD as App
-    import FreeCADGui as Gui
-    from PySide.QtWidgets import QToolBar, QToolTip
 
     running = bridge.is_running()
     tip = (
@@ -130,20 +132,6 @@ def show_toggle_state(message=None):
         action.setChecked(running)
         action.setToolTip(tip)
     _refresh_status_button(running, tip)
-    mw = Gui.getMainWindow()
-    if action is None or not message or mw is None:
-        return
-    for toolbar in mw.findChildren(QToolBar):
-        widget = toolbar.widgetForAction(action)
-        if widget is not None and widget.isVisible():
-            QToolTip.showText(
-                widget.mapToGlobal(widget.rect().bottomLeft()),
-                message,
-                widget,
-                widget.rect(),
-                3000,
-            )
-            return
 
 
 def inject_ui():
