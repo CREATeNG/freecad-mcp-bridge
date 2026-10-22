@@ -52,7 +52,9 @@ class MCPBridgeCommand:
                 status = f"{DISPLAY_NAME}: Listening on 127.0.0.1:{config.port()}"
                 started = True
         except Exception as e:
-            App.Console.PrintError(f"{LOG_PREFIX} Error toggling bridge: {e}\n")
+            App.Console.PrintDeveloperError(
+                f"{LOG_PREFIX} Error toggling bridge: {e}\n"
+            )
             status = f"{DISPLAY_NAME}: Could not start ({e})"
         mw = Gui.getMainWindow()
         if mw:
