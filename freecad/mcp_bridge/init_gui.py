@@ -115,67 +115,58 @@ def _refresh_status_button(running, tip):
 
 
 def _status_bar_widgets(bar):
-    """Return (normal, permanent) widget lists in left-to-right bar order."""
-    from PySide.QtWidgets import QHBoxLayout, QLayout, QSpacerItem
+    """Return (normal, permanent) widget lists in left-to-right bar order.
 
-    try:
-        from shiboken6 import invalidate as _invalidate
-    except ImportError:
-        def _invalidate(_obj):
-            return None
+    Returns (None, None) if the status bar's internal row layout does not
+    match Qt's QStatusBar schema.
+    """
+    from PySide.QtCore import Qt
+    from PySide.QtWidgets import QHBoxLayout, QLayout, QWidget
 
-    def _as_layout(fn):
-        obj = fn()
-        if obj is not None and not isinstance(obj, QLayout):
-            _invalidate(obj)
-            obj = fn()
-        return obj if isinstance(obj, QLayout) else None
-
-    def _find_hbox(layout):
+    if bar is None:
+        return None, None
+    candidates = []
+    for layout in bar.findChildren(QHBoxLayout):
         if not isinstance(layout, QLayout):
-            return None
-        for i in range(layout.count()):
-            item = layout.itemAt(i)
-            if item is None:
-                continue
-            if item.widget() is not None or item.spacerItem() is not None:
-                if not isinstance(item, QLayout):
-                    _invalidate(item)
-                continue
-            sub = _as_layout(item.layout)
-            if not isinstance(item, QLayout):
-                _invalidate(item)
-            if isinstance(sub, QLayout):
-                found = _find_hbox(sub)
-                if found is not None:
-                    return found
-        return layout if isinstance(layout, QHBoxLayout) else None
-
-    box = _as_layout(bar.layout)
-    hbox = _find_hbox(box) if box is not None else None
-    normal = []
-    permanent = []
-    if hbox is None:
-        return normal, permanent
-    past_stretch = False
-    for i in range(hbox.count()):
-        item = hbox.itemAt(i)
-        if item is None:
             continue
-        widget = item.widget()
-        spacer = item.spacerItem()
-        if widget is not None:
-            if past_stretch:
-                permanent.append(widget)
-            else:
-                normal.append(widget)
-        elif (spacer is not None or isinstance(item, QSpacerItem)) and i > 0:
-            past_stretch = True
-        if spacer is not None and spacer is not item:
-            _invalidate(spacer)
-        if not isinstance(item, QLayout):
-            _invalidate(item)
-    return normal, permanent
+        current = layout
+        depth = 0
+        while isinstance(current, QLayout):
+            depth += 1
+            current = current.parent()
+        if current is bar:
+            candidates.append((depth, layout))
+    if not candidates:
+        return None, None
+    max_depth = max(depth for depth, _ in candidates)
+    deepest = [
+        layout for depth, layout in candidates if depth == max_depth
+    ]
+    if len(deepest) != 1:
+        return None, None
+    box = deepest[0]
+    slots = {}
+    for widget in bar.findChildren(
+        QWidget, options=Qt.FindDirectChildrenOnly
+    ):
+        index = box.indexOf(widget)
+        if index >= 0:
+            if index in slots:
+                return None, None
+            slots[index] = widget
+    separator = 1
+    while separator in slots:
+        separator += 1
+    count = box.count()
+    expected = set(range(1, separator)) | set(
+        range(separator + 1, count - 1)
+    )
+    if count < 3 or set(slots) != expected:
+        return None, None
+    return (
+        [slots[i] for i in range(1, separator)],
+        [slots[i] for i in range(separator + 1, count - 1)],
+    )
 
 
 def _ensure_status_button(mw):
@@ -207,6 +198,14 @@ def _ensure_status_button(mw):
                         )
             return False
 
+    def _report_layout_unavailable():
+        if not getattr(App, "MCPBridgeLayoutErrorReported", False):
+            App.MCPBridgeLayoutErrorReported = True
+            App.Console.PrintDeveloperError(
+                f"{LOG_PREFIX} Status-bar layout unavailable; "
+                "appending button on the right.\n"
+            )
+
     bar = mw.statusBar()
     button = bar.findChild(QToolButton, STATUS_BUTTON_OBJECT_NAME)
     if not config.show_status_button():
@@ -217,12 +216,15 @@ def _ensure_status_button(mw):
         return None
     position = config.status_button_position()
     if button is not None:
-        _, permanent = _status_bar_widgets(bar)
-        in_place = (
-            bool(permanent) and permanent[0] is button
-            if position == STATUS_BUTTON_LEFT
-            else button.property("mcp_position") == position
-        )
+        if position == STATUS_BUTTON_LEFT:
+            _, permanent = _status_bar_widgets(bar)
+            if permanent is None:
+                _report_layout_unavailable()
+            in_place = permanent is None or (
+                bool(permanent) and permanent[0] is button
+            )
+        else:
+            in_place = button.property("mcp_position") == position
         if in_place and button.property("mcp_position") == position:
             return button
         bar.removeWidget(button)
@@ -242,7 +244,11 @@ def _ensure_status_button(mw):
     bar.installEventFilter(theme_filter)
     if position == STATUS_BUTTON_LEFT:
         normal, _ = _status_bar_widgets(bar)
-        bar.insertPermanentWidget(len(normal), button)
+        if normal is None:
+            _report_layout_unavailable()
+            bar.addPermanentWidget(button)
+        else:
+            bar.insertPermanentWidget(len(normal), button)
     else:
         bar.addPermanentWidget(button)
     button.show()

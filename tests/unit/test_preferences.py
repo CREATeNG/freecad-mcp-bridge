@@ -231,5 +231,92 @@ class StatusButtonColorTests(unittest.TestCase):
                 self.assertGreaterEqual(ratio, 4.5)
 
 
+class StatusBarWidgetsTests(unittest.TestCase):
+    def test_status_bar_widgets_splits_at_stretch_and_rejects_unknown_schema(
+        self,
+    ):
+        """Status-bar widget lookup splits normal from permanent widgets by
+        layout index and returns (None, None) when the row schema is unknown.
+        """
+        init_gui = _fresh_init_gui()
+
+        class FakeLayout:
+            def __init__(self, parent=None):
+                self._parent = parent
+
+            def parent(self):
+                return self._parent
+
+        class FakeHBox(FakeLayout):
+            def __init__(self, parent=None, total=3, indices=None):
+                super().__init__(parent)
+                self._total = total
+                self._indices = indices or {}
+
+            def count(self):
+                return self._total
+
+            def indexOf(self, widget):
+                return self._indices.get(widget, -1)
+
+        class FakeWidget:
+            pass
+
+        class FakeBar:
+            def __init__(self, layouts, widgets):
+                self._layouts = layouts
+                self._widgets = widgets
+
+            def findChildren(self, cls, options=None):
+                if cls is FakeHBox:
+                    return list(self._layouts)
+                if cls is FakeWidget and options == "direct":
+                    return list(self._widgets)
+                return []
+
+        qtcore = types.SimpleNamespace(
+            Qt=types.SimpleNamespace(FindDirectChildrenOnly="direct")
+        )
+        qtwidgets = types.SimpleNamespace(
+            QHBoxLayout=FakeHBox, QLayout=FakeLayout, QWidget=FakeWidget
+        )
+        stubs = {
+            "PySide": types.SimpleNamespace(
+                QtCore=qtcore, QtWidgets=qtwidgets
+            ),
+            "PySide.QtCore": qtcore,
+            "PySide.QtWidgets": qtwidgets,
+        }
+        n1, p1, p2 = FakeWidget(), FakeWidget(), FakeWidget()
+        with mock.patch.dict(sys.modules, stubs):
+            bar = FakeBar([], [n1, p1])
+            self.assertEqual(init_gui._status_bar_widgets(bar), (None, None))
+
+            vbox = FakeLayout()
+            row = FakeHBox(
+                parent=vbox,
+                total=6,
+                indices={n1: 1, p1: 3, p2: 4},
+            )
+            bar_ok = FakeBar([row], [n1, p1, p2])
+            vbox._parent = bar_ok
+            child_hbox = FakeHBox(parent=n1, total=1, indices={})
+            bar_ok._layouts.append(child_hbox)
+            self.assertEqual(
+                init_gui._status_bar_widgets(bar_ok), ([n1], [p1, p2])
+            )
+
+            bad_gap = FakeHBox(
+                parent=vbox,
+                total=7,
+                indices={n1: 1, p1: 3, p2: 5},
+            )
+            bar_gap = FakeBar([bad_gap], [n1, p1, p2])
+            vbox._parent = bar_gap
+            self.assertEqual(
+                init_gui._status_bar_widgets(bar_gap), (None, None)
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

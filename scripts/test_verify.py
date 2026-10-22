@@ -126,6 +126,8 @@ def _assert_status_button(running: bool) -> None:
     if mw is None or button is None or not button.isVisible():
         common.fail("Status-bar button is missing or hidden")
     _, permanent = _status_bar_widgets(mw.statusBar())
+    if permanent is None:
+        common.fail("Status-bar widget layout is unavailable")
     if len(permanent) < 2 or permanent[-1] is not button:
         names = [w.objectName() or type(w).__name__ for w in permanent]
         common.fail(
@@ -171,8 +173,13 @@ def _verify_status_button_hide() -> None:
     try:
         button = _status_button()
         _, permanent = (
-            _status_bar_widgets(mw.statusBar()) if mw else ([], [])
+            _status_bar_widgets(mw.statusBar()) if mw else (None, None)
         )
+        if permanent is None:
+            common.fail(
+                "Status-bar widget layout is unavailable with "
+                "StatusButtonPosition=STATUS_BUTTON_LEFT"
+            )
         if (
             button is None
             or len(permanent) < 2
