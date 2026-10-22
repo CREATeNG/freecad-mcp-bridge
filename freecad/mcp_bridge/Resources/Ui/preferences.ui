@@ -163,6 +163,67 @@
     </widget>
    </item>
    <item>
+    <widget class="QGroupBox" name="statusBarGroup">
+     <property name="title">
+      <string>Status bar</string>
+     </property>
+     <layout class="QFormLayout" name="statusBarLayout">
+      <item row="0" column="0" colspan="2">
+       <widget class="Gui::PrefCheckBox" name="showStatusButtonCheckBox">
+        <property name="toolTip">
+         <string>Show the bridge On/Off button on FreeCAD's status bar. The toolbar button remains available when this is off.</string>
+        </property>
+        <property name="text">
+         <string>Show the On/Off button</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+        <property name="prefEntry" stdset="0">
+         <cstring>ShowStatusButton</cstring>
+        </property>
+        <property name="prefPath" stdset="0">
+         <cstring>Mod/freecad-mcp-bridge</cstring>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="statusButtonPositionLabel">
+        <property name="text">
+         <string>Position</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="Gui::PrefComboBox" name="statusButtonPositionComboBox">
+        <property name="toolTip">
+         <string>Where the On/Off button sits among the items on the right side of the status bar.</string>
+        </property>
+        <property name="currentIndex">
+         <number>0</number>
+        </property>
+        <property name="prefEntry" stdset="0">
+         <cstring>StatusButtonPosition</cstring>
+        </property>
+        <property name="prefPath" stdset="0">
+         <cstring>Mod/freecad-mcp-bridge</cstring>
+        </property>
+        <item>
+         <property name="text">
+          <string>Right of FreeCAD's items (as now)</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>Left of FreeCAD's items</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
     <widget class="QGroupBox" name="clientGroup">
      <property name="title">
       <string>Connect an MCP client</string>
@@ -231,6 +292,16 @@
   <customwidget>
    <class>Gui::PrefSpinBox</class>
    <extends>QSpinBox</extends>
+   <header>Gui/PrefWidgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Gui::PrefCheckBox</class>
+   <extends>QCheckBox</extends>
+   <header>Gui/PrefWidgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Gui::PrefComboBox</class>
+   <extends>QComboBox</extends>
    <header>Gui/PrefWidgets.h</header>
   </customwidget>
  </customwidgets>

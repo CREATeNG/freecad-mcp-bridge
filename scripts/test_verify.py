@@ -118,10 +118,17 @@ def _assert_status_button(running: bool) -> None:
     """The status-bar button matches the bridge, and so does the toolbar."""
     import FreeCAD as App
 
+    from freecad.mcp_bridge.constants import STATUS_BUTTON_RIGHT
+
     button = _status_button()
-    if button is None:
-        common.fail("Status-bar button is missing")
-    expected = "MCP: On" if running else "MCP: Off"
+    if button is None or not button.isVisible():
+        common.fail("Status-bar button is missing or hidden")
+    if button.property("mcp_position") != STATUS_BUTTON_RIGHT:
+        common.fail(
+            "Status-bar button is not in its default right-hand position "
+            f"(mcp_position={button.property('mcp_position')!r})"
+        )
+    expected = "On" if running else "Off"
     if button.text() != expected:
         common.fail(
             "Status-bar button text is out of step. "
@@ -146,6 +153,32 @@ def _assert_status_button(running: bool) -> None:
         )
 
 
+def _verify_status_button_hide() -> None:
+    """Turning ShowStatusButton off hides the button without a restart."""
+    import FreeCAD as App
+
+    from freecad.mcp_bridge.constants import PREF_GROUP
+
+    params = App.ParamGet(PREF_GROUP)
+    params.SetBool("ShowStatusButton", False)
+    try:
+        if _status_button() is not None:
+            common.fail(
+                "Status-bar button remained present with "
+                "ShowStatusButton=False"
+            )
+        if getattr(App, "MCPBridgeAction", None) is None:
+            common.fail(
+                "Toolbar action disappeared when status-bar button was hidden"
+            )
+    finally:
+        params.RemBool("ShowStatusButton")
+    _assert_status_button(False)
+    common.log_notice(
+        "Status-bar button hides and returns on preference change"
+    )
+
+
 def _stop_bridge() -> None:
     """Stop the server via the status-bar button, like a user would."""
     from PySide.QtCore import QCoreApplication
@@ -159,7 +192,7 @@ def _stop_bridge() -> None:
     button = _status_button()
     if button is None:
         common.fail("Status-bar button is missing")
-    common.log('Clicking status-bar button "MCP: On" (stop)')
+    common.log('Clicking status-bar button "On" (stop)')
     button.click()
     QCoreApplication.processEvents()
     common._drain_qt_events(1500)
@@ -340,6 +373,7 @@ def _run() -> None:
     _verify_preferences_line()
     common.check_bridge_off_at_startup()
     _assert_status_button(False)
+    _verify_status_button_hide()
     common.start_bridge()
     _assert_status_button(True)
     common.check_listening_status()

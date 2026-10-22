@@ -4,15 +4,20 @@ import FreeCAD as App
 import FreeCADGui as Gui
 
 from freecad.mcp_bridge import bridge
-from freecad.mcp_bridge.resources import _mod_root
 from freecad.mcp_bridge.constants import (
     COMMAND_ID,
     DISPLAY_NAME,
     LOG_PREFIX,
+    PREF_GROUP,
+    STATUS_BUTTON_LEFT,
     STATUS_BUTTON_OBJECT_NAME,
     TOOLBAR_OBJECT_NAME,
 )
-from freecad.mcp_bridge.resources import icon_path, preferences_ui_path
+from freecad.mcp_bridge.resources import (
+    _mod_root,
+    icon_path,
+    preferences_ui_path,
+)
 
 App.MCPBridgeIconPath = icon_path()
 App.MCPBridgeCommand = COMMAND_ID
@@ -75,24 +80,19 @@ class MCPBridgeCommand:
 
 
 def _refresh_status_button(running, tip):
-    """Set the status-bar button's text, tooltip and emphasis."""
+    """Set the status-bar button's presence, position, text and colour."""
     import FreeCADGui as Gui
-    from PySide.QtWidgets import QToolButton
 
     mw = Gui.getMainWindow()
     if mw is None:
         return
-    button = mw.statusBar().findChild(
-        QToolButton, STATUS_BUTTON_OBJECT_NAME
-    )
+    button = _ensure_status_button(mw)
     if button is None:
         return
-    button.setText("MCP: On" if running else "MCP: Off")
+    button.setText("On" if running else "Off")
     button.setToolTip(tip)
     if running:
-        button.setStyleSheet(
-            "QToolButton { color: palette(highlight); }"
-        )
+        button.setStyleSheet("QToolButton { color: #2ea043; }")
     else:
         button.setStyleSheet(
             "QToolButton { color: palette(window-text); }"
@@ -100,26 +100,44 @@ def _refresh_status_button(running, tip):
 
 
 def _ensure_status_button(mw):
-    """Add the permanent status-bar button once; return it."""
+    """Place or remove the permanent status-bar button; return it."""
     import FreeCAD as App
     import FreeCADGui as Gui
     from PySide.QtCore import QSize, Qt
     from PySide.QtGui import QIcon
     from PySide.QtWidgets import QToolButton
 
+    from freecad.mcp_bridge import config
+
     bar = mw.statusBar()
     button = bar.findChild(QToolButton, STATUS_BUTTON_OBJECT_NAME)
+    if not config.show_status_button():
+        if button is not None:
+            bar.removeWidget(button)
+            button.setParent(None)
+            button.deleteLater()
+        return None
+    position = config.status_button_position()
     if button is not None:
-        return button
+        if button.property("mcp_position") == position:
+            return button
+        bar.removeWidget(button)
+        button.setParent(None)
+        button.deleteLater()
     button = QToolButton(bar)
     button.setObjectName(STATUS_BUTTON_OBJECT_NAME)
+    button.setProperty("mcp_position", position)
     button.setAutoRaise(True)
     button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
     button.setIcon(QIcon(App.MCPBridgeIconPath))
     button.setIconSize(QSize(16, 16))
     command = App.MCPBridgeCommand
     button.clicked.connect(lambda *_: Gui.runCommand(command))
-    bar.addPermanentWidget(button)
+    if position == STATUS_BUTTON_LEFT:
+        bar.insertPermanentWidget(0, button)
+    else:
+        bar.addPermanentWidget(button)
+    button.show()
     return button
 
 
@@ -208,6 +226,14 @@ class MCPBridgeUiManipulator:
         return {}
 
 
+class _StatusBarPrefObserver:
+    """Refresh the status-bar button when its preferences are saved."""
+
+    def onChange(self, _grp, param=None):
+        if param in (None, "ShowStatusButton", "StatusButtonPosition"):
+            show_toggle_state()
+
+
 def ensure_startup_ui():
     """Wait for the main window, then inject and hook workbench changes."""
     import FreeCAD as App
@@ -228,6 +254,9 @@ def ensure_startup_ui():
     if not getattr(App, "MCPBridgeHooksConnected", False):
         App.MCPBridgeHooksConnected = True
         mw.workbenchActivated.connect(lambda *_args: App.MCPBridgeInjectUi())
+        App.MCPBridgePrefGroup = App.ParamGet(PREF_GROUP)
+        App.MCPBridgePrefObserver = _StatusBarPrefObserver()
+        App.MCPBridgePrefGroup.Attach(App.MCPBridgePrefObserver)
 
     App.MCPBridgeInjectUi()
 

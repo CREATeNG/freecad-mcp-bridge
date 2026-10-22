@@ -26,6 +26,8 @@ SETTINGS = (
     "MaxResponseTimeoutSeconds",
     "MaxPageSize",
     "MaxHistoryRetentionMinutes",
+    "ShowStatusButton",
+    "StatusButtonPosition",
 )
 
 
@@ -37,6 +39,12 @@ def page_settings():
             prop.get("name"): prop[0].text
             for prop in widget.findall("property")
         }
+        items = [
+            item.find("property/string").text
+            for item in widget.findall("item")
+        ]
+        if items:
+            props["items"] = items
         if "prefEntry" in props:
             found[props["prefEntry"]] = props
     return found
@@ -50,6 +58,10 @@ class EmptyParams:
         self.read = set()
 
     def GetInt(self, name, default):
+        self.read.add(name)
+        return default
+
+    def GetBool(self, name, default):
         self.read.add(name)
         return default
 
@@ -72,7 +84,8 @@ def fresh_config():
 
 class PreferencePageTests(unittest.TestCase):
     def test_the_page_offers_port_timeout_page_size_and_retention(self):
-        """Preferences offer port, timeout, page size and history retention."""
+        """Preferences offer port, timeout, page size, history retention and
+        the status-bar button controls."""
         settings = page_settings()
         self.assertEqual(sorted(settings), sorted(SETTINGS))
         # Each is saved where the bridge reads it.
@@ -82,11 +95,18 @@ class PreferencePageTests(unittest.TestCase):
                 self.assertEqual(saved_in, PREF_GROUP)
 
     def test_the_page_shows_the_documented_defaults(self):
-        """The page shows defaults 39280, 15 s, 32 K characters and 5 min."""
+        """The page shows defaults 39280, 15 s, 32 K characters, 5 min, and
+        the status-bar button shown on the right."""
         settings = page_settings()
+        spin_names = (
+            "Port",
+            "MaxResponseTimeoutSeconds",
+            "MaxPageSize",
+            "MaxHistoryRetentionMinutes",
+        )
         shown = {
-            name: (int(props["value"]), props.get("suffix"))
-            for name, props in settings.items()
+            name: (int(settings[name]["value"]), settings[name].get("suffix"))
+            for name in spin_names
         }
         self.assertEqual(
             shown,
@@ -97,16 +117,33 @@ class PreferencePageTests(unittest.TestCase):
                 "MaxHistoryRetentionMinutes": (5, " min"),
             },
         )
+        self.assertEqual(
+            settings["ShowStatusButton"]["text"], "Show the On/Off button"
+        )
+        self.assertEqual(settings["ShowStatusButton"]["checked"], "true")
+        self.assertEqual(
+            settings["StatusButtonPosition"]["currentIndex"], "0"
+        )
+        self.assertEqual(
+            settings["StatusButtonPosition"]["items"],
+            [
+                "Right of FreeCAD's items (as now)",
+                "Left of FreeCAD's items",
+            ],
+        )
 
 
 class UnsetPreferenceTests(unittest.TestCase):
     def test_with_nothing_saved_the_bridge_uses_the_documented_defaults(self):
-        """With nothing saved: port 39280, 15 s, 32,768 chars, 5 min."""
+        """With nothing saved: port 39280, 15 s, 32,768 chars, 5 min, button
+        shown on the right."""
         config, params, groups = fresh_config()
         self.assertEqual(config.port(), 39280)
         self.assertEqual(config.max_response_timeout_ms(), 15_000)
         self.assertEqual(config.max_page_size_chars(), 32_768)
         self.assertEqual(config.max_history_retention_ms(), 5 * 60_000)
+        self.assertIs(config.show_status_button(), True)
+        self.assertEqual(config.status_button_position(), 0)
         # What it read is what the preference page saves.
         self.assertEqual(set(groups), {PREF_GROUP})
         self.assertEqual(params.read, set(SETTINGS))
