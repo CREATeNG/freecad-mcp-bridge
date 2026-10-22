@@ -149,7 +149,7 @@ class UnsetPreferenceTests(unittest.TestCase):
         self.assertEqual(params.read, set(SETTINGS))
 
 
-def fresh_init_gui():
+def _fresh_init_gui():
     """Import init_gui.py against stand-in FreeCAD and Qt modules."""
     freecad = types.SimpleNamespace(
         Console=types.SimpleNamespace(PrintWarning=lambda *_: None)
@@ -206,14 +206,20 @@ class StatusButtonColorTests(unittest.TestCase):
     def test_on_green_suits_dark_and_light_status_bar_themes(self):
         """The 'On' button picks a brighter green on dark status bars and a
         darker green on light ones, reaching at least 4.5:1 on each."""
-        init_gui = fresh_init_gui()
-        dark_bars = ("#1e1e1e", "#2b2b2b", "#303030")
+        init_gui = _fresh_init_gui()
+        dark_bars = (
+            "#1e1e1e",
+            "#2b2b2b",
+            "#303030",
+            "#404040",
+            "#444444",
+        )
         light_bars = ("#efefef", "#ffffff")
         for bg_hex in dark_bars:
             with self.subTest(bg=bg_hex):
                 bg_rgb = _hex_to_rgb(bg_hex)
                 picked = init_gui._status_button_on_color(bg_rgb)
-                self.assertEqual(picked, "#3fb950")
+                self.assertEqual(picked, "#56d364")
                 ratio = _contrast_ratio(_hex_to_rgb(picked), bg_rgb)
                 self.assertGreaterEqual(ratio, 4.5)
         for bg_hex in light_bars:

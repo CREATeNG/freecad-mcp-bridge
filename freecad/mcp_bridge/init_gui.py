@@ -88,7 +88,7 @@ def _status_button_on_color(rgb):
         for c in rgb
     ]
     lum = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
-    return "#3fb950" if lum < 0.1923 else "#116329"
+    return "#56d364" if lum < 0.2282 else "#116329"
 
 
 def _refresh_status_button(running, tip):
@@ -151,11 +151,20 @@ def _ensure_status_button(mw):
     """Place or remove the permanent status-bar button; return it."""
     import FreeCAD as App
     import FreeCADGui as Gui
-    from PySide.QtCore import QSize, Qt
+    from PySide.QtCore import QEvent, QObject, QSize, Qt
     from PySide.QtGui import QIcon
     from PySide.QtWidgets import QToolButton
 
     from freecad.mcp_bridge import config
+
+    class _BarThemeFilter(QObject):
+        def eventFilter(self, _obj, event):
+            if event.type() in (
+                QEvent.PaletteChange,
+                QEvent.StyleChange,
+            ):
+                show_toggle_state()
+            return False
 
     bar = mw.statusBar()
     button = bar.findChild(QToolButton, STATUS_BUTTON_OBJECT_NAME)
@@ -187,6 +196,9 @@ def _ensure_status_button(mw):
     button.setIconSize(QSize(16, 16))
     command = App.MCPBridgeCommand
     button.clicked.connect(lambda *_: Gui.runCommand(command))
+    theme_filter = _BarThemeFilter(button)
+    button._theme_filter = theme_filter
+    bar.installEventFilter(theme_filter)
     if position == STATUS_BUTTON_LEFT:
         normal, _ = _status_bar_widgets(bar)
         bar.insertPermanentWidget(len(normal), button)
