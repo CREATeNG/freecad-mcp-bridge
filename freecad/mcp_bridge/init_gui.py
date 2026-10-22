@@ -42,6 +42,7 @@ class MCPBridgeCommand:
 
         started = False
         stopped = False
+        port_taken = False
         try:
             if bridge.is_running():
                 bridge.stop()
@@ -56,6 +57,7 @@ class MCPBridgeCommand:
                 f"{LOG_PREFIX} Error toggling bridge: {e}\n"
             )
             status = f"{DISPLAY_NAME}: Could not start ({e})"
+            port_taken = isinstance(e, OSError)
         mw = Gui.getMainWindow()
         if mw:
             mw.statusBar().showMessage(status)
@@ -64,7 +66,7 @@ class MCPBridgeCommand:
             App.Console.PrintNotification(status + "\n")
         else:
             warning = status
-            if isinstance(e, OSError):
+            if port_taken:
                 warning += (
                     ". Change the port in Edit → "
                     "Preferences → MCP Bridge."
