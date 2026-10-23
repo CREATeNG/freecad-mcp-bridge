@@ -118,6 +118,7 @@ def _assert_status_button(running: bool) -> None:
     """The status-bar button matches the bridge, and so does the toolbar."""
     import FreeCAD as App
     import FreeCADGui as Gui
+    from PySide.QtWidgets import QToolButton
 
     from freecad.mcp_bridge.init_gui import _status_bar_widgets
 
@@ -134,11 +135,30 @@ def _assert_status_button(running: bool) -> None:
             "Status-bar button is not to the right of FreeCAD's permanent "
             f"widgets (permanent={names})"
         )
-    expected = "On" if running else "Off"
+    expected = "MCP On" if running else "MCP Off"
     if button.text() != expected:
         common.fail(
             "Status-bar button text is out of step. "
             f"Expected {expected!r}, got {button.text()!r}"
+        )
+    if not button.icon().isNull():
+        common.fail("Status-bar button has an icon")
+    if button.popupMode() != QToolButton.MenuButtonPopup:
+        common.fail(
+            "Status-bar button is not in MenuButtonPopup mode "
+            f"(popupMode={button.popupMode()!r})"
+        )
+    menu = button.menu()
+    if menu is None or len(menu.actions()) != 1:
+        count = None if menu is None else len(menu.actions())
+        common.fail(
+            "Status-bar button menu is missing or does not have 1 action "
+            f"(count={count})"
+        )
+    if menu.actions()[0].text() != "Preferences":
+        common.fail(
+            "Status-bar button menu action text is unexpected: "
+            f"{menu.actions()[0].text()!r}"
         )
     tip = (
         "MCP Bridge: on (click to stop)"
@@ -216,7 +236,9 @@ def _verify_status_button_hide() -> None:
 
 def _stop_bridge() -> None:
     """Stop the server via the status-bar button, like a user would."""
-    from PySide.QtCore import QCoreApplication
+    from PySide.QtCore import QCoreApplication, QEvent, QPointF, Qt
+    from PySide.QtGui import QMouseEvent
+    from PySide.QtWidgets import QStyle, QStyleOptionToolButton
 
     from freecad.mcp_bridge import bridge
     from freecad.mcp_bridge.constants import DISPLAY_NAME, LOG_PREFIX
@@ -227,8 +249,28 @@ def _stop_bridge() -> None:
     button = _status_button()
     if button is None:
         common.fail("Status-bar button is missing")
-    common.log('Clicking status-bar button "On" (stop)')
-    button.click()
+    common.log('Clicking status-bar button "MCP On" text (stop)')
+    opt = QStyleOptionToolButton()
+    button.initStyleOption(opt)
+    menu_rect = button.style().subControlRect(
+        QStyle.CC_ToolButton, opt, QStyle.SC_ToolButtonMenu, button
+    )
+    text_rect = button.rect().adjusted(0, 0, -menu_rect.width(), 0)
+    pos = QPointF(text_rect.center())
+    for event_type, buttons in (
+        (QEvent.MouseButtonPress, Qt.LeftButton),
+        (QEvent.MouseButtonRelease, Qt.NoButton),
+    ):
+        QCoreApplication.sendEvent(
+            button,
+            QMouseEvent(
+                event_type,
+                pos,
+                Qt.LeftButton,
+                buttons,
+                Qt.NoModifier,
+            ),
+        )
     QCoreApplication.processEvents()
     common._drain_qt_events(1500)
 
