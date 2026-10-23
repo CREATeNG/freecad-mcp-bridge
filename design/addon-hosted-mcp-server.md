@@ -374,10 +374,10 @@ output. An unknown tool name is a protocol error, invalid params
 **Transport distinction — direct HTTP clients vs stdio clients**
 
 HTTP-capable clients connect to the endpoint directly. Stdio clients
-(via the shim) receive responses as single stdio messages. Tool-call
-results and paging are otherwise identical on both transports: each
-waits up to the configured timeout for the first page, then polls via
-`get_output_page` if needed.
+(via the shim) receive each JSON-RPC message as one line on stdout.
+Tool-call results and paging are otherwise identical on both
+transports: each waits up to the configured timeout for the first
+page, then polls via `get_output_page` if needed.
 
 **Port**
 

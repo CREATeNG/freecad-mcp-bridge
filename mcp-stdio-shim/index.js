@@ -119,16 +119,18 @@ async function forward(rawLine, message) {
   if (contentType.includes("text/event-stream")) {
     // SSE stream: pull each event's JSON-RPC envelope out of its data field(s)
     // and write one line per event.
-    for (const event of bodyText.split(/\r?\n\r?\n/)) {
+    for (const event of bodyText.replace(/\r\n?/g, "\n").split("\n\n")) {
       const dataLines = event
-        .split(/\r?\n/)
+        .split("\n")
         .filter((line) => line.startsWith("data:"))
         .map((line) => line.slice("data:".length).trim());
       const joined = dataLines.join("\n").trim();
       if (!joined) continue;
       try {
-        writeLine(JSON.stringify(JSON.parse(joined)));
+        JSON.parse(joined);
+        writeLine(joined.replace(/\n/g, " ").trim());
       } catch {
+        // Lenient fallback kept from before, not SSE-standard parsing.
         writeLine(dataLines.join(""));
       }
     }
