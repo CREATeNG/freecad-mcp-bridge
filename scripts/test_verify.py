@@ -236,7 +236,9 @@ def _verify_status_button_hide() -> None:
 
 def _stop_bridge() -> None:
     """Stop the server via the status-bar button, like a user would."""
-    from PySide.QtCore import QCoreApplication
+    from PySide.QtCore import QCoreApplication, QEvent, QPointF, Qt
+    from PySide.QtGui import QMouseEvent
+    from PySide.QtWidgets import QStyle, QStyleOptionToolButton
 
     from freecad.mcp_bridge import bridge
     from freecad.mcp_bridge.constants import DISPLAY_NAME, LOG_PREFIX
@@ -247,8 +249,28 @@ def _stop_bridge() -> None:
     button = _status_button()
     if button is None:
         common.fail("Status-bar button is missing")
-    common.log('Clicking status-bar button "MCP On" (stop)')
-    button.click()
+    common.log('Clicking status-bar button "MCP On" text (stop)')
+    opt = QStyleOptionToolButton()
+    button.initStyleOption(opt)
+    menu_rect = button.style().subControlRect(
+        QStyle.CC_ToolButton, opt, QStyle.SC_ToolButtonMenu, button
+    )
+    text_rect = button.rect().adjusted(0, 0, -menu_rect.width(), 0)
+    pos = QPointF(text_rect.center())
+    for event_type, buttons in (
+        (QEvent.MouseButtonPress, Qt.LeftButton),
+        (QEvent.MouseButtonRelease, Qt.NoButton),
+    ):
+        QCoreApplication.sendEvent(
+            button,
+            QMouseEvent(
+                event_type,
+                pos,
+                Qt.LeftButton,
+                buttons,
+                Qt.NoModifier,
+            ),
+        )
     QCoreApplication.processEvents()
     common._drain_qt_events(1500)
 

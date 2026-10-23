@@ -330,7 +330,7 @@ FreeCAD process after restart. Does **not** call `App.MCPBridgeInjectUi()` — i
 | Start bridge | First toolbar click starts the HTTP server |
 | Listening status | The status bar shows the loopback address and configured port |
 | HTTP round-trip | A client-shaped request — `tools/call` → `execute_python` over HTTP, sent from a worker thread while the main thread pumps the Qt event loop, paginating via `get_output_page` if the response is chunked — returns the expected probe output. Same code path a real MCP client uses. |
-| Stop bridge | Clicking the `MCP On` status-bar button stops the HTTP server |
+| Stop bridge | Clicking the status-bar button's `MCP On` text, not its arrow, stops the HTTP server |
 | Report view | Shows the expected "stopped" message (`RELEASE_INSTALL_STOP_MESSAGE`, defaults to the bridge's own stop log line) |
 | Status bar | Shows `MCP Bridge: Offline` |
 

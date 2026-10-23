@@ -107,10 +107,11 @@ def _refresh_status_button(running, tip):
     if running:
         bg = mw.statusBar().palette().color(QPalette.Window)
         color = _status_button_on_color((bg.red(), bg.green(), bg.blue()))
+        color_rule = f"color: {color}; "
     else:
-        color = "palette(window-text)"
+        color_rule = ""
     button.setStyleSheet(
-        f"QToolButton {{ color: {color}; padding-right: 15px; }} "
+        f"QToolButton {{ {color_rule}padding-right: 15px; }} "
         "QToolButton:!hover { background-color: transparent; "
         "border-color: transparent; }"
     )
