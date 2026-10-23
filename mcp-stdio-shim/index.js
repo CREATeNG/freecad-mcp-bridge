@@ -130,7 +130,7 @@ async function forward(rawLine, message) {
         JSON.parse(joined);
         writeLine(joined.replace(/\n/g, " ").trim());
       } catch {
-        // Lenient fallback kept from before, not SSE-standard parsing.
+        // Lenient fallback: not SSE-standard parsing.
         writeLine(dataLines.join(""));
       }
     }
