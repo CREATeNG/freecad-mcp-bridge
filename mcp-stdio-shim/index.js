@@ -116,16 +116,25 @@ async function forward(rawLine, message) {
   if (isNotification) return;
 
   const contentType = (res.headers.get("content-type") || "").toLowerCase();
-  let payload = bodyText;
   if (contentType.includes("text/event-stream")) {
-    // Single SSE event: pull the JSON-RPC envelope out of the data field(s).
-    payload = bodyText
-      .split(/\r?\n/)
-      .filter((line) => line.startsWith("data:"))
-      .map((line) => line.slice("data:".length).trim())
-      .join("");
+    // SSE stream: pull each event's JSON-RPC envelope out of its data field(s)
+    // and write one line per event.
+    for (const event of bodyText.split(/\r?\n\r?\n/)) {
+      const dataLines = event
+        .split(/\r?\n/)
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice("data:".length).trim());
+      const joined = dataLines.join("\n").trim();
+      if (!joined) continue;
+      try {
+        writeLine(JSON.stringify(JSON.parse(joined)));
+      } catch {
+        writeLine(dataLines.join(""));
+      }
+    }
+    return;
   }
-  payload = payload.trim();
+  const payload = bodyText.trim();
   if (payload) writeLine(payload);
 }
 

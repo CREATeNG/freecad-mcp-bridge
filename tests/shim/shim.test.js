@@ -230,6 +230,50 @@ test("a single-event SSE reply comes back as one JSON-RPC line", async () => {
   bridge.close();
 });
 
+test("a two-event SSE reply comes back as two JSON-RPC lines in order", async () => {
+  const first = {
+    jsonrpc: "2.0",
+    method: "notifications/subscriptions/acknowledged",
+    params: { _meta: { "io.modelcontextprotocol/subscriptionId": 9 }, notifications: {} },
+  };
+  const second = {
+    jsonrpc: "2.0",
+    id: 9,
+    result: { _meta: { "io.modelcontextprotocol/subscriptionId": 9 } },
+  };
+  const bridge = await startBridge(() => ({
+    type: "text/event-stream",
+    text: `event: message\ndata: ${JSON.stringify(first)}\n\nevent: message\ndata: ${JSON.stringify(second)}\n\n`,
+  }));
+  const shim = startShim(bridge.port);
+  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 9, method: "subscriptions/listen" }) + "\n");
+  const replies = await shim.waitForLines(2);
+  assert.deepEqual(replies, [first, second]);
+  await delay(100);
+  assert.equal(shim.lines.length, 2);
+  await shim.stop();
+  bridge.close();
+});
+
+test("an SSE event whose JSON spans two data lines comes back as one JSON-RPC line", async () => {
+  const reply = { jsonrpc: "2.0", id: 10, result: { ok: true } };
+  const bridge = await startBridge(() => ({
+    type: "text/event-stream",
+    text:
+      'event: message\r\n' +
+      'data: {"jsonrpc": "2.0",\r\n' +
+      'data: "id": 10, "result": {"ok": true}}\r\n\r\n',
+  }));
+  const shim = startShim(bridge.port);
+  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 10, method: "ping" }) + "\n");
+  const [line] = await shim.waitForLines(1);
+  assert.deepEqual(line, reply);
+  await delay(100);
+  assert.equal(shim.lines.length, 1);
+  await shim.stop();
+  bridge.close();
+});
+
 test("a notification gets no reply on stdout", async () => {
   // The stand-in answers even the notification, so silence is the shim's doing.
   const bridge = await startBridge(echo);

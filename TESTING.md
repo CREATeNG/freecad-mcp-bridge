@@ -38,8 +38,8 @@ The [Node test suite](tests/shim/shim.test.js) tests the shim in
 [mcp-stdio-shim/](mcp-stdio-shim/). It launches the shim as a child
 process against a stand-in HTTP bridge or a closed loopback port.
 Among the checks are input framing, forwarding and protocol headers,
-JSON and single-event SSE replies, notification silence, and the
-fallback responses when FreeCAD is unreachable.
+JSON and SSE replies, notification silence, and the fallback responses
+when FreeCAD is unreachable.
 
 Use Node 20 to match CI; no FreeCAD or third-party Node packages are
 needed:
