@@ -111,9 +111,13 @@ def _refresh_status_button(running, tip):
     else:
         color_rule = ""
     button.setStyleSheet(
-        f"QToolButton {{ {color_rule}padding-right: 15px; }} "
-        "QToolButton:!hover { background-color: transparent; "
-        "border-color: transparent; }"
+        f"""
+        QToolButton {{ {color_rule}padding-right: 15px; }}
+        QToolButton:!hover {{
+            background-color: transparent;
+            border-color: transparent;
+        }}
+        """
     )
 
 
