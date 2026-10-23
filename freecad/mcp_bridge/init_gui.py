@@ -102,16 +102,18 @@ def _refresh_status_button(running, tip):
     button = _ensure_status_button(mw)
     if button is None:
         return
-    button.setText("On" if running else "Off")
+    button.setText("MCP On" if running else "MCP Off")
     button.setToolTip(tip)
     if running:
         bg = mw.statusBar().palette().color(QPalette.Window)
         color = _status_button_on_color((bg.red(), bg.green(), bg.blue()))
-        button.setStyleSheet(f"QToolButton {{ color: {color}; }}")
     else:
-        button.setStyleSheet(
-            "QToolButton { color: palette(window-text); }"
-        )
+        color = "palette(window-text)"
+    button.setStyleSheet(
+        f"QToolButton {{ color: {color}; padding-right: 15px; }} "
+        "QToolButton:!hover { background-color: transparent; "
+        "border-color: transparent; }"
+    )
 
 
 def _status_bar_widgets(bar):
@@ -173,9 +175,8 @@ def _ensure_status_button(mw):
     """Place or remove the permanent status-bar button; return it."""
     import FreeCAD as App
     import FreeCADGui as Gui
-    from PySide.QtCore import QEvent, QObject, QSize, Qt
-    from PySide.QtGui import QIcon
-    from PySide.QtWidgets import QToolButton
+    from PySide.QtCore import QEvent, QObject, Qt
+    from PySide.QtWidgets import QMenu, QToolButton
 
     from freecad.mcp_bridge import config
 
@@ -235,9 +236,14 @@ def _ensure_status_button(mw):
     button.setObjectName(STATUS_BUTTON_OBJECT_NAME)
     button.setProperty("mcp_position", position)
     button.setAutoRaise(True)
-    button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-    button.setIcon(QIcon(App.MCPBridgeIconPath))
-    button.setIconSize(QSize(16, 16))
+    button.setToolButtonStyle(Qt.ToolButtonTextOnly)
+    button.setPopupMode(QToolButton.MenuButtonPopup)
+    menu = QMenu(button)
+    prefs_action = menu.addAction("Preferences")
+    prefs_action.triggered.connect(
+        lambda *_: Gui.showPreferences(DISPLAY_NAME, 0)
+    )
+    button.setMenu(menu)
     command = App.MCPBridgeCommand
     button.clicked.connect(lambda *_: Gui.runCommand(command))
     theme_filter = _BarThemeFilter(button)
