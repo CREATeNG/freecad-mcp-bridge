@@ -13,7 +13,7 @@ The [unit suite](tests/unit/) runs without FreeCAD or Qt. It checks
 paging and replay, MCP request validation and result formatting,
 preference defaults and controls, source-only distribution, the copy
 installer, agreement among the three release-version files, and
-the changelog section for that version. These
+the changelog section for the version being released. These
 checks include fake clocks, output queues and a stand-in parameter
 store where those replace the running application.
 

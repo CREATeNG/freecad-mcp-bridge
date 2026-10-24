@@ -14,12 +14,15 @@ The server runs only while you toggle it on, and only on your own machine.
 2. An **MCP Bridge** toolbar button appears, and the status-bar button
    shows **MCP Off**. Click either one to start the server. The
    status-bar button then reads **MCP On**, and FreeCAD shows a
-   notification, `MCP Bridge: Listening on 127.0.0.1:39280`.
+   notification, `MCP Bridge: Listening on 127.0.0.1:39280` (`39280` is
+   the default port).
 3. Point your MCP client at the bridge with:
    - **Transport:** Streamable HTTP
-   - **URL:** `http://127.0.0.1:39280/mcp`
+   - **URL:** `http://127.0.0.1:<PORT>/mcp`, where `<PORT>` is the
+     **Port** set in Preferences (`39280`, the default)
 
-For example, in Claude Code's `.mcp.json`:
+For example, in Claude Code's `.mcp.json` (with `39280`, the default
+port):
 
 ```json
 {
@@ -47,11 +50,12 @@ Claude Desktop can't open an HTTP endpoint the way Claude Code and others can, b
    **Advanced settings → Install extension** to select the file.
    Accept the installation warning to continue.
 3. In the Extensions list, open **FreeCAD MCP Bridge**. Its **port**
-   is pre-filled with `39280`; set it to match FreeCAD and check that
-   the extension is **Enabled**. On the Linux beta, the extension's
-   tools default to **Needs approval**.
+   is pre-filled with `39280`, the default; set it to match FreeCAD and
+   check that the extension is **Enabled**. On the Linux beta, the
+   extension's tools default to **Needs approval**.
 
-It forwards to the same `http://127.0.0.1:39280/mcp` endpoint.
+The extension forwards to `http://127.0.0.1:<PORT>/mcp`, where `<PORT>`
+is the port set in it.
 
 Alternatively, stdio clients can run the shim directly with node, instead of installing the bundle.
 
