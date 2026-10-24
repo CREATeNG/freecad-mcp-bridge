@@ -1,3 +1,14 @@
+## 0.1.24
+
+**What's new since 0.1.23**
+
+- **A status-bar button that fits in:** it reads **MCP Off** or **MCP On**, drawn flat like FreeCAD's other status-bar items, and its text turns green when on, in a shade that suits the theme. Click the words to switch the bridge on or off. Click the arrow for a menu whose one item opens the bridge's Preferences page. In Preferences you can hide the button, or place it left of FreeCAD's items.
+- **Notifications instead of a popup:** switching off and a failed start now show FreeCAD's own notification too, the failed start as a warning. When the port is already taken, the warning says where to change it.
+- **Stdio clients, and the Claude Desktop extension:** when the bridge streams a reply as several events, each now reaches the client as its own message. Before, they were joined into one line the client couldn't read. Update the extension from the attached `freecad-mcp-bridge.mcpb`, or update the shim (`mcp-stdio-shim/`) to this release, to get this.
+- **Behind the scenes:** a release refuses to publish without its notes in `CHANGELOG.md`, and the release checklist now includes a check of the extension in Claude Desktop. TESTING.md matches the current test scripts and workflows.
+
+Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini (Google) and Codex (OpenAI), with Cursor among their tools.
+
 ## 0.1.23
 
 **What's new since 0.1.22**
