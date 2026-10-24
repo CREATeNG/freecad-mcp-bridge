@@ -374,10 +374,10 @@ output. An unknown tool name is a protocol error, invalid params
 **Transport distinction — direct HTTP clients vs stdio clients**
 
 HTTP-capable clients connect to the endpoint directly. Stdio clients
-(via the shim) receive responses as single stdio messages. Tool-call
-results and paging are otherwise identical on both transports: each
-waits up to the configured timeout for the first page, then polls via
-`get_output_page` if needed.
+(via the shim) receive each JSON-RPC message as one line on stdout.
+Tool-call results and paging are otherwise identical on both
+transports: each waits up to the configured timeout for the first
+page, then polls via `get_output_page` if needed.
 
 **Port**
 
@@ -490,9 +490,9 @@ present and is not `localhost` or `127.0.0.1`.
 Some MCP clients speak only stdio for local servers. A small
 zero-dependency Node.js shim (`mcp-stdio-shim/index.js`) ships with
 the addon as a stdio ↔ HTTP proxy. Each newline-delimited JSON-RPC
-message on stdin is forwarded as an HTTP POST, body unchanged. The
-JSON or single-event SSE reply is unwrapped and written back on
-stdout as one line. Stdio carries no headers, so the shim sets
+message on stdin is forwarded as an HTTP POST, body unchanged. A
+JSON reply, or each event of an SSE reply, is unwrapped and written
+back on stdout as one line. Stdio carries no headers, so the shim sets
 `MCP-Protocol-Version` from
 `params._meta["io.modelcontextprotocol/protocolVersion"]` when that
 field is present, and to `2025-11-25` when it is not. When the
