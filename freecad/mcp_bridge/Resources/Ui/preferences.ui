@@ -235,7 +235,7 @@
          <enum>Qt::RichText</enum>
         </property>
         <property name="text">
-         <string>Most MCP clients speak HTTP — connect them directly to http://127.0.0.1:39280/mcp (using the port above).&lt;br/&gt;&lt;br/&gt;Clients that only speak stdio — e.g. Claude Desktop (not Claude Code) — need a small connector: &lt;a href="https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest/download/freecad-mcp-bridge.mcpb"&gt;Download the bundle&lt;/a&gt;.</string>
+         <string>Most MCP clients speak HTTP — connect them directly to http://127.0.0.1:PORT/mcp, where PORT is the Port setting above.&lt;br/&gt;&lt;br/&gt;Clients that only speak stdio — e.g. Claude Desktop (not Claude Code) — need a small connector: &lt;a href="https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest/download/freecad-mcp-bridge.mcpb"&gt;Download the bundle&lt;/a&gt;.</string>
         </property>
         <property name="wordWrap">
          <bool>true</bool>
