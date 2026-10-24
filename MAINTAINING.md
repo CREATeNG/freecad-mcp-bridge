@@ -89,9 +89,9 @@ else. Merging it starts the release.
 
 A push to `main` starts the release orchestrator. Prepare
 releases that push only when `package.xml`'s version differs from
-the previous tip and the push changes only the version files
-and `CHANGELOG.md`, which the push must include. Any other
-push stops there. **Run workflow** is the retry
+the previous tip, the push includes `CHANGELOG.md`, and it changes
+only the version files and `CHANGELOG.md`. Any other push stops
+there. **Run workflow** is the retry
 for a release that failed after its version merged: it ships the
 current `main` when that version's tag does not exist yet. The
 workflow then tags the commit, runs install-verify before and
@@ -168,8 +168,8 @@ from anything attached to the release page.
    `mcp-stdio-shim/package.json`. The script starts the new
    changelog section with a placeholder.
 2. Replace that placeholder with the release notes, then open
-   a pull request that changes only those files. It runs
-   every test a pull request runs.
+   a pull request that changes only the version files and
+   `CHANGELOG.md`. It runs every test a pull request runs.
 3. Wait for the Claude Desktop check. The agent holding the
    freecad-desktop-checker seat on the agent hub runs the check
    as a routine that starts when a version pull request opens. The
