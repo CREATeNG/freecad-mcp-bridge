@@ -64,7 +64,7 @@
       <item row="2" column="1">
        <widget class="Gui::PrefSpinBox" name="timeoutSpinBox">
         <property name="toolTip">
-         <string>The maximum time a request waits for output before returning what it has so far. The client fetches any remaining output automatically.</string>
+         <string>The maximum time a request waits for output before returning what it has so far. The agent fetches the rest with get_output_page.</string>
         </property>
         <property name="suffix">
          <string> s</string>
@@ -134,7 +134,7 @@
       <item row="4" column="1">
        <widget class="Gui::PrefSpinBox" name="retentionSpinBox">
         <property name="toolTip">
-         <string>How long a finished job's output pages remain readable via get_output_page before being discarded.</string>
+         <string>How long a finished job's output pages remain readable via get_output_page before being discarded. Each page the agent reads restarts this interval.</string>
         </property>
         <property name="suffix">
          <string> min</string>
@@ -210,7 +210,7 @@
         </property>
         <item>
          <property name="text">
-          <string>Right of FreeCAD's items (as now)</string>
+          <string>Right of FreeCAD's items (default)</string>
          </property>
         </item>
         <item>

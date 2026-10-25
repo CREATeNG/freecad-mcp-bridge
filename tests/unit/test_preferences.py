@@ -127,7 +127,7 @@ class PreferencePageTests(unittest.TestCase):
         self.assertEqual(
             settings["StatusButtonPosition"]["items"],
             [
-                "Right of FreeCAD's items (as now)",
+                "Right of FreeCAD's items (default)",
                 "Left of FreeCAD's items",
             ],
         )
