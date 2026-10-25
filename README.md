@@ -16,32 +16,35 @@ The server runs only while you toggle it on, and only on your own machine.
    status-bar button then reads **MCP On**, and FreeCAD shows a
    notification, `MCP Bridge: Listening on 127.0.0.1:39280` (`39280` is
    the default port).
-3. Point your MCP client at the bridge with:
-   - **Transport:** Streamable HTTP
-   - **URL:** `http://127.0.0.1:<PORT>/mcp`, where `<PORT>` is the
-     **Port** set in Preferences (`39280`, the default)
+3. Connect your MCP client:
+   - **Claude Desktop:** install the **FreeCAD MCP Bridge** extension
+     using the steps in [Claude Desktop](#claude-desktop) below.
+     There's no file to edit and no URL to type.
+   - **Other MCP clients (Claude Code and others):** point the client
+     at the bridge with:
+     - **Transport:** Streamable HTTP
+     - **URL:** `http://127.0.0.1:<PORT>/mcp`, where `<PORT>` is the
+       **Port** set in Preferences (`39280`, the default)
 
-For example, in Claude Code's `.mcp.json` (with `39280`, the default
-port):
+     For example, in Claude Code's `.mcp.json` (with `39280`, the
+     default port):
 
-```json
-{
-  "mcpServers": {
-    "freecad": {
-      "type": "http",
-      "url": "http://127.0.0.1:39280/mcp"
-    }
-  }
-}
-```
+     ```json
+     {
+       "mcpServers": {
+         "freecad": {
+           "type": "http",
+           "url": "http://127.0.0.1:39280/mcp"
+         }
+       }
+     }
+     ```
+
+     That's the whole setup for most clients.
 
 The server is off until you toggle it on, each session — click the button again to stop it.
 
-That's the whole setup for most clients.
-
 ## Claude Desktop
-
-Claude Desktop can't open an HTTP endpoint the way Claude Code and others can, but it can reach the bridge through a small stdio↔HTTP relay (the shim in [`mcp-stdio-shim/`](mcp-stdio-shim/)) — packaged as a bundle you install in Claude Desktop:
 
 1. Download **`freecad-mcp-bridge.mcpb`** from the
    [latest release](https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest).
@@ -54,8 +57,10 @@ Claude Desktop can't open an HTTP endpoint the way Claude Code and others can, b
    check that the extension is **Enabled**. On the Linux beta, the
    extension's tools default to **Needs approval**.
 
-The extension forwards to `http://127.0.0.1:<PORT>/mcp`, where `<PORT>`
-is the port set in it.
+Claude Desktop can't open an HTTP endpoint the way Claude Code and
+others can, so the extension runs a small stdio↔HTTP relay (the shim in
+[`mcp-stdio-shim/`](mcp-stdio-shim/)). The extension forwards to
+`http://127.0.0.1:<PORT>/mcp`, where `<PORT>` is the port set in it.
 
 Alternatively, stdio clients can run the shim directly with node, instead of installing the bundle.
 
