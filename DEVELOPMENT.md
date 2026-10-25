@@ -21,7 +21,10 @@ A zero-dependency command-line utility is provided at `send_cmd.py` to test the 
 
 *Requires FreeCAD running with the MCP Bridge toolbar toggled on.*
 
-**Run a code string to test the connection (passing the port as the first argument):**
+Both commands take the port as their first argument. `39280` is the
+default; use your port if it differs.
+
+**Run a code string to test the connection:**
 ```bash
 python send_cmd.py 39280 "print('Hello from the terminal!')"
 ```

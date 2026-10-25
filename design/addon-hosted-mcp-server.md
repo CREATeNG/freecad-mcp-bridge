@@ -381,7 +381,8 @@ page, then polls via `get_output_page` if needed.
 
 **Port**
 
-Fixed port **39280**, user-configurable in FreeCAD preferences.
+A static port, **39280** by default, user-configurable in FreeCAD
+preferences.
 On conflict at startup: log a clear error directing the user to Edit → Preferences →
 MCP Bridge. No silent increment. Dynamic port rejected — HTTP clients configure the
 endpoint URL directly; a changing port would require reconfiguration each session.
