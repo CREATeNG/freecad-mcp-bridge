@@ -86,6 +86,11 @@ Once connected, the agent has these tools:
 - **Page history retention** — starts when the job finishes running
   (default 5 min). Each page your agent reads restarts that interval;
   after a gap that long without a fetch, unread output is gone.
+- **Show the On/Off button** — shows or hides the bridge's On/Off
+  button on FreeCAD's status bar (on by default). The **MCP Bridge**
+  toolbar button stays either way.
+- **Position** — where the On/Off button sits among the right-hand
+  status-bar items: right of FreeCAD's items (default) or left.
 
 ---
 
