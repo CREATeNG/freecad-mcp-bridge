@@ -79,7 +79,8 @@ leave that work unfinished.
 Install the addon version under test, open a fresh FreeCAD GUI session
 and turn the bridge on with its toolbar button. Keep the GUI running
 while the suite runs. With Python 3.11 in a second terminal, set the
-URL explicitly to that session's port:
+URL explicitly to that session's port (`39280` below is the default;
+use your port if it differs):
 
 ```bash
 export BRIDGE_URL=http://127.0.0.1:39280/mcp
