@@ -1,3 +1,28 @@
+## 0.1.25
+
+**What's new since 0.1.24**
+
+- **Port-taken warning on Windows:** on Windows, starting the bridge on
+  a port another program already held with address reuse could still
+  show **MCP On** instead of warning. The bridge now claims its port
+  exclusively on Windows, so the bridge fails to start on a taken port
+  and shows the port-taken warning there too.
+- **Clearer Preferences page:** the client address uses `<PORT>` instead
+  of a fixed port number. The **Max response timeout** tooltip says the
+  agent fetches the rest of the output with `get_output_page`. The
+  **Page history retention** tooltip says each page the agent reads
+  restarts the retention time. The default **Position** choice reads
+  **Right of FreeCAD's items (default)**.
+- **Docs:** the README's **Quick start** gives Claude Desktop users
+  their own short path. The README's **Preferences** section lists all
+  six settings the page has. Example ports across the docs read as
+  variables or as the default (`39280`).
+- **Behind the scenes:** the occupied-port acceptance test now holds its
+  port with address reuse, the case that let a taken port on Windows go
+  unnoticed.
+
+Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini (Google) and Codex (OpenAI), with Cursor among their tools.
+
 ## 0.1.24
 
 **What's new since 0.1.23**
