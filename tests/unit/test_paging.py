@@ -722,7 +722,7 @@ class RetentionTests(unittest.TestCase):
     def test_windows_server_refuses_a_port_held_with_reuseaddr_and_rebinds(
         self,
     ):
-        """The server, on Windows, refuses an SO_REUSEADDR holder.
+        """The server, on Windows, refuses a port held with SO_REUSEADDR.
 
         A second server rebinds the same port after the first has served a
         request and stopped.
