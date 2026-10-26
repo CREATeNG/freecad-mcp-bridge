@@ -722,7 +722,11 @@ class RetentionTests(unittest.TestCase):
     def test_windows_server_refuses_a_port_held_with_reuseaddr_and_rebinds(
         self,
     ):
-        """Windows server refuses an SO_REUSEADDR holder and rebinds."""
+        """The server, on Windows, refuses an SO_REUSEADDR holder.
+
+        A second server rebinds the same port after the first has served a
+        request and stopped.
+        """
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as holder:
             holder.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             holder.bind(("127.0.0.1", 0))

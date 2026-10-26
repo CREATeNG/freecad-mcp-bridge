@@ -35,7 +35,7 @@
       <item row="1" column="1">
        <widget class="Gui::PrefSpinBox" name="portSpinBox">
         <property name="toolTip">
-         <string>The port the MCP server listens on (127.0.0.1). Changes take effect next time you start the bridge.</string>
+         <string>Used the next time the bridge is switched on.</string>
         </property>
         <property name="minimum">
          <number>1024</number>
@@ -64,7 +64,7 @@
       <item row="2" column="1">
        <widget class="Gui::PrefSpinBox" name="timeoutSpinBox">
         <property name="toolTip">
-         <string>The maximum time a request waits for output before returning what it has so far. The agent fetches the rest with get_output_page.</string>
+         <string>The bridge's wait per page.</string>
         </property>
         <property name="suffix">
          <string> s</string>
@@ -99,7 +99,7 @@
       <item row="3" column="1">
        <widget class="Gui::PrefSpinBox" name="pageSizeSpinBox">
         <property name="toolTip">
-         <string>The maximum size of one page as the agent reads it, in units of 1,024 characters (32 means 32,768). The count is the JSON of the tool result, so a newline counts as a backslash and an n. Larger output is split across pages, fetched with get_output_page.</string>
+         <string>Splits long output by page size.</string>
         </property>
         <property name="suffix">
          <string> K characters</string>
@@ -134,7 +134,7 @@
       <item row="4" column="1">
        <widget class="Gui::PrefSpinBox" name="retentionSpinBox">
         <property name="toolTip">
-         <string>How long a finished job's output pages remain readable via get_output_page before being discarded. Each page the agent reads restarts this interval.</string>
+         <string>Idle time before finished output expires.</string>
         </property>
         <property name="suffix">
          <string> min</string>
@@ -171,7 +171,7 @@
       <item row="0" column="0" colspan="2">
        <widget class="Gui::PrefCheckBox" name="showStatusButtonCheckBox">
         <property name="toolTip">
-         <string>Show the bridge On/Off button on FreeCAD's status bar. The toolbar button remains available when this box is unticked.</string>
+         <string>Display toggle button in the status bar</string>
         </property>
         <property name="text">
          <string>Show the On/Off button</string>
@@ -197,7 +197,7 @@
       <item row="1" column="1">
        <widget class="Gui::PrefComboBox" name="statusButtonPositionComboBox">
         <property name="toolTip">
-         <string>Where the On/Off button sits among the items on the right side of the status bar.</string>
+         <string>Where the button sits on the status bar.</string>
         </property>
         <property name="currentIndex">
          <number>0</number>

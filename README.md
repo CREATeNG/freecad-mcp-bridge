@@ -81,8 +81,13 @@ Once connected, the agent has these tools:
 **Edit → Preferences → MCP Bridge:**
 
 - **Port** — the loopback port the server listens on (default 39280).
-- **Max response timeout** — how long a request waits for output before returning what it has so far; the agent fetches the rest with `get_output_page` (default 15 s).
-- **Max page size** — the most one page may be, as the JSON the agent reads, in units of 1,024 characters (default 32, that is 32,768). Larger output is split into pages the agent fetches with `get_output_page`.
+- **Max response timeout** — how long the bridge waits for each page's
+  output, counted from when that page starts (default 15 s). The agent
+  fetches the rest with `get_output_page`.
+- **Max page size** — the most one page may be, as the JSON the agent
+  reads, in units of 1,024 characters (default 32, that is 32,768). A
+  newline counts as two characters. Larger output is split into pages
+  the agent fetches with `get_output_page`.
 - **Page history retention** — starts when the job finishes running
   (default 5 min). Each page your agent reads restarts that interval;
   after a gap that long without a fetch, unread output is gone.
