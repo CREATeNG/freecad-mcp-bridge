@@ -21,6 +21,8 @@ This module must be able to run outside FreeCAD.
 
 import json
 import queue
+import socket
+import sys
 import threading
 import time
 import uuid
@@ -346,6 +348,15 @@ class MaintenanceHTTPServer(ThreadingHTTPServer):
     extra thread or timer. A reader that was admitted keeps the entry
     it borrowed until that fetch returns.
     """
+
+    allow_reuse_address = sys.platform != "win32"
+
+    def server_bind(self):
+        if sys.platform == "win32" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
+            self.socket.setsockopt(
+                socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1
+            )
+        super().server_bind()
 
     def service_actions(self):
         _sweep_expired()

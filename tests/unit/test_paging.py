@@ -7,10 +7,13 @@ output queue is fed directly, standing in for the executor.
 
 import gc
 import json
+import socket
+import sys
 import threading
 import time
 import unittest
 import weakref
+from http.client import HTTPConnection
 from http.server import BaseHTTPRequestHandler
 from unittest import mock
 
@@ -712,6 +715,64 @@ class RetentionTests(unittest.TestCase):
         self.assertNotIn(token, paging._BUFFER)
         paging._sweep_expired()
         self.assertNotIn(token, paging._BUFFER)
+
+    @unittest.skipUnless(
+        sys.platform == "win32", "Windows-only exclusive bind"
+    )
+    def test_windows_server_refuses_a_port_held_with_reuseaddr_and_rebinds(
+        self,
+    ):
+        """Windows server refuses an SO_REUSEADDR holder and rebinds."""
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as holder:
+            holder.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            holder.bind(("127.0.0.1", 0))
+            holder.listen(1)
+            taken_port = holder.getsockname()[1]
+            with self.assertRaises(OSError):
+                paging.MaintenanceHTTPServer(
+                    ("127.0.0.1", taken_port), _QuietHandler
+                )
+
+        first = paging.MaintenanceHTTPServer(("127.0.0.1", 0), _QuietHandler)
+        port = first.server_address[1]
+        first_thread = threading.Thread(
+            target=first.serve_forever, daemon=True
+        )
+        first_thread.start()
+        try:
+            conn = HTTPConnection("127.0.0.1", port, timeout=5)
+            try:
+                conn.request("GET", "/")
+                resp = conn.getresponse()
+                resp.read()
+                self.assertEqual(resp.status, 404)
+            finally:
+                conn.close()
+        finally:
+            first.shutdown()
+            first.server_close()
+            first_thread.join(2)
+
+        second = paging.MaintenanceHTTPServer(
+            ("127.0.0.1", port), _QuietHandler
+        )
+        second_thread = threading.Thread(
+            target=second.serve_forever, daemon=True
+        )
+        second_thread.start()
+        try:
+            conn = HTTPConnection("127.0.0.1", port, timeout=5)
+            try:
+                conn.request("GET", "/")
+                resp = conn.getresponse()
+                resp.read()
+                self.assertEqual(resp.status, 404)
+            finally:
+                conn.close()
+        finally:
+            second.shutdown()
+            second.server_close()
+            second_thread.join(2)
 
 
 if __name__ == "__main__":
