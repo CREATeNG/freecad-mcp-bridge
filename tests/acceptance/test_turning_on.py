@@ -165,6 +165,7 @@ class PortTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             seen_file = os.path.join(folder, "seen.json")
             with socket.socket() as occupier:
+                occupier.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 occupier.bind(("127.0.0.1", 0))
                 occupier.listen()
                 port = occupier.getsockname()[1]
