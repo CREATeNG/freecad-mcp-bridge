@@ -77,6 +77,17 @@ for json_path in (shim_manifest, shim_package_json):
     )
     if n != 1:
         raise SystemExit(f"Failed to update version in {json_path}")
+    if json_path == shim_manifest:
+        text, n_help = re.subn(
+            r"(Extension\s+)\d+\.\d+\.\d+",
+            rf"\g<1>{version}",
+            text,
+            count=1,
+        )
+        if n_help != 1:
+            raise SystemExit(
+                f"Failed to update Extension version in {json_path}"
+            )
     write_text(p, text, newline)
 
 path = Path(changelog)
