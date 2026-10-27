@@ -5,7 +5,7 @@
 - **Claude Desktop extension:** the port field on the extension's page
   now says what's needed on the FreeCAD side and shows the extension's
   version (`0.1.26`). The manifest adds a longer description, plus
-  author, repository, documentation, support, privacy-policy, and
+  repository, homepage, documentation, support, privacy-policy, and
   compatibility fields.
 - **Redirects refused:** if something other than the bridge answers on
   the port and redirects, the Claude Desktop extension now stops and
