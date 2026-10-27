@@ -4,7 +4,7 @@
   "display_name": "FreeCAD MCP Bridge",
   "version": "0.1.25",
   "description": "Connect Claude Desktop to a running FreeCAD session through the FreeCAD MCP Bridge addon.",
-  "long_description": "Connects Claude Desktop to an open FreeCAD session so Claude can run Python in FreeCAD and read the output.\n\nRequires the **MCP Bridge** addon from FreeCAD's **Addon Manager**, switched on in FreeCAD with the **MCP Bridge** toolbar button or the status-bar **On/Off** button. The extension's port must match the **Port** in FreeCAD's **Edit → Preferences → MCP Bridge** (`39280` by default). See the [README](https://github.com/CREATeNG/freecad-mcp-bridge#readme) for setup. Report problems on the [issue tracker](https://github.com/CREATeNG/freecad-mcp-bridge/issues).",
+  "long_description": "Connects to an open FreeCAD session, so Claude can run Python in FreeCAD and read the output.\n\nNeeds FreeCAD's MCP Bridge addon. Setup instructions are in the [README on GitHub](https://github.com/CREATeNG/freecad-mcp-bridge#readme).",
   "icon": "icon.png",
   "author": {
     "name": "CREATeNG",
@@ -16,7 +16,7 @@
   },
   "homepage": "https://github.com/CREATeNG/freecad-mcp-bridge",
   "documentation": "https://github.com/CREATeNG/freecad-mcp-bridge",
-  "support": "https://github.com/CREATeNG/freecad-mcp-bridge/issues",
+  "support": "https://github.com/CREATeNG/freecad-mcp-bridge#readme",
   "privacy_policies": [
     "https://github.com/CREATeNG/freecad-mcp-bridge#privacy-policy"
   ],
