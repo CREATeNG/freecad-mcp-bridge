@@ -7,7 +7,23 @@
   "icon": "icon.png",
   "author": {
     "name": "CREATeNG",
+    "url": "https://github.com/CREATeNG"
+  },
+  "repository": {
+    "type": "git",
     "url": "https://github.com/CREATeNG/freecad-mcp-bridge"
+  },
+  "homepage": "https://github.com/CREATeNG/freecad-mcp-bridge",
+  "documentation": "https://github.com/CREATeNG/freecad-mcp-bridge",
+  "support": "https://github.com/CREATeNG/freecad-mcp-bridge/issues",
+  "privacy_policies": [
+    "https://github.com/CREATeNG/freecad-mcp-bridge#privacy-policy"
+  ],
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=18.0.0"
+    }
   },
   "server": {
     "type": "node",

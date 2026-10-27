@@ -1,6 +1,7 @@
 [
   {
     "name": "execute_python",
+    "title": "Execute Python",
     "description": "Execute Python code inside the running FreeCAD GUI process. 'App'/'FreeCAD' and 'Gui'/'FreeCADGui' are pre-bound — do not import them. Captured stdout/stderr is returned.",
     "inputSchema": {
       "type": "object",
@@ -13,10 +14,15 @@
       "required": [
         "code"
       ]
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true
     }
   },
   {
     "name": "execute_python_file",
+    "title": "Execute Python file",
     "description": "Read a local Python file and execute it inside the running FreeCAD GUI process. Same execution context as execute_python.",
     "inputSchema": {
       "type": "object",
@@ -29,10 +35,15 @@
       "required": [
         "filepath"
       ]
+    },
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true
     }
   },
   {
     "name": "get_output_page",
+    "title": "Get output page",
     "description": "Retrieve a page of output for a prior execute call that returned has_more=true. To read forward, pass page_no one higher than the last page_no you received (0 if you received none yet); repeat until has_more=false. Requesting a page_no already received replays it.",
     "inputSchema": {
       "type": "object",
@@ -51,6 +62,9 @@
         "job_token",
         "page_no"
       ]
+    },
+    "annotations": {
+      "readOnlyHint": true
     }
   }
 ]

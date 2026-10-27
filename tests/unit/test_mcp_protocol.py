@@ -300,6 +300,36 @@ class AnswerTests(unittest.TestCase):
         self.assertGreaterEqual(result["ttlMs"], 0)
         self.assertIn(result["cacheScope"], ("public", "private"))
 
+    def test_each_tool_in_tools_list_carries_its_title_and_annotations(self):
+        """Each tool in tools/list has its title and annotations."""
+        expected = {
+            "execute_python": (
+                "Execute Python",
+                {"readOnlyHint": False, "destructiveHint": True},
+            ),
+            "execute_python_file": (
+                "Execute Python file",
+                {"readOnlyHint": False, "destructiveHint": True},
+            ),
+            "get_output_page": (
+                "Get output page",
+                {"readOnlyHint": True},
+            ),
+        }
+        for version, message in (
+            (VERSION, request("tools/list")),
+            (NOVEMBER, november_request("tools/list")),
+        ):
+            with self.subTest(version=version):
+                _, response = mcp_protocol.handle_request(message, version)
+                tools = {
+                    tool["name"]: tool for tool in response["result"]["tools"]
+                }
+                self.assertEqual(set(tools), set(expected))
+                for name, (title, annotations) in expected.items():
+                    self.assertEqual(tools[name]["title"], title)
+                    self.assertEqual(tools[name]["annotations"], annotations)
+
     def test_a_message_with_no_id_is_a_notification(self):
         """Any message with no id is a notification, whatever its method."""
         for method in ("notifications/cancelled", "tools/list", "tools/call"):

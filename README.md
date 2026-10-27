@@ -74,6 +74,18 @@ Once connected, the agent has these tools:
 - **`execute_python_file(filepath)`** — read a local `.py` file (absolute path) and run it in the same context, with `__file__` set to that path.
 - **`get_output_page(job_token, page_no)`** — fetch the next page of a long-running script's output. The agent calls it while a response says `has_more: true`, as the tool's description tells it to.
 
+### Example prompts
+
+With the bridge on, you can ask your agent to build, inspect, or
+change a model — for example:
+
+- *"Create a new document with a 40 × 30 × 10 mm mounting plate and a
+  6 mm through-hole in the centre."*
+- *"List the objects in the active document with their types,
+  bounding-box sizes, and volumes."*
+- *"Change the through-hole diameter to 8 mm and recompute the
+  document."*
+
 ---
 
 ## Preferences
@@ -99,16 +111,37 @@ Once connected, the agent has these tools:
 
 ---
 
-## Privacy & security
+## Privacy Policy
 
 MCP Bridge is designed for **local** control of FreeCAD.
 
-- The bridge opens a loopback-only port (`127.0.0.1`), and only while you toggle it on — an explicit action each session. The open port isn't exclusive to your MCP client — any process on your machine can reach it.
-- Your agent can run code in your live FreeCAD session — macro-level access, with no sandbox on the bridge side. That makes your MCP client the guardrail: with one you trust, set to ask for your approval before running the agent's tool calls, you stay in control.
-- The bridge rejects requests whose `Origin` names a host other than `localhost` or `127.0.0.1`, so web pages from other sites can't reach it through your browser.
-- The addon collects no telemetry, and the bridge itself never connects out to the internet. Code the agent runs in FreeCAD can still connect to the internet, as any macro can. Any data an AI provider receives is sent by your MCP client, not by the bridge.
+- The addon and its Claude Desktop shim collect no personal data,
+  analytics, or telemetry.
+- Tool requests and captured output (`stdout`, `stderr`, and
+  exceptions) are used only to run the requested Python in FreeCAD and
+  return the output to your MCP client over loopback (`127.0.0.1`).
+  Output pages are held in FreeCAD's memory only — the bridge writes
+  no job data to disk — and are discarded when **Page history
+  retention** expires, when you turn the bridge off, or when FreeCAD
+  closes.
+- The bridge itself never connects out to the internet or shares data
+  with third parties. Code the agent runs in FreeCAD can still access
+  local files or the internet, as any macro can. Any data an AI
+  provider receives is sent by your MCP client, not by the bridge.
+- The bridge opens a loopback-only port (`127.0.0.1`), and only while
+  you switch the bridge on — an explicit action each session. Any
+  process on your machine can reach the open port, not only your MCP
+  client.
+- Your agent can run code in your live FreeCAD session — macro-level
+  access, with no sandbox on the bridge side. That makes your MCP
+  client the guardrail. Use a client you trust, and set it to ask
+  before running the agent's tool calls.
+- The bridge rejects requests whose `Origin` names a host other than
+  `localhost` or `127.0.0.1`, so web pages from other sites can't
+  reach it through your browser.
 
-For security reports, see [SECURITY.md](SECURITY.md).
+For privacy questions or security reports, contact chris@createng.com
+or see [SECURITY.md](SECURITY.md).
 
 ---
 
