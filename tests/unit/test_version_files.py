@@ -78,6 +78,36 @@ def _disagreement(found: dict[str, str]) -> str | None:
     return "\n".join(lines)
 
 
+def _port_help_problem(root: Path) -> str | None:
+    """Why the port help line's version disagrees, or None when it matches."""
+    text = _read(root, "mcp-stdio-shim/manifest.json")
+    if text is None:
+        return "mcp-stdio-shim/manifest.json is missing"
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return "mcp-stdio-shim/manifest.json is invalid JSON"
+    if not isinstance(data, dict):
+        return "mcp-stdio-shim/manifest.json is not an object"
+    version = data.get("version")
+    if not isinstance(version, str) or not version.strip():
+        return "mcp-stdio-shim/manifest.json has no version"
+    port = (data.get("user_config") or {}).get("port") or {}
+    description = port.get("description")
+    if not isinstance(description, str):
+        return (
+            "mcp-stdio-shim/manifest.json has no "
+            "user_config.port.description"
+        )
+    expected = f"Extension {version.strip()}."
+    if expected not in description:
+        return (
+            "mcp-stdio-shim/manifest.json user_config.port.description "
+            f"does not carry {expected!r}: {description!r}"
+        )
+    return None
+
+
 STOCK_LINE = (
     "Source-only addon; the Claude Desktop bundle is attached as "
     "`freecad-mcp-bridge.mcpb`."
@@ -144,6 +174,9 @@ def notes_problem(root: Path) -> str | None:
     disagree = _disagreement(found)
     if disagree is not None:
         return disagree
+    help_problem = _port_help_problem(root)
+    if help_problem is not None:
+        return help_problem
     version = found["package.xml"]
     if version.startswith("("):
         return version
@@ -191,12 +224,15 @@ def _write_tree(root: Path, version: str, changelog: str) -> None:
         "<date>2026-01-01</date></package>\n",
         encoding="utf-8",
     )
-    payload = f'{{"version": "{version}"}}\n'
+    manifest = (
+        f'{{"version": "{version}", "user_config": {{"port": '
+        f'{{"description": "Extension {version}."}}}}}}\n'
+    )
     (root / "mcp-stdio-shim" / "manifest.json").write_text(
-        payload, encoding="utf-8"
+        manifest, encoding="utf-8"
     )
     (root / "mcp-stdio-shim" / "package.json").write_text(
-        payload, encoding="utf-8"
+        f'{{"version": "{version}"}}\n', encoding="utf-8"
     )
     (root / "CHANGELOG.md").write_text(changelog, encoding="utf-8")
 
@@ -215,6 +251,11 @@ class VersionFileTests(unittest.TestCase):
     def test_the_three_version_files_carry_the_same_release_version(self):
         """The three version files carry one release version."""
         problem = _disagreement(_release_versions(ROOT))
+        self.assertIsNone(problem, problem)
+
+    def test_the_port_help_line_carries_the_manifest_version(self):
+        """The port field's help line carries the manifest's version."""
+        problem = _port_help_problem(ROOT)
         self.assertIsNone(problem, problem)
 
     def test_the_changelog_section_matches_the_release_version(self):
@@ -360,6 +401,7 @@ Built by a team: example.
                 (root / "package.xml").read_text(encoding="utf-8")
             )
             self.assertEqual(bumped, "1.2.4")
+            self.assertIsNone(_port_help_problem(root))
             problem = notes_problem(root)
             self.assertEqual(
                 problem,
@@ -376,6 +418,23 @@ Built by a team: example.
             )
             (root / "CHANGELOG.md").write_text(filled, encoding="utf-8")
             self.assertIsNone(notes_problem(root))
+
+    def test_a_stale_port_help_version_is_refused(self):
+        """A port help line naming an older version is refused."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_tree(root, "1.2.3", _GOOD)
+            manifest = root / "mcp-stdio-shim" / "manifest.json"
+            manifest.write_text(
+                manifest.read_text(encoding="utf-8").replace(
+                    "Extension 1.2.3.", "Extension 1.2.2."
+                ),
+                encoding="utf-8",
+            )
+            problem = notes_problem(root)
+            self.assertIsNotNone(problem)
+            assert problem is not None
+            self.assertIn("Extension 1.2.3.", problem)
 
 
 def main(argv: list[str]) -> int:
