@@ -351,6 +351,8 @@ class MaintenanceHTTPServer(ThreadingHTTPServer):
 
     allow_reuse_address = sys.platform != "win32"
 
+    # Windows lets two SO_REUSEADDR sockets share a port,
+    # so binding a taken port wouldn't fail.
     def server_bind(self):
         if sys.platform == "win32" and hasattr(socket, "SO_EXCLUSIVEADDRUSE"):
             self.socket.setsockopt(
