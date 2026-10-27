@@ -129,8 +129,7 @@ MCP Bridge is designed for **local** control of FreeCAD.
 - The bridge's server inside FreeCAD never connects out to the
   internet or shares data with third parties. Code the agent runs in
   FreeCAD can still access local files or the internet, as any macro
-  can. Any data an AI provider receives is sent by your MCP client,
-  not by the bridge's server.
+  can.
 - The bridge opens a loopback-only port (`127.0.0.1`), and only while
   the bridge is switched on, which you do yourself, each session. Any
   process on your machine can reach the open port, not only your MCP
