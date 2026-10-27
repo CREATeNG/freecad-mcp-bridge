@@ -386,11 +386,14 @@ test("a redirect from the bridge port is refused and the target receives nothing
     }) + "\n"
   );
   shim.send(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "ping" }) + "\n");
-  const [toolReply, pingReply] = await shim.waitForLines(2);
+  const replies = await shim.waitForLines(2);
+  const toolReply = replies.find((r) => r.id === 1);
+  const pingReply = replies.find((r) => r.id === 2);
   await delay(100);
   assert.equal(toolReply.result.isError, true);
-  assert.ok(JSON.parse(toolReply.result.content[0].text).error);
+  assert.match(JSON.parse(toolReply.result.content[0].text).error, /unexpected redirect/);
   assert.equal(typeof pingReply.error.code, "number");
+  assert.match(pingReply.error.message, /unexpected redirect/);
   assert.equal(pingReply.result, undefined);
   assert.equal(target.requests.length, 0);
   await shim.stop();

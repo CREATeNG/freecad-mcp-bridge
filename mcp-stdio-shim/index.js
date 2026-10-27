@@ -31,6 +31,10 @@ function writeLine(text) {
   process.stdout.write(text + "\n");
 }
 
+function fetchErrorMessage(err) {
+  return err.cause && err.cause.message ? `${err.message}: ${err.cause.message}` : err.message;
+}
+
 function offlineResult(message, err) {
   // What a client gets while FreeCAD is down, in place of a JSON-RPC error.
   switch (message.method) {
@@ -50,7 +54,7 @@ function offlineResult(message, err) {
             text: JSON.stringify({
               page: [],
               has_more: false,
-              error: `${UNREACHABLE_HINT} (${ENDPOINT}: ${err.message})`,
+              error: `${UNREACHABLE_HINT} (${ENDPOINT}: ${fetchErrorMessage(err)})`,
             }),
           },
         ],
@@ -104,7 +108,7 @@ async function forward(rawLine, message) {
           error: {
             code: -32001,
             message:
-              `FreeCAD MCP Bridge unreachable at ${ENDPOINT} (${err.message}). ` +
+              `FreeCAD MCP Bridge unreachable at ${ENDPOINT} (${fetchErrorMessage(err)}). ` +
               "Is the bridge running? Toggle it on from the MCP Bridge toolbar in FreeCAD.",
           },
         })
