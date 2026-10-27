@@ -101,10 +101,8 @@ def _port_help_problem(root: Path) -> str | None:
         )
     expected = f"Extension {version.strip()}."
     if expected not in description:
-        return (
-            "mcp-stdio-shim/manifest.json user_config.port.description "
-            f"does not carry {expected!r}: {description!r}"
-        )
+        field = "mcp-stdio-shim/manifest.json user_config.port.description"
+        return f"{field} does not carry {expected!r}: {description!r}"
     return None
 
 
@@ -224,10 +222,9 @@ def _write_tree(root: Path, version: str, changelog: str) -> None:
         "<date>2026-01-01</date></package>\n",
         encoding="utf-8",
     )
-    manifest = (
-        f'{{"version": "{version}", "user_config": {{"port": '
-        f'{{"description": "Extension {version}."}}}}}}\n'
-    )
+    help_line = f"Extension {version}."
+    cfg = f'{{"port": {{"description": "{help_line}"}}}}'
+    manifest = f'{{"version": "{version}", "user_config": {cfg}}}\n'
     (root / "mcp-stdio-shim" / "manifest.json").write_text(
         manifest, encoding="utf-8"
     )
