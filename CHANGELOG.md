@@ -1,3 +1,32 @@
+## 0.1.26
+
+**What's new since 0.1.25**
+
+- **Claude Desktop extension:** the port field on the extension's page
+  now says what's needed on the FreeCAD side and shows the extension's
+  version (`0.1.26`). The manifest adds a longer description, plus
+  author, repository, documentation, support, privacy-policy, and
+  compatibility fields.
+- **Redirects refused:** if something other than the bridge answers on
+  the port and redirects, the Claude Desktop extension now stops and
+  says so, instead of following the redirect.
+- **Tool titles and annotations:** `execute_python`,
+  `execute_python_file`, and `get_output_page` now carry titles
+  (`Execute Python`, `Execute Python file`, `Get output page`) and MCP
+  annotations. The two execute tools are marked as changing the FreeCAD
+  session, and `get_output_page` is marked read-only.
+- **Preferences and docs:** the six tooltips on the **MCP Bridge**
+  Preferences page are shorter. The README replaces **Privacy &
+  security** with a **Privacy Policy**, adds three example prompts, and
+  explains that **Max response timeout** is a per-page wait counted from
+  when that page starts and that a newline counts as two characters in
+  **Max page size**.
+- **Behind the scenes:** unit and shim tests now cover the redirect
+  refusal, the tool titles and annotations, and the version in the port
+  field's help line.
+
+Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini (Google) and Codex (OpenAI), with Cursor among their tools.
+
 ## 0.1.25
 
 **What's new since 0.1.24**
