@@ -115,21 +115,24 @@ change a model — for example:
 
 MCP Bridge is designed for **local** control of FreeCAD.
 
-- The addon and its Claude Desktop shim collect no personal data,
-  analytics, or telemetry.
-- Tool requests and captured output (`stdout`, `stderr`, and
-  exceptions) are used only to run the requested Python in FreeCAD and
-  return the output to your MCP client over loopback (`127.0.0.1`).
-  Output pages are held in FreeCAD's memory only — the bridge writes
-  no job data to disk — and are discarded when **Page history
+- The addon and its Claude Desktop shim send no analytics or
+  telemetry. The code, file paths, and captured output (`stdout`,
+  `stderr`, and exceptions) that pass through them are used for
+  three things only: to run the requested code in FreeCAD, to mirror
+  the output to FreeCAD's **Report view**, and to return the output
+  to your MCP client over loopback (`127.0.0.1`).
+- The bridge's page history keeps output pages in FreeCAD's memory
+  only, never on disk, and discards them when **Page history
   retention** expires, when you turn the bridge off, or when FreeCAD
-  closes.
-- The bridge itself never connects out to the internet or shares data
-  with third parties. Code the agent runs in FreeCAD can still access
-  local files or the internet, as any macro can. Any data an AI
-  provider receives is sent by your MCP client, not by the bridge.
+  closes. FreeCAD itself writes **Report view** output to its log
+  file when FreeCAD's file logging is on.
+- The bridge's server inside FreeCAD never connects out to the
+  internet or shares data with third parties. Code the agent runs in
+  FreeCAD can still access local files or the internet, as any macro
+  can. Any data an AI provider receives is sent by your MCP client,
+  not by the bridge's server.
 - The bridge opens a loopback-only port (`127.0.0.1`), and only while
-  you switch the bridge on — an explicit action each session. Any
+  the bridge is switched on, which you do yourself, each session. Any
   process on your machine can reach the open port, not only your MCP
   client.
 - Your agent can run code in your live FreeCAD session — macro-level
