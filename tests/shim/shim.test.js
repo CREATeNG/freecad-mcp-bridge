@@ -365,3 +365,35 @@ test("with the bridge unreachable, other requests get an error explaining how to
   assert.match(reply.error.message, /MCP Bridge toolbar/);
   assert.equal(reply.result, undefined);
 });
+
+test("a redirect from the bridge port is refused and the target receives nothing", async () => {
+  const target = await startBridge(echo);
+  const redirector = http.createServer((req, res) => {
+    req.resume();
+    req.on("end", () => {
+      res.writeHead(307, { Location: `http://127.0.0.1:${target.port}/mcp` });
+      res.end();
+    });
+  });
+  await new Promise((resolve) => redirector.listen(0, "127.0.0.1", resolve));
+  const shim = startShim(redirector.address().port);
+  shim.send(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name: "execute_python", arguments: { code: "print(1)" } },
+    }) + "\n"
+  );
+  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "ping" }) + "\n");
+  const [toolReply, pingReply] = await shim.waitForLines(2);
+  await delay(100);
+  assert.equal(toolReply.result.isError, true);
+  assert.ok(JSON.parse(toolReply.result.content[0].text).error);
+  assert.equal(typeof pingReply.error.code, "number");
+  assert.equal(pingReply.result, undefined);
+  assert.equal(target.requests.length, 0);
+  await shim.stop();
+  await new Promise((resolve) => redirector.close(resolve));
+  target.close();
+});

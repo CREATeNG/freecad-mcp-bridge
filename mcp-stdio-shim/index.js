@@ -89,6 +89,7 @@ async function forward(rawLine, message) {
       method: "POST",
       headers: bridgeHeaders(message),
       body: rawLine,
+      redirect: "error",
     });
   } catch (err) {
     if (isNotification) return;
