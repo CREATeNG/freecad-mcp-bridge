@@ -6,6 +6,7 @@ Schemas only. `tools/list` returns these; the HTTP layer dispatches
 
 EXECUTE_PYTHON = {
     "name": "execute_python",
+    "title": "Execute Python",
     "description": (
         "Execute Python code inside the running FreeCAD GUI process. "
         "'App'/'FreeCAD' and 'Gui'/'FreeCADGui' are pre-bound — do not import "
@@ -16,15 +17,22 @@ EXECUTE_PYTHON = {
         "properties": {
             "code": {
                 "type": "string",
-                "description": "Python source to execute in the FreeCAD session.",
+                "description": (
+                    "Python source to execute in the FreeCAD session."
+                ),
             }
         },
         "required": ["code"],
+    },
+    "annotations": {
+        "readOnlyHint": False,
+        "destructiveHint": True,
     },
 }
 
 EXECUTE_PYTHON_FILE = {
     "name": "execute_python_file",
+    "title": "Execute Python file",
     "description": (
         "Read a local Python file and execute it inside the running FreeCAD "
         "GUI process. Same execution context as execute_python."
@@ -39,10 +47,15 @@ EXECUTE_PYTHON_FILE = {
         },
         "required": ["filepath"],
     },
+    "annotations": {
+        "readOnlyHint": False,
+        "destructiveHint": True,
+    },
 }
 
 GET_OUTPUT_PAGE = {
     "name": "get_output_page",
+    "title": "Get output page",
     "description": (
         "Retrieve a page of output for a prior execute call that returned "
         "has_more=true. To read forward, pass page_no one higher than the "
@@ -55,7 +68,8 @@ GET_OUTPUT_PAGE = {
             "job_token": {
                 "type": "string",
                 "description": (
-                    "Token from a previous execute or get_output_page response."
+                    "Token from a previous execute or get_output_page "
+                    "response."
                 ),
             },
             "page_no": {
@@ -65,6 +79,9 @@ GET_OUTPUT_PAGE = {
             },
         },
         "required": ["job_token", "page_no"],
+    },
+    "annotations": {
+        "readOnlyHint": True,
     },
 }
 
