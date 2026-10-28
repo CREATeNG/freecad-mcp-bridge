@@ -188,11 +188,12 @@ from anything attached to the release page.
    a pull request into `main` that changes only the version
    files and `CHANGELOG.md`, and nothing else. It runs every
    test a pull request runs.
-4. Merge the version pull request only once the Claude Desktop
-   check has passed without a flag (see The Claude Desktop
-   check routine, below) and the version pull request's checks
-   have passed. `release.yml` tags that commit, verifies it,
-   and moves `release`. It does not push to `main`.
+4. Merge the version pull request only after you have read the
+   release notes, the Claude Desktop check has passed without a
+   flag (see The Claude Desktop check routine, below), and the
+   version pull request's checks have passed. `release.yml`
+   tags that commit, verifies it, and moves `release`. It does
+   not push to `main`.
 5. If that run fails after the merge, GitHub → **Actions** →
    **Release Orchestrator** → **Run workflow**, on `main`.
    That retries the current `main`. Index users get the
