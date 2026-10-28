@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import xml.etree.ElementTree as ET
 
 LOG_PREFIX = "[test_install]"
@@ -34,6 +35,8 @@ def _write_ci_log(message: str, *, level: str = "INFO") -> None:
             os.makedirs(directory, exist_ok=True)
         with open(path, "a", encoding="utf-8") as handle:
             handle.write(f"{level} {_format_line(message)}\n")
+            handle.flush()
+            os.fsync(handle.fileno())
     except OSError:
         pass
 
@@ -70,8 +73,8 @@ def log(message: str) -> None:
     import FreeCAD as App
 
     line = _format_line(message)
-    App.Console.PrintMessage(f"{line}\n")
     _write_ci_log(message)
+    App.Console.PrintMessage(f"{line}\n")
 
 
 def log_notice(message: str) -> None:
@@ -79,8 +82,112 @@ def log_notice(message: str) -> None:
     import FreeCAD as App
 
     line = _format_line(message)
-    App.Console.PrintMessage(f"{line}\n")
     _write_ci_log(message, level="PASS")
+    App.Console.PrintMessage(f"{line}\n")
+
+
+def _loaded_windows_dll_path(dll_name: str) -> str | None:
+    if not sys.platform.startswith("win"):
+        return None
+    try:
+        import ctypes
+
+        k32 = ctypes.windll.kernel32
+        k32.GetModuleHandleW.argtypes = [ctypes.c_wchar_p]
+        k32.GetModuleHandleW.restype = ctypes.c_void_p
+        k32.GetModuleFileNameW.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_wchar_p,
+            ctypes.c_uint,
+        ]
+        k32.GetModuleFileNameW.restype = ctypes.c_uint
+        handle = k32.GetModuleHandleW(dll_name)
+        if not handle:
+            return None
+        buf = ctypes.create_unicode_buffer(1024)
+        length = k32.GetModuleFileNameW(handle, buf, 1024)
+        return buf.value if length else None
+    except Exception as exc:
+        return f"<error: {exc!r}>"
+
+
+def log_opengl_info() -> None:
+    """Record the OpenGL implementation FreeCAD's 3D view actually uses."""
+    import FreeCAD as App
+    import FreeCADGui as Gui
+    from PySide.QtCore import QCoreApplication
+    from PySide.QtWidgets import QGraphicsView
+
+    try:
+        from PySide6.QtOpenGLWidgets import QOpenGLWidget
+    except ImportError:
+        from PySide.QtWidgets import (  # type: ignore[attr-defined]
+            QOpenGLWidget,
+        )
+
+    temp_doc = None
+    try:
+        if App.ActiveDocument is None:
+            temp_doc = App.newDocument("_ci_gl_probe")
+            Gui.updateGui()
+            QCoreApplication.processEvents()
+
+        mw = Gui.getMainWindow()
+        widgets = mw.findChildren(QOpenGLWidget) if mw else []
+        view_widget = None
+        for widget in widgets:
+            if isinstance(widget.parent(), QGraphicsView):
+                view_widget = widget
+                break
+        if view_widget is None and widgets:
+            view_widget = widgets[-1]
+
+        vendor = None
+        renderer = None
+        version = None
+        view_class = None
+        if view_widget is not None:
+            parent = view_widget.parent()
+            view_class = (
+                parent.metaObject().className()
+                if parent is not None
+                else view_widget.metaObject().className()
+            )
+            ctx = view_widget.context()
+            if ctx is not None and ctx.isValid():
+                view_widget.makeCurrent()
+                try:
+                    funcs = ctx.functions()
+                    gl_vendor = 0x1F00
+                    gl_renderer = 0x1F01
+                    gl_version = 0x1F02
+                    vendor = funcs.glGetString(gl_vendor)
+                    renderer = funcs.glGetString(gl_renderer)
+                    version = funcs.glGetString(gl_version)
+                finally:
+                    view_widget.doneCurrent()
+
+        opengl32_path = _loaded_windows_dll_path("opengl32.dll")
+        parts = [
+            f"view={view_class!r}",
+            f"vendor={vendor!r}",
+            f"renderer={renderer!r}",
+            f"version={version!r}",
+        ]
+        if opengl32_path is not None:
+            parts.append(f"opengl32_dll={opengl32_path!r}")
+        details = ", ".join(parts)
+        log(f"3D view OpenGL: {details}")
+    except Exception as exc:
+        log(f"3D view OpenGL probe failed: {exc!r}")
+    finally:
+        if temp_doc is not None:
+            try:
+                App.closeDocument(temp_doc.Name)
+                Gui.updateGui()
+                QCoreApplication.processEvents()
+            except Exception:
+                pass
 
 
 def _save_coverage() -> None:
@@ -106,14 +213,59 @@ def _save_coverage() -> None:
         log(f"Coverage save failed: {exc!r}")
 
 
+def _flush_stdio() -> None:
+    """Flush Python and C runtime standard streams before hard process exit."""
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None:
+            try:
+                stream.flush()
+            except Exception:
+                pass
+    if sys.platform.startswith("win"):
+        try:
+            import ctypes
+
+            ucrt = ctypes.CDLL("ucrtbase")
+            ucrt.fflush.argtypes = [ctypes.c_void_p]
+            ucrt.fflush.restype = ctypes.c_int
+            ucrt.fflush(None)
+        except Exception:
+            pass
+
+
+def _terminate_windows_process(exit_code: int) -> None:
+    """End the current Windows process directly, skipping DLL detach."""
+    try:
+        import ctypes
+
+        k32 = ctypes.windll.kernel32
+        k32.GetCurrentProcess.argtypes = []
+        k32.GetCurrentProcess.restype = ctypes.c_void_p
+        k32.TerminateProcess.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+        k32.TerminateProcess.restype = ctypes.c_int
+        k32.TerminateProcess(k32.GetCurrentProcess(), exit_code & 0xFFFFFFFF)
+    except Exception as exc:
+        log(f"TerminateProcess({exit_code}) failed: {exc!r}")
+
+
 def quit_freecad(exit_code: int = 0) -> None:
     """Exit the FreeCAD process from a CI test script.
 
     These scripts only run under automation; hard-exit avoids flaky GUI teardown
     on headless runners (SIGSEGV, access violations, 15-minute hangs).
     """
+    log(f"quit_freecad(exit_code={exit_code}): before Qt event drain (500 ms)")
     _drain_qt_events(500)
+    log(f"quit_freecad(exit_code={exit_code}): after Qt event drain")
     _save_coverage()
+    log(f"quit_freecad(exit_code={exit_code}): after coverage save")
+    log(f"quit_freecad(exit_code={exit_code}): before os._exit({exit_code})")
+    if sys.platform.startswith("win"):
+        _flush_stdio()
+        stage = f"before TerminateProcess({exit_code})"
+        log(f"quit_freecad(exit_code={exit_code}): {stage}")
+        _flush_stdio()
+        _terminate_windows_process(exit_code)
     os._exit(exit_code)
 
 
@@ -121,8 +273,8 @@ def fail(message: str) -> None:
     import FreeCAD as App
 
     line = _format_line(message)
-    App.Console.PrintError(f"{line}\n")
     _write_ci_log(message, level="FAIL")
+    App.Console.PrintError(f"{line}\n")
     log_group_end()
     quit_freecad(1)
 
