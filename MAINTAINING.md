@@ -200,29 +200,27 @@ from anything attached to the release page.
    release once the FreeCAD Addon Index cache refreshes,
    which can take up to **four hours**.
 
-**The Claude Desktop check routine.** For a pull request that
-the check covers (a change pull request that step 1's second
-sub-step names, or the version pull request of step 3), the
-agent holding the `freecad-desktop-checker` seat on the agent
-hub runs the check as a routine when the pull request opens
-and again on every push, and comments the result on the pull
-request. On a change pull request (step 1), the routine takes
-the `.mcpb` that the pull request's checks packed, installs it
-in Claude Desktop, and installs the pull request's addon in
-FreeCAD. The routine then runs a hello call (`print('hello')`
-in FreeCAD) through both together. A version pull request
-(step 3) gets a lighter check: the routine installs the
-`.mcpb`, runs the hello call, and flags anything in the pull
-request beyond the version files and `CHANGELOG.md`. If no
-result is posted, run the check by hand and post it the same
-way.
+**The Claude Desktop check routine.** For a pull request that the check
+covers (a change pull request that step 1's second sub-step names, or
+the version pull request of step 3), the agent holding the
+`freecad-desktop-checker` seat on the agent hub runs the check as a
+routine when the pull request opens and again on every push from the
+GitHub account the routine watches, and comments the result on the pull
+request. On a change pull request (step 1), the routine takes the
+`.mcpb` that the pull request's checks packed, installs it in Claude
+Desktop, and installs the pull request's addon in FreeCAD. The routine
+then runs a hello call (`print('hello')` in FreeCAD) through both
+together. A version pull request (step 3) gets a lighter check: the
+routine installs the `.mcpb`, runs the hello call, and flags anything in
+the pull request beyond the version files and `CHANGELOG.md`. If no
+result is posted, run the check by hand and post it the same way.
 
 **Duplicate versions are blocked.** **`release.yml`** reads
 `package.xml`, checks that `v{x.y.z}` does not already exist
 (**prepare**), and **publish** checks again before tagging. If
 the tag is already on GitHub, the run fails. No second tag, no
 partial publish. A push that does not change the version does
-not release. The next version is another version pull request.
+not release.
 
 ---
 
