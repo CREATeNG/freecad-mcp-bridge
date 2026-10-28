@@ -259,13 +259,20 @@ def quit_freecad(exit_code: int = 0) -> None:
     log(f"quit_freecad(exit_code={exit_code}): after Qt event drain")
     _save_coverage()
     log(f"quit_freecad(exit_code={exit_code}): after coverage save")
-    log(f"quit_freecad(exit_code={exit_code}): before os._exit({exit_code})")
     if sys.platform.startswith("win"):
         _flush_stdio()
         stage = f"before TerminateProcess({exit_code})"
         log(f"quit_freecad(exit_code={exit_code}): {stage}")
         _flush_stdio()
         _terminate_windows_process(exit_code)
+        fallback = (
+            f"TerminateProcess returned; before os._exit({exit_code})"
+        )
+        log(f"quit_freecad(exit_code={exit_code}): {fallback}")
+        _flush_stdio()
+    else:
+        stage = f"before os._exit({exit_code})"
+        log(f"quit_freecad(exit_code={exit_code}): {stage}")
     os._exit(exit_code)
 
 
