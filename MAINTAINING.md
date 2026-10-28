@@ -29,9 +29,10 @@ request with those four files edited by hand.
 The maintainer replaces the placeholder, commits the files,
 and opens the pull request. The script does not commit or push.
 
-The release workflow pushes nothing to `main`. The next version
-is another version pull request. Between releases, `main` holds
-whatever those pull requests leave there; see
+The release workflow pushes nothing to `main`. Every change
+lands on `main` first through a pull request. The next version
+is then a version pull request. Between releases, `main` holds
+whatever pull requests have merged since the last release; see
 [Branches, tags, and the FreeCAD Addon Index](#branches-tags-and-the-freecad-addon-index).
 
 ---
@@ -160,32 +161,60 @@ from anything attached to the release page.
 
 ## Shipping a release (checklist)
 
-1. On a branch, run
-   [`scripts/bump-package-z.sh`](scripts/bump-package-z.sh),
+1. Open a pull request into `main` for each change you intend
+   to ship. One pull request can also bundle several changes.
+   - When the pull request changes `mcp-stdio-shim/`, look in
+     Claude Desktop at the `.mcpb` that the pull request's
+     checks packed. When it changes `freecad/`, `Resources/`,
+     or `package.xml`, install the pull request's addon in
+     your own FreeCAD and look at it there.
+   - When the pull request changes `mcp-stdio-shim/`,
+     `freecad/`, `Resources/`, or `package.xml`, wait for the
+     Claude Desktop check on the pull request (see The Claude
+     Desktop check routine, below).
+   - Push any tweaks to that same pull request until the change
+     is settled.
+   - Merge the pull request into `main` only after each look
+     that applies to it is done, and the check that applies to
+     it and the pull request's checks have passed.
+2. Once every change for the release is on `main`, on a branch
+   run [`scripts/bump-package-z.sh`](scripts/bump-package-z.sh),
    or edit the version files and `CHANGELOG.md` to the version
    you intend to ship. The version files are `package.xml`,
    `mcp-stdio-shim/manifest.json`, and
    `mcp-stdio-shim/package.json`. The script starts the new
    changelog section with a placeholder.
-2. Replace that placeholder with the release notes, then open
-   a pull request that changes only the version files and
-   `CHANGELOG.md`. It runs every test a pull request runs.
-3. Wait for the Claude Desktop check. The agent holding the
-   freecad-desktop-checker seat on the agent hub runs the check
-   as a routine that starts when a version pull request opens. The
-   routine takes the `.mcpb` that the pull request's checks
-   packed, installs it in Claude Desktop, runs a hello call
-   through it (`print('hello')` in FreeCAD), and comments the
-   result on the pull request. If no result is posted, run the
-   check by hand and post it the same way. Merge only after it
-   passes.
-4. Merge the pull request. `release.yml` tags that commit,
-   verifies it, and moves `release`. It does not push to `main`.
+3. Replace that placeholder with the release notes, then open
+   a pull request into `main` that changes only the version
+   files and `CHANGELOG.md`, and nothing else. It runs every
+   test a pull request runs.
+4. Merge the version pull request only once the Claude Desktop
+   check has passed without a flag (see The Claude Desktop
+   check routine, below) and the version pull request's checks
+   have passed. `release.yml` tags that commit, verifies it,
+   and moves `release`. It does not push to `main`.
 5. If that run fails after the merge, GitHub → **Actions** →
    **Release Orchestrator** → **Run workflow**, on `main`.
    That retries the current `main`. Index users get the
    release once the FreeCAD Addon Index cache refreshes,
    which can take up to **four hours**.
+
+**The Claude Desktop check routine.** For a pull request that
+the check covers (a change pull request that step 1's second
+sub-step names, or the version pull request of step 3), the
+agent holding the `freecad-desktop-checker` seat on the agent
+hub runs the check as a routine when the pull request opens
+and again on every push, and comments the result on the pull
+request. On a change pull request (step 1), the routine takes
+the `.mcpb` that the pull request's checks packed, installs it
+in Claude Desktop, and installs the pull request's addon in
+FreeCAD. The routine then runs a hello call (`print('hello')`
+in FreeCAD) through both together. A version pull request
+(step 3) gets a lighter check: the routine installs the
+`.mcpb`, runs the hello call, and flags anything in the pull
+request beyond the version files and `CHANGELOG.md`. If no
+result is posted, run the check by hand and post it the same
+way.
 
 **Duplicate versions are blocked.** **`release.yml`** reads
 `package.xml`, checks that `v{x.y.z}` does not already exist
