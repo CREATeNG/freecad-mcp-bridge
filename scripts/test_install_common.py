@@ -213,6 +213,41 @@ def _save_coverage() -> None:
         log(f"Coverage save failed: {exc!r}")
 
 
+def _flush_stdio() -> None:
+    """Flush Python and C runtime standard streams before hard process exit."""
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None:
+            try:
+                stream.flush()
+            except Exception:
+                pass
+    if sys.platform.startswith("win"):
+        try:
+            import ctypes
+
+            ucrt = ctypes.CDLL("ucrtbase")
+            ucrt.fflush.argtypes = [ctypes.c_void_p]
+            ucrt.fflush.restype = ctypes.c_int
+            ucrt.fflush(None)
+        except Exception:
+            pass
+
+
+def _terminate_windows_process(exit_code: int) -> None:
+    """End the current Windows process directly, skipping DLL detach."""
+    try:
+        import ctypes
+
+        k32 = ctypes.windll.kernel32
+        k32.GetCurrentProcess.argtypes = []
+        k32.GetCurrentProcess.restype = ctypes.c_void_p
+        k32.TerminateProcess.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+        k32.TerminateProcess.restype = ctypes.c_int
+        k32.TerminateProcess(k32.GetCurrentProcess(), exit_code & 0xFFFFFFFF)
+    except Exception as exc:
+        log(f"TerminateProcess({exit_code}) failed: {exc!r}")
+
+
 def quit_freecad(exit_code: int = 0) -> None:
     """Exit the FreeCAD process from a CI test script.
 
@@ -225,6 +260,12 @@ def quit_freecad(exit_code: int = 0) -> None:
     _save_coverage()
     log(f"quit_freecad(exit_code={exit_code}): after coverage save")
     log(f"quit_freecad(exit_code={exit_code}): before os._exit({exit_code})")
+    if sys.platform.startswith("win"):
+        _flush_stdio()
+        stage = f"before TerminateProcess({exit_code})"
+        log(f"quit_freecad(exit_code={exit_code}): {stage}")
+        _flush_stdio()
+        _terminate_windows_process(exit_code)
     os._exit(exit_code)
 
 
