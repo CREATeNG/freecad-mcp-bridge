@@ -68,6 +68,7 @@ def _run() -> None:
     from freecad.mcp_bridge import config
 
     common.log_group_start("Serve the bridge for acceptance tests")
+    common.log_opengl_info()
     ready_file = common.env("ACCEPTANCE_READY_FILE", "")
     stop_file = common.env("ACCEPTANCE_STOP_FILE", "")
     if not ready_file or not stop_file:

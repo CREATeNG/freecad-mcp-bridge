@@ -170,6 +170,7 @@ def _run() -> None:
         f"Install phase (mode={mode}, tag={tag}, repo={repo_url}, "
         f"user_data={App.getUserAppDataDir()})"
     )
+    common.log_opengl_info()
 
     mod_root = common.mod_dir()
     if os.path.isdir(mod_root):

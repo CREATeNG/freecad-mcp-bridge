@@ -445,6 +445,7 @@ def _run() -> None:
         "Verify phase after restart "
         f"(user_data={App.getUserAppDataDir()})"
     )
+    common.log_opengl_info()
 
     _verify_addon_startup()
     _verify_preferences_line()

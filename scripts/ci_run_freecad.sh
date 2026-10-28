@@ -88,6 +88,25 @@ resolve_freecad_bin() {
   echo "Using FreeCAD: ${FREECAD_BIN}"
 }
 
+setup_windows_software_gl() {
+  if [[ "${RUNNER_OS:-}" != "Windows" ]]; then
+    return 0
+  fi
+  local bin_dir sw_dll gl_dll
+  bin_dir="$(dirname "${FREECAD_BIN}")"
+  sw_dll="${bin_dir}/opengl32sw.dll"
+  gl_dll="${bin_dir}/opengl32.dll"
+  if [[ ! -f "${sw_dll}" ]]; then
+    echo "FreeCAD software OpenGL library not found: ${sw_dll}" >&2
+    return 1
+  fi
+  if [[ ! -f "${gl_dll}" ]] || ! cmp -s "${sw_dll}" "${gl_dll}"; then
+    cp -f "${sw_dll}" "${gl_dll}"
+  fi
+  export QT_OPENGL=software
+  echo "Using FreeCAD software OpenGL: ${gl_dll} (QT_OPENGL=${QT_OPENGL})"
+}
+
 setup_profile() {
   if [[ "${ISOLATE_HOME:-false}" == "true" ]]; then
     export HOME="${FC_CI_HOME}"
@@ -120,6 +139,7 @@ run_with_timeout() {
 }
 
 resolve_freecad_bin
+setup_windows_software_gl
 setup_profile
 
 if [[ ! -f "$SCRIPT" ]]; then
