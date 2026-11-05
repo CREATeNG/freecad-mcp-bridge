@@ -255,8 +255,9 @@ every three hours. After the version matches `release` and
 the Index installation checks pass on all three OSes, it POSTs the
 version to Ricky Boy's **Index ready webhook** routine. Configure
 repository Actions secrets `RICKY_INDEX_WEBHOOK_URL` and
-`RICKY_INDEX_WEBHOOK_KEY` from that routine's panel. The key is the
-complete Authorization-header value shown there.
+`RICKY_INDEX_WEBHOOK_KEY` from that routine's panel. Store the raw
+Webhook key in `RICKY_INDEX_WEBHOOK_KEY`. The sender constructs the
+`Authorization: Bearer <key>` header.
 
 The workflow records the checked-version marker after the receiver
 accepts the POST. A failed delivery fails that job and leaves a new

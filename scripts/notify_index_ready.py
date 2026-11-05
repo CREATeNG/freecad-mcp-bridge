@@ -22,12 +22,12 @@ def index_ready_event(repository, version, release_sha, workflow_run_url):
     }
 
 
-def _post(url, authorization, event):
+def _post(url, sender_key, event):
     parsed = urlsplit(url)
     if parsed.scheme != "https" or not parsed.hostname or parsed.username:
         raise ValueError("The webhook requires an HTTPS URL")
-    if not authorization:
-        raise ValueError("Webhook authorization is missing")
+    if not sender_key:
+        raise ValueError("Webhook sender key is missing")
     path = parsed.path or "/"
     if parsed.query:
         path += f"?{parsed.query}"
@@ -41,7 +41,7 @@ def _post(url, authorization, event):
             body=json.dumps(event).encode("utf-8"),
             headers={
                 "Content-Type": "application/json",
-                "Authorization": authorization,
+                "Authorization": f"Bearer {sender_key}",
             },
         )
         response = connection.getresponse()
@@ -68,7 +68,7 @@ def main():
             event,
         )
     except (OSError, KeyError, ValueError, http.client.HTTPException):
-        # The endpoint and authorization value may both contain credentials.
+        # The endpoint and sender key may both contain credentials.
         print(
             "Index webhook delivery failed. Check its configuration and "
             "connection.",

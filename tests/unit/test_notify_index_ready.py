@@ -15,7 +15,7 @@ REPOSITORY = "CREATeNG/freecad-mcp-bridge"
 SHA = "a" * 40
 RUN_URL = f"https://github.com/{REPOSITORY}/actions/runs/123"
 URL = "https://receiver.example/hooks/private-path?routine=index-ready"
-KEY = "Bearer private-sender-key"
+KEY = "private-sender-key"
 
 
 class IndexNotificationTests(unittest.TestCase):
@@ -54,7 +54,7 @@ class IndexNotificationTests(unittest.TestCase):
         )
         self.assertNotEqual(newer["delivery_id"], self.event["delivery_id"])
 
-    def test_the_post_uses_json_and_the_exact_authorization_value(self):
+    def test_the_post_uses_json_and_adds_bearer_to_the_raw_key(self):
         with patch.object(http.client, "HTTPSConnection") as connect:
             connection = connect.return_value
             connection.getresponse.return_value.status = 202
@@ -67,7 +67,9 @@ class IndexNotificationTests(unittest.TestCase):
             "POST", "/hooks/private-path?routine=index-ready"
         ))
         self.assertEqual(json.loads(args.kwargs["body"]), self.event)
-        self.assertEqual(args.kwargs["headers"]["Authorization"], KEY)
+        self.assertEqual(
+            args.kwargs["headers"]["Authorization"], f"Bearer {KEY}"
+        )
         self.assertEqual(
             args.kwargs["headers"]["Content-Type"], "application/json"
         )
@@ -83,7 +85,7 @@ class IndexNotificationTests(unittest.TestCase):
                 )
         connect.assert_not_called()
 
-    def test_a_blank_authorization_value_is_refused(self):
+    def test_a_blank_sender_key_is_refused(self):
         with patch.object(http.client, "HTTPSConnection") as connect:
             with self.assertRaises(ValueError):
                 notify_index_ready._post(URL, "", self.event)
