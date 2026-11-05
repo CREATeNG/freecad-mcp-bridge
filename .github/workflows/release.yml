@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: write
+  actions: read
+  pull-requests: read
 
 # Queue, never cancel: a second run waits rather than shipping over
 # the first.
@@ -161,17 +163,16 @@ jobs:
         if: steps.gate.outputs.do_release == 'true'
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
-      - name: Pack the Claude Desktop bundle
+      - name: Retrieve the Desktop-tested PR bundle
         id: bundle
         if: steps.gate.outputs.do_release == 'true'
-        run: |
-          set -euo pipefail
-          npx --yes @anthropic-ai/mcpb@2.1.2 pack mcp-stdio-shim freecad-mcp-bridge.mcpb
-          sha="$(sha256sum freecad-mcp-bridge.mcpb | awk '{print $1}')"
-          echo "bundle_sha256=${sha}" >> "$GITHUB_OUTPUT"
-          echo "Packed freecad-mcp-bridge.mcpb (${sha})"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_SHA: ${{ steps.commit_sha.outputs.sha }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: python3 scripts/release_bundle.py
 
-      - name: Upload the packed bundle
+      - name: Upload the Desktop-tested bundle for release verification
         if: steps.gate.outputs.do_release == 'true'
         uses: actions/upload-artifact@v4
         with:

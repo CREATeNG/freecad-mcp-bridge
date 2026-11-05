@@ -101,7 +101,7 @@ after the tag, and moves `release`. It pushes nothing to `main`.
 ```mermaid
 flowchart TD
   R[release.yml]
-  R --> prep[prepare — version gate, validate, pack .mcpb]
+  R --> prep[prepare — version gate, validate, retrieve tested .mcpb]
   prep -->|not a version push| skip[Stop. main unchanged]
   prep -->|version pull request, or a retry| verify[install_verify pre-tag — main and the bundle]
   verify -->|fail| stop[No tag / no GitHub Release]
@@ -122,15 +122,22 @@ flowchart TD
    credit line). Then resolve the version, verify the tag
    does not already exist, validate the Claude
    Desktop bundle manifest (`mcpb validate`), record the
-   release-candidate commit SHA, pack `freecad-mcp-bridge.mcpb`,
-   record its sha256, and upload that file.
+   release-candidate commit SHA, and retrieve the version pull
+   request's Desktop-tested `freecad-mcp-bridge.mcpb`. The latest
+   trusted Ricky Boy check report must say PASS for that PR's head
+   and name its acceptance run, artifact digest and bundle sha256.
+   Prepare checks that the merged and tested source trees match,
+   the acceptance run succeeded, and both downloaded hashes match
+   the report. It uploads those bytes for release verification.
+   An unavailable or expired artifact requires another PR bundle
+   and Desktop check before retrying the release.
 2. **Install-verify** (pre-tag) —
    [`install-verify.yml`](.github/workflows/install-verify.yml)
    with `install_mode: main` and `verify_bundle: true`: full
    Addon Manager install and restart verify on all three OSes
    against `main`, then the packed shim called over stdio while
    that bridge is still up. **No tag if this fails.**
-3. **Publish** — check the changelog section and the packed
+3. **Publish** — check the changelog section and the tested
    bundle's sha256, push the matching tag (`v{x.y.z}`) on the
    verified commit, create a **GitHub Release** from that
    section, and upload that same file. Uses
@@ -150,9 +157,10 @@ already exists fails at prepare.
 ## Release assets
 
 Each GitHub Release carries one uploaded asset:
-**`freecad-mcp-bridge.mcpb`** — the Claude Desktop bundle,
-packed from `mcp-stdio-shim/` in prepare and attached, after
-its sha256 matches, during publish. The addon itself isn't a
+**`freecad-mcp-bridge.mcpb`** — the Claude Desktop bundle packed
+by the version pull request's checks and tested in Claude
+Desktop. Prepare retrieves that artifact, and publish attaches
+the same bytes after checking its sha256. The addon itself isn't a
 release asset — it ships as plain Python source, installed
 directly from the repo tree (via the tag or its zip), not
 from anything attached to the release page.
