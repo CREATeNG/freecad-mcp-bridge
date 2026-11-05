@@ -46,6 +46,7 @@ at head `{HEAD}`.
 """
     return {
         "id": 99,
+        "created_at": "2026-11-05T01:00:00Z",
         "updated_at": "2026-11-05T01:00:00Z",
         "author_association": "MEMBER",
         "body": body,
@@ -125,6 +126,33 @@ class ReleaseBundleTests(unittest.TestCase):
         self.data["issues/7/comments?per_page=100&page=1"].append(failed)
         with self.assertRaisesRegex(ValueError, "latest.*must be PASS"):
             self._retrieve()
+
+    def test_an_edited_older_pass_cannot_override_a_later_failure(self):
+        failed = copy.deepcopy(self.comment)
+        failed.update(
+            id=100,
+            created_at="2026-11-05T01:30:00Z",
+            updated_at="2026-11-05T01:30:00Z",
+        )
+        failed["body"] = failed["body"].replace("test: PASS", "test: FAIL")
+        self.comment["updated_at"] = "2026-11-05T02:00:00Z"
+        self.data["issues/7/comments?per_page=100&page=1"].append(failed)
+        with self.assertRaisesRegex(ValueError, "latest.*must be PASS"):
+            self._retrieve()
+
+    def test_editing_an_old_failure_keeps_the_newer_pass_in_effect(self):
+        newer = copy.deepcopy(self.comment)
+        newer.update(
+            id=100,
+            created_at="2026-11-05T01:30:00Z",
+            updated_at="2026-11-05T01:30:00Z",
+        )
+        self.comment["body"] = self.comment["body"].replace(
+            "test: PASS", "test: FAIL"
+        )
+        self.comment["updated_at"] = "2026-11-05T02:00:00Z"
+        self.data["issues/7/comments?per_page=100&page=1"].append(newer)
+        self.assertEqual(self._retrieve()["comment_id"], 100)
 
     def test_a_pass_for_an_older_pr_head_is_refused(self):
         self.comment["body"] = self.comment["body"].replace(HEAD, "d" * 40)

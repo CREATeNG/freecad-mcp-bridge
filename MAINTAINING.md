@@ -123,14 +123,22 @@ flowchart TD
    does not already exist, validate the Claude
    Desktop bundle manifest (`mcpb validate`), record the
    release-candidate commit SHA, and retrieve the version pull
-   request's Desktop-tested `freecad-mcp-bridge.mcpb`. The latest
-   trusted Ricky Boy check report must say PASS for that PR's head
-   and name its acceptance run, artifact digest and bundle sha256.
+   request's Desktop-tested `freecad-mcp-bridge.mcpb`. Prepare
+   accepts comments with an `OWNER`, `MEMBER` or `COLLABORATOR`
+   author association whose body starts with
+   `Ricky Boy (AI agent hub name:` and contains
+   `Claude Desktop GUI test:`. It selects the newest report by
+   creation time, then comment id. That report must say PASS for
+   the PR's full head SHA and name its acceptance run, artifact
+   digest and bundle sha256.
    Prepare checks that the merged and tested source trees match,
    the acceptance run succeeded, and both downloaded hashes match
    the report. It uploads those bytes for release verification.
    An unavailable or expired artifact requires another PR bundle
    and Desktop check before retrying the release.
+   The gate uses the report's run and artifact identity. If a
+   rerun makes that run fail or replaces the artifact, retry after
+   a successful PR run and a new Desktop report.
 2. **Install-verify** (pre-tag) —
    [`install-verify.yml`](.github/workflows/install-verify.yml)
    with `install_mode: main` and `verify_bundle: true`: full

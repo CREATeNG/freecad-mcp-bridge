@@ -61,7 +61,7 @@ def _proof(comments: list[dict], repository: str, head_sha: str) -> dict:
         raise ValueError("The PR has no trusted Desktop check report")
     latest = max(
         reports,
-        key=lambda c: (c["updated_at"], c["id"]),
+        key=lambda c: (c["created_at"], c["id"]),
     )
     body = latest["body"]
     result = re.search(r"\*\*Claude Desktop GUI test: (\w+)\*\*", body)
