@@ -2,7 +2,7 @@
 # Release publish step — INTERNAL to .github/workflows/release.yml only.
 #
 # Runs only after install-verify has passed on main. Checks the
-# changelog section and the bundle prepare packed, then pushes the
+# changelog section and the tested bundle prepare retrieved, then pushes the
 # release tag on the verified commit, creates a GitHub Release from
 # that section, and uploads the bundle as the release's one asset
 # (freecad-mcp-bridge.mcpb).
@@ -82,7 +82,7 @@ echo "Checking the changelog section"
 notes_file="${RUNNER_TEMP:-/tmp}/release-notes.md"
 python3 tests/unit/test_version_files.py --body > "$notes_file"
 
-echo "Checking the bundle prepare packed"
+echo "Checking the Desktop-tested bundle prepare retrieved"
 printf '%s  %s\n' "$BUNDLE_SHA" "$BUNDLE_PATH" | sha256sum -c -
 
 git tag -a "$RELEASE_TAG" -m "Release ${RELEASE_TAG}"
