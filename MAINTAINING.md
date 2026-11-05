@@ -250,6 +250,23 @@ The entry lists `git_ref` **`release`** with `zip_url` `https://github.com/CREAT
 
 The FreeCAD Addon Index cache refreshes from `release` periodically, which can take up to **four hours**.
 
+**Index-ready notification.** The Index install workflow is scheduled
+every three hours. After the version matches `release` and
+the Index installation checks pass on all three OSes, it POSTs the
+version to Ricky Boy's **Index ready webhook** routine. Configure
+repository Actions secrets `RICKY_INDEX_WEBHOOK_URL` and
+`RICKY_INDEX_WEBHOOK_KEY` from that routine's panel. Store the raw
+Webhook key in `RICKY_INDEX_WEBHOOK_KEY`. The sender constructs the
+`Authorization: Bearer <key>` header.
+
+The workflow records the checked-version marker after the receiver
+accepts the POST. A failed delivery fails that job and leaves a new
+version eligible for the next check. The event carries a stable
+delivery id for its repository and version. The receiver checks its
+tested-version record before starting a Desktop check. Each accepted
+POST wakes the routine, including retries. Disable the former
+scheduled Index routine after confirming end-to-end delivery.
+
 ---
 
 ## Automated install verification (CI)

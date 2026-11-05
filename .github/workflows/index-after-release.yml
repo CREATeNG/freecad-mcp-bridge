@@ -29,6 +29,7 @@ jobs:
     outputs:
       run: ${{ steps.compare.outputs.run }}
       version: ${{ steps.compare.outputs.version }}
+      release_sha: ${{ steps.compare.outputs.release_sha }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -43,6 +44,7 @@ jobs:
         run: |
           set -euo pipefail
           git fetch --depth=1 origin release
+          RELEASE_SHA=$(git rev-parse FETCH_HEAD)
           VERSION=$(git show FETCH_HEAD:package.xml | sed -n 's/.*<version>\([^<]*\)<\/version>.*/\1/p' | head -1)
           if [ -z "$VERSION" ]; then
             echo "::error::Could not read <version> from release's package.xml"
@@ -51,6 +53,7 @@ jobs:
           INDEX_VERSION=$(python3 scripts/index_catalog_version.py)
           echo "release holds $VERSION; the Index catalog states $INDEX_VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "release_sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
 
           if [ "$INDEX_VERSION" != "$VERSION" ]; then
             PUBLISHED=$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/v${VERSION}" --jq .published_at)
@@ -84,10 +87,21 @@ jobs:
       acceptance: false
 
   mark_checked:
-    name: Record the version as checked
+    name: Notify Ricky and record the checked version
     needs: [check, install_verify]
     runs-on: ubuntu-24.04
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Notify Ricky that the Index version is ready
+        env:
+          INDEX_VERSION: ${{ needs.check.outputs.version }}
+          INDEX_RELEASE_SHA: ${{ needs.check.outputs.release_sha }}
+          RICKY_INDEX_WEBHOOK_URL: ${{ secrets.RICKY_INDEX_WEBHOOK_URL }}
+          RICKY_INDEX_WEBHOOK_KEY: ${{ secrets.RICKY_INDEX_WEBHOOK_KEY }}
+        run: python3 scripts/notify_index_ready.py
+
       - name: Write the marker
         env:
           VERSION: ${{ needs.check.outputs.version }}
