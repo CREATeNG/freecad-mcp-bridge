@@ -121,9 +121,32 @@ class PreferencePageTests(unittest.TestCase):
         self.assertEqual(
             settings["RequireToken"]["text"], "Require bearer token"
         )
+        self.assertEqual(
+            settings["RequireToken"]["toolTip"],
+            "Require a bearer token on non-loopback listen addresses.",
+        )
         self.assertEqual(settings["RequireToken"]["checked"], "true")
+        gen_btn = next(
+            w
+            for w in ET.parse(PAGE).iter("widget")
+            if w.get("name") == "generateTokenButton"
+        )
+        gen_props = {
+            prop.get("name"): prop[0].text
+            for prop in gen_btn.findall("property")
+        }
+        self.assertEqual(gen_props["text"], "Generate new token")
+        self.assertEqual(
+            gen_props["toolTip"],
+            "Generate a new bearer token and show it once.",
+        )
         self.assertEqual(
             settings["RequireTls"]["text"], "Require TLS (HTTPS)"
+        )
+        self.assertEqual(
+            settings["RequireTls"]["toolTip"],
+            "Serve HTTPS on non-loopback listen addresses with the files "
+            "below.",
         )
         self.assertEqual(settings["RequireTls"]["checked"], "true")
         self.assertIn(settings["TlsCertFile"]["fileName"], (None, ""))
@@ -1112,6 +1135,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
         shut_down = []
         closed = []
         fail_bind_on = None
+        fail_wrap_on = False
         fail_thread_on = None
 
         class DictParams:
@@ -1160,8 +1184,18 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 return self._alive
 
         class FakeSSLContext:
-            def wrap_socket(self, sock, server_side=False):
-                wrapped = f"tls({sock}, server_side={server_side})"
+            def wrap_socket(
+                self,
+                sock,
+                server_side=False,
+                do_handshake_on_connect=True,
+            ):
+                if fail_wrap_on:
+                    raise OSError("tls wrap failed")
+                wrapped = (
+                    f"tls({sock}, server_side={server_side}, "
+                    f"do_handshake_on_connect={do_handshake_on_connect})"
+                )
                 wrapped_sockets.append(wrapped)
                 return wrapped
 
@@ -1253,9 +1287,13 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 )
 
                 # 2b. With RequireToken=True and RequireTls=True: missing cert
-                # raises ValueError and stays off; with valid cert, wraps only
-                # the non-loopback socket and sets require_token only on it.
+                # raises ValueError and stays off; missing TokenHash raises
+                # ValueError without generating a hidden token; failed
+                # wrap_socket closes the bound socket; valid cert + token
+                # wraps only the non-loopback socket with
+                # do_handshake_on_connect=False and sets require_token on it.
                 bound.clear()
+                closed.clear()
                 warnings.clear()
                 errors.clear()
                 store["RequireToken"] = True
@@ -1273,6 +1311,34 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                     "build_ssl_context",
                     return_value=FakeSSLContext(),
                 ):
+                    with self.assertRaises(ValueError) as no_tok_ctx:
+                        srv.start(
+                            tls_cert_file="cert.pem", tls_key_file="key.pem"
+                        )
+                    self.assertIn(
+                        "A bearer token is required for non-loopback listen "
+                        "addresses and none has been generated.",
+                        str(no_tok_ctx.exception),
+                    )
+                    self.assertEqual(config.token_hash(), "")
+                    self.assertFalse(srv.is_running())
+                    self.assertEqual(bound, [])
+
+                    config.generate_and_store_token()
+                    fail_wrap_on = True
+                    with self.assertRaises(OSError):
+                        srv.start(
+                            tls_cert_file="cert.pem", tls_key_file="key.pem"
+                        )
+                    fail_wrap_on = False
+                    self.assertFalse(srv.is_running())
+                    self.assertEqual(
+                        closed,
+                        [("127.0.0.1", 39280), ("192.168.1.50", 39281)],
+                    )
+                    bound.clear()
+                    closed.clear()
+
                     srv.start(
                         tls_cert_file="cert.pem", tls_key_file="key.pem"
                     )
@@ -1282,7 +1348,10 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 self.assertFalse(srv._servers[2][0].require_token)
                 self.assertEqual(
                     wrapped_sockets,
-                    ["tls(raw-sock-192.168.1.50:39281, server_side=True)"],
+                    [
+                        "tls(raw-sock-192.168.1.50:39281, "
+                        "server_side=True, do_handshake_on_connect=False)"
+                    ],
                 )
                 self.assertEqual(
                     warnings[-1],
@@ -1411,6 +1480,45 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 self.assertFalse(handler._token_ok())
                 handler.headers = {"Authorization": f"Bearer {tok2}"}
                 self.assertTrue(handler._token_ok())
+
+                # 9. A rejected POST sends 401 with WWW-Authenticate: Bearer,
+                # and handle() runs the TLS handshake with a timeout.
+                sent_status = []
+                sent_headers = []
+                written = []
+                handler.headers = {}
+                handler.send_response = lambda code, msg=None: (
+                    sent_status.append((code, msg))
+                )
+                handler.send_header = lambda k, v: sent_headers.append((k, v))
+                handler.end_headers = lambda: None
+                handler.wfile = types.SimpleNamespace(write=written.append)
+                handler.do_POST()
+                self.assertEqual(sent_status, [(401, "Unauthorized")])
+                self.assertIn(("WWW-Authenticate", "Bearer"), sent_headers)
+                self.assertEqual(written, [b"Unauthorized\n"])
+
+                timeouts = []
+                handshakes = []
+
+                class FakeTLSRequest:
+                    def __init__(self, fail=False):
+                        self._fail = fail
+
+                    def settimeout(self, val):
+                        timeouts.append(val)
+
+                    def do_handshake(self):
+                        handshakes.append(True)
+                        if self._fail:
+                            raise OSError("handshake timeout")
+
+                handler.request = FakeTLSRequest(fail=True)
+                handler.handle()
+                self.assertEqual(
+                    timeouts, [http_server.TLS_HANDSHAKE_TIMEOUT_S]
+                )
+                self.assertEqual(len(handshakes), 1)
             sys.modules.pop("freecad.mcp_bridge.http_server", None)
 
 

@@ -483,14 +483,16 @@ shares a single main-thread execution queue across them. Loopback is
 bound only when included in the list (the Claude Desktop shim
 connects to `127.0.0.1` on its configured port). When the bridge is
 turned on with any non-loopback entry not yet accepted, one modal
-warning dialog lists those entries and states the remaining risks —
-lack of authentication when **Require bearer token** is off, lack of
-encryption when **Require TLS (HTTPS)** is off, and remote Python
-code execution in FreeCAD as the user — and the bridge stays off
-unless the user accepts. Acceptance is stored per entry in FreeCAD
-preferences (`AcceptedListenAddresses`) once the start succeeds.
-Every start with any non-loopback entry warns in the status bar and
-the Report view.
+warning dialog lists those entries and states the remaining risks:
+
+- lack of authentication when **Require bearer token** is off;
+- lack of encryption when **Require TLS (HTTPS)** is off;
+- remote Python code execution in FreeCAD as the user.
+
+The bridge stays off unless the user accepts. Acceptance is stored
+per entry in FreeCAD's preferences (`AcceptedListenAddresses`) once
+the start succeeds. Every start with any non-loopback entry warns in
+the status bar and the Report view.
 
 **Non-loopback authentication and encryption — on by default, opt-out**
 
@@ -503,7 +505,7 @@ loopback entries and the Claude Desktop stdio shim unchanged:
   Unauthorized`. The addon generates a 256-bit random token, shows it
   once in a modal dialog with a note that it will not be stored or
   shown again, and stores only its SHA-256 hex digest (`TokenHash`) in
-  FreeCAD preferences, compared in constant time. The first token is
+  FreeCAD's preferences, compared in constant time. The first token is
   generated and shown when the user turns the bridge on with a
   non-loopback entry and no `TokenHash` is stored, or when the user
   clicks **Generate new token** in Preferences. Generating a new token

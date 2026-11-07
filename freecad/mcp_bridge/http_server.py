@@ -29,12 +29,23 @@ from freecad.mcp_bridge.executor import Executor
 
 _LOOPBACK_HOSTS = ("localhost", "127.0.0.1")
 PARSE_ERROR = -32700
+TLS_HANDSHAKE_TIMEOUT_S = 5.0
 
 
 class McpRequestHandler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         # Silence the default stderr access log; FreeCAD console is our log.
         pass
+
+    def handle(self):
+        if hasattr(self.request, "do_handshake"):
+            self.request.settimeout(TLS_HANDSHAKE_TIMEOUT_S)
+            try:
+                self.request.do_handshake()
+            except OSError:
+                return
+            self.request.settimeout(None)
+        super().handle()
 
     def _origin_ok(self) -> bool:
         # DNS-rebinding protection: reject a present Origin that isn't loopback.
@@ -52,6 +63,16 @@ class McpRequestHandler(BaseHTTPRequestHandler):
             return False
         return config.verify_token(token.strip())
 
+    def _send_unauthorized(self):
+        body = b"Unauthorized\n"
+        self.send_response(401, "Unauthorized")
+        self.send_header("WWW-Authenticate", "Bearer")
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_GET(self):
         # The server offers no GET stream, and has no sessions to DELETE.
         self.send_error(405, "Method Not Allowed")
@@ -63,7 +84,7 @@ class McpRequestHandler(BaseHTTPRequestHandler):
             self.send_error(403, "Forbidden Origin")
             return
         if not self._token_ok():
-            self.send_error(401, "Unauthorized")
+            self._send_unauthorized()
             return
         if self.path != ENDPOINT_PATH:
             self.send_error(404, "Not Found")
@@ -338,7 +359,15 @@ class HttpServer:
                 FreeCAD.Console.PrintDeveloperError(f"{LOG_PREFIX} {exc}\n")
                 raise
         if non_loopback and req_token and not config.token_hash():
-            config.generate_and_store_token()
+            msg = (
+                "A bearer token is required for non-loopback listen "
+                "addresses and none has been generated. Turn the bridge "
+                "on with MCP Bridge On/Off to generate one, or click "
+                "Generate new token in Edit → Preferences → MCP Bridge, "
+                "or untick Require bearer token there."
+            )
+            FreeCAD.Console.PrintDeveloperError(f"{LOG_PREFIX} {msg}\n")
+            raise ValueError(msg)
         # Created here so it inherits main-thread affinity (start() is called
         # from the toolbar toggle / GUI startup, both on the main thread).
         self._executor = Executor()
@@ -352,13 +381,15 @@ class HttpServer:
                 srv = paging.MaintenanceHTTPServer(
                     (host, bind_port), McpRequestHandler
                 )
+                bound_servers.append(srv)
                 srv.executor = self._executor
                 srv.require_token = bool(req_token and not is_loopback)
                 if ssl_context is not None and not is_loopback:
                     srv.socket = ssl_context.wrap_socket(
-                        srv.socket, server_side=True
+                        srv.socket,
+                        server_side=True,
+                        do_handshake_on_connect=False,
                     )
-                bound_servers.append(srv)
         except OSError as exc:
             for srv in bound_servers:
                 srv.server_close()

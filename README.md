@@ -114,17 +114,18 @@ change a model — for example:
   (default 5 min). Each page your agent reads restarts that interval;
   after a gap that long without a fetch, unread output is gone.
 - **Require bearer token** — requires `Authorization: Bearer <token>`
-  on non-loopback entries in **Listen address** (on by default;
-  loopback entries need no token). When you first turn the bridge on
+  on non-loopback entries in **Listen address** (on by default).
+  Loopback entries need no token. When you first turn the bridge on
   with a non-loopback entry and no token has been generated, or when
   you click **Generate new token**, FreeCAD generates a random token,
-  shows it once so you can copy it, and stores only its SHA-256 hash.
-  Generating a new token replaces the old one.
+  shows it once so you can copy it, and stores only its SHA-256 hash
+  in FreeCAD's preferences. Generating a new token replaces the old
+  one.
 - **Require TLS (HTTPS)** — serves HTTPS on non-loopback entries in
   **Listen address** using **TLS certificate file** and **TLS private
-  key file** (on by default; loopback entries use HTTP). With this on
-  and no certificate or key file set, starting with a non-loopback
-  entry fails and leaves the bridge off.
+  key file** (on by default). Loopback entries use HTTP. With this on
+  and either file not set, starting with a non-loopback entry fails
+  and leaves the bridge off.
 - **Show the On/Off button** — shows or hides the bridge's On/Off
   button on FreeCAD's status bar (on by default). The **MCP Bridge**
   toolbar button stays either way.
@@ -159,11 +160,11 @@ MCP Bridge is designed for **local** control of FreeCAD.
   can reach the open loopback port, not only your MCP client. The
   bridge listens on every entry in **Listen address**. Non-loopback
   entries require a bearer token and TLS (HTTPS) by default, and
-  either can be turned off in Preferences. If **Listen address**
-  includes a non-loopback `address:port` entry (once you accept the
-  first-time risk dialog), any client that can reach that address
-  and port (with the bearer token, when required) can run Python
-  code in FreeCAD as your user account.
+  either can be turned off in Preferences. Once you accept the
+  first-time risk dialog, the bridge listens on the non-loopback
+  entries too. Any client that can reach one, with the bearer token
+  when it is required, can run Python code in FreeCAD as your user
+  account.
 - Your agent can run code in your live FreeCAD session — macro-level
   access, with no sandbox on the bridge side. That makes your MCP
   client the guardrail. Use a client you trust, and set it to ask

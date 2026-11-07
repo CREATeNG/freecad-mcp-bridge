@@ -186,7 +186,7 @@
       <item row="0" column="0" colspan="2">
        <widget class="Gui::PrefCheckBox" name="requireTokenCheckBox">
         <property name="toolTip">
-         <string>Require Authorization: Bearer &lt;token&gt; on non-loopback listen addresses.</string>
+         <string>Require a bearer token on non-loopback listen addresses.</string>
         </property>
         <property name="text">
          <string>Require bearer token</string>
@@ -205,7 +205,7 @@
       <item row="1" column="1">
        <widget class="QPushButton" name="generateTokenButton">
         <property name="toolTip">
-         <string>Generate a new bearer token and show it once (replaces any existing token).</string>
+         <string>Generate a new bearer token and show it once.</string>
         </property>
         <property name="text">
          <string>Generate new token</string>
@@ -215,7 +215,7 @@
       <item row="2" column="0" colspan="2">
        <widget class="Gui::PrefCheckBox" name="requireTlsCheckBox">
         <property name="toolTip">
-         <string>Serve HTTPS on non-loopback listen addresses using the certificate and private key below.</string>
+         <string>Serve HTTPS on non-loopback listen addresses with the files below.</string>
         </property>
         <property name="text">
          <string>Require TLS (HTTPS)</string>

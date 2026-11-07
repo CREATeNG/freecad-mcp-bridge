@@ -651,23 +651,27 @@ class ListenAddressTests(unittest.TestCase):
             with self.assertRaises(Exception):
                 _post_mcp(http_url, "print('plain http')", ssl_context=None)
 
-            # HTTPS without a bearer token gets 401 Unauthorized.
-            status_no_tok, _ = _post_mcp(
+            # HTTPS without a bearer token gets 401 Unauthorized with
+            # WWW-Authenticate: Bearer.
+            status_no_tok, auth_no_tok = _post_mcp(
                 https_url,
                 "print('no token')",
                 ssl_context=client_ctx,
                 token=None,
             )
             self.assertEqual(status_no_tok, 401)
+            self.assertEqual(auth_no_tok, "Bearer")
 
-            # HTTPS with the wrong bearer token gets 401 Unauthorized.
-            status_bad_tok, _ = _post_mcp(
+            # HTTPS with the wrong bearer token gets 401 Unauthorized with
+            # WWW-Authenticate: Bearer.
+            status_bad_tok, auth_bad_tok = _post_mcp(
                 https_url,
                 "print('bad token')",
                 ssl_context=client_ctx,
                 token=token1 + "wrong",
             )
             self.assertEqual(status_bad_tok, 401)
+            self.assertEqual(auth_bad_tok, "Bearer")
 
             # HTTPS with token1 succeeds.
             status_ok1, out1 = _post_mcp(
@@ -678,6 +682,21 @@ class ListenAddressTests(unittest.TestCase):
             )
             self.assertEqual(status_ok1, 200)
             self.assertEqual(out1, "https with token1\n")
+
+            # A client that connects to the TLS entry and sends nothing does
+            # not stop a second client from being served.
+            with socket.create_connection((address, PORT), timeout=5) as idle:
+                status_while_idle, out_while_idle = _post_mcp(
+                    https_url,
+                    "print('served while idle client connected')",
+                    ssl_context=client_ctx,
+                    token=token1,
+                )
+                self.assertEqual(status_while_idle, 200)
+                self.assertEqual(
+                    out_while_idle, "served while idle client connected\n"
+                )
+                _ = idle
 
             # Loopback works unchanged over plain HTTP without a token,
             # including via the Claude Desktop stdio shim.
@@ -702,14 +721,16 @@ class ListenAddressTests(unittest.TestCase):
             token2 = p2["token2"]
             self.assertNotEqual(token1, token2)
 
-            # Old token is now refused with 401; new token succeeds with 200.
-            status_old, _ = _post_mcp(
+            # Old token is now refused with 401 and WWW-Authenticate: Bearer;
+            # new token succeeds with 200.
+            status_old, auth_old = _post_mcp(
                 https_url,
                 "print('old token')",
                 ssl_context=client_ctx,
                 token=token1,
             )
             self.assertEqual(status_old, 401)
+            self.assertEqual(auth_old, "Bearer")
             status_new, out2 = _post_mcp(
                 https_url,
                 "print('https with token2')",
@@ -819,7 +840,7 @@ def _post_mcp(url, code, ssl_context=None, token=None):
             )
             return resp.status, out
     except urllib.error.HTTPError as err:
-        return err.code, ""
+        return err.code, err.headers.get("WWW-Authenticate", "")
 
 
 def _run_via_stdio_shim(node_bin, port, code):
