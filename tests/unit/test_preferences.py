@@ -151,6 +151,36 @@ class PreferencePageTests(unittest.TestCase):
         self.assertEqual(settings["RequireTls"]["checked"], "true")
         self.assertIn(settings["TlsCertFile"]["fileName"], (None, ""))
         self.assertIn(settings["TlsKeyFile"]["fileName"], (None, ""))
+        pem_filter = "PEM files (*.pem *.crt *.key);;All files (*)"
+        self.assertEqual(settings["TlsCertFile"]["filter"], pem_filter)
+        self.assertEqual(settings["TlsKeyFile"]["filter"], pem_filter)
+        widgets_by_name = {
+            w.get("name"): {
+                prop.get("name"): prop[0].text
+                for prop in w.findall("property")
+            }
+            for w in ET.parse(PAGE).iter("widget")
+        }
+        self.assertEqual(
+            widgets_by_name["tlsCertFileLabel"]["text"],
+            "TLS certificate file (PEM)",
+        )
+        self.assertEqual(
+            widgets_by_name["tlsKeyFileLabel"]["text"],
+            "TLS private key file (PEM)",
+        )
+        self.assertEqual(
+            widgets_by_name["serverHint"]["text"],
+            "To start or stop the bridge, click <b>MCP Bridge On/Off</b> "
+            "in the <b>MCP Bridge</b> toolbar. While active, it listens "
+            "on the <b>Listen address</b> entries below.",
+        )
+        self.assertIn(
+            "https://&lt;ADDRESS&gt;:&lt;PORT&gt;/mcp with the bearer token, "
+            "while Require TLS (HTTPS) and Require bearer token are on, as "
+            "they are by default.",
+            widgets_by_name["clientNote"]["text"],
+        )
         spin_names = (
             "MaxResponseTimeoutSeconds",
             "MaxPageSize",
@@ -814,6 +844,34 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             self.assertTrue(config.verify_token(token2))
             for val in store.values():
                 self.assertNotIn(token2, str(val))
+
+            # build_ssl_context passes an empty password callback so an
+            # encrypted private key fails with ValueError instead of prompting.
+            load_calls = []
+
+            class FakeCtx:
+                def load_cert_chain(
+                    self, certfile=None, keyfile=None, password=None
+                ):
+                    load_calls.append(
+                        (
+                            certfile,
+                            keyfile,
+                            password() if callable(password) else password,
+                        )
+                    )
+                    raise config.ssl.SSLError("bad password read")
+
+            with mock.patch.object(
+                config.ssl, "SSLContext", return_value=FakeCtx()
+            ):
+                with self.assertRaises(ValueError) as ssl_err:
+                    config.build_ssl_context("cert.pem", "enc_key.pem")
+            self.assertEqual(load_calls, [("cert.pem", "enc_key.pem", "")])
+            self.assertIn(
+                "Could not load TLS certificate or private key",
+                str(ssl_err.exception),
+            )
 
     def test_non_loopback_start_prompts_once_and_warns_each_start(self):
         """Turning on with unaccepted non-loopback entries shows only the

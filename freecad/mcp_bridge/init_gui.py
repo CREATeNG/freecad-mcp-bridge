@@ -77,7 +77,7 @@ def _confirm_non_loopback_risk(
 ):
     """Ask the user to accept the risks of listening on `entries`."""
     import FreeCADGui as Gui
-    from PySide.QtWidgets import QMessageBox
+    from PySide.QtWidgets import QDialog, QMessageBox
 
     title, body = _risk_dialog_text(
         entries, require_token=require_token, require_tls=require_tls
@@ -89,6 +89,7 @@ def _confirm_non_loopback_risk(
         QMessageBox.NoButton,
         Gui.getMainWindow(),
     )
+    QDialog.setWindowTitle(box, title)
     box.setObjectName("MCPBridgeRiskDialog")
     accept_btn = box.addButton(
         "Accept Risks and Start", QMessageBox.AcceptRole
@@ -125,7 +126,7 @@ def _show_generated_token(token, parent=None):
     import FreeCADGui as Gui
     from PySide.QtCore import Qt
     from PySide.QtGui import QGuiApplication
-    from PySide.QtWidgets import QMessageBox
+    from PySide.QtWidgets import QDialog, QMessageBox
 
     title, body = _token_dialog_text(token)
     host = parent if parent is not None else Gui.getMainWindow()
@@ -136,6 +137,7 @@ def _show_generated_token(token, parent=None):
         QMessageBox.NoButton,
         host,
     )
+    QDialog.setWindowTitle(box, title)
     box.setObjectName("MCPBridgeTokenDialog")
     box.setTextInteractionFlags(Qt.TextSelectableByMouse)
     copy_btn = box.addButton("Copy Token", QMessageBox.ActionRole)

@@ -350,13 +350,19 @@ def can_connect(host, port):
         return False
 
 
-def click_dialog_button(label, prefix):
+def click_dialog_button(label, prefix, attempts=40):
     dlg = mw.findChild(QMessageBox, 'MCPBridgeRiskDialog')
     if dlg is None:
         widget = QApplication.activeModalWidget()
         if isinstance(widget, QMessageBox):
             dlg = widget
     if dlg is None:
+        if prefix in ('decline', 'accept') and attempts > 0:
+            QTimer.singleShot(
+                50,
+                lambda: click_dialog_button(label, prefix, attempts - 1),
+            )
+            return
         seen[prefix + '_dialog_found'] = False
         return
     seen[prefix + '_dialog_found'] = True
@@ -583,6 +589,8 @@ class ListenAddressTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             cert_path = os.path.join(folder, "cert.pem")
             key_path = os.path.join(folder, "key.pem")
+            enc_cert_path = os.path.join(folder, "enc_cert.pem")
+            enc_key_path = os.path.join(folder, "enc_key.pem")
             cnf_path = os.path.join(folder, "openssl.cnf")
             with open(cnf_path, "w", encoding="utf-8") as handle:
                 handle.write(
@@ -617,6 +625,29 @@ class ListenAddressTests(unittest.TestCase):
                 check=True,
                 capture_output=True,
             )
+            subprocess.run(
+                [
+                    openssl_bin,
+                    "req",
+                    "-x509",
+                    "-newkey",
+                    "rsa:2048",
+                    "-keyout",
+                    enc_key_path,
+                    "-out",
+                    enc_cert_path,
+                    "-days",
+                    "1",
+                    "-passout",
+                    "pass:secret",
+                    "-config",
+                    cnf_path,
+                    "-extensions",
+                    "v3",
+                ],
+                check=True,
+                capture_output=True,
+            )
             seen_file = os.path.join(folder, "seen.json")
             phase1_file = seen_file + ".phase1"
             phase2_go = os.path.join(folder, "phase2_go")
@@ -628,6 +659,7 @@ class ListenAddressTests(unittest.TestCase):
                     address,
                     cert_path,
                     key_path,
+                    enc_key_path,
                     seen_file,
                     phase1_file,
                     phase2_go,
@@ -751,7 +783,8 @@ class ListenAddressTests(unittest.TestCase):
             with open(seen_file, encoding="utf-8") as handle:
                 seen = json.load(handle)
 
-        # 1. With TLS on and no certificate, start failed and left bridge off.
+        # 1. With TLS on and no certificate or an encrypted key, start failed
+        # and left the bridge off.
         self.assertFalse(seen.get("no_cert_running"))
         self.assertIn(
             "TLS is required for non-loopback listen addresses",
@@ -759,6 +792,14 @@ class ListenAddressTests(unittest.TestCase):
         )
         self.assertIn(
             "untick Require TLS there.", seen.get("no_cert_report", "")
+        )
+        self.assertFalse(seen.get("enc_key_running"))
+        self.assertIn(
+            "Could not load TLS certificate or private key",
+            seen.get("enc_key_status", ""),
+        )
+        self.assertIn(
+            "untick Require TLS in Edit", seen.get("enc_key_report", "")
         )
 
         # 2. Risk dialog listed only the remaining risk (code execution with
@@ -900,6 +941,7 @@ def _token_and_tls_flow(
     address,
     cert_path,
     key_path,
+    enc_key_path,
     seen_file,
     phase1_file,
     phase2_go,
@@ -998,6 +1040,16 @@ def step_no_cert_then_start():
     seen['no_cert_status'] = mw.statusBar().currentMessage()
     seen['no_cert_report'] = report_view_text()[before_no_cert:]
 
+    # A passphrase-protected private key fails with the TLS load error
+    # instead of prompting on a console FreeCAD does not have.
+    params.SetString('TlsCertFile', {cert_path!r})
+    params.SetString('TlsKeyFile', {enc_key_path!r})
+    before_enc_key = len(report_view_text())
+    action.trigger()
+    seen['enc_key_running'] = bridge.is_running()
+    seen['enc_key_status'] = mw.statusBar().currentMessage()
+    seen['enc_key_report'] = report_view_text()[before_enc_key:]
+
     # Now set the throwaway cert and key and start with defaults (both on).
     params.SetString('TlsCertFile', {cert_path!r})
     params.SetString('TlsKeyFile', {key_path!r})
@@ -1074,7 +1126,7 @@ def wait_for_phase2():
     QTimer.singleShot(250, click_generate_in_prefs)
     Gui.showPreferences('MCP Bridge', 0)
     App.saveParameter()
-    user_cfg_path = os.path.join(App.getUserAppDataDir(), 'user.cfg')
+    user_cfg_path = App.ConfigGet('UserParameter')
     cfg_text = ''
     if os.path.exists(user_cfg_path):
         with open(user_cfg_path, encoding='utf-8', errors='ignore') as cf:

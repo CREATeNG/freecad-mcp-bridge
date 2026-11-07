@@ -643,7 +643,7 @@ automatically.
 | Listen address | `127.0.0.1:39280` | List of `address:port` entries (`[ipv6]:port` for IPv6) to bind; if unset, inherits a previously saved `Port` value; missing port or bind conflict at startup logs an error and leaves the bridge off; non-loopback entries require user risk acceptance for each entry once (`AcceptedListenAddresses`) and log a warning in the status bar and Report view on each start |
 | Require bearer token | `true` | Requires `Authorization: Bearer <token>` on non-loopback entries; stores only a SHA-256 hash (`TokenHash`) and shows the generated token once |
 | Require TLS (HTTPS) | `true` | Serves HTTPS on non-loopback entries using `TlsCertFile` and `TlsKeyFile`; fails to start on a non-loopback entry if enabled without valid certificate and key files |
-| TLS certificate file / TLS private key file | `""` | PEM certificate (`TlsCertFile`) and private key (`TlsKeyFile`) paths for HTTPS on non-loopback entries |
+| TLS certificate file (PEM) / TLS private key file (PEM) | `""` | PEM certificate (`TlsCertFile`) and private key (`TlsKeyFile`) paths for HTTPS on non-loopback entries |
 | Max response timeout (s) | 15 | Max wait in `execute_python` and `get_output_page` before returning with `has_more: true` |
 | Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |
 | Page history retention (min) | 5 | How long output stays readable after the job finishes running, or after its last valid page fetch or replay. |

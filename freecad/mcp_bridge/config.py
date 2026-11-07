@@ -241,7 +241,9 @@ def build_ssl_context(cert_file: str, key_file: str) -> ssl.SSLContext:
         )
     try:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        context.load_cert_chain(certfile=cert, keyfile=key)
+        context.load_cert_chain(
+            certfile=cert, keyfile=key, password=lambda: ""
+        )
     except (OSError, ssl.SSLError) as exc:
         raise ValueError(
             f"Could not load TLS certificate or private key ({exc}). "

@@ -122,10 +122,10 @@ change a model — for example:
   in FreeCAD's preferences. Generating a new token replaces the old
   one.
 - **Require TLS (HTTPS)** — serves HTTPS on non-loopback entries in
-  **Listen address** using **TLS certificate file** and **TLS private
-  key file** (on by default). Loopback entries use HTTP. With this on
-  and either file not set, starting with a non-loopback entry fails
-  and leaves the bridge off.
+  **Listen address** using **TLS certificate file (PEM)** and **TLS
+  private key file (PEM)** (on by default). Loopback entries use HTTP.
+  With this on and either file not set, starting with a non-loopback
+  entry fails and leaves the bridge off.
 - **Show the On/Off button** — shows or hides the bridge's On/Off
   button on FreeCAD's status bar (on by default). The **MCP Bridge**
   toolbar button stays either way.
