@@ -1,14 +1,14 @@
 """In-process HTTP server hosting the MCP endpoint.
 
-A ThreadingHTTPServer runs on a background thread, binding 127.0.0.1 by
-default and keeping 127.0.0.1 bound alongside any other configured listen
-address. Each request is served in MCP 2026-07-28 or 2025-11-25, whichever
-it is in, or rejected (see mcp_protocol.py), and answered as plain JSON. Tool
-calls (execute_python, execute_python_file, get_output_page) run code on the
-Qt main thread via the Executor. Output is paged through the job's page
-history (see paging.py) when it outlasts the response timeout or exceeds the
-max page size. A 2026-07-28 subscriptions/listen alone answers as an SSE
-stream, which ends as soon as it is acknowledged.
+A ThreadingHTTPServer runs on a background thread for each configured listen
+address (127.0.0.1 by default). Each request is served in MCP 2026-07-28 or
+2025-11-25, whichever it is in, or rejected (see mcp_protocol.py), and
+answered as plain JSON. Tool calls (execute_python, execute_python_file,
+get_output_page) run code on the Qt main thread via the Executor. Output is
+paged through the job's page history (see paging.py) when it outlasts the
+response timeout or exceeds the max page size. A 2026-07-28
+subscriptions/listen alone answers as an SSE stream, which ends as soon as it
+is acknowledged.
 """
 
 import json
@@ -212,33 +212,34 @@ class HttpServer:
     """Owns the HTTP servers, their serving threads, and the Executor."""
 
     def __init__(self):
-        self._httpd = None
-        self._thread = None
-        self._extra_httpd = None
-        self._extra_thread = None
+        self._servers = []
         self._executor = None
 
     def is_running(self) -> bool:
-        return self._thread is not None and self._thread.is_alive()
+        return bool(self._servers) and all(
+            thread.is_alive() for _, thread in self._servers
+        )
 
-    def start(self) -> None:
+    def start(
+        self,
+        addresses: list[str] | None = None,
+        port: int | None = None,
+    ) -> None:
         if self.is_running():
             return
+        bind_hosts = (
+            list(addresses)
+            if addresses is not None
+            else config.listen_addresses()
+        )
+        if not bind_hosts:
+            bind_hosts = list(config.listen_addresses())
+        bind_port = port if port is not None else config.port()
         # Created here so it inherits main-thread affinity (start() is called
         # from the toolbar toggle / GUI startup, both on the main thread).
         self._executor = Executor()
-        configured_addr = config.listen_address()
-        bind_port = config.port()
-        loopback = config.is_loopback_address(configured_addr)
-        if loopback:
-            bind_hosts = ["127.0.0.1"]
-        elif configured_addr == "0.0.0.0":
-            # 0.0.0.0 binds all local IPv4 interfaces, including 127.0.0.1.
-            bind_hosts = ["0.0.0.0"]
-        else:
-            bind_hosts = ["127.0.0.1", configured_addr]
 
-        servers = []
+        bound_servers = []
         failed_host = bind_hosts[0]
         try:
             for host in bind_hosts:
@@ -247,12 +248,13 @@ class HttpServer:
                     (host, bind_port), McpRequestHandler
                 )
                 srv.executor = self._executor
-                servers.append(srv)
+                bound_servers.append(srv)
         except OSError as exc:
-            for srv in servers:
+            for srv in bound_servers:
                 srv.server_close()
-            self._httpd = None
-            self._extra_httpd = None
+            if self._executor is not None:
+                self._executor.shutdown()
+            self._servers = []
             self._executor = None
             FreeCAD.Console.PrintDeveloperError(
                 f"{LOG_PREFIX} Could not bind {failed_host}:{bind_port} "
@@ -260,52 +262,67 @@ class HttpServer:
                 "MCP Bridge.\n"
             )
             raise
-        self._httpd = servers[0]
-        self._thread = threading.Thread(
-            target=self._httpd.serve_forever,
-            name="mcp-bridge-http",
-            daemon=True,
+
+        started_servers = []
+        try:
+            for index, srv in enumerate(bound_servers):
+                name = (
+                    "mcp-bridge-http"
+                    if index == 0
+                    else f"mcp-bridge-http-{index}"
+                )
+                thread = threading.Thread(
+                    target=srv.serve_forever,
+                    name=name,
+                    daemon=True,
+                )
+                thread.start()
+                started_servers.append((srv, thread))
+        except Exception:
+            started_set = {srv for srv, _ in started_servers}
+            for srv, _ in started_servers:
+                srv.shutdown()
+                srv.server_close()
+            for srv in bound_servers:
+                if srv not in started_set:
+                    srv.server_close()
+            if self._executor is not None:
+                self._executor.shutdown()
+            self._servers = []
+            self._executor = None
+            raise
+
+        self._servers = started_servers
+        endpoints_with_path = ", ".join(
+            f"{host}:{bind_port}{ENDPOINT_PATH}" for host in bind_hosts
         )
-        self._thread.start()
-        if len(servers) > 1:
-            self._extra_httpd = servers[1]
-            self._extra_thread = threading.Thread(
-                target=self._extra_httpd.serve_forever,
-                name="mcp-bridge-http-extra",
-                daemon=True,
+        FreeCAD.Console.PrintMessage(
+            f"{LOG_PREFIX} HTTP server listening on {endpoints_with_path}\n"
+        )
+        non_loopback = [
+            host
+            for host in bind_hosts
+            if not config.is_loopback_address(host)
+        ]
+        if non_loopback:
+            endpoints = ", ".join(
+                f"{host}:{bind_port}" for host in bind_hosts
             )
-            self._extra_thread.start()
-        if loopback:
-            FreeCAD.Console.PrintMessage(
-                f"{LOG_PREFIX} HTTP server listening on "
-                f"127.0.0.1:{bind_port}{ENDPOINT_PATH}\n"
-            )
-        else:
-            FreeCAD.Console.PrintMessage(
-                f"{LOG_PREFIX} HTTP server listening on "
-                f"{configured_addr}:{bind_port}{ENDPOINT_PATH} and "
-                f"127.0.0.1:{bind_port}{ENDPOINT_PATH}\n"
+            non_loopback_endpoints = ", ".join(
+                f"{host}:{bind_port}" for host in non_loopback
             )
             FreeCAD.Console.PrintWarning(
-                f"{LOG_PREFIX} WARNING: listening on "
-                f"{configured_addr}:{bind_port} and "
-                f"127.0.0.1:{bind_port} with no authentication or "
-                f"encryption. Any machine that can reach "
-                f"{configured_addr}:{bind_port} can run Python code in "
-                "FreeCAD as your user account.\n"
+                f"{LOG_PREFIX} WARNING: listening on {endpoints} with no "
+                "authentication or encryption. Any machine that can reach "
+                "these addresses can run Python code in FreeCAD as your "
+                f"user account: {non_loopback_endpoints}.\n"
             )
 
     def stop(self) -> None:
-        if self._extra_httpd is not None:
-            self._extra_httpd.shutdown()
-            self._extra_httpd.server_close()
-            self._extra_httpd = None
-        self._extra_thread = None
-        if self._httpd is not None:
-            self._httpd.shutdown()
-            self._httpd.server_close()
-            self._httpd = None
-        self._thread = None
+        for srv, _ in reversed(self._servers):
+            srv.shutdown()
+            srv.server_close()
+        self._servers = []
         if self._executor is not None:
             self._executor.shutdown()
         self._executor = None

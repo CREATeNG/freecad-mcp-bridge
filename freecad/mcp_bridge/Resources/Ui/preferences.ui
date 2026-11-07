@@ -33,11 +33,29 @@
        </widget>
       </item>
       <item row="1" column="1">
-       <widget class="Gui::PrefLineEdit" name="listenAddressLineEdit">
-        <property name="toolTip">
-         <string>Address to listen on (127.0.0.1 stays bound alongside any other address). Used the next time the bridge is switched on.</string>
+       <widget class="Gui::PrefTextEdit" name="listenAddressTextEdit">
+        <property name="minimumSize">
+         <size>
+          <width>0</width>
+          <height>60</height>
+         </size>
         </property>
-        <property name="text">
+        <property name="maximumSize">
+         <size>
+          <width>16777215</width>
+          <height>60</height>
+         </size>
+        </property>
+        <property name="toolTip">
+         <string>Addresses to listen on (one per line, or separated by spaces, commas, or semicolons). Used the next time the bridge is switched on.</string>
+        </property>
+        <property name="tabChangesFocus">
+         <bool>true</bool>
+        </property>
+        <property name="acceptRichText">
+         <bool>false</bool>
+        </property>
+        <property name="plainText">
          <string>127.0.0.1</string>
         </property>
         <property name="placeholderText">
@@ -261,7 +279,7 @@
          <enum>Qt::RichText</enum>
         </property>
         <property name="text">
-         <string>Most MCP clients speak HTTP — connect them directly to http://127.0.0.1:&amp;lt;PORT&amp;gt;/mcp (or http://&amp;lt;ADDRESS&amp;gt;:&amp;lt;PORT&amp;gt;/mcp when Listen address is set to another address), where &amp;lt;PORT&amp;gt; is the Port setting above.&lt;br/&gt;&lt;br/&gt;Clients that only speak stdio — e.g. Claude Desktop (not Claude Code) — need a small connector: &lt;a href="https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest/download/freecad-mcp-bridge.mcpb"&gt;Download the bundle&lt;/a&gt;.</string>
+         <string>Most MCP clients speak HTTP — connect them directly to http://127.0.0.1:&amp;lt;PORT&amp;gt;/mcp (or http://&amp;lt;ADDRESS&amp;gt;:&amp;lt;PORT&amp;gt;/mcp for another configured listen address), where &amp;lt;PORT&amp;gt; is the Port setting above.&lt;br/&gt;&lt;br/&gt;Clients that only speak stdio — e.g. Claude Desktop (not Claude Code) — need a small connector: &lt;a href="https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest/download/freecad-mcp-bridge.mcpb"&gt;Download the bundle&lt;/a&gt;.</string>
         </property>
         <property name="wordWrap">
          <bool>true</bool>
@@ -316,8 +334,8 @@
  </widget>
  <customwidgets>
   <customwidget>
-   <class>Gui::PrefLineEdit</class>
-   <extends>QLineEdit</extends>
+   <class>Gui::PrefTextEdit</class>
+   <extends>QTextEdit</extends>
    <header>Gui/PrefWidgets.h</header>
   </customwidget>
   <customwidget>

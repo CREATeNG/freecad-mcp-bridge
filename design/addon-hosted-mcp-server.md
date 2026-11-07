@@ -469,19 +469,21 @@ the user activates the toggle, and stops when they deactivate it. This
 satisfies the Addon Index transparency and deferred-activation
 requirements.
 
-When the user configures another listen address in Preferences,
-`127.0.0.1` remains bound alongside that address so local stdio-shim
-clients continue to reach the bridge on loopback (`0.0.0.0` binds all
-local IPv4 interfaces, including `127.0.0.1`; a specific interface
-address runs a second `MaintenanceHTTPServer` on `127.0.0.1` sharing
-the same `Executor`). The first time the user turns the bridge on at a
-non-loopback address, a modal warning dialog states the risks — no
-authentication, no encryption, and any machine that can reach the
-address and port can run Python code in FreeCAD as the user — and the
-bridge stays off unless the user accepts. Acceptance is stored per
-address in FreeCAD preferences (`AcceptedListenAddresses`). Every
-start at a non-loopback address warns in the status bar and the Report
-view.
+In Preferences, the user can configure a list of listen addresses
+(defaulting to `127.0.0.1`). The server binds an HTTP listener on
+each listed address and shares a single main-thread execution queue
+across them; if any listed address cannot be bound, all bound
+listeners are closed and the bridge stays off. Loopback is bound only
+when included in the list (the Claude Desktop shim connects to
+`127.0.0.1`). When the bridge is turned on with any non-loopback
+address not yet accepted, one modal warning dialog lists those
+addresses and states the risks — no authentication, no encryption,
+and any machine that can reach those addresses and port can run
+Python code in FreeCAD as the user — and the bridge stays off unless
+the user accepts. Acceptance is stored per address in FreeCAD
+preferences (`AcceptedListenAddresses`) once the start succeeds.
+Every start with any non-loopback address warns in the status bar and
+the Report view.
 
 **Security posture — noted trade-offs**
 
@@ -495,8 +497,8 @@ local-only and the user controls the toggle.
 On a non-loopback address, the HTTP server speaks plain HTTP with no
 authentication or client-address filter, so any machine that can reach
 the configured address and port can run Python code in the live
-FreeCAD session as the user. Accepted only after explicit per-address
-risk confirmation by the user and accompanied by a warning on every
+FreeCAD session as the user. Allowed only after the user has accepted
+the risk for that address and accompanied by a warning on every
 start.
 
 **Origin header validation — required**
@@ -595,8 +597,8 @@ asset for Claude Desktop users.
 
 Stored at `User parameter:BaseApp/Preferences/Mod/freecad-mcp-bridge`.
 
-The listen address and port are read at server start; timeout and page
-size are read per request. Retention is read when each job finishes
+The listen addresses and port are read at server start; timeout and
+page size are read per request. Retention is read when each job finishes
 running and fixes that job's retention interval, also used for later
 extensions. Preference changes affect jobs that finish afterwards, not
 histories whose intervals are already set.
@@ -607,7 +609,7 @@ automatically.
 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
-| Listen address | `127.0.0.1` | `127.0.0.1` stays bound alongside any other address; non-loopback addresses require one-time user risk acceptance per address (`AcceptedListenAddresses`) and log a warning in the status bar and Report view on each start |
+| Listen address | `127.0.0.1` | List of addresses to bind; non-loopback addresses require one-time user risk acceptance per address (`AcceptedListenAddresses`) and log a warning in the status bar and Report view on each start |
 | Port | 39280 | Error logged on conflict at startup |
 | Max response timeout (s) | 15 | Max wait in `execute_python` and `get_output_page` before returning with `has_more: true` |
 | Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |

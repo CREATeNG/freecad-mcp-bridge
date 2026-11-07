@@ -262,7 +262,7 @@ def click_dialog_button(label, prefix):
 def step_decline():
     if bridge.is_running():
         action.trigger()
-    params.SetString('ListenAddress', {address!r})
+    params.SetString('ListenAddress', '127.0.0.1\\n' + {address!r})
     params.RemString('AcceptedListenAddresses')
     QTimer.singleShot(
         150, lambda: click_dialog_button('Cancel', 'decline')
@@ -297,7 +297,7 @@ def wait_for_runner():
     if not os.path.exists({continue_file!r}):
         QTimer.singleShot(200, wait_for_runner)
         return
-    # Restart at the already-accepted address: no dialog should open,
+    # Restart with the already-accepted list: no dialog should open,
     # and the warning must appear again.
     if bridge.is_running():
         action.trigger()
@@ -309,9 +309,18 @@ def wait_for_runner():
     seen['second_running'] = bridge.is_running()
     seen['second_status'] = mw.statusBar().currentMessage()
     seen['second_report'] = report_view_text()[before:]
-    # Restore original preferences and restart on loopback.
+    # Start with the LAN address alone (removing 127.0.0.1): loopback
+    # must not be bound, while the LAN address is bound.
     if bridge.is_running():
         action.trigger()
+    params.SetString('ListenAddress', {address!r})
+    action.trigger()
+    seen['lan_only_running'] = bridge.is_running()
+    seen['lan_only_lan_open'] = can_connect({address!r}, {PORT})
+    seen['lan_only_loopback_open'] = can_connect('127.0.0.1', {PORT})
+    if bridge.is_running():
+        action.trigger()
+    # Restore original preferences and restart on loopback.
     if orig_addr:
         params.SetString('ListenAddress', orig_addr)
     else:
@@ -332,10 +341,10 @@ QTimer.singleShot(300, step_decline)
 
 
 class ListenAddressTests(unittest.TestCase):
-    def test_non_loopback_address_requires_acceptance_keeps_loopback_and_warns(
+    def test_non_loopback_address_requires_acceptance_binds_list_and_warns(
         self,
     ):
-        """Non-loopback start asks once, keeps 127.0.0.1, and warns."""
+        """Non-loopback addresses ask once, bind the list, and warn."""
         address = non_loopback_address()
         if address is None:
             self.skipTest("this machine has no non-loopback IPv4 address")
@@ -374,8 +383,9 @@ class ListenAddressTests(unittest.TestCase):
         self.assertFalse(seen.get("decline_port_open_during_dialog"))
         self.assertEqual(
             seen.get("decline_title"),
-            f"MCP Bridge — Listen on {address}:{PORT}?",
+            "MCP Bridge — Listen beyond this machine?",
         )
+        self.assertIn(f"{address}:{PORT}", seen.get("decline_text", ""))
         self.assertIn("No authentication", seen.get("decline_text", ""))
         self.assertIn("No encryption", seen.get("decline_text", ""))
         self.assertIn("Code execution", seen.get("decline_text", ""))
@@ -387,16 +397,18 @@ class ListenAddressTests(unittest.TestCase):
         self.assertTrue(seen.get("accept_dialog_found"))
         self.assertFalse(seen.get("accept_port_open_during_dialog"))
         self.assertTrue(seen.get("accepted_running"))
-        self.assertEqual(seen.get("accepted_saved"), address)
+        self.assertEqual(
+            json.loads(seen.get("accepted_saved", "[]")), [address]
+        )
         expected_status = (
-            f"MCP Bridge: Listening on {address}:{PORT} and "
-            f"127.0.0.1:{PORT} (warning: no authentication or encryption)"
+            f"MCP Bridge: Listening on 127.0.0.1:{PORT}, "
+            f"{address}:{PORT} (warning: no authentication or encryption)"
         )
         expected_warning = (
-            f"[MCP Bridge] WARNING: listening on {address}:{PORT} and "
-            f"127.0.0.1:{PORT} with no authentication or encryption. Any "
-            f"machine that can reach {address}:{PORT} can run Python code in "
-            "FreeCAD as your user account."
+            f"[MCP Bridge] WARNING: listening on 127.0.0.1:{PORT}, "
+            f"{address}:{PORT} with no authentication or encryption. Any "
+            "machine that can reach these addresses can run Python code in "
+            f"FreeCAD as your user account: {address}:{PORT}."
         )
         self.assertEqual(seen.get("accepted_status"), expected_status)
         self.assertIn(expected_warning, seen.get("accepted_report", ""))
@@ -405,6 +417,10 @@ class ListenAddressTests(unittest.TestCase):
         self.assertTrue(seen.get("second_running"))
         self.assertEqual(seen.get("second_status"), expected_status)
         self.assertIn(expected_warning, seen.get("second_report", ""))
+
+        self.assertTrue(seen.get("lan_only_running"))
+        self.assertTrue(seen.get("lan_only_lan_open"))
+        self.assertFalse(seen.get("lan_only_loopback_open"))
 
 
 if __name__ == "__main__":

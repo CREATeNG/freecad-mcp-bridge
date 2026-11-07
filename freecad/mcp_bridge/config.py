@@ -1,10 +1,14 @@
 """Runtime configuration for the MCP Bridge, read from FreeCAD preferences.
 
 Values live under PREF_GROUP and are read fresh on each access. The listen
-address and port are read at server start. Timeout and page size are read
+addresses and port are read at server start. Timeout and page size are read
 per request. Retention is read when a job finishes running. Status-bar
 button settings are read when the status-bar button is created or refreshed.
 """
+
+import ipaddress
+import json
+import re
 
 import FreeCAD
 
@@ -19,30 +23,54 @@ from freecad.mcp_bridge.constants import (
     PREF_GROUP,
 )
 
-_LOOPBACK_ADDRESSES = ("127.0.0.1", "localhost")
-
 
 def _params():
     return FreeCAD.ParamGet(PREF_GROUP)
 
 
 def is_loopback_address(address: str) -> bool:
-    """True when `address` names loopback (127.0.0.1 or localhost)."""
-    return (address or "").strip().lower() in _LOOPBACK_ADDRESSES
+    """True when `address` is localhost or a loopback IP address."""
+    host = (address or "").strip()
+    if host.lower() == "localhost":
+        return True
+    if host.startswith("[") and host.endswith("]"):
+        host = host[1:-1]
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
-def listen_address() -> str:
-    """Configured address for the HTTP server (default 127.0.0.1)."""
+def parse_listen_addresses(raw: str) -> list[str]:
+    """Split a whitespace-, comma-, or semicolon-separated address list."""
+    addresses = []
+    for item in re.split(r"[\s,;]+", (raw or "").strip()):
+        if item and item not in addresses:
+            addresses.append(item)
+    return addresses or [DEFAULT_LISTEN_ADDRESS]
+
+
+def listen_addresses() -> list[str]:
+    """Configured listen addresses for the HTTP server."""
     raw = _params().GetString("ListenAddress", DEFAULT_LISTEN_ADDRESS)
-    addr = (raw or "").strip()
-    return addr or DEFAULT_LISTEN_ADDRESS
+    return parse_listen_addresses(raw)
 
 
 def accepted_listen_addresses() -> list[str]:
     """Non-loopback addresses whose risk dialog the user has accepted."""
     raw = _params().GetString("AcceptedListenAddresses", "")
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except ValueError:
+        return []
+    if not isinstance(parsed, list):
+        return []
     return [
-        item.strip() for item in (raw or "").split(",") if item.strip()
+        item.strip()
+        for item in parsed
+        if isinstance(item, str) and item.strip()
     ]
 
 
@@ -63,7 +91,7 @@ def accept_address(address: str) -> None:
     if addr not in accepted:
         accepted.append(addr)
         _params().SetString(
-            "AcceptedListenAddresses", ",".join(accepted)
+            "AcceptedListenAddresses", json.dumps(accepted)
         )
 
 

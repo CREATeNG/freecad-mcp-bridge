@@ -27,29 +27,32 @@ if os.path.isdir(_icons_dir):
     Gui.addIconPath(_icons_dir.replace("\\", "/"))
 
 
-def _risk_dialog_text(address, port):
+def _risk_dialog_text(addresses, port):
     """Return (title, text) for the first-time non-loopback risk dialog."""
-    title = f"{DISPLAY_NAME} — Listen on {address}:{port}?"
-    body = (
-        f"Listening on {address}:{port} makes this FreeCAD session "
-        "reachable from other machines.\n\n"
-        f"• No authentication: any machine that can reach {address}:{port} "
-        "can call the bridge.\n"
-        "• No encryption: requests and output travel over plain HTTP.\n"
-        f"• Code execution: any machine that can reach {address}:{port} "
-        "can run Python code in FreeCAD as your user account.\n\n"
-        f"Accept these risks and start the bridge on {address}:{port} "
-        f"(and 127.0.0.1:{port})?"
-    )
+    if isinstance(addresses, str):
+        addresses = [addresses]
+    unaccepted_endpoints = "\n".join(f"{a}:{port}" for a in addresses)
+    title = f"{DISPLAY_NAME} — Listen beyond this machine?"
+    body = f"""Listening on these addresses makes this FreeCAD session \
+reachable from other machines:
+{unaccepted_endpoints}
+
+• No authentication: any machine that can reach these addresses can \
+call the bridge.
+• No encryption: requests and output travel over plain HTTP.
+• Code execution: any machine that can reach these addresses can run \
+Python code in FreeCAD as your user account.
+
+Accept these risks and start the bridge?"""
     return title, body
 
 
-def _confirm_non_loopback_risk(address, port):
-    """Ask the user to accept the risks of listening on `address`:`port`."""
+def _confirm_non_loopback_risk(addresses, port):
+    """Ask the user to accept the risks of listening on `addresses`."""
     import FreeCADGui as Gui
     from PySide.QtWidgets import QMessageBox
 
-    title, body = _risk_dialog_text(address, port)
+    title, body = _risk_dialog_text(addresses, port)
     box = QMessageBox(
         QMessageBox.Warning,
         title,
@@ -99,28 +102,39 @@ class MCPBridgeCommand:
                 status = f"{DISPLAY_NAME}: Offline"
                 stopped = True
             else:
-                addr = config.listen_address()
+                addresses = config.listen_addresses()
                 port = config.port()
-                loopback = config.is_loopback_address(addr)
-                if not loopback and not config.is_address_accepted(addr):
-                    if not _confirm_non_loopback_risk(addr, port):
-                        status = f"{DISPLAY_NAME}: Offline"
-                        mw = Gui.getMainWindow()
-                        if mw:
-                            mw.statusBar().showMessage(status)
-                        show_toggle_state()
-                        App.Console.PrintNotification(status + "\n")
-                        return
+                non_loopback = [
+                    a
+                    for a in addresses
+                    if not config.is_loopback_address(a)
+                ]
+                unaccepted = [
+                    a
+                    for a in non_loopback
+                    if not config.is_address_accepted(a)
+                ]
+                if unaccepted and not _confirm_non_loopback_risk(
+                    unaccepted, port
+                ):
+                    status = f"{DISPLAY_NAME}: Offline"
+                    mw = Gui.getMainWindow()
+                    if mw:
+                        mw.statusBar().showMessage(status)
+                    show_toggle_state()
+                    App.Console.PrintNotification(status + "\n")
+                    return
+                bridge.start(addresses=addresses, port=port)
+                for addr in unaccepted:
                     config.accept_address(addr)
-                bridge.start()
-                if loopback:
-                    status = f"{DISPLAY_NAME}: Listening on 127.0.0.1:{port}"
-                else:
+                endpoints = ", ".join(f"{a}:{port}" for a in addresses)
+                if non_loopback:
                     status = (
-                        f"{DISPLAY_NAME}: Listening on {addr}:{port} and "
-                        f"127.0.0.1:{port} (warning: no authentication or "
-                        "encryption)"
+                        f"{DISPLAY_NAME}: Listening on {endpoints} "
+                        "(warning: no authentication or encryption)"
                     )
+                else:
+                    status = f"{DISPLAY_NAME}: Listening on {endpoints}"
                 started = True
         except Exception as e:
             App.Console.PrintDeveloperError(
