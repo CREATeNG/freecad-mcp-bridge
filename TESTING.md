@@ -122,7 +122,7 @@ repeatable checks.
 
 | Check | What to verify by hand |
 |-------|------------------------|
-| Toolbar hide across restart, and Customize category | Uncheck **MCP Bridge** in **View → Toolbars** (or the toolbar context menu), switch workbench and restart FreeCAD: the toolbar stays hidden while the status-bar button remains available. Check **MCP Bridge** again and restart FreeCAD: the toolbar stays shown. In **Tools → Customize**, the **MCP Bridge On/Off** command is listed under `MCP_Bridge`, not `init_gui`. |
+| Toolbar hide across restart, and Customize category | Uncheck **MCP Bridge** in **View → Toolbars** (or the toolbar context menu), switch workbench and restart FreeCAD: the toolbar stays hidden while the status-bar button remains available. Check **MCP Bridge** again and restart FreeCAD: the toolbar stays shown. In **Tools → Customize**, the **MCP Bridge On/Off** command is listed under `init_gui`. |
 
 ## Install verification
 

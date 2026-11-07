@@ -424,22 +424,7 @@ if App.MCPBridgeCommand in Gui.listCommands():
         Gui.removeCommand(App.MCPBridgeCommand)
     except Exception:
         pass
-
-
-def _register_command():
-    """Register the toggle command under the MCP_Bridge Customize category.
-
-    FreeCAD's Gui.addCommand reads the calling frame's co_filename: its
-    /Ext/freecad/(\\w+)/ match sets the Tools -> Customize category, and
-    its filename stem sets the module imported when recording a macro.
-    """
-    Gui.addCommand(App.MCPBridgeCommand, MCPBridgeCommand())
-
-
-_register_command.__code__ = _register_command.__code__.replace(
-    co_filename=f"/Ext/freecad/{TOOLBAR_OBJECT_NAME}/freecad.mcp_bridge.py"
-)
-_register_command()
+Gui.addCommand(App.MCPBridgeCommand, MCPBridgeCommand())
 
 if not getattr(App, "MCPBridgePrefAdded", False):
     _prefs_ui = preferences_ui_path()

@@ -7,7 +7,6 @@ stand-in for FreeCAD's parameter store holding no values, as a fresh
 profile does.
 """
 
-import ast
 import importlib
 import re
 import sys
@@ -565,9 +564,9 @@ class ToolbarVisibilityTests(unittest.TestCase):
             tb_shown_again = current_mw.findChildren(FakeToolBar)[0]
             self.assertTrue(tb_shown_again.isVisible())
 
-    def test_command_is_registered_under_the_mcp_bridge_category(self):
-        """Gui.addCommand registers the command under the MCP_Bridge Customize
-        category and with an importable module for macro recording."""
+    def test_command_is_registered_under_the_init_gui_category(self):
+        """Gui.addCommand is called directly from init_gui.py, so the
+        Customize category reads 'init_gui'."""
         recorded = []
 
         def add_command(name, cmd):
@@ -607,11 +606,8 @@ class ToolbarVisibilityTests(unittest.TestCase):
             self.assertEqual(len(recorded), 1)
             name, group, module, cmd = recorded[0]
             self.assertEqual(name, COMMAND_ID)
-            self.assertEqual(group, TOOLBAR_OBJECT_NAME)
-            self.assertEqual(module, "freecad.mcp_bridge")
-            macro_source = f"import {module}\nGui.runCommand({name!r}, 0)\n"
-            ast.parse(macro_source)
-            self.assertIsNotNone(importlib.import_module(module))
+            self.assertEqual(group, "init_gui")
+            self.assertEqual(module, "init_gui")
             self.assertEqual(
                 cmd.GetResources()["MenuText"], "MCP Bridge On/Off"
             )
