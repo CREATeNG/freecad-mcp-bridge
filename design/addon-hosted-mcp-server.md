@@ -471,8 +471,6 @@ state. If the capability belongs anywhere, it is upstream
 
 By default, the server binds to `127.0.0.1:39280` only. It starts only
 when the user activates the toggle, and stops when they deactivate it.
-This satisfies the Addon Index transparency and deferred-activation
-requirements.
 
 In Preferences, the user can configure a list of `address:port`
 entries (`[ipv6]:port` for IPv6), defaulting to `127.0.0.1:39280`.
