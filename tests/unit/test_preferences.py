@@ -29,6 +29,10 @@ PAGE = ROOT / "freecad" / "mcp_bridge" / "Resources" / "Ui" / "preferences.ui"
 PREF_ROOT = "User parameter:BaseApp/Preferences"
 SETTINGS = (
     "ListenAddress",
+    "RequireToken",
+    "RequireTls",
+    "TlsCertFile",
+    "TlsKeyFile",
     "MaxResponseTimeoutSeconds",
     "MaxPageSize",
     "MaxHistoryRetentionMinutes",
@@ -114,6 +118,16 @@ class PreferencePageTests(unittest.TestCase):
         self.assertEqual(
             settings["ListenAddress"]["placeholderText"], "127.0.0.1:39280"
         )
+        self.assertEqual(
+            settings["RequireToken"]["text"], "Require bearer token"
+        )
+        self.assertEqual(settings["RequireToken"]["checked"], "true")
+        self.assertEqual(
+            settings["RequireTls"]["text"], "Require TLS (HTTPS)"
+        )
+        self.assertEqual(settings["RequireTls"]["checked"], "true")
+        self.assertIn(settings["TlsCertFile"]["fileName"], (None, ""))
+        self.assertIn(settings["TlsKeyFile"]["fileName"], (None, ""))
         spin_names = (
             "MaxResponseTimeoutSeconds",
             "MaxPageSize",
@@ -153,6 +167,10 @@ class UnsetPreferenceTests(unittest.TestCase):
         button shown on the right."""
         config, params, groups = fresh_config()
         self.assertEqual(config.listen_addresses(), ["127.0.0.1:39280"])
+        self.assertIs(config.require_token(), True)
+        self.assertIs(config.require_tls(), True)
+        self.assertEqual(config.tls_cert_file(), "")
+        self.assertEqual(config.tls_key_file(), "")
         self.assertEqual(config.max_response_timeout_ms(), 15_000)
         self.assertEqual(config.max_page_size_chars(), 32_768)
         self.assertEqual(config.max_history_retention_ms(), 5 * 60_000)
@@ -735,16 +753,61 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 config.is_address_accepted("192.168.1.61:39280")
             )
 
+    def test_bearer_token_generation_stores_only_hash_and_replaces_old(self):
+        """Generating a bearer token stores only its SHA-256 hash in TokenHash,
+        verifies in constant time, and regenerating refuses the old token."""
+        store = {}
+
+        class DictParams:
+            def GetString(self, name, default=""):
+                return store.get(name, default)
+
+            def SetString(self, name, value):
+                store[name] = value
+
+            def GetBool(self, name, default=False):
+                return store.get(name, default)
+
+        freecad = types.SimpleNamespace(ParamGet=lambda _g: DictParams())
+        with mock.patch.dict(sys.modules, {"FreeCAD": freecad}):
+            sys.modules.pop("freecad.mcp_bridge.config", None)
+            config = importlib.import_module("freecad.mcp_bridge.config")
+            self.assertEqual(config.token_hash(), "")
+            self.assertFalse(config.verify_token("anything"))
+
+            token1 = config.generate_and_store_token()
+            self.assertGreaterEqual(len(token1), 32)
+            self.assertEqual(config.token_hash(), config.hash_token(token1))
+            self.assertNotEqual(store.get("TokenHash"), token1)
+            for val in store.values():
+                self.assertNotIn(token1, str(val))
+            self.assertTrue(config.verify_token(token1))
+            self.assertFalse(config.verify_token(token1 + "x"))
+            self.assertFalse(config.verify_token(""))
+
+            token2 = config.generate_and_store_token()
+            self.assertNotEqual(token1, token2)
+            self.assertFalse(config.verify_token(token1))
+            self.assertTrue(config.verify_token(token2))
+            for val in store.values():
+                self.assertNotIn(token2, str(val))
+
     def test_non_loopback_start_prompts_once_and_warns_each_start(self):
-        """Turning on with unaccepted non-loopback entries shows one risk
-        dialog for them, uses a single preference snapshot, records acceptance
-        only after bridge.start succeeds, rejects entries without a port, and
+        """Turning on with unaccepted non-loopback entries shows only the
+        remaining risks, fails when TLS is on with no certificate, shows a
+        generated token once when RequireToken is on, uses a single preference
+        snapshot, records acceptance only after bridge.start succeeds, and
         warns on every start."""
-        store = {"ListenAddress": "127.0.0.1:39280\n192.168.1.50:39280"}
+        store = {
+            "ListenAddress": "127.0.0.1:39280\n192.168.1.50:39280",
+            "RequireToken": False,
+            "RequireTls": False,
+        }
         running = False
         start_calls = []
         start_error = None
         prompts = []
+        shown_tokens = []
         statuses = []
         notifications = []
         warnings = []
@@ -761,8 +824,8 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             def GetInt(self, name, default=0):
                 return store.get(name, default)
 
-            def GetBool(self, _name, default=False):
-                return default
+            def GetBool(self, name, default=False):
+                return store.get(name, default)
 
         class FakeStatusBar:
             def showMessage(self, msg):
@@ -794,11 +857,11 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
         )
         fake_bridge = types.SimpleNamespace(
             is_running=lambda: running,
-            start=lambda addresses=None: None,
+            start=lambda **_: None,
             stop=lambda: None,
         )
 
-        def start_bridge(addresses=None):
+        def start_bridge(addresses=None, **_kwargs):
             nonlocal running
             start_calls.append(list(addresses) if addresses else None)
             if start_error is not None:
@@ -826,31 +889,91 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             init_gui = importlib.import_module("freecad.mcp_bridge.init_gui")
             init_gui.show_toggle_state = lambda: None
 
-            def fake_confirm(entries):
-                prompts.append(list(entries))
+            def fake_confirm(
+                entries, require_token=True, require_tls=True
+            ):
+                prompts.append(
+                    (list(entries), bool(require_token), bool(require_tls))
+                )
                 if mutate_during_dialog is not None:
                     mutate_during_dialog()
                 return decision
 
             init_gui._confirm_non_loopback_risk = fake_confirm
-            title, body = init_gui._risk_dialog_text(
-                ["192.168.1.50:39280", "10.0.0.5:39281"]
+            init_gui._show_generated_token = (
+                lambda tok, parent=None: shown_tokens.append(tok)
+            )
+
+            # Check risk dialog text across all four (require_token,
+            # require_tls) combinations.
+            title, body_none = init_gui._risk_dialog_text(
+                ["192.168.1.50:39280", "10.0.0.5:39281"],
+                require_token=False,
+                require_tls=False,
             )
             self.assertEqual(
                 title, "MCP Bridge — Listen beyond this machine?"
             )
+            self.assertIn("192.168.1.50:39280\n10.0.0.5:39281", body_none)
+            self.assertIn("No authentication", body_none)
             self.assertIn(
-                "192.168.1.50:39280\n10.0.0.5:39281",
-                body,
+                "No encryption: requests and output travel over plain HTTP.",
+                body_none,
             )
-            self.assertIn("No authentication", body)
-            self.assertIn("No encryption", body)
-            self.assertIn("Code execution", body)
-            self.assertIn("Accept these risks and start the bridge?", body)
+            self.assertIn(
+                "Code execution: any machine that can reach these addresses",
+                body_none,
+            )
+            self.assertIn(
+                "Accept these risks and start the bridge?", body_none
+            )
+
+            _, body_tok_only = init_gui._risk_dialog_text(
+                ["192.168.1.50:39280"],
+                require_token=True,
+                require_tls=False,
+            )
+            self.assertNotIn("No authentication", body_tok_only)
+            self.assertIn(
+                "No encryption: requests, output and the bearer token "
+                "travel over plain HTTP.",
+                body_tok_only,
+            )
+            self.assertIn(
+                "any client with the bearer token", body_tok_only
+            )
+
+            _, body_tls_only = init_gui._risk_dialog_text(
+                ["192.168.1.50:39280"],
+                require_token=False,
+                require_tls=True,
+            )
+            self.assertIn("No authentication", body_tls_only)
+            self.assertNotIn("No encryption", body_tls_only)
+            self.assertIn("any machine that can reach", body_tls_only)
+
+            _, body_both = init_gui._risk_dialog_text(
+                ["192.168.1.50:39280"],
+                require_token=True,
+                require_tls=True,
+            )
+            self.assertNotIn("No authentication", body_both)
+            self.assertNotIn("No encryption", body_both)
+            self.assertIn("any client with the bearer token", body_both)
+
+            tok_title, tok_body = init_gui._token_dialog_text("tok-sample")
+            self.assertEqual(tok_title, "MCP Bridge — Bearer token")
+            self.assertIn(
+                "It will not be stored or shown again. Only a one-way hash "
+                "is kept in FreeCAD's preferences.",
+                tok_body,
+            )
+            self.assertIn("Authorization: Bearer tok-sample", tok_body)
+            self.assertIn("A new token replaces the old one.", tok_body)
 
             cmd = init_gui.MCPBridgeCommand()
 
-            # 0. Entry without a port fails before any dialog, names the
+            # 0a. Entry without a port fails before any dialog, names the
             # entry, and leaves the bridge off.
             store["ListenAddress"] = "127.0.0.1:39280\n192.168.1.50"
             cmd.Activated()
@@ -859,12 +982,31 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             self.assertIn("192.168.1.50", statuses[-1])
             self.assertIn("Change the listen address in Edit", warnings[-1])
 
-            # 1. Decline: bridge stays off and entry is not accepted.
+            # 0b. With RequireTls=True and no certificate/key set, a
+            # non-loopback start fails before any dialog and stays off.
             store["ListenAddress"] = "127.0.0.1:39280\n192.168.1.50:39280"
+            store["RequireTls"] = True
+            cmd.Activated()
+            self.assertFalse(running)
+            self.assertEqual(prompts, [])
+            self.assertEqual(shown_tokens, [])
+            self.assertIn(
+                "TLS is required for non-loopback listen addresses",
+                statuses[-1],
+            )
+            self.assertIn("untick Require TLS there.", warnings[-1])
+            self.assertNotIn(
+                "Change the listen address in Edit", warnings[-1]
+            )
+            store["RequireTls"] = False
+
+            # 1. Decline: bridge stays off and entry is not accepted.
             decision = False
             cmd.Activated()
             self.assertFalse(running)
-            self.assertEqual(prompts, [["192.168.1.50:39280"]])
+            self.assertEqual(
+                prompts, [(["192.168.1.50:39280"], False, False)]
+            )
             self.assertEqual(statuses[-1], "MCP Bridge: Offline")
             self.assertEqual(config.accepted_listen_addresses(), [])
 
@@ -909,7 +1051,26 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 "(warning: no authentication or encryption)", statuses[-1]
             )
 
-            # 5. Add two new non-loopback entries: one dialog lists both.
+            # 5. Enable RequireToken with no TokenHash yet: generates and
+            # shows the first token once on start, and does not show it again
+            # on the next start.
+            cmd.Activated()
+            store["RequireToken"] = True
+            cmd.Activated()
+            self.assertTrue(running)
+            self.assertEqual(len(shown_tokens), 1)
+            self.assertTrue(config.verify_token(shown_tokens[0]))
+            self.assertEqual(
+                statuses[-1],
+                "MCP Bridge: Listening on 127.0.0.1:39280, "
+                "192.168.1.50:39280 (warning: no encryption)",
+            )
+            cmd.Activated()
+            cmd.Activated()
+            self.assertEqual(len(shown_tokens), 1)
+            store["RequireToken"] = False
+
+            # 6. Add two new non-loopback entries: one dialog lists both.
             cmd.Activated()
             store["ListenAddress"] = (
                 "127.0.0.1:39280\n192.168.1.50:39280\n"
@@ -918,7 +1079,8 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             cmd.Activated()
             self.assertTrue(running)
             self.assertEqual(
-                prompts[-1], ["10.0.0.5:39281", "0.0.0.0:39282"]
+                prompts[-1],
+                (["10.0.0.5:39281", "0.0.0.0:39282"], False, False),
             )
             self.assertEqual(
                 config.accepted_listen_addresses(),
@@ -933,14 +1095,20 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
     def test_http_server_binds_configured_list_and_rolls_back_on_failure(
         self,
     ):
-        """HttpServer binds the exact configured address:port list, warns when
+        """HttpServer binds the exact configured address:port list, enforces
+        bearer token and TLS settings on non-loopback entries only, warns when
         any entry is non-loopback, and rolls back cleanly on bind or thread
         start failure without shutting down an unstarted server."""
-        store = {"ListenAddress": "127.0.0.1:39280"}
+        store = {
+            "ListenAddress": "127.0.0.1:39280",
+            "RequireToken": False,
+            "RequireTls": False,
+        }
         messages = []
         warnings = []
         errors = []
         bound = []
+        wrapped_sockets = []
         shut_down = []
         closed = []
         fail_bind_on = None
@@ -950,7 +1118,13 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             def GetString(self, name, default=""):
                 return store.get(name, default)
 
+            def SetString(self, name, value):
+                store[name] = value
+
             def GetInt(self, name, default=0):
+                return store.get(name, default)
+
+            def GetBool(self, name, default=False):
                 return store.get(name, default)
 
         class FakeHTTPServer:
@@ -958,7 +1132,9 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 if fail_bind_on is not None and addr[0] == fail_bind_on:
                     raise OSError(f"cannot bind {addr[0]}")
                 self.addr = addr
+                self.socket = f"raw-sock-{addr[0]}:{addr[1]}"
                 self.executor = None
+                self.require_token = False
                 bound.append(addr)
 
             def serve_forever(self):
@@ -983,6 +1159,12 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             def is_alive(self):
                 return self._alive
 
+        class FakeSSLContext:
+            def wrap_socket(self, sock, server_side=False):
+                wrapped = f"tls({sock}, server_side={server_side})"
+                wrapped_sockets.append(wrapped)
+                return wrapped
+
         freecad = types.SimpleNamespace(
             ParamGet=lambda _g: DictParams(),
             Console=types.SimpleNamespace(
@@ -1003,7 +1185,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
         }
         with mock.patch.dict(sys.modules, stubs):
             sys.modules.pop("freecad.mcp_bridge.config", None)
-            importlib.import_module("freecad.mcp_bridge.config")
+            config = importlib.import_module("freecad.mcp_bridge.config")
             sys.modules.pop("freecad.mcp_bridge.http_server", None)
             http_server = importlib.import_module(
                 "freecad.mcp_bridge.http_server"
@@ -1024,6 +1206,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 srv.start()
                 self.assertEqual(bound, [("127.0.0.1", 39280)])
                 self.assertEqual(warnings, [])
+                self.assertFalse(srv._servers[0][0].require_token)
                 srv.stop()
 
                 # 2. List with loopback, LAN, and IPv6 on distinct ports.
@@ -1068,6 +1251,51 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                         ("127.0.0.1", 39280),
                     ],
                 )
+
+                # 2b. With RequireToken=True and RequireTls=True: missing cert
+                # raises ValueError and stays off; with valid cert, wraps only
+                # the non-loopback socket and sets require_token only on it.
+                bound.clear()
+                warnings.clear()
+                errors.clear()
+                store["RequireToken"] = True
+                store["RequireTls"] = True
+                with self.assertRaises(ValueError):
+                    srv.start()
+                self.assertFalse(srv.is_running())
+                self.assertEqual(bound, [])
+                self.assertIn(
+                    "TLS is required for non-loopback listen addresses",
+                    errors[-1],
+                )
+                with mock.patch.object(
+                    config,
+                    "build_ssl_context",
+                    return_value=FakeSSLContext(),
+                ):
+                    srv.start(
+                        tls_cert_file="cert.pem", tls_key_file="key.pem"
+                    )
+                self.assertTrue(srv.is_running())
+                self.assertFalse(srv._servers[0][0].require_token)
+                self.assertTrue(srv._servers[1][0].require_token)
+                self.assertFalse(srv._servers[2][0].require_token)
+                self.assertEqual(
+                    wrapped_sockets,
+                    ["tls(raw-sock-192.168.1.50:39281, server_side=True)"],
+                )
+                self.assertEqual(
+                    warnings[-1],
+                    "[MCP Bridge] WARNING: listening on 127.0.0.1:39280, "
+                    "192.168.1.50:39281, [::1]:39282. Bearer token and TLS "
+                    "are required beyond loopback. Any client with the "
+                    "bearer token that can reach these addresses can run "
+                    "Python code in FreeCAD as your user account: "
+                    "192.168.1.50:39281.\n",
+                )
+                srv.stop()
+                store["RequireToken"] = False
+                store["RequireTls"] = False
 
                 # 3. LAN only (127.0.0.1 removed): binds LAN only, warns.
                 bound.clear()
@@ -1159,6 +1387,30 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 self.assertEqual(len(executor_shutdowns), 2)
                 self.assertEqual(srv._servers, [])
                 self.assertIsNone(srv._executor)
+
+                # 8. McpRequestHandler._token_ok enforces Bearer token only
+                # when self.server.require_token is True.
+                tok = config.generate_and_store_token()
+                handler = http_server.McpRequestHandler.__new__(
+                    http_server.McpRequestHandler
+                )
+                handler.server = types.SimpleNamespace(require_token=False)
+                handler.headers = {}
+                self.assertTrue(handler._token_ok())
+
+                handler.server = types.SimpleNamespace(require_token=True)
+                self.assertFalse(handler._token_ok())
+                handler.headers = {"Authorization": f"Basic {tok}"}
+                self.assertFalse(handler._token_ok())
+                handler.headers = {"Authorization": "Bearer wrong-token"}
+                self.assertFalse(handler._token_ok())
+                handler.headers = {"Authorization": f"Bearer {tok}"}
+                self.assertTrue(handler._token_ok())
+
+                tok2 = config.generate_and_store_token()
+                self.assertFalse(handler._token_ok())
+                handler.headers = {"Authorization": f"Bearer {tok2}"}
+                self.assertTrue(handler._token_ok())
             sys.modules.pop("freecad.mcp_bridge.http_server", None)
 
 

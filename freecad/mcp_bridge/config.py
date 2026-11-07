@@ -1,14 +1,20 @@
 """Runtime configuration for the MCP Bridge, read from FreeCAD preferences.
 
 Values live under PREF_GROUP and are read fresh on each access. The listen
-addresses are read at server start. Timeout and page size are read per
-request. Retention is read when a job finishes running. Status-bar button
-settings are read when the status-bar button is created or refreshed.
+addresses and non-loopback security settings are read at server start (and
+token verification reads the stored token hash per request). Timeout and
+page size are read per request. Retention is read when a job finishes
+running. Status-bar button settings are read when the status-bar button is
+created or refreshed.
 """
 
+import hashlib
+import hmac
 import ipaddress
 import json
 import re
+import secrets
+import ssl
 
 import FreeCAD
 
@@ -19,6 +25,8 @@ from freecad.mcp_bridge.constants import (
     DEFAULT_MAX_PAGE_SIZE_KB,
     DEFAULT_MAX_RESPONSE_TIMEOUT_S,
     DEFAULT_PORT,
+    DEFAULT_REQUIRE_TLS,
+    DEFAULT_REQUIRE_TOKEN,
     DEFAULT_SHOW_STATUS_BUTTON,
     DEFAULT_STATUS_BUTTON_POSITION,
     PREF_GROUP,
@@ -167,6 +175,80 @@ def accept_address(address: str) -> None:
         _params().SetString(
             "AcceptedListenAddresses", json.dumps(accepted)
         )
+
+
+def require_token() -> bool:
+    """Whether non-loopback entries require a bearer token."""
+    return _params().GetBool("RequireToken", DEFAULT_REQUIRE_TOKEN)
+
+
+def token_hash() -> str:
+    """Stored SHA-256 hex digest of the bearer token, or '' if unset."""
+    return _params().GetString("TokenHash", "").strip()
+
+
+def hash_token(token: str) -> str:
+    """Return the SHA-256 hex digest of `token`."""
+    return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
+
+
+def generate_and_store_token() -> str:
+    """Generate a new bearer token, store only its SHA-256 hash, and
+    return the token once."""
+    token = secrets.token_urlsafe(32)
+    _params().SetString("TokenHash", hash_token(token))
+    return token
+
+
+def verify_token(
+    candidate: str, expected_hash: str | None = None
+) -> bool:
+    """True when `candidate` hashes in constant time to the stored hash."""
+    expected = (
+        expected_hash.strip()
+        if expected_hash is not None
+        else token_hash()
+    )
+    if not expected or not candidate:
+        return False
+    return hmac.compare_digest(hash_token(candidate), expected)
+
+
+def require_tls() -> bool:
+    """Whether non-loopback entries serve HTTPS."""
+    return _params().GetBool("RequireTls", DEFAULT_REQUIRE_TLS)
+
+
+def tls_cert_file() -> str:
+    """Path to the TLS certificate file for non-loopback entries."""
+    return _params().GetString("TlsCertFile", "").strip()
+
+
+def tls_key_file() -> str:
+    """Path to the TLS private key file for non-loopback entries."""
+    return _params().GetString("TlsKeyFile", "").strip()
+
+
+def build_ssl_context(cert_file: str, key_file: str) -> ssl.SSLContext:
+    """Build a server SSLContext from `cert_file` and `key_file`."""
+    cert = (cert_file or "").strip()
+    key = (key_file or "").strip()
+    if not cert or not key:
+        raise ValueError(
+            "TLS is required for non-loopback listen addresses and needs "
+            "a certificate file and a private key file. Select both in "
+            "Edit → Preferences → MCP Bridge, or untick Require TLS there."
+        )
+    try:
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(certfile=cert, keyfile=key)
+    except (OSError, ssl.SSLError) as exc:
+        raise ValueError(
+            f"Could not load TLS certificate or private key ({exc}). "
+            "Check the TLS files or untick Require TLS in Edit → "
+            "Preferences → MCP Bridge."
+        ) from exc
+    return context
 
 
 def max_response_timeout_ms() -> int:

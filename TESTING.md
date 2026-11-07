@@ -63,7 +63,8 @@ behaviors it checks are execution and file execution, stdout/stderr and
 tracebacks, output paging and replay, retention preferences, execution
 order, GUI event handling, the two supported MCP protocol versions,
 HTTP and Origin validation, loopback and non-loopback listen-address
-binding, per-address risk acceptance and start warnings, port changes
+binding, bearer token authentication and TLS encryption on non-loopback
+entries, per-entry risk acceptance and start warnings, port changes
 and stopping the bridge with running or queued jobs. When `BUNDLE_MCPB`
 names a packed `.mcpb`, `test_bundle_mcp.py` calls that shim
 over stdio, in both protocol versions, and then expects it

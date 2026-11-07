@@ -483,13 +483,39 @@ shares a single main-thread execution queue across them. Loopback is
 bound only when included in the list (the Claude Desktop shim
 connects to `127.0.0.1` on its configured port). When the bridge is
 turned on with any non-loopback entry not yet accepted, one modal
-warning dialog lists those entries and states the risks — no
-authentication, no encryption, and any machine that can reach those
-addresses can run Python code in FreeCAD as the user — and the
-bridge stays off unless the user accepts. Acceptance is stored per
-entry in FreeCAD preferences (`AcceptedListenAddresses`) once the
-start succeeds. Every start with any non-loopback entry warns in the
-status bar and the Report view.
+warning dialog lists those entries and states the remaining risks —
+lack of authentication when **Require bearer token** is off, lack of
+encryption when **Require TLS (HTTPS)** is off, and remote Python
+code execution in FreeCAD as the user — and the bridge stays off
+unless the user accepts. Acceptance is stored per entry in FreeCAD
+preferences (`AcceptedListenAddresses`) once the start succeeds.
+Every start with any non-loopback entry warns in the status bar and
+the Report view.
+
+**Non-loopback authentication and encryption — on by default, opt-out**
+
+Two preferences apply across all non-loopback entries while leaving
+loopback entries and the Claude Desktop stdio shim unchanged:
+
+- **Bearer token (`RequireToken`, default `true`)** — when enabled,
+  every request to a non-loopback listener must carry
+  `Authorization: Bearer <token>` or is rejected with `401
+  Unauthorized`. The addon generates a 256-bit random token, shows it
+  once in a modal dialog with a note that it will not be stored or
+  shown again, and stores only its SHA-256 hex digest (`TokenHash`) in
+  FreeCAD preferences, compared in constant time. The first token is
+  generated and shown when the user turns the bridge on with a
+  non-loopback entry and no `TokenHash` is stored, or when the user
+  clicks **Generate new token** in Preferences. Generating a new token
+  replaces `TokenHash` and immediately refuses the old token.
+- **TLS (`RequireTls`, default `true`)** — when enabled, non-loopback
+  listeners serve HTTPS using the user-configured certificate file
+  (`TlsCertFile`) and private key file (`TlsKeyFile`) with Python's
+  standard-library `ssl` module. The addon does not generate
+  certificates. If `RequireTls` is enabled and a non-loopback entry is
+  configured without readable, valid certificate and key files,
+  startup fails with an error directing the user to Edit → Preferences
+  → MCP Bridge and the bridge stays off.
 
 **Security posture — noted trade-offs**
 
@@ -500,12 +526,11 @@ that macOS does not honour socket file permissions); a TCP loopback
 port cannot. Accepted on the basis that by default the listener is
 local-only and the user controls the toggle.
 
-On a non-loopback address, the HTTP server speaks plain HTTP with no
-authentication or client-address filter, so any machine that can reach
-the configured address and port can run Python code in the live
-FreeCAD session as the user. Allowed only after the user has accepted
-the risk for each entry once and accompanied by a warning on every
-start.
+On a non-loopback address, any client that can reach the configured
+address and port (with the bearer token, when `RequireToken` is on)
+can run Python code in the live FreeCAD session as the user. Allowed
+only after the user has accepted the risk for each entry once and
+accompanied by a warning on every start.
 
 **Origin header validation — required**
 
@@ -616,6 +641,9 @@ automatically.
 | Parameter | Default | Notes |
 |-----------|---------|-------|
 | Listen address | `127.0.0.1:39280` | List of `address:port` entries (`[ipv6]:port` for IPv6) to bind; if unset, inherits a previously saved `Port` value; missing port or bind conflict at startup logs an error and leaves the bridge off; non-loopback entries require user risk acceptance for each entry once (`AcceptedListenAddresses`) and log a warning in the status bar and Report view on each start |
+| Require bearer token | `true` | Requires `Authorization: Bearer <token>` on non-loopback entries; stores only a SHA-256 hash (`TokenHash`) and shows the generated token once |
+| Require TLS (HTTPS) | `true` | Serves HTTPS on non-loopback entries using `TlsCertFile` and `TlsKeyFile`; fails to start on a non-loopback entry if enabled without valid certificate and key files |
+| TLS certificate file / TLS private key file | `""` | PEM certificate (`TlsCertFile`) and private key (`TlsKeyFile`) paths for HTTPS on non-loopback entries |
 | Max response timeout (s) | 15 | Max wait in `execute_python` and `get_output_page` before returning with `has_more: true` |
 | Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |
 | Page history retention (min) | 5 | How long output stays readable after the job finishes running, or after its last valid page fetch or replay. |
