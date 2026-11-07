@@ -182,12 +182,12 @@ from anything attached to the release page.
    - When the pull request changes `mcp-stdio-shim/`, look in
      Claude Desktop at the `.mcpb` that the pull request's
      checks packed. When it changes `freecad/`, `Resources/`,
-     `MCP_Bridge.py`, or `package.xml`, install the pull
-     request's addon in your own FreeCAD and look at it there.
+     or `package.xml`, install the pull request's addon in
+     your own FreeCAD and look at it there.
    - When the pull request changes `mcp-stdio-shim/`,
-     `freecad/`, `Resources/`, `MCP_Bridge.py`, or
-     `package.xml`, wait for the Claude Desktop check on the
-     pull request (see The Claude Desktop check routine, below).
+     `freecad/`, `Resources/`, or `package.xml`, wait for the
+     Claude Desktop check on the pull request (see The Claude
+     Desktop check routine, below).
    - Push any tweaks to that same pull request until the change
      is settled.
    - Merge the pull request into `main` only after each look

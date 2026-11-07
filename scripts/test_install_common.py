@@ -326,12 +326,11 @@ def copy_addon_checkout(source: str, target: str) -> None:
     source = os.path.normpath(source)
     target = os.path.normpath(target)
     has_package = os.path.isfile(os.path.join(source, "package.xml"))
-    has_command = os.path.isfile(os.path.join(source, "MCP_Bridge.py"))
     has_freecad = os.path.isdir(os.path.join(source, "freecad"))
-    if not has_package or not has_command or not has_freecad:
+    if not has_package or not has_freecad:
         fail(
-            "copy mode needs a checkout root with package.xml, "
-            f"MCP_Bridge.py, and freecad/: {source}"
+            "copy mode needs a checkout root with package.xml "
+            f"and freecad/: {source}"
         )
 
     def _ignore(directory: str, names: list[str]) -> list[str]:
@@ -515,7 +514,6 @@ def verify_install_tree(
     """Check the installed tree; an expected_version of None accepts any."""
     required = [
         "package.xml",
-        "MCP_Bridge.py",
         os.path.join("freecad", "mcp_bridge", "__init__.py"),
         os.path.join("freecad", "mcp_bridge", "init_gui.py"),
         os.path.join("freecad", "mcp_bridge", "bridge.py"),

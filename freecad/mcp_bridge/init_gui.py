@@ -2,9 +2,8 @@ import os
 
 import FreeCAD as App
 import FreeCADGui as Gui
-import MCP_Bridge
 
-from freecad.mcp_bridge import bridge
+from freecad.mcp_bridge import MCP_Bridge, bridge
 from freecad.mcp_bridge.constants import (
     COMMAND_ID,
     DISPLAY_NAME,

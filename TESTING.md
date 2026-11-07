@@ -242,8 +242,8 @@ Addon Manager loads the live Addons Index catalog (`CreateAddonListWorker.get_re
 as `freecad-mcp-bridge`, the way a developer places the addon,
 then runs the same on-disk check, restart verify, and acceptance
 phases as the other modes. The checkout is the repo root, which
-holds `package.xml`, `MCP_Bridge.py`, and `freecad/` (`init_gui.py`
-is `freecad/mcp_bridge/init_gui.py`). The copy leaves out the
+holds `package.xml` and `freecad/` (`init_gui.py` is
+`freecad/mcp_bridge/init_gui.py`). The copy leaves out the
 checkout's `.git` and `.github` directories. On FreeCAD 1.1
 the Mod folder is the versioned `v1-1` directory (on Windows,
 `%APPDATA%\FreeCAD\v1-1\Mod`). `RELEASE_INSTALL_TAG` names the

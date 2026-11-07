@@ -309,7 +309,7 @@ jobs:
           rc="${RUNNER_TEMP}/coverage.rc"
           cat > "${rc}" <<EOF
           [run]
-          include = */MCP_Bridge.py, */freecad/mcp_bridge/*
+          include = */freecad/mcp_bridge/*
           parallel = True
           data_file = ${data_dir}/.coverage
           EOF
@@ -415,7 +415,7 @@ jobs:
 
           os_name = os.environ["RUNNER_OS"]
           data_dir = os.path.join(os.environ["RUNNER_TEMP"], "coverage-data")
-          repo_root = os.environ["GITHUB_WORKSPACE"]
+          repo_pkg = os.path.join(os.environ["GITHUB_WORKSPACE"], "freecad", "mcp_bridge")
 
 
           def to_summary(text):
@@ -433,12 +433,9 @@ jobs:
               print(f"  {os.path.basename(part)}: {len(files)} measured files")
               for path in files:
                   print(f"    {path}")
-                  norm = path.replace("\\", "/")
-                  at = norm.find("/freecad/mcp_bridge/")
+                  at = path.replace("\\", "/").find("/freecad/mcp_bridge/")
                   if at >= 0:
-                      installed.add(path[: at + 1])
-                  elif norm.endswith("/MCP_Bridge.py"):
-                      installed.add(path[: -len("MCP_Bridge.py")])
+                      installed.add(path[: at + len("/freecad/mcp_bridge/")])
 
           if not installed:
               msg = f"NO COVERAGE DATA for freecad.mcp_bridge ({len(parts)} data files in {data_dir})"
@@ -450,11 +447,11 @@ jobs:
           # the checkout can differ from what main or tag mode installed.
           # The checkout is the fallback if no installed copy is on disk.
           on_disk = [p for p in sorted(installed) if os.path.isdir(p)]
-          canonical = on_disk[0] if on_disk else f"{repo_root}{os.sep}"
+          canonical = on_disk[0] if on_disk else f"{repo_pkg}{os.sep}"
           print(f"Reporting against: {canonical}")
           others = [p for p in sorted(installed) if p != canonical]
-          if canonical != f"{repo_root}{os.sep}":
-              others.append(f"{repo_root}{os.sep}")
+          if canonical != f"{repo_pkg}{os.sep}":
+              others.append(f"{repo_pkg}{os.sep}")
           rc = os.path.join(os.environ["RUNNER_TEMP"], "coverage-report.rc")
           lines = ["[run]", f"data_file = {os.path.join(data_dir, '.coverage')}"]
           lines += ["[paths]", "source =", f"    {canonical}"]

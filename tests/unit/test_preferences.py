@@ -547,19 +547,18 @@ class ToolbarVisibilityTests(unittest.TestCase):
 
     def test_command_is_registered_under_the_mcp_bridge_category(self):
         """MCP_Bridge.register calls Gui.addCommand from MCP_Bridge.py, so
-        the Customize category and macro module both read 'MCP_Bridge'."""
+        the Customize category reads 'MCP_Bridge'."""
         recorded = []
 
         def add_command(name, cmd):
             fn = sys._getframe(1).f_code.co_filename.replace("\\", "/")
             tail = fn.rsplit("/", 1)[-1]
             module = tail.rsplit(".", 1)[0] if "." in tail else tail
-            installed_fn = f"/Mod/freecad-mcp-bridge/{tail}"
-            match = re.search(r"/Mod/(\w+)/", installed_fn) or re.search(
-                r"/Ext/freecad/(\w+)/", installed_fn
+            match = re.search(r"/Mod/(\w+)/", fn) or re.search(
+                r"/Ext/freecad/(\w+)/", fn
             )
             group = match.group(1) if match else module
-            recorded.append((name, tail, group, module, cmd))
+            recorded.append((name, group, cmd))
 
         freecad = types.SimpleNamespace(
             Console=types.SimpleNamespace(PrintWarning=lambda *_: None)
@@ -582,22 +581,19 @@ class ToolbarVisibilityTests(unittest.TestCase):
             "freecad.mcp_bridge.bridge": types.SimpleNamespace(),
         }
         with mock.patch.dict(sys.modules, stubs):
-            sys.modules.pop("MCP_Bridge", None)
+            sys.modules.pop("freecad.mcp_bridge.MCP_Bridge", None)
+            importlib.import_module("freecad.mcp_bridge.MCP_Bridge")
             sys.modules.pop("freecad.mcp_bridge.init_gui", None)
             importlib.import_module("freecad.mcp_bridge.init_gui")
             sys.modules.pop("freecad.mcp_bridge.init_gui", None)
+            sys.modules.pop("freecad.mcp_bridge.MCP_Bridge", None)
             self.assertEqual(len(recorded), 1)
-            name, tail, group, module, cmd = recorded[0]
+            name, group, cmd = recorded[0]
             self.assertEqual(name, COMMAND_ID)
-            self.assertEqual(tail, "MCP_Bridge.py")
             self.assertEqual(group, "MCP_Bridge")
-            self.assertEqual(module, "MCP_Bridge")
-            self.assertIsNotNone(importlib.import_module(module))
-            self.assertEqual(len(recorded), 1)
             self.assertEqual(
                 cmd.GetResources()["MenuText"], "MCP Bridge On/Off"
             )
-            sys.modules.pop("MCP_Bridge", None)
 
 
 if __name__ == "__main__":
