@@ -20,6 +20,7 @@ ENDPOINT_PATH = "/mcp"
 
 # Network / timing / UI defaults — overridable via FreeCAD preferences
 # (see config.py)
+DEFAULT_LISTEN_ADDRESS = "127.0.0.1"
 DEFAULT_PORT = 39280
 DEFAULT_MAX_RESPONSE_TIMEOUT_S = 15
 DEFAULT_MAX_PAGE_SIZE_KB = 32

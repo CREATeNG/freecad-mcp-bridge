@@ -92,7 +92,14 @@ change a model — for example:
 
 **Edit → Preferences → MCP Bridge:**
 
-- **Port** — the loopback port the server listens on (default 39280).
+- **Listen address** — the IPv4 address or hostname the server
+  listens on (default `127.0.0.1`). Loopback (`127.0.0.1`) always
+  stays bound alongside any other address so the Claude Desktop shim
+  continues to work. The first time you turn the bridge on at a
+  non-loopback address, FreeCAD asks you to accept the security risks
+  for that address, and each start there warns in the status bar and
+  **Report view**.
+- **Port** — the TCP port the server listens on (default 39280).
 - **Max response timeout** — how long the bridge waits for each page's
   output, counted from when that page starts (default 15 s). The agent
   fetches the rest with `get_output_page`.
@@ -120,7 +127,8 @@ MCP Bridge is designed for **local** control of FreeCAD.
   `stderr`, and exceptions) that pass through them are used for
   three things only: to run the requested code in FreeCAD, to mirror
   the output to FreeCAD's **Report view**, and to return the output
-  to your MCP client over loopback (`127.0.0.1`).
+  to your MCP client over HTTP (`127.0.0.1` by default, or the
+  **Listen address** you configure in Preferences).
 - The bridge's page history keeps output pages in FreeCAD's memory
   only, never on disk, and discards them when **Page history
   retention** expires, when you turn the bridge off, or when FreeCAD
@@ -130,10 +138,15 @@ MCP Bridge is designed for **local** control of FreeCAD.
   internet or shares data with third parties. Code the agent runs in
   FreeCAD can still access local files or the internet, as any macro
   can.
-- The bridge opens a loopback-only port (`127.0.0.1`), and only while
-  the bridge is switched on, which you do yourself, each session. Any
-  process on your machine can reach the open port, not only your MCP
-  client.
+- By default, the bridge opens a loopback-only port (`127.0.0.1`),
+  and only while the bridge is switched on, which you do yourself,
+  each session. Any process on your machine can reach the open
+  loopback port, not only your MCP client. If you set **Listen
+  address** to another address (and accept the first-time risk
+  dialog for that address), the bridge listens on both that address
+  and `127.0.0.1` with no authentication or encryption, so any
+  machine that can reach that address and port can run Python code
+  in FreeCAD as your user account.
 - Your agent can run code in your live FreeCAD session — macro-level
   access, with no sandbox on the bridge side. That makes your MCP
   client the guardrail. Use a client you trust, and set it to ask

@@ -1,8 +1,9 @@
-"""In-process HTTP server hosting the MCP endpoint on loopback.
+"""In-process HTTP server hosting the MCP endpoint.
 
-A ThreadingHTTPServer runs on a background thread, binding 127.0.0.1 only.
-Each request is served in MCP 2026-07-28 or 2025-11-25, whichever it is
-in, or rejected (see mcp_protocol.py), and answered as plain JSON. Tool
+A ThreadingHTTPServer runs on a background thread, binding 127.0.0.1 by
+default and keeping 127.0.0.1 bound alongside any other configured listen
+address. Each request is served in MCP 2026-07-28 or 2025-11-25, whichever
+it is in, or rejected (see mcp_protocol.py), and answered as plain JSON. Tool
 calls (execute_python, execute_python_file, get_output_page) run code on the
 Qt main thread via the Executor. Output is paged through the job's page
 history (see paging.py) when it outlasts the response timeout or exceeds the
@@ -208,11 +209,13 @@ def _invalid_request():
 
 
 class HttpServer:
-    """Owns the ThreadingHTTPServer, its serving thread, and the Executor."""
+    """Owns the HTTP servers, their serving threads, and the Executor."""
 
     def __init__(self):
         self._httpd = None
         self._thread = None
+        self._extra_httpd = None
+        self._extra_thread = None
         self._executor = None
 
     def is_running(self) -> bool:
@@ -224,32 +227,80 @@ class HttpServer:
         # Created here so it inherits main-thread affinity (start() is called
         # from the toolbar toggle / GUI startup, both on the main thread).
         self._executor = Executor()
+        configured_addr = config.listen_address()
         bind_port = config.port()
+        loopback = config.is_loopback_address(configured_addr)
+        if loopback:
+            bind_hosts = ["127.0.0.1"]
+        elif configured_addr == "0.0.0.0":
+            # 0.0.0.0 binds all local IPv4 interfaces, including 127.0.0.1.
+            bind_hosts = ["0.0.0.0"]
+        else:
+            bind_hosts = ["127.0.0.1", configured_addr]
+
+        servers = []
+        failed_host = bind_hosts[0]
         try:
-            self._httpd = paging.MaintenanceHTTPServer(
-                ("127.0.0.1", bind_port), McpRequestHandler
-            )
+            for host in bind_hosts:
+                failed_host = host
+                srv = paging.MaintenanceHTTPServer(
+                    (host, bind_port), McpRequestHandler
+                )
+                srv.executor = self._executor
+                servers.append(srv)
         except OSError as exc:
+            for srv in servers:
+                srv.server_close()
             self._httpd = None
+            self._extra_httpd = None
             self._executor = None
             FreeCAD.Console.PrintDeveloperError(
-                f"{LOG_PREFIX} Could not bind 127.0.0.1:{bind_port} ({exc}). "
-                "Change the port in Edit → Preferences → MCP Bridge.\n"
+                f"{LOG_PREFIX} Could not bind {failed_host}:{bind_port} "
+                f"({exc}). Change the port in Edit → Preferences → "
+                "MCP Bridge.\n"
             )
             raise
-        self._httpd.executor = self._executor
+        self._httpd = servers[0]
         self._thread = threading.Thread(
             target=self._httpd.serve_forever,
             name="mcp-bridge-http",
             daemon=True,
         )
         self._thread.start()
-        FreeCAD.Console.PrintMessage(
-            f"{LOG_PREFIX} HTTP server listening on "
-            f"127.0.0.1:{bind_port}{ENDPOINT_PATH}\n"
-        )
+        if len(servers) > 1:
+            self._extra_httpd = servers[1]
+            self._extra_thread = threading.Thread(
+                target=self._extra_httpd.serve_forever,
+                name="mcp-bridge-http-extra",
+                daemon=True,
+            )
+            self._extra_thread.start()
+        if loopback:
+            FreeCAD.Console.PrintMessage(
+                f"{LOG_PREFIX} HTTP server listening on "
+                f"127.0.0.1:{bind_port}{ENDPOINT_PATH}\n"
+            )
+        else:
+            FreeCAD.Console.PrintMessage(
+                f"{LOG_PREFIX} HTTP server listening on "
+                f"{configured_addr}:{bind_port}{ENDPOINT_PATH} and "
+                f"127.0.0.1:{bind_port}{ENDPOINT_PATH}\n"
+            )
+            FreeCAD.Console.PrintWarning(
+                f"{LOG_PREFIX} WARNING: listening on "
+                f"{configured_addr}:{bind_port} and "
+                f"127.0.0.1:{bind_port} with no authentication or "
+                f"encryption. Any machine that can reach "
+                f"{configured_addr}:{bind_port} can run Python code in "
+                "FreeCAD as your user account.\n"
+            )
 
     def stop(self) -> None:
+        if self._extra_httpd is not None:
+            self._extra_httpd.shutdown()
+            self._extra_httpd.server_close()
+            self._extra_httpd = None
+        self._extra_thread = None
         if self._httpd is not None:
             self._httpd.shutdown()
             self._httpd.server_close()

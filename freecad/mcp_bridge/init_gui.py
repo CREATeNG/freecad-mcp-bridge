@@ -27,6 +27,51 @@ if os.path.isdir(_icons_dir):
     Gui.addIconPath(_icons_dir.replace("\\", "/"))
 
 
+def _risk_dialog_text(address, port):
+    """Return (title, text) for the first-time non-loopback risk dialog."""
+    title = f"{DISPLAY_NAME} — Listen on {address}:{port}?"
+    body = (
+        f"Listening on {address}:{port} makes this FreeCAD session "
+        "reachable from other machines.\n\n"
+        f"• No authentication: any machine that can reach {address}:{port} "
+        "can call the bridge.\n"
+        "• No encryption: requests and output travel over plain HTTP.\n"
+        f"• Code execution: any machine that can reach {address}:{port} "
+        "can run Python code in FreeCAD as your user account.\n\n"
+        f"Accept these risks and start the bridge on {address}:{port} "
+        f"(and 127.0.0.1:{port})?"
+    )
+    return title, body
+
+
+def _confirm_non_loopback_risk(address, port):
+    """Ask the user to accept the risks of listening on `address`:`port`."""
+    import FreeCADGui as Gui
+    from PySide.QtWidgets import QMessageBox
+
+    title, body = _risk_dialog_text(address, port)
+    box = QMessageBox(
+        QMessageBox.Warning,
+        title,
+        body,
+        QMessageBox.NoButton,
+        Gui.getMainWindow(),
+    )
+    box.setObjectName("MCPBridgeRiskDialog")
+    accept_btn = box.addButton(
+        "Accept Risks and Start", QMessageBox.AcceptRole
+    )
+    cancel_btn = box.addButton("Cancel", QMessageBox.RejectRole)
+    box.setDefaultButton(cancel_btn)
+    box.setEscapeButton(cancel_btn)
+    try:
+        box.exec()
+        return box.clickedButton() is accept_btn
+    finally:
+        box.setParent(None)
+        box.deleteLater()
+
+
 class MCPBridgeCommand:
     def GetResources(self):
         import FreeCAD as App
@@ -54,8 +99,28 @@ class MCPBridgeCommand:
                 status = f"{DISPLAY_NAME}: Offline"
                 stopped = True
             else:
+                addr = config.listen_address()
+                port = config.port()
+                loopback = config.is_loopback_address(addr)
+                if not loopback and not config.is_address_accepted(addr):
+                    if not _confirm_non_loopback_risk(addr, port):
+                        status = f"{DISPLAY_NAME}: Offline"
+                        mw = Gui.getMainWindow()
+                        if mw:
+                            mw.statusBar().showMessage(status)
+                        show_toggle_state()
+                        App.Console.PrintNotification(status + "\n")
+                        return
+                    config.accept_address(addr)
                 bridge.start()
-                status = f"{DISPLAY_NAME}: Listening on 127.0.0.1:{config.port()}"
+                if loopback:
+                    status = f"{DISPLAY_NAME}: Listening on 127.0.0.1:{port}"
+                else:
+                    status = (
+                        f"{DISPLAY_NAME}: Listening on {addr}:{port} and "
+                        f"127.0.0.1:{port} (warning: no authentication or "
+                        "encryption)"
+                    )
                 started = True
         except Exception as e:
             App.Console.PrintDeveloperError(

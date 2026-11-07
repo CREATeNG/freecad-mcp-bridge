@@ -1,4 +1,4 @@
-"""Requirements on the port the bridge listens on when it is turned on.
+"""Requirements on the address and port the bridge listens on when turned on.
 
 Each test name, and the first line of its docstring, states one requirement
 as a user and an agent experience it, against a real bridge in a real
@@ -21,6 +21,7 @@ from unittest import mock
 from urllib.parse import urlsplit
 
 from tests.acceptance import mcp_client as mcp
+from tests.acceptance.test_transport import non_loopback_address
 
 PORT = urlsplit(mcp.BRIDGE_URL).port
 NO_PREFERENCE = -1  # the Port preference is unset: the default applies
@@ -66,7 +67,12 @@ def start_on_occupied(port, restore_to, seen_file):
     and turns the bridge on again."""
     return PREFERENCES + f"""
 import json
-from PySide.QtWidgets import QDockWidget, QPlainTextEdit, QTextEdit
+from PySide.QtWidgets import (
+    QApplication,
+    QDockWidget,
+    QPlainTextEdit,
+    QTextEdit,
+)
 
 seen = {{}}
 dock = Gui.getMainWindow().findChild(QDockWidget, 'Report view')
@@ -77,6 +83,7 @@ def report_view_text():
     if dock is None:
         return ''
     dock.show()
+    QApplication.processEvents()
     for kind in (QTextEdit, QPlainTextEdit):
         for view in dock.findChildren(kind):
             return view.toPlainText()
@@ -185,6 +192,219 @@ class PortTests(unittest.TestCase):
         self.assertIn(f"Could not bind 127.0.0.1:{port}", seen["report"])
         self.assertIn("Change the port in Edit", seen["report"])
         self.assertIn("Preferences", seen["report"])
+
+
+def non_loopback_flow(address, seen_file, continue_file):
+    """Code that exercises declining, accepting, and restarting at `address`,
+    waiting for `continue_file` while the bridge is up on `address` so the
+    test runner can talk to both `address` and `127.0.0.1`, then restores
+    preferences and restarts on loopback."""
+    return PREFERENCES + f"""
+import json
+import os
+import socket
+from PySide.QtWidgets import (
+    QApplication,
+    QDockWidget,
+    QMessageBox,
+    QPlainTextEdit,
+    QTextEdit,
+)
+
+seen = {{}}
+mw = Gui.getMainWindow()
+dock = mw.findChild(QDockWidget, 'Report view')
+was_visible = dock is not None and dock.isVisible()
+orig_addr = params.GetString('ListenAddress', '')
+orig_accepted = params.GetString('AcceptedListenAddresses', '')
+
+
+def report_view_text():
+    if dock is None:
+        return ''
+    dock.show()
+    QApplication.processEvents()
+    for kind in (QTextEdit, QPlainTextEdit):
+        for view in dock.findChildren(kind):
+            return view.toPlainText()
+    return ''
+
+
+def can_connect(host, port):
+    try:
+        socket.create_connection((host, port), timeout=1).close()
+        return True
+    except OSError:
+        return False
+
+
+def click_dialog_button(label, prefix):
+    dlg = mw.findChild(QMessageBox, 'MCPBridgeRiskDialog')
+    if dlg is None:
+        widget = QApplication.activeModalWidget()
+        if isinstance(widget, QMessageBox):
+            dlg = widget
+    if dlg is None:
+        seen[prefix + '_dialog_found'] = False
+        return
+    seen[prefix + '_dialog_found'] = True
+    seen[prefix + '_title'] = dlg.windowTitle()
+    seen[prefix + '_text'] = dlg.text()
+    seen[prefix + '_port_open_during_dialog'] = can_connect(
+        {address!r}, {PORT}
+    )
+    for btn in dlg.buttons():
+        if btn.text() == label:
+            btn.click()
+            return
+
+
+def step_decline():
+    if bridge.is_running():
+        action.trigger()
+    params.SetString('ListenAddress', {address!r})
+    params.RemString('AcceptedListenAddresses')
+    QTimer.singleShot(
+        150, lambda: click_dialog_button('Cancel', 'decline')
+    )
+    action.trigger()
+    seen['declined_running'] = bridge.is_running()
+    seen['declined_port_open'] = can_connect({address!r}, {PORT})
+    seen['declined_status'] = mw.statusBar().currentMessage()
+    seen['declined_accepted'] = params.GetString(
+        'AcceptedListenAddresses', ''
+    )
+    QTimer.singleShot(200, step_accept)
+
+
+def step_accept():
+    before = len(report_view_text())
+    QTimer.singleShot(
+        150,
+        lambda: click_dialog_button('Accept Risks and Start', 'accept'),
+    )
+    action.trigger()
+    seen['accepted_running'] = bridge.is_running()
+    seen['accepted_status'] = mw.statusBar().currentMessage()
+    seen['accepted_report'] = report_view_text()[before:]
+    seen['accepted_saved'] = params.GetString('AcceptedListenAddresses', '')
+    with open({seen_file!r} + '.ready', 'w', encoding='utf-8') as handle:
+        json.dump(seen, handle)
+    QTimer.singleShot(200, wait_for_runner)
+
+
+def wait_for_runner():
+    if not os.path.exists({continue_file!r}):
+        QTimer.singleShot(200, wait_for_runner)
+        return
+    # Restart at the already-accepted address: no dialog should open,
+    # and the warning must appear again.
+    if bridge.is_running():
+        action.trigger()
+    before = len(report_view_text())
+    QTimer.singleShot(
+        150, lambda: click_dialog_button('Cancel', 'second_start')
+    )
+    action.trigger()
+    seen['second_running'] = bridge.is_running()
+    seen['second_status'] = mw.statusBar().currentMessage()
+    seen['second_report'] = report_view_text()[before:]
+    # Restore original preferences and restart on loopback.
+    if bridge.is_running():
+        action.trigger()
+    if orig_addr:
+        params.SetString('ListenAddress', orig_addr)
+    else:
+        params.RemString('ListenAddress')
+    if orig_accepted:
+        params.SetString('AcceptedListenAddresses', orig_accepted)
+    else:
+        params.RemString('AcceptedListenAddresses')
+    if dock is not None and not was_visible:
+        dock.hide()
+    action.trigger()
+    with open({seen_file!r}, 'w', encoding='utf-8') as handle:
+        json.dump(seen, handle)
+
+
+QTimer.singleShot(300, step_decline)
+"""
+
+
+class ListenAddressTests(unittest.TestCase):
+    def test_non_loopback_address_requires_acceptance_keeps_loopback_and_warns(
+        self,
+    ):
+        """Non-loopback start asks once, keeps 127.0.0.1, and warns."""
+        address = non_loopback_address()
+        if address is None:
+            self.skipTest("this machine has no non-loopback IPv4 address")
+        with tempfile.TemporaryDirectory() as folder:
+            seen_file = os.path.join(folder, "seen.json")
+            ready_file = seen_file + ".ready"
+            continue_file = os.path.join(folder, "continue")
+            mcp.run(non_loopback_flow(address, seen_file, continue_file))
+            self.assertTrue(
+                wait_for_file(ready_file),
+                "the bridge did not reach the accepted state",
+            )
+            with mock.patch.object(
+                mcp, "BRIDGE_URL", f"http://{address}:{PORT}/mcp"
+            ):
+                self.assertTrue(
+                    mcp.wait_until_reachable(15),
+                    f"nothing answered on {address}:{PORT}",
+                )
+                lan_out = mcp.run("print('from lan address')")
+            loopback_out = mcp.run("print('from loopback alongside')")
+            open(continue_file, "w", encoding="utf-8").close()
+            self.assertTrue(
+                wait_for_file(seen_file),
+                "the second-start and restore step did not finish",
+            )
+            self.assertTrue(
+                mcp.wait_until_reachable(30), "the bridge did not come back"
+            )
+            with open(seen_file, encoding="utf-8") as handle:
+                seen = json.load(handle)
+
+        self.assertEqual(lan_out, "from lan address\n")
+        self.assertEqual(loopback_out, "from loopback alongside\n")
+        self.assertTrue(seen.get("decline_dialog_found"))
+        self.assertFalse(seen.get("decline_port_open_during_dialog"))
+        self.assertEqual(
+            seen.get("decline_title"),
+            f"MCP Bridge — Listen on {address}:{PORT}?",
+        )
+        self.assertIn("No authentication", seen.get("decline_text", ""))
+        self.assertIn("No encryption", seen.get("decline_text", ""))
+        self.assertIn("Code execution", seen.get("decline_text", ""))
+        self.assertFalse(seen.get("declined_running"))
+        self.assertFalse(seen.get("declined_port_open"))
+        self.assertEqual(seen.get("declined_status"), "MCP Bridge: Offline")
+        self.assertEqual(seen.get("declined_accepted"), "")
+
+        self.assertTrue(seen.get("accept_dialog_found"))
+        self.assertFalse(seen.get("accept_port_open_during_dialog"))
+        self.assertTrue(seen.get("accepted_running"))
+        self.assertEqual(seen.get("accepted_saved"), address)
+        expected_status = (
+            f"MCP Bridge: Listening on {address}:{PORT} and "
+            f"127.0.0.1:{PORT} (warning: no authentication or encryption)"
+        )
+        expected_warning = (
+            f"[MCP Bridge] WARNING: listening on {address}:{PORT} and "
+            f"127.0.0.1:{PORT} with no authentication or encryption. Any "
+            f"machine that can reach {address}:{PORT} can run Python code in "
+            "FreeCAD as your user account."
+        )
+        self.assertEqual(seen.get("accepted_status"), expected_status)
+        self.assertIn(expected_warning, seen.get("accepted_report", ""))
+
+        self.assertFalse(seen.get("second_start_dialog_found"))
+        self.assertTrue(seen.get("second_running"))
+        self.assertEqual(seen.get("second_status"), expected_status)
+        self.assertIn(expected_warning, seen.get("second_report", ""))
 
 
 if __name__ == "__main__":

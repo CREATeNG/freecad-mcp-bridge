@@ -83,7 +83,7 @@ class OriginTests(unittest.TestCase):
 
 class LoopbackTests(unittest.TestCase):
     def test_the_bridge_is_reachable_only_on_the_loopback_address(self):
-        """The bridge listens on 127.0.0.1 only: it cannot be reached on the machine's network address."""
+        """By default, the bridge listens on 127.0.0.1 only, not on the LAN."""
         address = non_loopback_address()
         if address is None:
             self.skipTest("this machine has no non-loopback IPv4 address")

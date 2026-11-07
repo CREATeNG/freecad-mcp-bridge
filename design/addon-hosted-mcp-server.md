@@ -462,19 +462,42 @@ state. If the capability belongs anywhere, it is upstream
 
 ## Security
 
-**Loopback only, user-toggled**
+**Loopback by default, user-toggled, with per-address risk acceptance**
 
-The server binds to `127.0.0.1` only, never `0.0.0.0`. It starts only when the user
-activates the toolbar toggle, and stops when they deactivate it. This satisfies the
-Addon Index transparency and deferred-activation requirements.
+By default, the server binds to `127.0.0.1` only. It starts only when
+the user activates the toggle, and stops when they deactivate it. This
+satisfies the Addon Index transparency and deferred-activation
+requirements.
 
-**Security posture — noted trade-off**
+When the user configures another listen address in Preferences,
+`127.0.0.1` remains bound alongside that address so local stdio-shim
+clients continue to reach the bridge on loopback (`0.0.0.0` binds all
+local IPv4 interfaces, including `127.0.0.1`; a specific interface
+address runs a second `MaintenanceHTTPServer` on `127.0.0.1` sharing
+the same `Executor`). The first time the user turns the bridge on at a
+non-loopback address, a modal warning dialog states the risks — no
+authentication, no encryption, and any machine that can reach the
+address and port can run Python code in FreeCAD as the user — and the
+bridge stays off unless the user accepts. Acceptance is stored per
+address in FreeCAD preferences (`AcceptedListenAddresses`). Every
+start at a non-loopback address warns in the status bar and the Report
+view.
 
-A loopback TCP port is accessible to any local process while active. Named sockets
-(Windows named pipes / UNIX domain sockets) can be restricted to the OS user on most
-platforms (Qt notes that macOS does not honour socket file permissions); a TCP loopback
-port cannot. Accepted on the basis that the attack
-surface is local-only and the user controls the toggle.
+**Security posture — noted trade-offs**
+
+On loopback (`127.0.0.1`), the TCP port is accessible to any local
+process while active. Named sockets (Windows named pipes / UNIX domain
+sockets) can be restricted to the OS user on most platforms (Qt notes
+that macOS does not honour socket file permissions); a TCP loopback
+port cannot. Accepted on the basis that by default the listener is
+local-only and the user controls the toggle.
+
+On a non-loopback address, the HTTP server speaks plain HTTP with no
+authentication or client-address filter, so any machine that can reach
+the configured address and port can run Python code in the live
+FreeCAD session as the user. Accepted only after explicit per-address
+risk confirmation by the user and accompanied by a warning on every
+start.
 
 **Origin header validation — required**
 
@@ -572,11 +595,11 @@ asset for Claude Desktop users.
 
 Stored at `User parameter:BaseApp/Preferences/Mod/freecad-mcp-bridge`.
 
-The port is read at server start; timeout and page size are read per
-request. Retention is read when each job finishes running and fixes that
-job's retention interval, also used for later extensions. Preference
-changes affect jobs that finish afterwards, not histories whose
-intervals are already set.
+The listen address and port are read at server start; timeout and page
+size are read per request. Retention is read when each job finishes
+running and fixes that job's retention interval, also used for later
+extensions. Preference changes affect jobs that finish afterwards, not
+histories whose intervals are already set.
 
 The preference page is registered as a `.ui` file and appears in Edit →
 Preferences → MCP Bridge. FreeCAD wires widgets to the parameter store
@@ -584,6 +607,7 @@ automatically.
 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
+| Listen address | `127.0.0.1` | `127.0.0.1` stays bound alongside any other address; non-loopback addresses require one-time user risk acceptance per address (`AcceptedListenAddresses`) and log a warning in the status bar and Report view on each start |
 | Port | 39280 | Error logged on conflict at startup |
 | Max response timeout (s) | 15 | Max wait in `execute_python` and `get_output_page` before returning with `has_more: true` |
 | Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |

@@ -62,8 +62,9 @@ process against the bridge in a running FreeCAD GUI. Among the
 behaviors it checks are execution and file execution, stdout/stderr and
 tracebacks, output paging and replay, retention preferences, execution
 order, GUI event handling, the two supported MCP protocol versions,
-HTTP and Origin validation, loopback binding, port changes and stopping
-the bridge with running or queued jobs. When `BUNDLE_MCPB`
+HTTP and Origin validation, loopback and non-loopback listen-address
+binding, per-address risk acceptance and start warnings, port changes
+and stopping the bridge with running or queued jobs. When `BUNDLE_MCPB`
 names a packed `.mcpb`, `test_bundle_mcp.py` calls that shim
 over stdio, in both protocol versions, and then expects it
 to exit. With no bundle named, that test skips;
@@ -123,6 +124,7 @@ repeatable checks.
 | Check | What to verify by hand |
 |-------|------------------------|
 | Toolbar hide across restart, and Customize category | Uncheck **MCP Bridge** in **View → Toolbars** (or the toolbar context menu), switch workbench and restart FreeCAD: the toolbar stays hidden while the status-bar button remains available. Check **MCP Bridge** again and restart FreeCAD: the toolbar stays shown. In **Tools → Customize**, the **MCP Bridge On/Off** command is listed under `MCP_Bridge`. |
+| Non-loopback listen address from another machine | Set **Listen address** in **Edit → Preferences → MCP Bridge** to this machine's LAN IPv4 address (or `0.0.0.0`). Click **MCP Bridge On/Off**: the risk dialog appears, and from another machine on the LAN the port is closed until accepted. Click **Cancel**: the bridge stays off and the port remains closed. Click **MCP Bridge On/Off** again and click **Accept Risks and Start**: the bridge starts, warns in the status bar and **Report view**, answers MCP requests from the other machine on `<LAN_IP>:<PORT>/mcp`, and still answers on `127.0.0.1:<PORT>/mcp` (including the Claude Desktop shim). Turn the bridge off and on again at the same address: it starts without showing the dialog again and warns in the status bar and **Report view**. |
 
 ## Install verification
 
