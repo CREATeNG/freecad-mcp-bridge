@@ -31,7 +31,7 @@ jobs:
       - name: Coverage report
         if: always()
         run: |
-          python -m coverage report -m --include='MCP_Bridge.py,freecad/mcp_bridge/*' | tee coverage.txt
+          python -m coverage report -m --include='freecad/mcp_bridge/*' | tee coverage.txt
           {
             echo '### Unit test coverage'
             echo '```'

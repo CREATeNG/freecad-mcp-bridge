@@ -25,7 +25,6 @@ class CopyInstallTests(unittest.TestCase):
             source = root / "checkout"
             target = root / "Mod" / "freecad-mcp-bridge"
             _write(source / "package.xml", "<package></package>")
-            _write(source / "MCP_Bridge.py", "ok")
             _write(source / "freecad" / "mcp_bridge" / "init_gui.py", "ok")
             _write(source / "README.md", "readme")
             _write(source / "scripts" / "ci_run_freecad.sh", "bash")
@@ -45,7 +44,6 @@ class CopyInstallTests(unittest.TestCase):
                 "ok",
             )
             self.assertTrue((target / "package.xml").is_file())
-            self.assertTrue((target / "MCP_Bridge.py").is_file())
             self.assertTrue((target / "README.md").is_file())
             self.assertTrue(
                 (target / "scripts" / "ci_run_freecad.sh").is_file()
