@@ -82,13 +82,32 @@ def _verify_command_category() -> None:
                 "Customize dialog is missing categoryBox or command tree"
             )
 
+        def _commands_for_category(cat_idx: int) -> list[tuple[str, str]]:
+            combo.setCurrentIndex(cat_idx)
+            combo.activated.emit(cat_idx)
+            common._drain_qt_events(250)
+            result = []
+            for i in range(tree.topLevelItemCount()):
+                item = tree.topLevelItem(i)
+                raw = item.data(1, Qt.UserRole)
+                if isinstance(raw, (bytes, bytearray)):
+                    raw = raw.decode("utf-8", errors="replace")
+                elif hasattr(raw, "data"):
+                    raw = bytes(raw.data()).decode("utf-8", errors="replace")
+                result.append((str(raw), item.text(1)))
+            return result
+
         categories = [
             combo.itemData(i, Qt.UserRole) for i in range(combo.count())
         ]
-        if "init_gui" in categories:
-            common.fail(
-                f"Customize category still reads 'init_gui' ({categories})"
-            )
+        init_gui_idx = combo.findData("init_gui")
+        if init_gui_idx >= 0:
+            init_gui_cmds = _commands_for_category(init_gui_idx)
+            if any(cmd == "MCP_Bridge_Toggle" for cmd, _ in init_gui_cmds):
+                common.fail(
+                    "Command 'MCP_Bridge_Toggle' is still listed under "
+                    f"Customize category 'init_gui' (found: {init_gui_cmds})"
+                )
         idx = combo.findData("MCP_Bridge")
         if idx < 0 or combo.itemText(idx) != "MCP_Bridge":
             common.fail(
@@ -96,20 +115,7 @@ def _verify_command_category() -> None:
                 f"(categories: {categories})"
             )
 
-        combo.setCurrentIndex(idx)
-        combo.activated.emit(idx)
-        common._drain_qt_events(250)
-
-        commands = []
-        for i in range(tree.topLevelItemCount()):
-            item = tree.topLevelItem(i)
-            raw = item.data(1, Qt.UserRole)
-            if isinstance(raw, (bytes, bytearray)):
-                raw = raw.decode("utf-8", errors="replace")
-            elif hasattr(raw, "data"):
-                raw = bytes(raw.data()).decode("utf-8", errors="replace")
-            commands.append((str(raw), item.text(1)))
-
+        commands = _commands_for_category(idx)
         if ("MCP_Bridge_Toggle", "MCP Bridge On/Off") not in commands:
             common.fail(
                 "Command 'MCP_Bridge_Toggle' not listed under Customize "

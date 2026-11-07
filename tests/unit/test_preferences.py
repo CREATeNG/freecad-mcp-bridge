@@ -409,9 +409,7 @@ class ToolbarVisibilityTests(unittest.TestCase):
             )
             self.assertEqual(scheduled, [(0, init_gui.inject_ui)])
 
-    def test_command_action_tracks_bridge_state_and_inject_ui_leaves_visibility(
-        self,
-    ):
+    def test_command_action_tracks_state_without_changing_visibility(self):
         """show_toggle_state updates the command's own action, and inject_ui
         reports readiness without creating a toolbar or altering visibility."""
         messages = []
