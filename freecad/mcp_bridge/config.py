@@ -2,8 +2,9 @@
 
 Values live under PREF_GROUP and are read fresh on each access. The port
 is read at server start. Timeout and page size are read per request.
-Retention is read when a job finishes running. Status-bar button settings
-are read when the status-bar button is created or refreshed.
+Retention is read when a job finishes running. Toolbar visibility is read
+when the toolbar is created. Status-bar button settings are read when the
+status-bar button is created or refreshed.
 """
 
 import FreeCAD
@@ -14,6 +15,7 @@ from freecad.mcp_bridge.constants import (
     DEFAULT_MAX_RESPONSE_TIMEOUT_S,
     DEFAULT_PORT,
     DEFAULT_SHOW_STATUS_BUTTON,
+    DEFAULT_SHOW_TOOLBAR,
     DEFAULT_STATUS_BUTTON_POSITION,
     PREF_GROUP,
 )
@@ -46,6 +48,11 @@ def max_history_retention_ms() -> int:
         "MaxHistoryRetentionMinutes", DEFAULT_MAX_HISTORY_RETENTION_MIN
     )
     return minutes * 60 * 1000
+
+
+def show_toolbar() -> bool:
+    """Whether the MCP Bridge toolbar is shown."""
+    return _params().GetBool("ShowToolbar", DEFAULT_SHOW_TOOLBAR)
 
 
 def show_status_button() -> bool:

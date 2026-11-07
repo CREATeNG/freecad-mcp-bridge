@@ -295,6 +295,8 @@ def inject_ui():
     from PySide.QtGui import QIcon
     from PySide.QtWidgets import QToolBar
 
+    from freecad.mcp_bridge import config
+
     icon = App.MCPBridgeIconPath
     command = App.MCPBridgeCommand
     action_label = "MCP Bridge On/Off"
@@ -306,14 +308,28 @@ def inject_ui():
 
     target_tb = None
     for tb in mw.findChildren(QToolBar):
-        if tb.windowTitle() == DISPLAY_NAME or tb.objectName() == TOOLBAR_OBJECT_NAME:
+        if (
+            tb.windowTitle() == DISPLAY_NAME
+            or tb.objectName() == TOOLBAR_OBJECT_NAME
+        ):
             target_tb = tb
             break
 
-    if not target_tb:
+    created = target_tb is None
+    if created:
         target_tb = QToolBar(DISPLAY_NAME, mw)
         target_tb.setObjectName(TOOLBAR_OBJECT_NAME)
         mw.addToolBar(target_tb)
+        toggle_action = target_tb.toggleViewAction()
+        if toggle_action is not None:
+            toggle_action.triggered.connect(
+                lambda *args: App.ParamGet(PREF_GROUP).SetBool(
+                    "ShowToolbar",
+                    bool(args[0])
+                    if args
+                    else bool(toggle_action.isChecked()),
+                )
+            )
 
     toolbar_exists = False
     for action in target_tb.actions():
@@ -330,8 +346,12 @@ def inject_ui():
     _ensure_status_button(mw)
     show_toggle_state()
 
-    target_tb.setVisible(True)
-    target_tb.show()
+    if created:
+        if config.show_toolbar():
+            target_tb.setVisible(True)
+            target_tb.show()
+        else:
+            target_tb.setVisible(False)
     mw.update()
 
     ready = target_tb.isVisible() and mw.isVisible()
@@ -404,7 +424,15 @@ if App.MCPBridgeCommand in Gui.listCommands():
         Gui.removeCommand(App.MCPBridgeCommand)
     except Exception:
         pass
-Gui.addCommand(App.MCPBridgeCommand, MCPBridgeCommand())
+# FreeCAD's Gui.addCommand sets the Customize category from the calling
+# frame's co_filename ("init_gui" when called directly from this file).
+exec(
+    compile(
+        "Gui.addCommand(App.MCPBridgeCommand, MCPBridgeCommand())",
+        DISPLAY_NAME,
+        "exec",
+    )
+)
 
 if not getattr(App, "MCPBridgePrefAdded", False):
     _prefs_ui = preferences_ui_path()

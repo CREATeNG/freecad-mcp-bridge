@@ -234,6 +234,114 @@ def _verify_status_button_hide() -> None:
     )
 
 
+def _verify_toolbar_hide() -> None:
+    """Hiding the toolbar survives re-injection and recreation."""
+    import FreeCAD as App
+    import FreeCADGui as Gui
+    from PySide.QtCore import QCoreApplication
+    from PySide.QtWidgets import QToolBar
+
+    from freecad.mcp_bridge.constants import (
+        DISPLAY_NAME,
+        PREF_GROUP,
+        TOOLBAR_OBJECT_NAME,
+    )
+
+    mw = Gui.getMainWindow()
+    if mw is None:
+        common.fail("MainWindow is None during toolbar-hide check")
+    params = App.ParamGet(PREF_GROUP)
+
+    def _find_toolbar():
+        for tb in mw.findChildren(QToolBar):
+            if (
+                tb.windowTitle() == DISPLAY_NAME
+                or tb.objectName() == TOOLBAR_OBJECT_NAME
+            ):
+                return tb
+        return None
+
+    def _recreate_toolbar():
+        tb = _find_toolbar()
+        if tb is not None:
+            mw.removeToolBar(tb)
+            tb.setParent(None)
+            tb.deleteLater()
+            QCoreApplication.processEvents()
+        App.MCPBridgeInjectUi()
+        QCoreApplication.processEvents()
+        return _find_toolbar()
+
+    try:
+        tb = _find_toolbar()
+        if tb is None or not tb.isVisible():
+            common.fail("MCP Bridge toolbar is missing or hidden at startup")
+        toggle = tb.toggleViewAction()
+        if toggle is None:
+            common.fail("MCP Bridge toolbar has no toggleViewAction")
+
+        toggle.trigger()
+        QCoreApplication.processEvents()
+        if tb.isVisible():
+            common.fail(
+                "MCP Bridge toolbar remained visible after toggleViewAction"
+            )
+        if params.GetBool("ShowToolbar", True):
+            common.fail(
+                "ShowToolbar preference was not saved as False on hide"
+            )
+
+        App.MCPBridgeInjectUi()
+        QCoreApplication.processEvents()
+        if tb.isVisible():
+            common.fail(
+                "MCP Bridge toolbar became visible again on re-injection"
+            )
+        if _status_button() is None or not _status_button().isVisible():
+            common.fail(
+                "Status-bar button was not available while toolbar was hidden"
+            )
+
+        tb = _recreate_toolbar()
+        if tb is None or tb.isVisible():
+            common.fail(
+                "Recreated MCP Bridge toolbar did not stay hidden "
+                f"(tb={tb!r}, visible={tb.isVisible() if tb else None})"
+            )
+
+        tb.toggleViewAction().trigger()
+        QCoreApplication.processEvents()
+        if not tb.isVisible():
+            common.fail(
+                "MCP Bridge toolbar did not become visible when shown again"
+            )
+        if not params.GetBool("ShowToolbar", False):
+            common.fail(
+                "ShowToolbar preference was not saved as True on show"
+            )
+
+        tb = _recreate_toolbar()
+        if tb is None or not tb.isVisible():
+            common.fail(
+                "Recreated MCP Bridge toolbar did not stay shown "
+                f"(tb={tb!r}, visible={tb.isVisible() if tb else None})"
+            )
+    finally:
+        params.RemBool("ShowToolbar")
+        tb = _find_toolbar()
+        if tb is not None and not tb.isVisible():
+            tb.setVisible(True)
+            tb.show()
+        App.MCPBridgeInjectUi()
+        QCoreApplication.processEvents()
+
+    _assert_status_button(False)
+    common.log_notice(
+        "MCP Bridge toolbar stays hidden across re-injection and recreation, "
+        "and stays shown when re-enabled"
+    )
+
+
 def _stop_bridge() -> None:
     """Stop the server via the status-bar button, like a user would."""
     from PySide.QtCore import QCoreApplication, QEvent, QPointF, Qt
@@ -452,6 +560,7 @@ def _run() -> None:
     common.check_bridge_off_at_startup()
     _assert_status_button(False)
     _verify_status_button_hide()
+    _verify_toolbar_hide()
     common.start_bridge()
     _assert_status_button(True)
     common.check_listening_status()

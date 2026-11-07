@@ -120,6 +120,10 @@ For code-string and script-file probes with `send_cmd.py`, use
 Those instructions remain there; the automated suites above provide
 repeatable checks.
 
+| Check | What to verify by hand |
+|-------|------------------------|
+| Toolbar hide across restart, and Customize category | Uncheck **MCP Bridge** in **View → Toolbars** (or the toolbar context menu), switch workbench and restart FreeCAD: the toolbar stays hidden while the status-bar button remains available. Check **MCP Bridge** again and restart FreeCAD: the toolbar stays shown. In **Tools → Customize**, the **MCP Bridge On/Off** command is listed under **MCP Bridge**, not `init_gui`. |
+
 ## Install verification
 
 The install-verify workflow installs the addon through FreeCAD's Addon
@@ -328,6 +332,7 @@ FreeCAD process after restart. Does **not** call `App.MCPBridgeInjectUi()` — i
 | Status-bar button | The permanent status-bar split button sits on the right by default, has no icon, has a `Preferences` menu item, and shows `MCP Off` at startup and after stop, and `MCP On` while running, with matching tooltip and toolbar state |
 | Move status-bar button | Setting **Position** (`StatusButtonPosition`) to `1` (**Left of FreeCAD's items**) moves the status-bar button to the left of FreeCAD's permanent status-bar items without a restart, and removing the setting, so the default applies, puts the button back on the right |
 | Hide status-bar button | Setting **Show the On/Off button** (`ShowStatusButton`) to `False` removes the status-bar button without a restart, leaving the toolbar button in place, and removing the setting, so the default applies, puts the button back |
+| Hide toolbar | Unchecking **MCP Bridge** (`toggleViewAction().trigger()`) hides the toolbar, saves `ShowToolbar` as `False`, and keeps the toolbar hidden across `App.MCPBridgeInjectUi()` and toolbar recreation, with the status-bar button still shown. Checking **MCP Bridge** again saves `ShowToolbar` as `True` and shows the toolbar across recreation |
 | Start bridge | First toolbar click starts the HTTP server |
 | Listening status | The status bar shows the loopback address and configured port |
 | HTTP round-trip | A client-shaped request — `tools/call` → `execute_python` over HTTP, sent from a worker thread while the main thread pumps the Qt event loop, paginating via `get_output_page` if the response is chunked — returns the expected probe output. Same code path a real MCP client uses. |
