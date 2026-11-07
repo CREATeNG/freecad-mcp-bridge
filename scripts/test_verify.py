@@ -4,7 +4,8 @@ Run inside a FreeCAD GUI process (second launch, after test_install.py):
 
   freecad scripts/test_verify.py
 
-Does not call App.MCPBridgeInjectUi(); waits for the addon's own startup hooks.
+Does not call App.MCPBridgeInjectUi() for initial startup; waits for the
+addon's own startup hooks.
 
 Environment:
   RELEASE_INSTALL_NAME              Installed Mod folder name (default: freecad-mcp-bridge)

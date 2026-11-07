@@ -7,7 +7,9 @@ stand-in for FreeCAD's parameter store holding no values, as a fresh
 profile does.
 """
 
+import ast
 import importlib
+import re
 import sys
 import types
 import unittest
@@ -17,7 +19,6 @@ from unittest import mock
 
 from freecad.mcp_bridge.constants import (
     COMMAND_ID,
-    DISPLAY_NAME,
     PREF_GROUP,
     TOOLBAR_OBJECT_NAME,
 )
@@ -565,13 +566,19 @@ class ToolbarVisibilityTests(unittest.TestCase):
             self.assertTrue(tb_shown_again.isVisible())
 
     def test_command_is_registered_under_the_mcp_bridge_category(self):
-        """Gui.addCommand is called from a frame whose co_filename is
-        'MCP Bridge' rather than 'init_gui'."""
+        """Gui.addCommand registers the command under the MCP_Bridge Customize
+        category and with an importable module for macro recording."""
         recorded = []
 
         def add_command(name, cmd):
-            caller_filename = sys._getframe(1).f_code.co_filename
-            recorded.append((name, caller_filename, cmd))
+            fn = sys._getframe(1).f_code.co_filename.replace("\\", "/")
+            tail = fn.rsplit("/", 1)[-1]
+            module = tail.rsplit(".", 1)[0] if "." in tail else tail
+            match = re.search(r"/Mod/(\w+)/", fn) or re.search(
+                r"/Ext/freecad/(\w+)/", fn
+            )
+            group = match.group(1) if match else module
+            recorded.append((name, group, module, cmd))
 
         freecad = types.SimpleNamespace(
             Console=types.SimpleNamespace(PrintWarning=lambda *_: None)
@@ -598,9 +605,13 @@ class ToolbarVisibilityTests(unittest.TestCase):
             importlib.import_module("freecad.mcp_bridge.init_gui")
             sys.modules.pop("freecad.mcp_bridge.init_gui", None)
             self.assertEqual(len(recorded), 1)
-            name, caller_filename, cmd = recorded[0]
+            name, group, module, cmd = recorded[0]
             self.assertEqual(name, COMMAND_ID)
-            self.assertEqual(caller_filename, DISPLAY_NAME)
+            self.assertEqual(group, TOOLBAR_OBJECT_NAME)
+            self.assertEqual(module, "freecad.mcp_bridge")
+            macro_source = f"import {module}\nGui.runCommand({name!r}, 0)\n"
+            ast.parse(macro_source)
+            self.assertIsNotNone(importlib.import_module(module))
             self.assertEqual(
                 cmd.GetResources()["MenuText"], "MCP Bridge On/Off"
             )

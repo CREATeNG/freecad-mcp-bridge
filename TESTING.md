@@ -122,7 +122,7 @@ repeatable checks.
 
 | Check | What to verify by hand |
 |-------|------------------------|
-| Toolbar hide across restart, and Customize category | Uncheck **MCP Bridge** in **View → Toolbars** (or the toolbar context menu), switch workbench and restart FreeCAD: the toolbar stays hidden while the status-bar button remains available. Check **MCP Bridge** again and restart FreeCAD: the toolbar stays shown. In **Tools → Customize**, the **MCP Bridge On/Off** command is listed under **MCP Bridge**, not `init_gui`. |
+| Toolbar hide across restart, and Customize category | Uncheck **MCP Bridge** in **View → Toolbars** (or the toolbar context menu), switch workbench and restart FreeCAD: the toolbar stays hidden while the status-bar button remains available. Check **MCP Bridge** again and restart FreeCAD: the toolbar stays shown. In **Tools → Customize**, the **MCP Bridge On/Off** command is listed under `MCP_Bridge`, not `init_gui`. |
 
 ## Install verification
 
@@ -318,7 +318,9 @@ On success, the script exits via `quit_freecad(0)` and CI launches verify in a n
 ## Phase 2: Verify after restart
 
 Run [test_verify.py](scripts/test_verify.py) inside the **second**
-FreeCAD process after restart. Does **not** call `App.MCPBridgeInjectUi()` — it relies on the addon's own `init_gui.py` startup hooks.
+FreeCAD process after restart. For initial startup, it does **not**
+call `App.MCPBridgeInjectUi()` — it relies on the addon's own
+`init_gui.py` startup hooks.
 
 **Checklist:**
 
