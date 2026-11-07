@@ -19,6 +19,7 @@
 const fs = require("fs");
 const https = require("https");
 const path = require("path");
+const tls = require("tls");
 
 function envSetting(name) {
   const val = (process.env[name] || "").trim();
@@ -31,6 +32,10 @@ const TOKEN = envSetting("FREECAD_MCP_TOKEN");
 const TLS_CERT_FILE = envSetting("FREECAD_MCP_TLS_CERT_FILE");
 const SCHEME = TLS_CERT_FILE ? "https" : "http";
 const ENDPOINT = `${SCHEME}://127.0.0.1:${PORT}/mcp`;
+const PLAIN_HTTP_TO_HTTPS_MESSAGE =
+  `FreeCAD MCP Bridge serves HTTPS at ${ENDPOINT}, and this connection was plain HTTP. ` +
+  "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to FreeCAD's certificate, " +
+  "or untick Also require on loopback in FreeCAD's Edit → Preferences → MCP Bridge.";
 const LEGACY_PROTOCOL_VERSION = "2025-11-25";
 const MODERN_PROTOCOL_VERSION = "2026-07-28";
 const META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion";
@@ -53,6 +58,39 @@ function fetchErrorMessage(err) {
 
 function errorCode(err) {
   return (err && err.cause && err.cause.code) || (err && err.code) || "";
+}
+
+// A plain HTTP POST to an HTTPS port fails without saying which it was.
+// A TLS handshake that finishes, with certificate checks left off, means
+// the port speaks HTTPS. A refused connection means nothing is listening.
+function portServesHttps(port) {
+  return new Promise((resolve) => {
+    let settled = false;
+    let socket = null;
+    const timer = setTimeout(() => done(false), 2000);
+    function done(servesHttps) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (socket) socket.destroy();
+      resolve(servesHttps);
+    }
+    try {
+      socket = tls.connect(
+        {
+          host: "127.0.0.1",
+          port: Number(port),
+          rejectUnauthorized: false,
+        },
+        () => done(true)
+      );
+      socket.setTimeout(2000);
+      socket.on("timeout", () => done(false));
+      socket.on("error", () => done(false));
+    } catch {
+      done(false);
+    }
+  });
 }
 
 function tlsErrorMessage(err) {
@@ -195,6 +233,7 @@ async function postBridge(message, rawLine) {
     headers,
     body: rawLine,
     redirect: "error",
+    signal: AbortSignal.timeout(2000),
   });
   return {
     status: res.status,
@@ -213,6 +252,16 @@ async function forward(rawLine, message) {
   } catch (err) {
     if (isNotification) return;
     const code = errorCode(err);
+    const redirect = /redirect/i.test(fetchErrorMessage(err));
+    if (
+      !TLS_CERT_FILE &&
+      code !== "ECONNREFUSED" &&
+      !redirect &&
+      (await portServesHttps(PORT))
+    ) {
+      sendErrorReply(message, PLAIN_HTTP_TO_HTTPS_MESSAGE);
+      return;
+    }
     if (TLS_CERT_FILE && code !== "ECONNREFUSED" && code !== "ERR_UNEXPECTED_REDIRECT") {
       sendErrorReply(message, tlsErrorMessage(err));
       return;

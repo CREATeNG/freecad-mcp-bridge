@@ -604,3 +604,53 @@ test("an untrusted certificate or a certificate set while the bridge serves plai
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test("plain HTTP against a loopback port that speaks HTTPS names the TLS settings, and a closed port does not", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shim-https-plain-"));
+  try {
+    const serverCert = makeSelfSignedCert(tmpDir, "server", "127.0.0.1");
+    const httpsBridge = await startBridge(() => ({ status: 200, text: "" }), {
+      cert: serverCert.cert,
+      key: serverCert.key,
+    });
+    const shim = startShim(httpsBridge.port);
+    shim.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "execute_python", arguments: { code: "print(1)" } },
+      }) + "\n"
+    );
+    const [reply] = await shim.waitForLines(1);
+    const error = JSON.parse(reply.result.content[0].text).error;
+    const endpoint = `http://127.0.0.1:${httpsBridge.port}/mcp`;
+    assert.equal(
+      error,
+      `FreeCAD MCP Bridge serves HTTPS at ${endpoint}, and this connection was plain HTTP. ` +
+        "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to FreeCAD's certificate, " +
+        "or untick Also require on loopback in FreeCAD's Edit → Preferences → MCP Bridge."
+    );
+    assert.doesNotMatch(error, /isn't reachable/);
+    await shim.stop();
+    httpsBridge.close();
+
+    const port = await closedPort();
+    const down = startShim(port);
+    down.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: { name: "execute_python", arguments: { code: "print(1)" } },
+      }) + "\n"
+    );
+    const [downReply] = await down.waitForLines(1);
+    const downError = JSON.parse(downReply.result.content[0].text).error;
+    assert.match(downError, /Start FreeCAD and turn the bridge on/);
+    assert.doesNotMatch(downError, /serves HTTPS/);
+    await down.stop();
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
