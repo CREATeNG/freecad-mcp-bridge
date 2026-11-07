@@ -37,8 +37,8 @@ action = Gui.Command.get(App.MCPBridgeCommand).getAction()[0]
 
 def set_port(port):
     if port == -1:
-        params.RemString('ListenAddress')
         params.RemInt('Port')
+        params.RemString('ListenAddress')
     else:
         params.SetString('ListenAddress', f'127.0.0.1:{port}')
 """
@@ -153,6 +153,68 @@ def wait_for_file(path, timeout_s=30):
     return os.path.exists(path)
 
 
+def migrate_and_save_preferences(legacy_port, seen_file):
+    """Code that sets a legacy `Port` with `ListenAddress` unset, opens the
+    MCP Bridge Preferences page, records what `listenAddressTextEdit` shows,
+    clicks OK, and restarts the bridge on the saved address."""
+    return PREFERENCES + f"""
+import json
+from PySide.QtWidgets import (
+    QApplication,
+    QDialog,
+    QDialogButtonBox,
+    QTextEdit,
+)
+
+seen = {{}}
+mw = Gui.getMainWindow()
+
+
+def inspect_and_click_ok():
+    dlg = next(
+        (
+            d
+            for d in mw.findChildren(QDialog)
+            if d.findChild(QTextEdit, 'listenAddressTextEdit') is not None
+        ),
+        None,
+    )
+    if dlg is None:
+        QTimer.singleShot(100, inspect_and_click_ok)
+        return
+    seen['dialog_found'] = True
+    box = dlg.findChild(QTextEdit, 'listenAddressTextEdit')
+    seen['box_text'] = box.toPlainText().strip() if box is not None else None
+    btn_box = dlg.findChild(QDialogButtonBox)
+    ok_btn = (
+        btn_box.button(QDialogButtonBox.Ok) if btn_box is not None else None
+    )
+    if ok_btn is not None:
+        ok_btn.click()
+    else:
+        dlg.accept()
+
+
+def step_open_prefs():
+    if bridge.is_running():
+        action.trigger()
+    params.RemInt('Port')
+    params.RemString('ListenAddress')
+    params.SetInt('Port', {legacy_port})
+    QTimer.singleShot(250, inspect_and_click_ok)
+    Gui.showPreferences('MCP Bridge', 0)
+    seen['saved_listen_address'] = params.GetString(
+        'ListenAddress', ''
+    ).strip()
+    with open({seen_file!r}, 'w', encoding='utf-8') as handle:
+        json.dump(seen, handle)
+    action.trigger()
+
+
+QTimer.singleShot(300, step_open_prefs)
+"""
+
+
 class PortTests(unittest.TestCase):
     def test_a_changed_port_is_used_when_the_bridge_next_starts(self):
         """A changed port is used when the bridge is next turned on."""
@@ -173,6 +235,37 @@ class PortTests(unittest.TestCase):
         self.assertTrue(reached, f"nothing answered on port {new_port}")
         self.assertFalse(old_port_answers, f"port {PORT} still answered")
         self.assertEqual(output, "on the new port\n")
+
+    def test_an_upgraded_port_survives_opening_and_saving_preferences(self):
+        """An upgraded Port preference is shown in Preferences and kept on
+        OK."""
+        before = saved_port()
+        legacy_port = free_port()
+        with tempfile.TemporaryDirectory() as folder:
+            seen_file = os.path.join(folder, "seen.json")
+            mcp.run(migrate_and_save_preferences(legacy_port, seen_file))
+            recorded = wait_for_file(seen_file)
+            with bridge_on(legacy_port):
+                reached = mcp.wait_until_reachable(30)
+                if reached:
+                    output = mcp.run("print('on migrated port')")
+                    mcp.run(restart_on(before))
+            if not reached and answers(PORT):
+                mcp.run(restart_on(before))
+            self.assertTrue(
+                mcp.wait_until_reachable(30), "the bridge did not come back"
+            )
+            self.assertTrue(
+                recorded, "the preferences dialog check was not recorded"
+            )
+            with open(seen_file, encoding="utf-8") as handle:
+                seen = json.load(handle)
+        expected_entry = f"127.0.0.1:{legacy_port}"
+        self.assertTrue(seen.get("dialog_found"))
+        self.assertEqual(seen.get("box_text"), expected_entry)
+        self.assertEqual(seen.get("saved_listen_address"), expected_entry)
+        self.assertTrue(reached, f"nothing answered on port {legacy_port}")
+        self.assertEqual(output, "on migrated port\n")
 
     def test_an_occupied_port_is_reported_and_no_other_port_is_used(self):
         """An occupied port is reported at startup; no other port is used."""

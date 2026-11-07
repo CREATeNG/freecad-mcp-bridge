@@ -104,14 +104,30 @@ def parse_listen_addresses(
     return entries or [default_entry]
 
 
-def listen_addresses() -> list[str]:
-    """Configured `address:port` entries for the HTTP server."""
+def migrate_legacy_port() -> str:
+    """Migrate a customized legacy `Port` into `ListenAddress` when
+    `ListenAddress` has no entries, and return the default entry."""
     params = _params()
     raw = params.GetString("ListenAddress", "")
+    legacy_port = params.GetInt("Port", DEFAULT_PORT)
+    default_entry = f"{DEFAULT_LISTEN_HOST}:{legacy_port}"
+    if (
+        not any(re.split(r"[\s,;]+", (raw or "").strip()))
+        and legacy_port != DEFAULT_PORT
+    ):
+        if hasattr(params, "RemInt"):
+            params.RemInt("Port")
+        if hasattr(params, "SetString"):
+            params.SetString("ListenAddress", default_entry)
+    return default_entry
+
+
+def listen_addresses() -> list[str]:
+    """Configured `address:port` entries for the HTTP server."""
+    raw = _params().GetString("ListenAddress", "")
     if any(re.split(r"[\s,;]+", (raw or "").strip())):
         return parse_listen_addresses(raw)
-    legacy_port = params.GetInt("Port", DEFAULT_PORT)
-    return [f"{DEFAULT_LISTEN_HOST}:{legacy_port}"]
+    return [migrate_legacy_port()]
 
 
 def accepted_listen_addresses() -> list[str]:

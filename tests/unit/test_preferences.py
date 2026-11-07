@@ -622,14 +622,20 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             def GetInt(self, name, default=0):
                 return store.get(name, default)
 
+            def RemInt(self, name):
+                store.pop(name, None)
+
         freecad = types.SimpleNamespace(ParamGet=lambda _g: DictParams())
         with mock.patch.dict(sys.modules, {"FreeCAD": freecad}):
             sys.modules.pop("freecad.mcp_bridge.config", None)
             config = importlib.import_module("freecad.mcp_bridge.config")
 
             self.assertEqual(config.listen_addresses(), ["127.0.0.1:39280"])
+            self.assertNotIn("ListenAddress", store)
             store["Port"] = 41234
             self.assertEqual(config.listen_addresses(), ["127.0.0.1:41234"])
+            self.assertEqual(store.get("ListenAddress"), "127.0.0.1:41234")
+            self.assertNotIn("Port", store)
             store["ListenAddress"] = (
                 "127.0.0.1:39280\n192.168.1.50:39280, 10.0.0.5:39281; "
                 "[::1]:39280 127.0.0.1:39280"
@@ -643,9 +649,12 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                     "[::1]:39280",
                 ],
             )
+            store["Port"] = 41234
             store["ListenAddress"] = "   \n , ; "
             self.assertEqual(config.listen_addresses(), ["127.0.0.1:41234"])
-            store.pop("Port", None)
+            self.assertEqual(store.get("ListenAddress"), "127.0.0.1:41234")
+            self.assertNotIn("Port", store)
+            store.pop("ListenAddress", None)
             self.assertEqual(config.listen_addresses(), ["127.0.0.1:39280"])
 
             self.assertEqual(
@@ -982,8 +991,11 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 PrintDeveloperError=errors.append,
             ),
         )
+        executor_shutdowns = []
         fake_executor_mod = types.SimpleNamespace(
-            Executor=lambda: types.SimpleNamespace(shutdown=lambda: None)
+            Executor=lambda: types.SimpleNamespace(
+                shutdown=lambda: executor_shutdowns.append(True)
+            )
         )
         stubs = {
             "FreeCAD": freecad,
@@ -1116,6 +1128,37 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 srv.stop()
                 self.assertEqual(shut_down, [])
                 self.assertEqual(closed, [])
+
+                # 7. Dead serving thread: is_running() is False, and the next
+                # start() cleans up held servers and executor before binding
+                # (even when the new start fails to bind).
+                bound.clear()
+                shut_down.clear()
+                closed.clear()
+                executor_shutdowns.clear()
+                store["ListenAddress"] = (
+                    "127.0.0.1:39280\n192.168.1.50:39281"
+                )
+                srv.start()
+                self.assertTrue(srv.is_running())
+                srv._servers[1][1]._alive = False
+                self.assertFalse(srv.is_running())
+                bound.clear()
+                shut_down.clear()
+                closed.clear()
+                executor_shutdowns.clear()
+                fail_bind_on = "127.0.0.1"
+                with self.assertRaises(OSError):
+                    srv.start()
+                fail_bind_on = None
+                self.assertEqual(shut_down, [("127.0.0.1", 39280)])
+                self.assertEqual(
+                    closed,
+                    [("192.168.1.50", 39281), ("127.0.0.1", 39280)],
+                )
+                self.assertEqual(len(executor_shutdowns), 2)
+                self.assertEqual(srv._servers, [])
+                self.assertIsNone(srv._executor)
             sys.modules.pop("freecad.mcp_bridge.http_server", None)
 
 

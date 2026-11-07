@@ -220,9 +220,21 @@ class HttpServer:
             thread.is_alive() for _, thread in self._servers
         )
 
+    def _cleanup_held(self) -> None:
+        for srv, thread in reversed(self._servers):
+            if thread.is_alive():
+                srv.shutdown()
+            srv.server_close()
+        self._servers = []
+        if self._executor is not None:
+            self._executor.shutdown()
+        self._executor = None
+
     def start(self, addresses: list[str] | None = None) -> None:
         if self.is_running():
             return
+        if self._servers or self._executor is not None:
+            self._cleanup_held()
         entries = (
             list(addresses)
             if addresses is not None
@@ -321,12 +333,6 @@ class HttpServer:
             )
 
     def stop(self) -> None:
-        for srv, _ in reversed(self._servers):
-            srv.shutdown()
-            srv.server_close()
-        self._servers = []
-        if self._executor is not None:
-            self._executor.shutdown()
-        self._executor = None
+        self._cleanup_held()
         paging.clear_all()
         FreeCAD.Console.PrintMessage(f"{LOG_PREFIX} HTTP server stopped\n")

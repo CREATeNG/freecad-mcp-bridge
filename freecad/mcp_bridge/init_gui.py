@@ -427,9 +427,13 @@ class MCPBridgeUiManipulator:
 
 
 class _StatusBarPrefObserver:
-    """Refresh the status-bar button when its preferences are saved."""
+    """Refresh the status-bar button and migrate a legacy Port on save."""
 
     def onChange(self, _grp, param=None):
+        from freecad.mcp_bridge import config
+
+        if param in (None, "Port", "ListenAddress"):
+            config.migrate_legacy_port()
         if param in (None, "ShowStatusButton", "StatusButtonPosition"):
             show_toggle_state()
 
@@ -439,6 +443,8 @@ def ensure_startup_ui():
     import FreeCAD as App
     import FreeCADGui as Gui
     from PySide.QtCore import QTimer
+
+    from freecad.mcp_bridge import config
 
     mw = Gui.getMainWindow()
     if mw is None:
@@ -454,6 +460,7 @@ def ensure_startup_ui():
     if not getattr(App, "MCPBridgeHooksConnected", False):
         App.MCPBridgeHooksConnected = True
         mw.workbenchActivated.connect(lambda *_args: App.MCPBridgeInjectUi())
+        config.migrate_legacy_port()
         App.MCPBridgePrefGroup = App.ParamGet(PREF_GROUP)
         App.MCPBridgePrefObserver = _StatusBarPrefObserver()
         App.MCPBridgePrefGroup.Attach(App.MCPBridgePrefObserver)
@@ -481,6 +488,12 @@ if App.MCPBridgeCommand in Gui.listCommands():
 MCP_Bridge.register(App.MCPBridgeCommand, MCPBridgeCommand())
 
 if not getattr(App, "MCPBridgePrefAdded", False):
+    from freecad.mcp_bridge import config
+
+    try:
+        config.migrate_legacy_port()
+    except Exception:
+        pass
     _prefs_ui = preferences_ui_path()
     if os.path.isfile(_prefs_ui):
         try:
