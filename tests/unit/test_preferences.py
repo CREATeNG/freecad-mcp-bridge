@@ -18,6 +18,7 @@ from unittest import mock
 
 from freecad.mcp_bridge.constants import (
     COMMAND_ID,
+    DISPLAY_NAME,
     PREF_GROUP,
     TOOLBAR_OBJECT_NAME,
 )
@@ -358,41 +359,74 @@ class StatusBarWidgetsTests(unittest.TestCase):
 
 
 class ToolbarVisibilityTests(unittest.TestCase):
-    def test_toolbar_shows_by_default_and_persists_user_hide_and_show(self):
-        """The toolbar shows on a fresh install, stays hidden across workbench
-        switches and restarts when unchecked, and stays shown when checked
-        again."""
-        config, _, _ = fresh_config()
-        self.assertIs(config.show_toolbar(), True)
+    def test_manipulator_appends_toolbar_and_command_except_on_none_workbench(
+        self,
+    ):
+        """MCPBridgeUiManipulator appends the MCP Bridge toolbar under the
+        root item and the toggle command under it, skipping NoneWorkbench."""
+        init_gui = _fresh_init_gui()
+        manipulator = init_gui.MCPBridgeUiManipulator()
+        scheduled = []
 
-        saved = {}
+        class NoneWorkbench:
+            pass
+
+        class PartDesignWorkbench:
+            pass
+
+        active_wb = None
+        freecad = types.SimpleNamespace(
+            MCPBridgeCommand=COMMAND_ID,
+            MCPBridgeInjectUi=init_gui.inject_ui,
+        )
+        gui = types.SimpleNamespace(activeWorkbench=lambda: active_wb)
+        qtcore = types.SimpleNamespace(
+            QTimer=types.SimpleNamespace(
+                singleShot=lambda delay, fn: scheduled.append((delay, fn))
+            )
+        )
+        stubs = {
+            "FreeCAD": freecad,
+            "FreeCADGui": gui,
+            "PySide": types.SimpleNamespace(QtCore=qtcore),
+            "PySide.QtCore": qtcore,
+        }
+        with mock.patch.dict(sys.modules, stubs):
+            self.assertEqual(manipulator.modifyToolBars(), [])
+            self.assertEqual(scheduled, [])
+
+            active_wb = NoneWorkbench()
+            self.assertEqual(manipulator.modifyToolBars(), [])
+            self.assertEqual(scheduled, [])
+
+            active_wb = PartDesignWorkbench()
+            self.assertEqual(
+                manipulator.modifyToolBars(),
+                [
+                    {"append": DISPLAY_NAME, "toolBar": ""},
+                    {"append": COMMAND_ID, "toolBar": DISPLAY_NAME},
+                ],
+            )
+            self.assertEqual(scheduled, [(0, init_gui.inject_ui)])
+
+    def test_command_action_tracks_bridge_state_and_inject_ui_leaves_visibility(
+        self,
+    ):
+        """show_toggle_state updates the command's own action, and inject_ui
+        reports readiness without creating a toolbar or altering visibility."""
         messages = []
 
-        class FakeSignal:
-            def __init__(self):
-                self._slots = []
-
-            def connect(self, slot):
-                self._slots.append(slot)
-
-            def emit(self, *args):
-                for slot in list(self._slots):
-                    slot(*args)
-
         class FakeAction:
-            def __init__(self, text="", checked=False):
-                self._text = text
-                self._checked = checked
-                self.triggered = FakeSignal()
+            def __init__(self):
+                self._checkable = False
+                self._checked = False
+                self._tooltip = ""
 
-            def text(self):
-                return self._text
+            def isCheckable(self):
+                return self._checkable
 
-            def setIcon(self, _icon):
-                pass
-
-            def setCheckable(self, _checkable):
-                pass
+            def setCheckable(self, checkable):
+                self._checkable = bool(checkable)
 
             def setChecked(self, checked):
                 self._checked = bool(checked)
@@ -400,22 +434,24 @@ class ToolbarVisibilityTests(unittest.TestCase):
             def isChecked(self):
                 return self._checked
 
-            def setToolTip(self, _tip):
-                pass
+            def setToolTip(self, tip):
+                self._tooltip = tip
+
+            def toolTip(self):
+                return self._tooltip
+
+        class FakeCommand:
+            def __init__(self, actions):
+                self._actions = list(actions)
+
+            def getAction(self):
+                return list(self._actions)
 
         class FakeToolBar:
-            def __init__(self, title, parent=None):
+            def __init__(self, title, visible=True):
                 self._title = title
-                self._parent = parent
-                self._object_name = ""
-                self._visible = False
-                self._actions = []
-                self._toggle_action = FakeAction(title, checked=False)
-
-                def _on_trigger(checked):
-                    self.setVisible(checked)
-
-                self._toggle_action.triggered.connect(_on_trigger)
+                self._object_name = TOOLBAR_OBJECT_NAME
+                self._visible = visible
 
             def windowTitle(self):
                 return self._title
@@ -423,49 +459,20 @@ class ToolbarVisibilityTests(unittest.TestCase):
             def objectName(self):
                 return self._object_name
 
-            def setObjectName(self, name):
-                self._object_name = name
-
-            def addAction(self, label):
-                action = FakeAction(label)
-                self._actions.append(action)
-                return action
-
-            def actions(self):
-                return list(self._actions)
-
-            def toggleViewAction(self):
-                return self._toggle_action
-
-            def setVisible(self, visible):
-                self._visible = bool(visible)
-                self._toggle_action.setChecked(self._visible)
-
-            def show(self):
-                self.setVisible(True)
-
-            def hide(self):
-                self.setVisible(False)
-
             def isVisible(self):
                 return self._visible
 
-            def user_trigger_toggle_view(self):
-                new_state = not self._toggle_action.isChecked()
-                self._toggle_action.setChecked(new_state)
-                self._toggle_action.triggered.emit(new_state)
+            def setVisible(self, visible):
+                self._visible = bool(visible)
 
         class FakeMainWindow:
-            def __init__(self):
-                self._toolbars = []
+            def __init__(self, toolbars):
+                self._toolbars = list(toolbars)
 
             def findChildren(self, cls):
                 if cls is FakeToolBar:
                     return list(self._toolbars)
                 return []
-
-            def addToolBar(self, tb):
-                self._toolbars.append(tb)
 
             def update(self):
                 pass
@@ -473,20 +480,16 @@ class ToolbarVisibilityTests(unittest.TestCase):
             def isVisible(self):
                 return True
 
-        class FakeParams:
-            def GetBool(self, name, default):
-                return saved.get(name, default)
-
-            def SetBool(self, name, value):
-                saved[name] = bool(value)
-
         init_gui = _fresh_init_gui()
-        current_mw = FakeMainWindow()
+        action = FakeAction()
+        command_wrapper = FakeCommand([action])
+        tb = FakeToolBar(DISPLAY_NAME, visible=True)
+        current_mw = FakeMainWindow([tb])
+        running = False
+
         freecad = types.SimpleNamespace(
-            MCPBridgeIconPath="icon.svg",
             MCPBridgeCommand=COMMAND_ID,
             MCPBridgeInjectUi=init_gui.inject_ui,
-            ParamGet=lambda _group: FakeParams(),
             Console=types.SimpleNamespace(
                 PrintMessage=messages.append,
                 PrintWarning=lambda *_: None,
@@ -494,75 +497,55 @@ class ToolbarVisibilityTests(unittest.TestCase):
         )
         gui = types.SimpleNamespace(
             getMainWindow=lambda: current_mw,
-            runCommand=lambda *_: None,
+            Command=types.SimpleNamespace(
+                get=lambda name: command_wrapper
+                if name == COMMAND_ID
+                else None
+            ),
         )
         qtcore = types.SimpleNamespace(
             QTimer=types.SimpleNamespace(singleShot=lambda *_: None)
         )
-        qtgui = types.SimpleNamespace(QIcon=lambda path: path)
         qtwidgets = types.SimpleNamespace(QToolBar=FakeToolBar)
         stubs = {
             "FreeCAD": freecad,
             "FreeCADGui": gui,
             "PySide": types.SimpleNamespace(
-                QtCore=qtcore, QtGui=qtgui, QtWidgets=qtwidgets
+                QtCore=qtcore, QtWidgets=qtwidgets
             ),
             "PySide.QtCore": qtcore,
-            "PySide.QtGui": qtgui,
             "PySide.QtWidgets": qtwidgets,
         }
 
         with (
             mock.patch.dict(sys.modules, stubs),
             mock.patch.object(init_gui, "_ensure_status_button"),
-            mock.patch.object(init_gui, "show_toggle_state"),
+            mock.patch.object(init_gui, "_refresh_status_button"),
+            mock.patch.object(
+                init_gui.bridge,
+                "is_running",
+                side_effect=lambda: running,
+                create=True,
+            ),
         ):
-            sys.modules["freecad.mcp_bridge.config"] = config
-            importlib.reload(config)
-
-            # 1. Fresh install: toolbar is created and shown.
             self.assertTrue(init_gui.inject_ui())
-            tb = current_mw.findChildren(FakeToolBar)[0]
-            self.assertEqual(tb.objectName(), TOOLBAR_OBJECT_NAME)
-            self.assertTrue(tb.isVisible())
-            self.assertNotIn("ShowToolbar", saved)
+            self.assertTrue(action.isCheckable())
+            self.assertFalse(action.isChecked())
+            self.assertEqual(
+                action.toolTip(), "MCP Bridge: off (click to start)"
+            )
             self.assertEqual(messages, ["[MCP Bridge] Toolbar ready.\n"])
 
-            # 2. Programmatic hide (e.g. window minimize) does not save a
-            # user preference.
-            tb.hide()
-            self.assertNotIn("ShowToolbar", saved)
-            tb.show()
+            running = True
+            init_gui.show_toggle_state()
+            self.assertTrue(action.isChecked())
+            self.assertEqual(
+                action.toolTip(), "MCP Bridge: on (click to stop)"
+            )
 
-            # 3. User unchecks "MCP Bridge" in the toolbar menu: hides and
-            # persists across workbench switches (re-injection) and restart.
-            tb.user_trigger_toggle_view()
-            self.assertFalse(tb.isVisible())
-            self.assertIs(saved.get("ShowToolbar"), False)
-
+            tb.setVisible(False)
             self.assertFalse(init_gui.inject_ui())
             self.assertFalse(tb.isVisible())
-
-            # Simulated FreeCAD restart with ShowToolbar=False saved.
-            current_mw = FakeMainWindow()
-            freecad.MCPBridgeUiReady = False
-            self.assertFalse(init_gui.inject_ui())
-            tb_after_restart = current_mw.findChildren(FakeToolBar)[0]
-            self.assertFalse(tb_after_restart.isVisible())
-            self.assertFalse(init_gui.inject_ui())
-            self.assertFalse(tb_after_restart.isVisible())
-
-            # 4. User checks "MCP Bridge" again: shows and persists across
-            # restart.
-            tb_after_restart.user_trigger_toggle_view()
-            self.assertTrue(tb_after_restart.isVisible())
-            self.assertIs(saved.get("ShowToolbar"), True)
-
-            current_mw = FakeMainWindow()
-            freecad.MCPBridgeUiReady = False
-            self.assertTrue(init_gui.inject_ui())
-            tb_shown_again = current_mw.findChildren(FakeToolBar)[0]
-            self.assertTrue(tb_shown_again.isVisible())
 
     def test_command_is_registered_under_the_init_gui_category(self):
         """Gui.addCommand is called directly from init_gui.py, so the

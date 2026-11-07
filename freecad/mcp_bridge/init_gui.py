@@ -274,6 +274,7 @@ def show_toggle_state():
     tooltip.
     """
     import FreeCAD as App
+    import FreeCADGui as Gui
 
     running = bridge.is_running()
     tip = (
@@ -281,8 +282,10 @@ def show_toggle_state():
         if running
         else f"{DISPLAY_NAME}: off (click to start)"
     )
-    action = getattr(App, "MCPBridgeAction", None)
-    if action is not None:
+    cmd = Gui.Command.get(App.MCPBridgeCommand)
+    for action in cmd.getAction() if cmd is not None else ():
+        if not action.isCheckable():
+            action.setCheckable(True)
         action.setChecked(running)
         action.setToolTip(tip)
     _refresh_status_button(running, tip)
@@ -292,14 +295,7 @@ def inject_ui():
     import FreeCAD as App
     import FreeCADGui as Gui
     from PySide.QtCore import QTimer
-    from PySide.QtGui import QIcon
     from PySide.QtWidgets import QToolBar
-
-    from freecad.mcp_bridge import config
-
-    icon = App.MCPBridgeIconPath
-    command = App.MCPBridgeCommand
-    action_label = "MCP Bridge On/Off"
 
     mw = Gui.getMainWindow()
     if not mw:
@@ -315,46 +311,13 @@ def inject_ui():
             target_tb = tb
             break
 
-    created = target_tb is None
-    if created:
-        target_tb = QToolBar(DISPLAY_NAME, mw)
-        target_tb.setObjectName(TOOLBAR_OBJECT_NAME)
-        mw.addToolBar(target_tb)
-        toggle_action = target_tb.toggleViewAction()
-        if toggle_action is not None:
-            toggle_action.triggered.connect(
-                lambda *args: App.ParamGet(PREF_GROUP).SetBool(
-                    "ShowToolbar",
-                    bool(args[0])
-                    if args
-                    else bool(toggle_action.isChecked()),
-                )
-            )
-
-    toolbar_exists = False
-    for action in target_tb.actions():
-        if action.text() == action_label:
-            toolbar_exists = True
-            break
-    if not toolbar_exists:
-        action = target_tb.addAction(action_label)
-        action.setIcon(QIcon(icon))
-        action.setCheckable(True)
-        action.triggered.connect(lambda *_: Gui.runCommand(command))
-        App.MCPBridgeAction = action
-
     _ensure_status_button(mw)
     show_toggle_state()
-
-    if created:
-        if config.show_toolbar():
-            target_tb.setVisible(True)
-            target_tb.show()
-        else:
-            target_tb.setVisible(False)
     mw.update()
 
-    ready = target_tb.isVisible() and mw.isVisible()
+    ready = (
+        target_tb is not None and target_tb.isVisible() and mw.isVisible()
+    )
     if ready and not getattr(App, "MCPBridgeUiReady", False):
         App.MCPBridgeUiReady = True
         App.Console.PrintMessage(f"{LOG_PREFIX} Toolbar ready.\n")
@@ -362,14 +325,27 @@ def inject_ui():
 
 
 class MCPBridgeUiManipulator:
-    """Re-inject the toolbar after each workbench activation."""
+    """Add the MCP Bridge toolbar to each workbench."""
 
     def modifyToolBars(self):
         import FreeCAD as App
+        import FreeCADGui as Gui
+        from PySide.QtCore import QTimer
 
+        wb = Gui.activeWorkbench()
+        if wb is None or type(wb).__name__ == "NoneWorkbench":
+            return []
         if hasattr(App, "MCPBridgeInjectUi"):
-            App.MCPBridgeInjectUi()
-        return {}
+            QTimer.singleShot(0, App.MCPBridgeInjectUi)
+        # modifyToolBars has no separate operation to create a toolbar:
+        # each append entry adds a child to the ToolBarItem named by
+        # toolBar. The first entry targets the root item's empty name ("")
+        # to create the DISPLAY_NAME toolbar under the root, and the
+        # second adds the command to that toolbar.
+        return [
+            {"append": DISPLAY_NAME, "toolBar": ""},
+            {"append": App.MCPBridgeCommand, "toolBar": DISPLAY_NAME},
+        ]
 
 
 class _StatusBarPrefObserver:

@@ -4,8 +4,7 @@ Run inside a FreeCAD GUI process (second launch, after test_install.py):
 
   freecad scripts/test_verify.py
 
-Does not call App.MCPBridgeInjectUi() for initial startup; waits for the
-addon's own startup hooks.
+Does not call App.MCPBridgeInjectUi(); waits for the addon's own startup hooks.
 
 Environment:
   RELEASE_INSTALL_NAME              Installed Mod folder name (default: freecad-mcp-bridge)
@@ -117,7 +116,6 @@ def _status_button():
 
 def _assert_status_button(running: bool) -> None:
     """The status-bar button matches the bridge, and so does the toolbar."""
-    import FreeCAD as App
     import FreeCADGui as Gui
     from PySide.QtWidgets import QToolButton
 
@@ -171,12 +169,18 @@ def _assert_status_button(running: bool) -> None:
             "Status-bar button tooltip is out of step. "
             f"Expected {tip!r}, got {button.toolTip()!r}"
         )
-    action = getattr(App, "MCPBridgeAction", None)
+    action = common.find_toolbar_action()
     pressed = None if action is None else action.isChecked()
     if pressed != running:
         common.fail(
             "Toolbar button is out of step with the status-bar button "
             f"(pressed={pressed}, bridge running={running})"
+        )
+    action_tip = None if action is None else action.toolTip()
+    if action_tip != tip:
+        common.fail(
+            "Toolbar button tooltip is out of step. "
+            f"Expected {tip!r}, got {action_tip!r}"
         )
 
 
@@ -223,7 +227,7 @@ def _verify_status_button_hide() -> None:
                 "Status-bar button remained present with "
                 "ShowStatusButton=False"
             )
-        if getattr(App, "MCPBridgeAction", None) is None:
+        if common.find_toolbar_action() is None:
             common.fail(
                 "Toolbar action disappeared when status-bar button was hidden"
             )
@@ -236,7 +240,7 @@ def _verify_status_button_hide() -> None:
 
 
 def _verify_toolbar_hide() -> None:
-    """Hiding the toolbar survives re-injection and recreation."""
+    """Hiding and showing the toolbar persists across workbench switches."""
     import FreeCAD as App
     import FreeCADGui as Gui
     from PySide.QtCore import QCoreApplication
@@ -244,14 +248,23 @@ def _verify_toolbar_hide() -> None:
 
     from freecad.mcp_bridge.constants import (
         DISPLAY_NAME,
-        PREF_GROUP,
         TOOLBAR_OBJECT_NAME,
     )
 
     mw = Gui.getMainWindow()
     if mw is None:
         common.fail("MainWindow is None during toolbar-hide check")
-    params = App.ParamGet(PREF_GROUP)
+    tb_params = App.ParamGet("User parameter:BaseApp/MainWindow/Toolbars")
+    initial_wb = (
+        Gui.activeWorkbench().name()
+        if Gui.activeWorkbench() is not None
+        else "PartDesignWorkbench"
+    )
+    other_wb = (
+        "PartWorkbench"
+        if initial_wb != "PartWorkbench"
+        else "PartDesignWorkbench"
+    )
 
     def _find_toolbar():
         for tb in mw.findChildren(QToolBar):
@@ -262,24 +275,15 @@ def _verify_toolbar_hide() -> None:
                 return tb
         return None
 
-    def _recreate_toolbar():
-        tb = _find_toolbar()
-        if tb is not None:
-            mw.removeToolBar(tb)
-            tb.setParent(None)
-            tb.deleteLater()
-            QCoreApplication.processEvents()
-        App.MCPBridgeInjectUi()
-        QCoreApplication.processEvents()
-        return _find_toolbar()
-
     try:
         tb = _find_toolbar()
         if tb is None or not tb.isVisible():
             common.fail("MCP Bridge toolbar is missing or hidden at startup")
         toggle = tb.toggleViewAction()
-        if toggle is None:
-            common.fail("MCP Bridge toolbar has no toggleViewAction")
+        if toggle is None or not toggle.isVisible():
+            common.fail(
+                "MCP Bridge toolbar has no visible toggleViewAction"
+            )
 
         toggle.trigger()
         QCoreApplication.processEvents()
@@ -287,27 +291,24 @@ def _verify_toolbar_hide() -> None:
             common.fail(
                 "MCP Bridge toolbar remained visible after toggleViewAction"
             )
-        if params.GetBool("ShowToolbar", True):
-            common.fail(
-                "ShowToolbar preference was not saved as False on hide"
-            )
-
-        App.MCPBridgeInjectUi()
-        QCoreApplication.processEvents()
-        if tb.isVisible():
-            common.fail(
-                "MCP Bridge toolbar became visible again on re-injection"
-            )
         if _status_button() is None or not _status_button().isVisible():
             common.fail(
                 "Status-bar button was not available while toolbar was hidden"
             )
 
-        tb = _recreate_toolbar()
-        if tb is None or tb.isVisible():
+        Gui.activateWorkbench(other_wb)
+        QCoreApplication.processEvents()
+        tb = _find_toolbar()
+        visible = None if tb is None else tb.isVisible()
+        if tb is None or visible:
             common.fail(
-                "Recreated MCP Bridge toolbar did not stay hidden "
-                f"(tb={tb!r}, visible={tb.isVisible() if tb else None})"
+                "MCP Bridge toolbar did not stay hidden after workbench "
+                f"switch (tb={tb!r}, visible={visible})"
+            )
+        if tb_params.GetBool(DISPLAY_NAME, True):
+            common.fail(
+                "MainWindow/Toolbars parameter was not saved as False "
+                "after workbench switch"
             )
 
         tb.toggleViewAction().trigger()
@@ -316,30 +317,37 @@ def _verify_toolbar_hide() -> None:
             common.fail(
                 "MCP Bridge toolbar did not become visible when shown again"
             )
-        if not params.GetBool("ShowToolbar", False):
-            common.fail(
-                "ShowToolbar preference was not saved as True on show"
-            )
 
-        tb = _recreate_toolbar()
-        if tb is None or not tb.isVisible():
+        Gui.activateWorkbench(initial_wb)
+        QCoreApplication.processEvents()
+        tb = _find_toolbar()
+        visible = None if tb is None else tb.isVisible()
+        if tb is None or not visible:
             common.fail(
-                "Recreated MCP Bridge toolbar did not stay shown "
-                f"(tb={tb!r}, visible={tb.isVisible() if tb else None})"
+                "MCP Bridge toolbar did not stay shown after workbench "
+                f"switch (tb={tb!r}, visible={visible})"
+            )
+        if not tb_params.GetBool(DISPLAY_NAME, False):
+            common.fail(
+                "MainWindow/Toolbars parameter was not saved as True "
+                "after workbench switch"
             )
     finally:
-        params.RemBool("ShowToolbar")
+        tb_params.SetBool(DISPLAY_NAME, True)
+        if (
+            Gui.activeWorkbench() is not None
+            and Gui.activeWorkbench().name() != initial_wb
+        ):
+            Gui.activateWorkbench(initial_wb)
+            QCoreApplication.processEvents()
         tb = _find_toolbar()
         if tb is not None and not tb.isVisible():
-            tb.setVisible(True)
-            tb.show()
-        App.MCPBridgeInjectUi()
-        QCoreApplication.processEvents()
+            tb.toggleViewAction().trigger()
+            QCoreApplication.processEvents()
 
     _assert_status_button(False)
     common.log_notice(
-        "MCP Bridge toolbar stays hidden across re-injection and recreation, "
-        "and stays shown when re-enabled"
+        "MCP Bridge toolbar stays hidden and shown across workbench switches"
     )
 
 
