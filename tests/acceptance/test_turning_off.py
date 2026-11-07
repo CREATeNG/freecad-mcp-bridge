@@ -25,7 +25,7 @@ import time
 from PySide.QtCore import QCoreApplication, QTimer
 from freecad.mcp_bridge import bridge
 
-action = App.MCPBridgeAction  # the toolbar's On/Off action
+action = Gui.Command.get(App.MCPBridgeCommand).getAction()[0]
 # Precondition only: no public view of the job queue exists.
 line = bridge._server._executor._jobs
 deadline = time.monotonic() + 10
@@ -55,7 +55,7 @@ import time
 from PySide.QtCore import QCoreApplication, QTimer
 from freecad.mcp_bridge import bridge
 
-action = App.MCPBridgeAction  # the toolbar's On/Off action
+action = Gui.Command.get(App.MCPBridgeCommand).getAction()[0]
 print('before the click')
 QTimer.singleShot(0, action.trigger)
 deadline = time.monotonic() + 2

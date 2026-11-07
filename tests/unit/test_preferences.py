@@ -8,6 +8,7 @@ profile does.
 """
 
 import importlib
+import re
 import sys
 import types
 import unittest
@@ -15,7 +16,12 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest import mock
 
-from freecad.mcp_bridge.constants import PREF_GROUP
+from freecad.mcp_bridge.constants import (
+    COMMAND_ID,
+    DISPLAY_NAME,
+    PREF_GROUP,
+    TOOLBAR_OBJECT_NAME,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 PAGE = ROOT / "freecad" / "mcp_bridge" / "Resources" / "Ui" / "preferences.ui"
@@ -350,6 +356,248 @@ class StatusBarWidgetsTests(unittest.TestCase):
             self.assertEqual(
                 init_gui._status_bar_widgets(bar_c2), (None, None)
             )
+
+
+class ToolbarVisibilityTests(unittest.TestCase):
+    def test_manipulator_appends_toolbar_and_command_except_on_none_workbench(
+        self,
+    ):
+        """MCPBridgeUiManipulator appends the MCP Bridge toolbar under the
+        root item and the toggle command under it, skipping NoneWorkbench."""
+        init_gui = _fresh_init_gui()
+        manipulator = init_gui.MCPBridgeUiManipulator()
+        scheduled = []
+
+        class NoneWorkbench:
+            pass
+
+        class PartDesignWorkbench:
+            pass
+
+        active_wb = None
+        freecad = types.SimpleNamespace(
+            MCPBridgeCommand=COMMAND_ID,
+            MCPBridgeInjectUi=init_gui.inject_ui,
+        )
+        gui = types.SimpleNamespace(activeWorkbench=lambda: active_wb)
+        qtcore = types.SimpleNamespace(
+            QTimer=types.SimpleNamespace(
+                singleShot=lambda delay, fn: scheduled.append((delay, fn))
+            )
+        )
+        stubs = {
+            "FreeCAD": freecad,
+            "FreeCADGui": gui,
+            "PySide": types.SimpleNamespace(QtCore=qtcore),
+            "PySide.QtCore": qtcore,
+        }
+        with mock.patch.dict(sys.modules, stubs):
+            self.assertEqual(manipulator.modifyToolBars(), [])
+            self.assertEqual(scheduled, [])
+
+            active_wb = NoneWorkbench()
+            self.assertEqual(manipulator.modifyToolBars(), [])
+            self.assertEqual(scheduled, [])
+
+            active_wb = PartDesignWorkbench()
+            self.assertEqual(
+                manipulator.modifyToolBars(),
+                [
+                    {"append": DISPLAY_NAME, "toolBar": ""},
+                    {"append": COMMAND_ID, "toolBar": DISPLAY_NAME},
+                ],
+            )
+            self.assertEqual(scheduled, [(0, init_gui.inject_ui)])
+
+    def test_command_action_tracks_state_without_changing_visibility(self):
+        """show_toggle_state updates the command's own action, and inject_ui
+        reports readiness without creating a toolbar or altering visibility."""
+        messages = []
+
+        class FakeAction:
+            def __init__(self):
+                self._checkable = False
+                self._checked = False
+                self._tooltip = ""
+
+            def isCheckable(self):
+                return self._checkable
+
+            def setCheckable(self, checkable):
+                self._checkable = bool(checkable)
+
+            def setChecked(self, checked):
+                self._checked = bool(checked)
+
+            def isChecked(self):
+                return self._checked
+
+            def setToolTip(self, tip):
+                self._tooltip = tip
+
+            def toolTip(self):
+                return self._tooltip
+
+        class FakeCommand:
+            def __init__(self, actions):
+                self._actions = list(actions)
+
+            def getAction(self):
+                return list(self._actions)
+
+        class FakeToolBar:
+            def __init__(self, title, visible=True):
+                self._title = title
+                self._object_name = TOOLBAR_OBJECT_NAME
+                self._visible = visible
+
+            def windowTitle(self):
+                return self._title
+
+            def objectName(self):
+                return self._object_name
+
+            def isVisible(self):
+                return self._visible
+
+            def setVisible(self, visible):
+                self._visible = bool(visible)
+
+        class FakeMainWindow:
+            def __init__(self, toolbars):
+                self._toolbars = list(toolbars)
+
+            def findChildren(self, cls):
+                if cls is FakeToolBar:
+                    return list(self._toolbars)
+                return []
+
+            def update(self):
+                pass
+
+            def isVisible(self):
+                return True
+
+        init_gui = _fresh_init_gui()
+        action = FakeAction()
+        command_wrapper = FakeCommand([action])
+        tb = FakeToolBar(DISPLAY_NAME, visible=True)
+        current_mw = FakeMainWindow([tb])
+        running = False
+
+        freecad = types.SimpleNamespace(
+            MCPBridgeCommand=COMMAND_ID,
+            MCPBridgeInjectUi=init_gui.inject_ui,
+            Console=types.SimpleNamespace(
+                PrintMessage=messages.append,
+                PrintWarning=lambda *_: None,
+            ),
+        )
+        gui = types.SimpleNamespace(
+            getMainWindow=lambda: current_mw,
+            Command=types.SimpleNamespace(
+                get=lambda name: command_wrapper
+                if name == COMMAND_ID
+                else None
+            ),
+        )
+        qtcore = types.SimpleNamespace(
+            QTimer=types.SimpleNamespace(singleShot=lambda *_: None)
+        )
+        qtwidgets = types.SimpleNamespace(QToolBar=FakeToolBar)
+        stubs = {
+            "FreeCAD": freecad,
+            "FreeCADGui": gui,
+            "PySide": types.SimpleNamespace(
+                QtCore=qtcore, QtWidgets=qtwidgets
+            ),
+            "PySide.QtCore": qtcore,
+            "PySide.QtWidgets": qtwidgets,
+        }
+
+        with (
+            mock.patch.dict(sys.modules, stubs),
+            mock.patch.object(init_gui, "_ensure_status_button"),
+            mock.patch.object(init_gui, "_refresh_status_button"),
+            mock.patch.object(
+                init_gui.bridge,
+                "is_running",
+                side_effect=lambda: running,
+                create=True,
+            ),
+        ):
+            self.assertTrue(init_gui.inject_ui())
+            self.assertTrue(action.isCheckable())
+            self.assertFalse(action.isChecked())
+            self.assertEqual(
+                action.toolTip(), "MCP Bridge: off (click to start)"
+            )
+            self.assertEqual(messages, ["[MCP Bridge] Toolbar ready.\n"])
+
+            running = True
+            init_gui.show_toggle_state()
+            self.assertTrue(action.isChecked())
+            self.assertEqual(
+                action.toolTip(), "MCP Bridge: on (click to stop)"
+            )
+
+            tb.setVisible(False)
+            self.assertFalse(init_gui.inject_ui())
+            self.assertFalse(tb.isVisible())
+
+    def test_command_is_registered_under_the_mcp_bridge_category(self):
+        """MCP_Bridge.register calls Gui.addCommand from MCP_Bridge.py, so
+        the Customize category and macro module both read 'MCP_Bridge'."""
+        recorded = []
+
+        def add_command(name, cmd):
+            fn = sys._getframe(1).f_code.co_filename.replace("\\", "/")
+            tail = fn.rsplit("/", 1)[-1]
+            module = tail.rsplit(".", 1)[0] if "." in tail else tail
+            installed_fn = f"/Mod/freecad-mcp-bridge/{tail}"
+            match = re.search(r"/Mod/(\w+)/", installed_fn) or re.search(
+                r"/Ext/freecad/(\w+)/", installed_fn
+            )
+            group = match.group(1) if match else module
+            recorded.append((name, tail, group, module, cmd))
+
+        freecad = types.SimpleNamespace(
+            Console=types.SimpleNamespace(PrintWarning=lambda *_: None)
+        )
+        gui = types.SimpleNamespace(
+            addIconPath=lambda *_: None,
+            listCommands=lambda: [],
+            addCommand=add_command,
+            addPreferencePage=lambda *_: None,
+            addWorkbenchManipulator=lambda *_: None,
+        )
+        qtcore = types.SimpleNamespace(
+            QTimer=types.SimpleNamespace(singleShot=lambda *_: None)
+        )
+        stubs = {
+            "FreeCAD": freecad,
+            "FreeCADGui": gui,
+            "PySide": types.SimpleNamespace(QtCore=qtcore),
+            "PySide.QtCore": qtcore,
+            "freecad.mcp_bridge.bridge": types.SimpleNamespace(),
+        }
+        with mock.patch.dict(sys.modules, stubs):
+            sys.modules.pop("MCP_Bridge", None)
+            sys.modules.pop("freecad.mcp_bridge.init_gui", None)
+            importlib.import_module("freecad.mcp_bridge.init_gui")
+            sys.modules.pop("freecad.mcp_bridge.init_gui", None)
+            self.assertEqual(len(recorded), 1)
+            name, tail, group, module, cmd = recorded[0]
+            self.assertEqual(name, COMMAND_ID)
+            self.assertEqual(tail, "MCP_Bridge.py")
+            self.assertEqual(group, "MCP_Bridge")
+            self.assertEqual(module, "MCP_Bridge")
+            self.assertIsNotNone(importlib.import_module(module))
+            self.assertEqual(len(recorded), 1)
+            self.assertEqual(
+                cmd.GetResources()["MenuText"], "MCP Bridge On/Off"
+            )
+            sys.modules.pop("MCP_Bridge", None)
 
 
 if __name__ == "__main__":

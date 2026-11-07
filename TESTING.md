@@ -120,6 +120,10 @@ For code-string and script-file probes with `send_cmd.py`, use
 Those instructions remain there; the automated suites above provide
 repeatable checks.
 
+| Check | What to verify by hand |
+|-------|------------------------|
+| Toolbar hide across restart, and Customize category | Uncheck **MCP Bridge** in **View → Toolbars** (or the toolbar context menu), switch workbench and restart FreeCAD: the toolbar stays hidden while the status-bar button remains available. Check **MCP Bridge** again and restart FreeCAD: the toolbar stays shown. In **Tools → Customize**, the **MCP Bridge On/Off** command is listed under `MCP_Bridge`. |
+
 ## Install verification
 
 The install-verify workflow installs the addon through FreeCAD's Addon
@@ -238,8 +242,8 @@ Addon Manager loads the live Addons Index catalog (`CreateAddonListWorker.get_re
 as `freecad-mcp-bridge`, the way a developer places the addon,
 then runs the same on-disk check, restart verify, and acceptance
 phases as the other modes. The checkout is the repo root, which
-holds `package.xml` and `freecad/` (`init_gui.py` is
-`freecad/mcp_bridge/init_gui.py`). The copy leaves out the
+holds `package.xml`, `MCP_Bridge.py`, and `freecad/` (`init_gui.py`
+is `freecad/mcp_bridge/init_gui.py`). The copy leaves out the
 checkout's `.git` and `.github` directories. On FreeCAD 1.1
 the Mod folder is the versioned `v1-1` directory (on Windows,
 `%APPDATA%\FreeCAD\v1-1\Mod`). `RELEASE_INSTALL_TAG` names the
@@ -320,7 +324,7 @@ FreeCAD process after restart. Does **not** call `App.MCPBridgeInjectUi()` — i
 
 | Step | Proves |
 |------|--------|
-| Auto-registration | The addon's command registers on startup with no manual injection — `init_gui.py`'s own startup hooks ran |
+| Auto-registration | The addon's command registers on startup under the `MCP_Bridge` category in **Tools → Customize**, with no manual injection — `init_gui.py`'s own startup hooks ran |
 | Install dir | The installed addon directory exists |
 | Preferences page | The installed `preferences.ui` contains the line telling the user how to start or stop the bridge |
 | Toolbar injection | The **MCP Bridge On/Off** toolbar action is found without manual injection |
@@ -328,6 +332,7 @@ FreeCAD process after restart. Does **not** call `App.MCPBridgeInjectUi()` — i
 | Status-bar button | The permanent status-bar split button sits on the right by default, has no icon, has a `Preferences` menu item, and shows `MCP Off` at startup and after stop, and `MCP On` while running, with matching tooltip and toolbar state |
 | Move status-bar button | Setting **Position** (`StatusButtonPosition`) to `1` (**Left of FreeCAD's items**) moves the status-bar button to the left of FreeCAD's permanent status-bar items without a restart, and removing the setting, so the default applies, puts the button back on the right |
 | Hide status-bar button | Setting **Show the On/Off button** (`ShowStatusButton`) to `False` removes the status-bar button without a restart, leaving the toolbar button in place, and removing the setting, so the default applies, puts the button back |
+| Hide toolbar | Unchecking **MCP Bridge** (`toggleViewAction().trigger()`) hides the toolbar and keeps it hidden across a workbench switch, with `False` saved in FreeCAD's `MainWindow/Toolbars` parameters and the status-bar button still shown. Checking **MCP Bridge** again shows the toolbar and keeps it shown across a workbench switch, with `True` saved in `MainWindow/Toolbars` |
 | Start bridge | First toolbar click starts the HTTP server |
 | Listening status | The status bar shows the loopback address and configured port |
 | HTTP round-trip | A client-shaped request — `tools/call` → `execute_python` over HTTP, sent from a worker thread while the main thread pumps the Qt event loop, paginating via `get_output_page` if the response is chunked — returns the expected probe output. Same code path a real MCP client uses. |

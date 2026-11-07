@@ -31,7 +31,7 @@ from freecad.mcp_bridge import bridge
 from freecad.mcp_bridge.constants import PREF_GROUP
 
 params = App.ParamGet(PREF_GROUP)
-action = App.MCPBridgeAction  # the toolbar's On/Off action
+action = Gui.Command.get(App.MCPBridgeCommand).getAction()[0]
 
 
 def set_port(port):

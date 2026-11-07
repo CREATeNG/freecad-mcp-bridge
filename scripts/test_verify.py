@@ -46,6 +46,90 @@ def _verify_addon_startup() -> None:
     common.log_notice(f"Addon command {command_id!r} registered on startup")
 
 
+def _verify_command_category() -> None:
+    """Confirm Tools -> Customize lists the command under MCP_Bridge."""
+    import FreeCADGui as Gui
+    from PySide.QtCore import QCoreApplication, Qt
+    from PySide.QtWidgets import (
+        QComboBox,
+        QDialog,
+        QTabWidget,
+        QTreeWidget,
+    )
+
+    mw = Gui.getMainWindow()
+    if mw is None:
+        common.fail("MainWindow is None during command-category check")
+
+    Gui.runCommand("Std_DlgCustomize")
+    QCoreApplication.processEvents()
+    dlg = next(
+        (
+            d
+            for d in mw.findChildren(QDialog)
+            if d.findChild(QTabWidget, "Gui__Dialog__TabWidget") is not None
+        ),
+        None,
+    )
+    if dlg is None:
+        common.fail("Could not open Tools -> Customize dialog")
+
+    try:
+        combo = dlg.findChild(QComboBox, "categoryBox")
+        tree = dlg.findChild(QTreeWidget, "commandTreeWidget")
+        if combo is None or tree is None:
+            common.fail(
+                "Customize dialog is missing categoryBox or command tree"
+            )
+
+        def _commands_for_category(cat_idx: int) -> list[tuple[str, str]]:
+            combo.setCurrentIndex(cat_idx)
+            combo.activated.emit(cat_idx)
+            common._drain_qt_events(250)
+            result = []
+            for i in range(tree.topLevelItemCount()):
+                item = tree.topLevelItem(i)
+                raw = item.data(1, Qt.UserRole)
+                if isinstance(raw, (bytes, bytearray)):
+                    raw = raw.decode("utf-8", errors="replace")
+                elif hasattr(raw, "data"):
+                    raw = bytes(raw.data()).decode("utf-8", errors="replace")
+                result.append((str(raw), item.text(1)))
+            return result
+
+        categories = [
+            combo.itemData(i, Qt.UserRole) for i in range(combo.count())
+        ]
+        init_gui_idx = combo.findData("init_gui")
+        if init_gui_idx >= 0:
+            init_gui_cmds = _commands_for_category(init_gui_idx)
+            if any(cmd == "MCP_Bridge_Toggle" for cmd, _ in init_gui_cmds):
+                common.fail(
+                    "Command 'MCP_Bridge_Toggle' is still listed under "
+                    f"Customize category 'init_gui' (found: {init_gui_cmds})"
+                )
+        idx = combo.findData("MCP_Bridge")
+        if idx < 0 or combo.itemText(idx) != "MCP_Bridge":
+            common.fail(
+                "Customize category 'MCP_Bridge' not found "
+                f"(categories: {categories})"
+            )
+
+        commands = _commands_for_category(idx)
+        if ("MCP_Bridge_Toggle", "MCP Bridge On/Off") not in commands:
+            common.fail(
+                "Command 'MCP_Bridge_Toggle' not listed under Customize "
+                f"category 'MCP_Bridge' (found: {commands})"
+            )
+    finally:
+        dlg.close()
+        QCoreApplication.processEvents()
+
+    common.log_notice(
+        "Command 'MCP_Bridge_Toggle' is under category 'MCP_Bridge'"
+    )
+
+
 def _report_view_text() -> str:
     """Return visible Report view text (where Console.PrintMessage appears)."""
     import FreeCADGui as Gui
@@ -116,7 +200,6 @@ def _status_button():
 
 def _assert_status_button(running: bool) -> None:
     """The status-bar button matches the bridge, and so does the toolbar."""
-    import FreeCAD as App
     import FreeCADGui as Gui
     from PySide.QtWidgets import QToolButton
 
@@ -170,12 +253,18 @@ def _assert_status_button(running: bool) -> None:
             "Status-bar button tooltip is out of step. "
             f"Expected {tip!r}, got {button.toolTip()!r}"
         )
-    action = getattr(App, "MCPBridgeAction", None)
+    action = common.find_toolbar_action()
     pressed = None if action is None else action.isChecked()
     if pressed != running:
         common.fail(
             "Toolbar button is out of step with the status-bar button "
             f"(pressed={pressed}, bridge running={running})"
+        )
+    action_tip = None if action is None else action.toolTip()
+    if action_tip != tip:
+        common.fail(
+            "Toolbar button tooltip is out of step. "
+            f"Expected {tip!r}, got {action_tip!r}"
         )
 
 
@@ -222,7 +311,7 @@ def _verify_status_button_hide() -> None:
                 "Status-bar button remained present with "
                 "ShowStatusButton=False"
             )
-        if getattr(App, "MCPBridgeAction", None) is None:
+        if common.find_toolbar_action() is None:
             common.fail(
                 "Toolbar action disappeared when status-bar button was hidden"
             )
@@ -231,6 +320,118 @@ def _verify_status_button_hide() -> None:
     _assert_status_button(False)
     common.log_notice(
         "Status-bar button moves, hides and returns on preference change"
+    )
+
+
+def _verify_toolbar_hide() -> None:
+    """Hiding and showing the toolbar persists across workbench switches."""
+    import FreeCAD as App
+    import FreeCADGui as Gui
+    from PySide.QtCore import QCoreApplication
+    from PySide.QtWidgets import QToolBar
+
+    from freecad.mcp_bridge.constants import (
+        DISPLAY_NAME,
+        TOOLBAR_OBJECT_NAME,
+    )
+
+    mw = Gui.getMainWindow()
+    if mw is None:
+        common.fail("MainWindow is None during toolbar-hide check")
+    tb_params = App.ParamGet("User parameter:BaseApp/MainWindow/Toolbars")
+    initial_wb = (
+        Gui.activeWorkbench().name()
+        if Gui.activeWorkbench() is not None
+        else "PartDesignWorkbench"
+    )
+    other_wb = (
+        "PartWorkbench"
+        if initial_wb != "PartWorkbench"
+        else "PartDesignWorkbench"
+    )
+
+    def _find_toolbar():
+        for tb in mw.findChildren(QToolBar):
+            if (
+                tb.windowTitle() == DISPLAY_NAME
+                or tb.objectName() == TOOLBAR_OBJECT_NAME
+            ):
+                return tb
+        return None
+
+    try:
+        tb = _find_toolbar()
+        if tb is None or not tb.isVisible():
+            common.fail("MCP Bridge toolbar is missing or hidden at startup")
+        toggle = tb.toggleViewAction()
+        if toggle is None or not toggle.isVisible():
+            common.fail(
+                "MCP Bridge toolbar has no visible toggleViewAction"
+            )
+
+        toggle.trigger()
+        QCoreApplication.processEvents()
+        if tb.isVisible():
+            common.fail(
+                "MCP Bridge toolbar remained visible after toggleViewAction"
+            )
+        if _status_button() is None or not _status_button().isVisible():
+            common.fail(
+                "Status-bar button was not available while toolbar was hidden"
+            )
+
+        Gui.activateWorkbench(other_wb)
+        QCoreApplication.processEvents()
+        tb = _find_toolbar()
+        visible = None if tb is None else tb.isVisible()
+        if tb is None or visible:
+            common.fail(
+                "MCP Bridge toolbar did not stay hidden after workbench "
+                f"switch (tb={tb!r}, visible={visible})"
+            )
+        if tb_params.GetBool(DISPLAY_NAME, True):
+            common.fail(
+                "MainWindow/Toolbars parameter was not saved as False "
+                "after workbench switch"
+            )
+
+        tb.toggleViewAction().trigger()
+        QCoreApplication.processEvents()
+        if not tb.isVisible():
+            common.fail(
+                "MCP Bridge toolbar did not become visible when shown again"
+            )
+
+        Gui.activateWorkbench(initial_wb)
+        QCoreApplication.processEvents()
+        tb = _find_toolbar()
+        visible = None if tb is None else tb.isVisible()
+        if tb is None or not visible:
+            common.fail(
+                "MCP Bridge toolbar did not stay shown after workbench "
+                f"switch (tb={tb!r}, visible={visible})"
+            )
+        if not tb_params.GetBool(DISPLAY_NAME, False):
+            common.fail(
+                "MainWindow/Toolbars parameter was not saved as True "
+                "after workbench switch"
+            )
+    finally:
+        tb_params.SetBool(DISPLAY_NAME, True)
+        if (
+            Gui.activeWorkbench() is not None
+            and Gui.activeWorkbench().name() != initial_wb
+        ):
+            Gui.activateWorkbench(initial_wb)
+            QCoreApplication.processEvents()
+        tb = _find_toolbar()
+        if tb is not None and not tb.isVisible():
+            tb.toggleViewAction().trigger()
+            QCoreApplication.processEvents()
+
+    _assert_status_button(False)
+    common.log_notice(
+        "MCP Bridge toolbar stays hidden and shown across workbench switches"
     )
 
 
@@ -448,10 +649,12 @@ def _run() -> None:
     common.log_opengl_info()
 
     _verify_addon_startup()
+    _verify_command_category()
     _verify_preferences_line()
     common.check_bridge_off_at_startup()
     _assert_status_button(False)
     _verify_status_button_hide()
+    _verify_toolbar_hide()
     common.start_bridge()
     _assert_status_button(True)
     common.check_listening_status()
