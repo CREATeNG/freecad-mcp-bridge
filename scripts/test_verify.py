@@ -161,7 +161,7 @@ def _report_view_text() -> str:
 _PREFS_LINE = (
     "To start or stop the bridge, click <b>MCP Bridge On/Off</b> "
     "in the <b>MCP Bridge</b> toolbar. While active, it listens "
-    "on the port configured below."
+    "on the <b>Listen address</b> entries below."
 )
 
 
@@ -526,7 +526,8 @@ def _http_exec_probe(code: str, timeout_ms: int) -> dict:
     from freecad.mcp_bridge import config
     from freecad.mcp_bridge.constants import PROTOCOL_VERSION
 
-    url = f"http://127.0.0.1:{config.port()}/mcp"
+    entry = config.listen_addresses()[0]
+    url = f"http://{entry}/mcp"
     timeout_s = timeout_ms / 1000.0
     result: dict = {}
 

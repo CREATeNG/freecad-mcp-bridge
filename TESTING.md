@@ -62,8 +62,10 @@ process against the bridge in a running FreeCAD GUI. Among the
 behaviors it checks are execution and file execution, stdout/stderr and
 tracebacks, output paging and replay, retention preferences, execution
 order, GUI event handling, the two supported MCP protocol versions,
-HTTP and Origin validation, loopback binding, port changes and stopping
-the bridge with running or queued jobs. When `BUNDLE_MCPB`
+HTTP and Origin validation, loopback and non-loopback listen-address
+binding, bearer token authentication and TLS encryption on non-loopback
+entries, per-entry risk acceptance and start warnings, port changes
+and stopping the bridge with running or queued jobs. When `BUNDLE_MCPB`
 names a packed `.mcpb`, `test_bundle_mcp.py` calls that shim
 over stdio, in both protocol versions, and then expects it
 to exit. With no bundle named, that test skips;
@@ -123,6 +125,7 @@ repeatable checks.
 | Check | What to verify by hand |
 |-------|------------------------|
 | Toolbar hide across restart, and Customize category | Uncheck **MCP Bridge** in **View → Toolbars** (or the toolbar context menu), switch workbench and restart FreeCAD: the toolbar stays hidden while the status-bar button remains available. Check **MCP Bridge** again and restart FreeCAD: the toolbar stays shown. In **Tools → Customize**, the **MCP Bridge On/Off** command is listed under `MCP_Bridge`. |
+| Non-loopback listen address from another machine | Set **Listen address** in **Edit → Preferences → MCP Bridge** to `127.0.0.1:39280` and `<LAN_IP>:39280` (using this machine's LAN IPv4 address, for example on separate lines). Click **MCP Bridge On/Off**: the risk dialog lists `<LAN_IP>:39280`, and from another machine on the LAN the port is closed until accepted. Click **Cancel**: the bridge stays off and the port remains closed. Click **MCP Bridge On/Off** again and click **Accept Risks and Start**: the bridge starts, warns in the status bar and **Report view**, answers MCP requests from the other machine on `<LAN_IP>:39280/mcp`, and answers on `127.0.0.1:39280/mcp` (including the Claude Desktop shim). Turn the bridge off and on again with the same list: it starts without showing the dialog again and warns in the status bar and **Report view**. |
 
 ## Install verification
 
@@ -334,7 +337,7 @@ FreeCAD process after restart. Does **not** call `App.MCPBridgeInjectUi()` — i
 | Hide status-bar button | Setting **Show the On/Off button** (`ShowStatusButton`) to `False` removes the status-bar button without a restart, leaving the toolbar button in place, and removing the setting, so the default applies, puts the button back |
 | Hide toolbar | Unchecking **MCP Bridge** (`toggleViewAction().trigger()`) hides the toolbar and keeps it hidden across a workbench switch, with `False` saved in FreeCAD's `MainWindow/Toolbars` parameters and the status-bar button still shown. Checking **MCP Bridge** again shows the toolbar and keeps it shown across a workbench switch, with `True` saved in `MainWindow/Toolbars` |
 | Start bridge | First toolbar click starts the HTTP server |
-| Listening status | The status bar shows the loopback address and configured port |
+| Listening status | The status bar shows the configured listen addresses and ports |
 | HTTP round-trip | A client-shaped request — `tools/call` → `execute_python` over HTTP, sent from a worker thread while the main thread pumps the Qt event loop, paginating via `get_output_page` if the response is chunked — returns the expected probe output. Same code path a real MCP client uses. |
 | Stop bridge | Clicking the status-bar button's `MCP On` text, not its arrow, stops the HTTP server |
 | Report view | Shows the expected "stopped" message (`RELEASE_INSTALL_STOP_MESSAGE`, defaults to the bridge's own stop log line) |

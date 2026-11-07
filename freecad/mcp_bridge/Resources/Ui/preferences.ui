@@ -8,81 +8,251 @@
   <layout class="QVBoxLayout" name="pageLayout">
    <item>
     <widget class="QGroupBox" name="serverGroup">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
      <property name="title">
       <string>Server</string>
      </property>
-     <layout class="QFormLayout" name="formLayout">
-      <item row="0" column="0" colspan="2">
+     <layout class="QVBoxLayout" name="serverLayout">
+      <item>
        <widget class="QLabel" name="serverHint">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
         <property name="textFormat">
          <enum>Qt::RichText</enum>
         </property>
         <property name="text">
-         <string>To start or stop the bridge, click &lt;b&gt;MCP Bridge On/Off&lt;/b&gt; in the &lt;b&gt;MCP Bridge&lt;/b&gt; toolbar. While active, it listens on the port configured below.</string>
+         <string>To start or stop the bridge, click &lt;b&gt;MCP Bridge On/Off&lt;/b&gt; in the &lt;b&gt;MCP Bridge&lt;/b&gt; toolbar. While active, it listens on the &lt;b&gt;Listen address&lt;/b&gt; entries below.</string>
         </property>
         <property name="wordWrap">
          <bool>true</bool>
         </property>
        </widget>
       </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="portLabel">
-        <property name="text">
-         <string>Port</string>
-        </property>
-       </widget>
+      <item>
+       <layout class="QFormLayout" name="formLayout">
+        <item row="0" column="0">
+         <widget class="QLabel" name="listenAddressLabel">
+          <property name="text">
+           <string>Listen address</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="Gui::PrefTextEdit" name="listenAddressTextEdit">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>68</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>68</height>
+           </size>
+          </property>
+          <property name="toolTip">
+           <string>Addresses and ports to listen on, as address:port (or [ipv6]:port), one per line or separated by spaces, commas, or semicolons. Used the next time the bridge is switched on.</string>
+          </property>
+          <property name="tabChangesFocus">
+           <bool>true</bool>
+          </property>
+          <property name="acceptRichText">
+           <bool>false</bool>
+          </property>
+          <property name="plainText">
+           <string>127.0.0.1:39280</string>
+          </property>
+          <property name="placeholderText">
+           <string>127.0.0.1:39280</string>
+          </property>
+          <property name="prefEntry" stdset="0">
+           <cstring>ListenAddress</cstring>
+          </property>
+          <property name="prefPath" stdset="0">
+           <cstring>Mod/freecad-mcp-bridge</cstring>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="timeoutLabel">
+          <property name="text">
+           <string>Max response timeout</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="1">
+         <widget class="Gui::PrefSpinBox" name="timeoutSpinBox">
+          <property name="toolTip">
+           <string>The bridge's wait per page.</string>
+          </property>
+          <property name="suffix">
+           <string> s</string>
+          </property>
+          <property name="minimum">
+           <number>1</number>
+          </property>
+          <property name="maximum">
+           <number>600</number>
+          </property>
+          <property name="singleStep">
+           <number>1</number>
+          </property>
+          <property name="value">
+           <number>15</number>
+          </property>
+          <property name="prefEntry" stdset="0">
+           <cstring>MaxResponseTimeoutSeconds</cstring>
+          </property>
+          <property name="prefPath" stdset="0">
+           <cstring>Mod/freecad-mcp-bridge</cstring>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="pageSizeLabel">
+          <property name="text">
+           <string>Max page size</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="Gui::PrefSpinBox" name="pageSizeSpinBox">
+          <property name="toolTip">
+           <string>Splits long output by page size.</string>
+          </property>
+          <property name="suffix">
+           <string> K characters</string>
+          </property>
+          <property name="minimum">
+           <number>1</number>
+          </property>
+          <property name="maximum">
+           <number>10240</number>
+          </property>
+          <property name="singleStep">
+           <number>1</number>
+          </property>
+          <property name="value">
+           <number>32</number>
+          </property>
+          <property name="prefEntry" stdset="0">
+           <cstring>MaxPageSize</cstring>
+          </property>
+          <property name="prefPath" stdset="0">
+           <cstring>Mod/freecad-mcp-bridge</cstring>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="0">
+         <widget class="QLabel" name="retentionLabel">
+          <property name="text">
+           <string>Page history retention</string>
+          </property>
+         </widget>
+        </item>
+        <item row="3" column="1">
+         <widget class="Gui::PrefSpinBox" name="retentionSpinBox">
+          <property name="toolTip">
+           <string>Idle time before finished output expires.</string>
+          </property>
+          <property name="suffix">
+           <string> min</string>
+          </property>
+          <property name="minimum">
+           <number>1</number>
+          </property>
+          <property name="maximum">
+           <number>1440</number>
+          </property>
+          <property name="singleStep">
+           <number>1</number>
+          </property>
+          <property name="value">
+           <number>5</number>
+          </property>
+          <property name="prefEntry" stdset="0">
+           <cstring>MaxHistoryRetentionMinutes</cstring>
+          </property>
+          <property name="prefPath" stdset="0">
+           <cstring>Mod/freecad-mcp-bridge</cstring>
+          </property>
+         </widget>
+        </item>
+       </layout>
       </item>
-      <item row="1" column="1">
-       <widget class="Gui::PrefSpinBox" name="portSpinBox">
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="securityGroup">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <property name="title">
+      <string>Non-loopback security</string>
+     </property>
+     <layout class="QFormLayout" name="securityLayout">
+      <item row="0" column="0" colspan="2">
+       <widget class="Gui::PrefCheckBox" name="requireTokenCheckBox">
         <property name="toolTip">
-         <string>Used the next time the bridge is switched on.</string>
+         <string>Require a bearer token on non-loopback listen addresses.</string>
         </property>
-        <property name="minimum">
-         <number>1024</number>
+        <property name="text">
+         <string>Require bearer token</string>
         </property>
-        <property name="maximum">
-         <number>65535</number>
-        </property>
-        <property name="value">
-         <number>39280</number>
+        <property name="checked">
+         <bool>true</bool>
         </property>
         <property name="prefEntry" stdset="0">
-         <cstring>Port</cstring>
+         <cstring>RequireToken</cstring>
         </property>
         <property name="prefPath" stdset="0">
          <cstring>Mod/freecad-mcp-bridge</cstring>
         </property>
        </widget>
       </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="timeoutLabel">
+      <item row="1" column="1">
+       <widget class="QPushButton" name="generateTokenButton">
+        <property name="toolTip">
+         <string>Generate a new bearer token and show it once.</string>
+        </property>
         <property name="text">
-         <string>Max response timeout</string>
+         <string>Generate new token</string>
         </property>
        </widget>
       </item>
-      <item row="2" column="1">
-       <widget class="Gui::PrefSpinBox" name="timeoutSpinBox">
+      <item row="2" column="0" colspan="2">
+       <widget class="Gui::PrefCheckBox" name="requireTlsCheckBox">
         <property name="toolTip">
-         <string>The bridge's wait per page.</string>
+         <string>Serve HTTPS on non-loopback listen addresses with the files below.</string>
         </property>
-        <property name="suffix">
-         <string> s</string>
+        <property name="text">
+         <string>Require TLS (HTTPS)</string>
         </property>
-        <property name="minimum">
-         <number>1</number>
-        </property>
-        <property name="maximum">
-         <number>600</number>
-        </property>
-        <property name="singleStep">
-         <number>1</number>
-        </property>
-        <property name="value">
-         <number>15</number>
+        <property name="checked">
+         <bool>true</bool>
         </property>
         <property name="prefEntry" stdset="0">
-         <cstring>MaxResponseTimeoutSeconds</cstring>
+         <cstring>RequireTls</cstring>
         </property>
         <property name="prefPath" stdset="0">
          <cstring>Mod/freecad-mcp-bridge</cstring>
@@ -90,34 +260,25 @@
        </widget>
       </item>
       <item row="3" column="0">
-       <widget class="QLabel" name="pageSizeLabel">
+       <widget class="QLabel" name="tlsCertFileLabel">
         <property name="text">
-         <string>Max page size</string>
+         <string>TLS certificate file (PEM)</string>
         </property>
        </widget>
       </item>
       <item row="3" column="1">
-       <widget class="Gui::PrefSpinBox" name="pageSizeSpinBox">
+       <widget class="Gui::PrefFileChooser" name="tlsCertFileChooser">
         <property name="toolTip">
-         <string>Splits long output by page size.</string>
+         <string>PEM certificate file for HTTPS on non-loopback listen addresses.</string>
         </property>
-        <property name="suffix">
-         <string> K characters</string>
+        <property name="fileName">
+         <string/>
         </property>
-        <property name="minimum">
-         <number>1</number>
-        </property>
-        <property name="maximum">
-         <number>10240</number>
-        </property>
-        <property name="singleStep">
-         <number>1</number>
-        </property>
-        <property name="value">
-         <number>32</number>
+        <property name="filter">
+         <string>PEM files (*.pem *.crt *.key);;All files (*)</string>
         </property>
         <property name="prefEntry" stdset="0">
-         <cstring>MaxPageSize</cstring>
+         <cstring>TlsCertFile</cstring>
         </property>
         <property name="prefPath" stdset="0">
          <cstring>Mod/freecad-mcp-bridge</cstring>
@@ -125,34 +286,25 @@
        </widget>
       </item>
       <item row="4" column="0">
-       <widget class="QLabel" name="retentionLabel">
+       <widget class="QLabel" name="tlsKeyFileLabel">
         <property name="text">
-         <string>Page history retention</string>
+         <string>TLS private key file (PEM)</string>
         </property>
        </widget>
       </item>
       <item row="4" column="1">
-       <widget class="Gui::PrefSpinBox" name="retentionSpinBox">
+       <widget class="Gui::PrefFileChooser" name="tlsKeyFileChooser">
         <property name="toolTip">
-         <string>Idle time before finished output expires.</string>
+         <string>PEM private key file for HTTPS on non-loopback listen addresses.</string>
         </property>
-        <property name="suffix">
-         <string> min</string>
+        <property name="fileName">
+         <string/>
         </property>
-        <property name="minimum">
-         <number>1</number>
-        </property>
-        <property name="maximum">
-         <number>1440</number>
-        </property>
-        <property name="singleStep">
-         <number>1</number>
-        </property>
-        <property name="value">
-         <number>5</number>
+        <property name="filter">
+         <string>PEM files (*.pem *.crt *.key);;All files (*)</string>
         </property>
         <property name="prefEntry" stdset="0">
-         <cstring>MaxHistoryRetentionMinutes</cstring>
+         <cstring>TlsKeyFile</cstring>
         </property>
         <property name="prefPath" stdset="0">
          <cstring>Mod/freecad-mcp-bridge</cstring>
@@ -164,6 +316,12 @@
    </item>
    <item>
     <widget class="QGroupBox" name="statusBarGroup">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
      <property name="title">
       <string>Status bar</string>
      </property>
@@ -225,17 +383,29 @@
    </item>
    <item>
     <widget class="QGroupBox" name="clientGroup">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
      <property name="title">
       <string>Connect an MCP client</string>
      </property>
      <layout class="QVBoxLayout" name="clientLayout">
       <item>
        <widget class="QLabel" name="clientNote">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
         <property name="textFormat">
          <enum>Qt::RichText</enum>
         </property>
         <property name="text">
-         <string>Most MCP clients speak HTTP — connect them directly to http://127.0.0.1:&amp;lt;PORT&amp;gt;/mcp, where &amp;lt;PORT&amp;gt; is the Port setting above.&lt;br/&gt;&lt;br/&gt;Clients that only speak stdio — e.g. Claude Desktop (not Claude Code) — need a small connector: &lt;a href="https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest/download/freecad-mcp-bridge.mcpb"&gt;Download the bundle&lt;/a&gt;.</string>
+         <string>Most MCP clients speak HTTP — connect them directly to http://127.0.0.1:&amp;lt;PORT&amp;gt;/mcp for a loopback entry in Listen address above. For a non-loopback entry it is https://&amp;lt;ADDRESS&amp;gt;:&amp;lt;PORT&amp;gt;/mcp with the bearer token, while Require TLS (HTTPS) and Require bearer token are on, as they are by default.&lt;br/&gt;&lt;br/&gt;Clients that only speak stdio — e.g. Claude Desktop (not Claude Code) — need a small connector: &lt;a href="https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest/download/freecad-mcp-bridge.mcpb"&gt;Download the bundle&lt;/a&gt;.</string>
         </property>
         <property name="wordWrap">
          <bool>true</bool>
@@ -250,12 +420,24 @@
    </item>
    <item>
     <widget class="QGroupBox" name="helpGroup">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
      <property name="title">
       <string>Help &amp;&amp; feedback</string>
      </property>
      <layout class="QVBoxLayout" name="helpLayout">
       <item>
        <widget class="QLabel" name="helpNote">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
         <property name="textFormat">
          <enum>Qt::RichText</enum>
         </property>
@@ -290,6 +472,11 @@
  </widget>
  <customwidgets>
   <customwidget>
+   <class>Gui::PrefTextEdit</class>
+   <extends>QTextEdit</extends>
+   <header>Gui/PrefWidgets.h</header>
+  </customwidget>
+  <customwidget>
    <class>Gui::PrefSpinBox</class>
    <extends>QSpinBox</extends>
    <header>Gui/PrefWidgets.h</header>
@@ -302,6 +489,16 @@
   <customwidget>
    <class>Gui::PrefComboBox</class>
    <extends>QComboBox</extends>
+   <header>Gui/PrefWidgets.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Gui::FileChooser</class>
+   <extends>QWidget</extends>
+   <header>Gui/FileDialog.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Gui::PrefFileChooser</class>
+   <extends>Gui::FileChooser</extends>
    <header>Gui/PrefWidgets.h</header>
   </customwidget>
  </customwidgets>

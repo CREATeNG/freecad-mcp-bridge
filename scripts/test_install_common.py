@@ -622,9 +622,9 @@ def check_bridge_off_at_startup() -> None:
             'Toolbar action "MCP Bridge On/Off" not found after startup '
             "(UI was not auto-injected)"
         )
-    port = config.port()
+    host, port = config.parse_listen_entry(config.listen_addresses()[0])
     try:
-        socket.create_connection(("127.0.0.1", port), timeout=5).close()
+        socket.create_connection((host, port), timeout=5).close()
     except OSError:
         answered = False
     else:
@@ -646,7 +646,8 @@ def check_listening_status() -> None:
 
     from freecad.mcp_bridge import config
 
-    expected = f"MCP Bridge: Listening on 127.0.0.1:{config.port()}"
+    endpoints = ", ".join(config.listen_addresses())
+    expected = f"MCP Bridge: Listening on {endpoints}"
     mw = Gui.getMainWindow()
     status = mw.statusBar().currentMessage() if mw else ""
     if expected not in status:

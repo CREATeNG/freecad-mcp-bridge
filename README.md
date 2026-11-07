@@ -23,8 +23,9 @@ The server runs only while you toggle it on, and only on your own machine.
    - **Other MCP clients (Claude Code and others):** point the client
      at the bridge with:
      - **Transport:** Streamable HTTP
-     - **URL:** `http://127.0.0.1:<PORT>/mcp`, where `<PORT>` is the
-       **Port** set in Preferences (`39280`, the default)
+     - **URL:** `http://127.0.0.1:<PORT>/mcp`, where `127.0.0.1:<PORT>`
+       is a loopback entry in **Listen address** in Preferences
+       (`127.0.0.1:39280`, the default)
 
      For example, in Claude Code's `.mcp.json` (with `39280`, the
      default port):
@@ -53,8 +54,9 @@ The server is off until you toggle it on, each session — click the button agai
    **Advanced settings → Install extension** to select the file.
    Accept the installation warning to continue.
 3. In the Extensions list, open **FreeCAD MCP Bridge**. Its **port**
-   is pre-filled with `39280`, the default; set it to match FreeCAD and
-   check that the extension is **Enabled**. On the Linux beta, the
+   is pre-filled with `39280`, the default; set it to match the port
+   of a `127.0.0.1` entry in FreeCAD's **Listen address** and check
+   that the extension is **Enabled**. On the Linux beta, the
    extension's tools default to **Needs approval**.
 
 Claude Desktop can't open an HTTP endpoint the way Claude Code and
@@ -92,7 +94,15 @@ change a model — for example:
 
 **Edit → Preferences → MCP Bridge:**
 
-- **Port** — the loopback port the server listens on (default 39280).
+- **Listen address** — the addresses and ports the server listens on,
+  written as `address:port` (or `[ipv6]:port`, such as `[::1]:39280`),
+  separated by new lines, spaces, commas, or semicolons (default
+  `127.0.0.1:39280`). Keep a `127.0.0.1:<PORT>` entry in the list if
+  you use the Claude Desktop extension, which connects to `127.0.0.1`.
+  The first time you turn the bridge on with any non-loopback entry in
+  the list, FreeCAD asks you to accept the security risks for each
+  entry once, and each start with a non-loopback entry warns in the
+  status bar and **Report view**.
 - **Max response timeout** — how long the bridge waits for each page's
   output, counted from when that page starts (default 15 s). The agent
   fetches the rest with `get_output_page`.
@@ -103,6 +113,19 @@ change a model — for example:
 - **Page history retention** — starts when the job finishes running
   (default 5 min). Each page your agent reads restarts that interval;
   after a gap that long without a fetch, unread output is gone.
+- **Require bearer token** — requires `Authorization: Bearer <token>`
+  on non-loopback entries in **Listen address** (on by default).
+  Loopback entries need no token. When you first turn the bridge on
+  with a non-loopback entry and no token has been generated, or when
+  you click **Generate new token**, FreeCAD generates a random token,
+  shows it once so you can copy it, and stores only its SHA-256 hash
+  in FreeCAD's preferences. Generating a new token replaces the old
+  one.
+- **Require TLS (HTTPS)** — serves HTTPS on non-loopback entries in
+  **Listen address** using **TLS certificate file (PEM)** and **TLS
+  private key file (PEM)** (on by default). Loopback entries use HTTP.
+  With this on and either file not set, starting with a non-loopback
+  entry fails and leaves the bridge off.
 - **Show the On/Off button** — shows or hides the bridge's On/Off
   button on FreeCAD's status bar (on by default). The **MCP Bridge**
   toolbar button stays either way.
@@ -120,7 +143,8 @@ MCP Bridge is designed for **local** control of FreeCAD.
   `stderr`, and exceptions) that pass through them are used for
   three things only: to run the requested code in FreeCAD, to mirror
   the output to FreeCAD's **Report view**, and to return the output
-  to your MCP client over loopback (`127.0.0.1`).
+  to your MCP client over HTTP (`127.0.0.1:39280` by default, or the
+  entries in **Listen address** in Preferences).
 - The bridge's page history keeps output pages in FreeCAD's memory
   only, never on disk, and discards them when **Page history
   retention** expires, when you turn the bridge off, or when FreeCAD
@@ -130,10 +154,17 @@ MCP Bridge is designed for **local** control of FreeCAD.
   internet or shares data with third parties. Code the agent runs in
   FreeCAD can still access local files or the internet, as any macro
   can.
-- The bridge opens a loopback-only port (`127.0.0.1`), and only while
-  the bridge is switched on, which you do yourself, each session. Any
-  process on your machine can reach the open port, not only your MCP
-  client.
+- By default, the bridge opens a loopback-only port
+  (`127.0.0.1:39280`), and only while the bridge is switched on,
+  which you do yourself, each session. Any process on your machine
+  can reach the open loopback port, not only your MCP client. The
+  bridge listens on every entry in **Listen address**. Non-loopback
+  entries require a bearer token and TLS (HTTPS) by default, and
+  either can be turned off in Preferences. Once you accept the
+  first-time risk dialog, the bridge listens on the non-loopback
+  entries too. Any client that can reach one, with the bearer token
+  when it is required, can run Python code in FreeCAD as your user
+  account.
 - Your agent can run code in your live FreeCAD session — macro-level
   access, with no sandbox on the bridge side. That makes your MCP
   client the guardrail. Use a client you trust, and set it to ask

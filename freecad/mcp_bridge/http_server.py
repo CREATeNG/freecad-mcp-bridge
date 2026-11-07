@@ -1,13 +1,14 @@
-"""In-process HTTP server hosting the MCP endpoint on loopback.
+"""In-process HTTP server hosting the MCP endpoint.
 
-A ThreadingHTTPServer runs on a background thread, binding 127.0.0.1 only.
-Each request is served in MCP 2026-07-28 or 2025-11-25, whichever it is
-in, or rejected (see mcp_protocol.py), and answered as plain JSON. Tool
-calls (execute_python, execute_python_file, get_output_page) run code on the
-Qt main thread via the Executor. Output is paged through the job's page
-history (see paging.py) when it outlasts the response timeout or exceeds the
-max page size. A 2026-07-28 subscriptions/listen alone answers as an SSE
-stream, which ends as soon as it is acknowledged.
+A ThreadingHTTPServer runs on a background thread for each configured listen
+address (127.0.0.1:39280 by default). Each request is served in MCP 2026-07-28
+or 2025-11-25, whichever it is in, or rejected (see mcp_protocol.py), and
+answered as plain JSON. Tool calls (execute_python, execute_python_file,
+get_output_page) run code on the Qt main thread via the Executor. Output is
+paged through the job's page history (see paging.py) when it outlasts the
+response timeout or exceeds the max page size. A 2026-07-28
+subscriptions/listen alone answers as an SSE stream, which ends as soon as it
+is acknowledged.
 """
 
 import json
@@ -28,6 +29,7 @@ from freecad.mcp_bridge.executor import Executor
 
 _LOOPBACK_HOSTS = ("localhost", "127.0.0.1")
 PARSE_ERROR = -32700
+TLS_HANDSHAKE_TIMEOUT_S = 5.0
 
 
 class McpRequestHandler(BaseHTTPRequestHandler):
@@ -35,12 +37,41 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         # Silence the default stderr access log; FreeCAD console is our log.
         pass
 
+    def handle(self):
+        if hasattr(self.request, "do_handshake"):
+            self.request.settimeout(TLS_HANDSHAKE_TIMEOUT_S)
+            try:
+                self.request.do_handshake()
+            except OSError:
+                return
+            self.request.settimeout(None)
+        super().handle()
+
     def _origin_ok(self) -> bool:
         # DNS-rebinding protection: reject a present Origin that isn't loopback.
         origin = self.headers.get("Origin")
         if origin is None:
             return True
         return urlparse(origin).hostname in _LOOPBACK_HOSTS
+
+    def _token_ok(self) -> bool:
+        if not getattr(self.server, "require_token", False):
+            return True
+        auth = self.headers.get("Authorization", "")
+        scheme, sep, token = auth.partition(" ")
+        if sep != " " or scheme.lower() != "bearer":
+            return False
+        return config.verify_token(token.strip())
+
+    def _send_unauthorized(self):
+        body = b"Unauthorized\n"
+        self.send_response(401, "Unauthorized")
+        self.send_header("WWW-Authenticate", "Bearer")
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_GET(self):
         # The server offers no GET stream, and has no sessions to DELETE.
@@ -51,6 +82,9 @@ class McpRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._origin_ok():
             self.send_error(403, "Forbidden Origin")
+            return
+        if not self._token_ok():
+            self._send_unauthorized()
             return
         if self.path != ENDPOINT_PATH:
             self.send_error(404, "Not Found")
@@ -207,56 +241,213 @@ def _invalid_request():
     )
 
 
+def _non_loopback_warning(
+    entries: list[str],
+    non_loopback: list[str],
+    require_token: bool,
+    require_tls: bool,
+) -> str:
+    endpoints = ", ".join(entries)
+    non_loopback_endpoints = ", ".join(non_loopback)
+    who = (
+        "Any client with the bearer token"
+        if require_token
+        else "Any machine"
+    )
+    if require_token and require_tls:
+        return (
+            f"{LOG_PREFIX} WARNING: listening on {endpoints}. Bearer "
+            f"token and TLS are required beyond loopback. {who} that can "
+            "reach these addresses can run Python code in FreeCAD as your "
+            f"user account: {non_loopback_endpoints}.\n"
+        )
+    if not require_token and not require_tls:
+        missing = "no authentication or encryption"
+    elif not require_token:
+        missing = "no authentication"
+    else:
+        missing = "no encryption"
+    return (
+        f"{LOG_PREFIX} WARNING: listening on {endpoints} with {missing}. "
+        f"{who} that can reach these addresses can run Python code in "
+        f"FreeCAD as your user account: {non_loopback_endpoints}.\n"
+    )
+
+
 class HttpServer:
-    """Owns the ThreadingHTTPServer, its serving thread, and the Executor."""
+    """Owns the HTTP servers, their serving threads, and the Executor."""
 
     def __init__(self):
-        self._httpd = None
-        self._thread = None
+        self._servers = []
         self._executor = None
 
     def is_running(self) -> bool:
-        return self._thread is not None and self._thread.is_alive()
-
-    def start(self) -> None:
-        if self.is_running():
-            return
-        # Created here so it inherits main-thread affinity (start() is called
-        # from the toolbar toggle / GUI startup, both on the main thread).
-        self._executor = Executor()
-        bind_port = config.port()
-        try:
-            self._httpd = paging.MaintenanceHTTPServer(
-                ("127.0.0.1", bind_port), McpRequestHandler
-            )
-        except OSError as exc:
-            self._httpd = None
-            self._executor = None
-            FreeCAD.Console.PrintDeveloperError(
-                f"{LOG_PREFIX} Could not bind 127.0.0.1:{bind_port} ({exc}). "
-                "Change the port in Edit → Preferences → MCP Bridge.\n"
-            )
-            raise
-        self._httpd.executor = self._executor
-        self._thread = threading.Thread(
-            target=self._httpd.serve_forever,
-            name="mcp-bridge-http",
-            daemon=True,
-        )
-        self._thread.start()
-        FreeCAD.Console.PrintMessage(
-            f"{LOG_PREFIX} HTTP server listening on "
-            f"127.0.0.1:{bind_port}{ENDPOINT_PATH}\n"
+        return bool(self._servers) and all(
+            thread.is_alive() for _, thread in self._servers
         )
 
-    def stop(self) -> None:
-        if self._httpd is not None:
-            self._httpd.shutdown()
-            self._httpd.server_close()
-            self._httpd = None
-        self._thread = None
+    def _cleanup_held(self) -> None:
+        for srv, thread in reversed(self._servers):
+            if thread.is_alive():
+                srv.shutdown()
+            srv.server_close()
+        self._servers = []
         if self._executor is not None:
             self._executor.shutdown()
         self._executor = None
+
+    def start(
+        self,
+        addresses: list[str] | None = None,
+        require_token: bool | None = None,
+        require_tls: bool | None = None,
+        tls_cert_file: str | None = None,
+        tls_key_file: str | None = None,
+    ) -> None:
+        if self.is_running():
+            return
+        if self._servers or self._executor is not None:
+            self._cleanup_held()
+        entries = (
+            list(addresses)
+            if addresses is not None
+            else config.listen_addresses()
+        )
+        if not entries:
+            entries = list(config.listen_addresses())
+        req_token = (
+            config.require_token()
+            if require_token is None
+            else bool(require_token)
+        )
+        req_tls = (
+            config.require_tls()
+            if require_tls is None
+            else bool(require_tls)
+        )
+        cert_file = (
+            config.tls_cert_file()
+            if tls_cert_file is None
+            else tls_cert_file
+        )
+        key_file = (
+            config.tls_key_file()
+            if tls_key_file is None
+            else tls_key_file
+        )
+        try:
+            targets = [
+                (entry, *config.parse_listen_entry(entry))
+                for entry in entries
+            ]
+        except ValueError as exc:
+            FreeCAD.Console.PrintDeveloperError(
+                f"{LOG_PREFIX} {exc} Change the listen address in Edit → "
+                "Preferences → MCP Bridge.\n"
+            )
+            raise
+        non_loopback = [
+            entry
+            for entry in entries
+            if not config.is_loopback_address(entry)
+        ]
+        ssl_context = None
+        if non_loopback and req_tls:
+            try:
+                ssl_context = config.build_ssl_context(cert_file, key_file)
+            except ValueError as exc:
+                FreeCAD.Console.PrintDeveloperError(f"{LOG_PREFIX} {exc}\n")
+                raise
+        if non_loopback and req_token and not config.token_hash():
+            msg = (
+                "A bearer token is required for non-loopback listen "
+                "addresses and none has been generated. Turn the bridge "
+                "on with MCP Bridge On/Off to generate one, or click "
+                "Generate new token in Edit → Preferences → MCP Bridge, "
+                "or untick Require bearer token there."
+            )
+            FreeCAD.Console.PrintDeveloperError(f"{LOG_PREFIX} {msg}\n")
+            raise ValueError(msg)
+        # Created here so it inherits main-thread affinity (start() is called
+        # from the toolbar toggle / GUI startup, both on the main thread).
+        self._executor = Executor()
+
+        bound_servers = []
+        failed_entry = entries[0]
+        try:
+            for entry, host, bind_port in targets:
+                failed_entry = entry
+                is_loopback = config.is_loopback_address(entry)
+                srv = paging.MaintenanceHTTPServer(
+                    (host, bind_port), McpRequestHandler
+                )
+                bound_servers.append(srv)
+                srv.executor = self._executor
+                srv.require_token = bool(req_token and not is_loopback)
+                if ssl_context is not None and not is_loopback:
+                    srv.socket = ssl_context.wrap_socket(
+                        srv.socket,
+                        server_side=True,
+                        do_handshake_on_connect=False,
+                    )
+        except OSError as exc:
+            for srv in bound_servers:
+                srv.server_close()
+            if self._executor is not None:
+                self._executor.shutdown()
+            self._servers = []
+            self._executor = None
+            FreeCAD.Console.PrintDeveloperError(
+                f"{LOG_PREFIX} Could not bind {failed_entry} ({exc}). "
+                "Change the listen address in Edit → Preferences → "
+                "MCP Bridge.\n"
+            )
+            raise
+
+        started_servers = []
+        try:
+            for index, srv in enumerate(bound_servers):
+                name = (
+                    "mcp-bridge-http"
+                    if index == 0
+                    else f"mcp-bridge-http-{index}"
+                )
+                thread = threading.Thread(
+                    target=srv.serve_forever,
+                    name=name,
+                    daemon=True,
+                )
+                thread.start()
+                started_servers.append((srv, thread))
+        except Exception:
+            started_set = {srv for srv, _ in started_servers}
+            for srv, _ in started_servers:
+                srv.shutdown()
+                srv.server_close()
+            for srv in bound_servers:
+                if srv not in started_set:
+                    srv.server_close()
+            if self._executor is not None:
+                self._executor.shutdown()
+            self._servers = []
+            self._executor = None
+            raise
+
+        self._servers = started_servers
+        endpoints_with_path = ", ".join(
+            f"{entry}{ENDPOINT_PATH}" for entry in entries
+        )
+        FreeCAD.Console.PrintMessage(
+            f"{LOG_PREFIX} HTTP server listening on {endpoints_with_path}\n"
+        )
+        if non_loopback:
+            FreeCAD.Console.PrintWarning(
+                _non_loopback_warning(
+                    entries, non_loopback, req_token, req_tls
+                )
+            )
+
+    def stop(self) -> None:
+        self._cleanup_held()
         paging.clear_all()
         FreeCAD.Console.PrintMessage(f"{LOG_PREFIX} HTTP server stopped\n")

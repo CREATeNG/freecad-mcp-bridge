@@ -379,13 +379,18 @@ Tool-call results and paging are otherwise identical on both
 transports: each waits up to the configured timeout for the first
 page, then polls via `get_output_page` if needed.
 
-**Port**
+**Listen addresses and ports**
 
-A static port, **39280** by default, user-configurable in FreeCAD
-preferences.
-On conflict at startup: log a clear error directing the user to Edit → Preferences →
-MCP Bridge. No silent increment. Dynamic port rejected — HTTP clients configure the
-endpoint URL directly; a changing port would require reconfiguration each session.
+Configured in **Listen address** in FreeCAD preferences as a list of
+`address:port` entries (`[ipv6]:port` for IPv6), **`127.0.0.1:39280`**
+by default. When **Listen address** has never been saved, the default
+entry uses any previously saved `Port` preference so an upgraded
+profile keeps its custom port. On a missing or invalid port, or a bind
+conflict at startup: log a clear error naming the entry and directing
+the user to Edit → Preferences → MCP Bridge, and keep the bridge off.
+No silent port increment. Dynamic port rejected — HTTP clients
+configure the endpoint URL directly; a changing port would require
+reconfiguration each session.
 
 **Session management**
 
@@ -462,19 +467,70 @@ state. If the capability belongs anywhere, it is upstream
 
 ## Security
 
-**Loopback only, user-toggled**
+**Loopback by default, user-toggled, with per-address risk acceptance**
 
-The server binds to `127.0.0.1` only, never `0.0.0.0`. It starts only when the user
-activates the toolbar toggle, and stops when they deactivate it. This satisfies the
-Addon Index transparency and deferred-activation requirements.
+By default, the server binds to `127.0.0.1:39280` only. It starts only
+when the user activates the toggle, and stops when they deactivate it.
 
-**Security posture — noted trade-off**
+In Preferences, the user can configure a list of `address:port`
+entries (`[ipv6]:port` for IPv6), defaulting to `127.0.0.1:39280`.
+Every entry requires a port; if any entry lacks a valid port or
+cannot be bound, all bound listeners are closed and the bridge stays
+off. The server binds an HTTP listener on each listed entry and
+shares a single main-thread execution queue across them. Loopback is
+bound only when included in the list (the Claude Desktop shim
+connects to `127.0.0.1` on its configured port). When the bridge is
+turned on with any non-loopback entry not yet accepted, one modal
+warning dialog lists those entries and states the remaining risks:
 
-A loopback TCP port is accessible to any local process while active. Named sockets
-(Windows named pipes / UNIX domain sockets) can be restricted to the OS user on most
-platforms (Qt notes that macOS does not honour socket file permissions); a TCP loopback
-port cannot. Accepted on the basis that the attack
-surface is local-only and the user controls the toggle.
+- lack of authentication when **Require bearer token** is off;
+- lack of encryption when **Require TLS (HTTPS)** is off;
+- remote Python code execution in FreeCAD as the user.
+
+The bridge stays off unless the user accepts. Acceptance is stored
+per entry in FreeCAD's preferences (`AcceptedListenAddresses`) once
+the start succeeds. Every start with any non-loopback entry warns in
+the status bar and the Report view.
+
+**Non-loopback authentication and encryption — on by default, opt-out**
+
+Two preferences apply across all non-loopback entries while leaving
+loopback entries and the Claude Desktop stdio shim unchanged:
+
+- **Bearer token (`RequireToken`, default `true`)** — when enabled,
+  every request to a non-loopback listener must carry
+  `Authorization: Bearer <token>` or is rejected with `401
+  Unauthorized`. The addon generates a 256-bit random token, shows it
+  once in a modal dialog with a note that it will not be stored or
+  shown again, and stores only its SHA-256 hex digest (`TokenHash`) in
+  FreeCAD's preferences, compared in constant time. The first token is
+  generated and shown when the user turns the bridge on with a
+  non-loopback entry and no `TokenHash` is stored, or when the user
+  clicks **Generate new token** in Preferences. Generating a new token
+  replaces `TokenHash` and immediately refuses the old token.
+- **TLS (`RequireTls`, default `true`)** — when enabled, non-loopback
+  listeners serve HTTPS using the user-configured certificate file
+  (`TlsCertFile`) and private key file (`TlsKeyFile`) with Python's
+  standard-library `ssl` module. The addon does not generate
+  certificates. If `RequireTls` is enabled and a non-loopback entry is
+  configured without readable, valid certificate and key files,
+  startup fails with an error directing the user to Edit → Preferences
+  → MCP Bridge and the bridge stays off.
+
+**Security posture — noted trade-offs**
+
+On loopback (`127.0.0.1`), the TCP port is accessible to any local
+process while active. Named sockets (Windows named pipes / UNIX domain
+sockets) can be restricted to the OS user on most platforms (Qt notes
+that macOS does not honour socket file permissions); a TCP loopback
+port cannot. Accepted on the basis that by default the listener is
+local-only and the user controls the toggle.
+
+On a non-loopback address, any client that can reach the configured
+address and port (with the bearer token, when `RequireToken` is on)
+can run Python code in the live FreeCAD session as the user. Allowed
+only after the user has accepted the risk for each entry once and
+accompanied by a warning on every start.
 
 **Origin header validation — required**
 
@@ -572,11 +628,11 @@ asset for Claude Desktop users.
 
 Stored at `User parameter:BaseApp/Preferences/Mod/freecad-mcp-bridge`.
 
-The port is read at server start; timeout and page size are read per
-request. Retention is read when each job finishes running and fixes that
-job's retention interval, also used for later extensions. Preference
-changes affect jobs that finish afterwards, not histories whose
-intervals are already set.
+The listen addresses are read at server start; timeout and page size
+are read per request. Retention is read when each job finishes
+running and fixes that job's retention interval, also used for later
+extensions. Preference changes affect jobs that finish afterwards, not
+histories whose intervals are already set.
 
 The preference page is registered as a `.ui` file and appears in Edit →
 Preferences → MCP Bridge. FreeCAD wires widgets to the parameter store
@@ -584,7 +640,10 @@ automatically.
 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
-| Port | 39280 | Error logged on conflict at startup |
+| Listen address | `127.0.0.1:39280` | List of `address:port` entries (`[ipv6]:port` for IPv6) to bind; if unset, inherits a previously saved `Port` value; missing port or bind conflict at startup logs an error and leaves the bridge off; non-loopback entries require user risk acceptance for each entry once (`AcceptedListenAddresses`) and log a warning in the status bar and Report view on each start |
+| Require bearer token | `true` | Requires `Authorization: Bearer <token>` on non-loopback entries; stores only a SHA-256 hash (`TokenHash`) and shows the generated token once |
+| Require TLS (HTTPS) | `true` | Serves HTTPS on non-loopback entries using `TlsCertFile` and `TlsKeyFile`; fails to start on a non-loopback entry if enabled without valid certificate and key files |
+| TLS certificate file (PEM) / TLS private key file (PEM) | `""` | PEM certificate (`TlsCertFile`) and private key (`TlsKeyFile`) paths for HTTPS on non-loopback entries |
 | Max response timeout (s) | 15 | Max wait in `execute_python` and `get_output_page` before returning with `has_more: true` |
 | Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |
 | Page history retention (min) | 5 | How long output stays readable after the job finishes running, or after its last valid page fetch or replay. |

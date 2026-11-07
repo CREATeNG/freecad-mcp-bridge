@@ -27,6 +27,159 @@ if os.path.isdir(_icons_dir):
     Gui.addIconPath(_icons_dir.replace("\\", "/"))
 
 
+def _risk_dialog_text(entries, require_token=True, require_tls=True):
+    """Return (title, text) for the first-time non-loopback risk dialog."""
+    if isinstance(entries, str):
+        entries = [entries]
+    unaccepted_endpoints = "\n".join(entries)
+    title = f"{DISPLAY_NAME} — Listen beyond this machine?"
+    bullets = []
+    if not require_token:
+        bullets.append(
+            "• No authentication: any machine that can reach these "
+            "addresses can call the bridge."
+        )
+    if not require_tls:
+        if require_token:
+            bullets.append(
+                "• No encryption: requests, output and the bearer token "
+                "travel over plain HTTP."
+            )
+        else:
+            bullets.append(
+                "• No encryption: requests and output travel over plain "
+                "HTTP."
+            )
+    if require_token:
+        bullets.append(
+            "• Code execution: any client with the bearer token that can "
+            "reach these addresses can run Python code in FreeCAD as your "
+            "user account."
+        )
+    else:
+        bullets.append(
+            "• Code execution: any machine that can reach these addresses "
+            "can run Python code in FreeCAD as your user account."
+        )
+    bullet_block = "\n".join(bullets)
+    body = f"""Listening on these addresses makes this FreeCAD session \
+reachable from other machines:
+{unaccepted_endpoints}
+
+{bullet_block}
+
+Accept these risks and start the bridge?"""
+    return title, body
+
+
+def _confirm_non_loopback_risk(
+    entries, require_token=True, require_tls=True
+):
+    """Ask the user to accept the risks of listening on `entries`."""
+    import FreeCADGui as Gui
+    from PySide.QtWidgets import QDialog, QMessageBox
+
+    title, body = _risk_dialog_text(
+        entries, require_token=require_token, require_tls=require_tls
+    )
+    box = QMessageBox(
+        QMessageBox.Warning,
+        title,
+        body,
+        QMessageBox.NoButton,
+        Gui.getMainWindow(),
+    )
+    QDialog.setWindowTitle(box, title)
+    box.setObjectName("MCPBridgeRiskDialog")
+    accept_btn = box.addButton(
+        "Accept Risks and Start", QMessageBox.AcceptRole
+    )
+    cancel_btn = box.addButton("Cancel", QMessageBox.RejectRole)
+    box.setDefaultButton(cancel_btn)
+    box.setEscapeButton(cancel_btn)
+    try:
+        box.exec()
+        return box.clickedButton() is accept_btn
+    finally:
+        box.setParent(None)
+        box.deleteLater()
+
+
+def _token_dialog_text(token):
+    """Return (title, text) for the one-time bearer token dialog."""
+    title = f"{DISPLAY_NAME} — Bearer token"
+    body = f"""Copy this bearer token now. It will not be stored or shown \
+again. Only a one-way hash is kept in FreeCAD's preferences.
+
+{token}
+
+Send it from your MCP client in the Authorization header:
+Authorization: Bearer {token}
+
+If you lose it, generate a new one in Edit → Preferences → MCP Bridge. \
+A new token replaces the old one."""
+    return title, body
+
+
+def _show_generated_token(token, parent=None):
+    """Display `token` once in a modal dialog with a Copy Token button."""
+    import FreeCADGui as Gui
+    from PySide.QtCore import Qt
+    from PySide.QtGui import QGuiApplication
+    from PySide.QtWidgets import QDialog, QMessageBox
+
+    title, body = _token_dialog_text(token)
+    host = parent if parent is not None else Gui.getMainWindow()
+    box = QMessageBox(
+        QMessageBox.Information,
+        title,
+        body,
+        QMessageBox.NoButton,
+        host,
+    )
+    QDialog.setWindowTitle(box, title)
+    box.setObjectName("MCPBridgeTokenDialog")
+    box.setTextInteractionFlags(Qt.TextSelectableByMouse)
+    copy_btn = box.addButton("Copy Token", QMessageBox.ActionRole)
+    ok_btn = box.addButton("OK", QMessageBox.AcceptRole)
+    box.setDefaultButton(ok_btn)
+    box.setEscapeButton(ok_btn)
+    try:
+        while True:
+            box.exec()
+            if box.clickedButton() is copy_btn:
+                clipboard = QGuiApplication.clipboard()
+                if clipboard is not None:
+                    clipboard.setText(token)
+                continue
+            break
+    finally:
+        box.setParent(None)
+        box.deleteLater()
+
+
+def generate_and_show_token(parent=None):
+    """Generate a new bearer token, store its hash, and show it once."""
+    from freecad.mcp_bridge import config
+
+    token = config.generate_and_store_token()
+    _show_generated_token(token, parent=parent)
+    return token
+
+
+def _non_loopback_status(endpoints, require_token, require_tls):
+    """Return the status-bar line for a start with a non-loopback entry."""
+    if require_token and require_tls:
+        warning = "code execution from other machines"
+    elif not require_token and not require_tls:
+        warning = "no authentication or encryption"
+    elif not require_token:
+        warning = "no authentication"
+    else:
+        warning = "no encryption"
+    return f"{DISPLAY_NAME}: Listening on {endpoints} (warning: {warning})"
+
+
 class MCPBridgeCommand:
     def GetResources(self):
         import FreeCAD as App
@@ -47,22 +200,71 @@ class MCPBridgeCommand:
 
         started = False
         stopped = False
-        port_taken = False
+        bad_listen = False
         try:
             if bridge.is_running():
                 bridge.stop()
                 status = f"{DISPLAY_NAME}: Offline"
                 stopped = True
             else:
-                bridge.start()
-                status = f"{DISPLAY_NAME}: Listening on 127.0.0.1:{config.port()}"
+                entries = config.listen_addresses()
+                req_token = config.require_token()
+                req_tls = config.require_tls()
+                cert_file = config.tls_cert_file()
+                key_file = config.tls_key_file()
+                for entry in entries:
+                    config.parse_listen_entry(entry)
+                non_loopback = [
+                    entry
+                    for entry in entries
+                    if not config.is_loopback_address(entry)
+                ]
+                if non_loopback and req_tls:
+                    config.build_ssl_context(cert_file, key_file)
+                unaccepted = [
+                    entry
+                    for entry in non_loopback
+                    if not config.is_address_accepted(entry)
+                ]
+                if unaccepted and not _confirm_non_loopback_risk(
+                    unaccepted,
+                    require_token=req_token,
+                    require_tls=req_tls,
+                ):
+                    status = f"{DISPLAY_NAME}: Offline"
+                    mw = Gui.getMainWindow()
+                    if mw:
+                        mw.statusBar().showMessage(status)
+                    show_toggle_state()
+                    App.Console.PrintNotification(status + "\n")
+                    return
+                if non_loopback and req_token and not config.token_hash():
+                    generate_and_show_token()
+                bridge.start(
+                    addresses=entries,
+                    require_token=req_token,
+                    require_tls=req_tls,
+                    tls_cert_file=cert_file,
+                    tls_key_file=key_file,
+                )
+                for entry in unaccepted:
+                    config.accept_address(entry)
+                endpoints = ", ".join(entries)
+                if non_loopback:
+                    status = _non_loopback_status(
+                        endpoints, req_token, req_tls
+                    )
+                else:
+                    status = f"{DISPLAY_NAME}: Listening on {endpoints}"
                 started = True
         except Exception as e:
             App.Console.PrintDeveloperError(
                 f"{LOG_PREFIX} Error toggling bridge: {e}\n"
             )
             status = f"{DISPLAY_NAME}: Could not start ({e})"
-            port_taken = isinstance(e, OSError)
+            bad_listen = isinstance(
+                e, (OSError, ValueError)
+            ) and "Preferences → MCP Bridge" not in str(e)
         mw = Gui.getMainWindow()
         if mw:
             mw.statusBar().showMessage(status)
@@ -71,9 +273,9 @@ class MCPBridgeCommand:
             App.Console.PrintNotification(status + "\n")
         else:
             warning = status
-            if port_taken:
+            if bad_listen:
                 warning += (
-                    ". Change the port in Edit → "
+                    ". Change the listen address in Edit → "
                     "Preferences → MCP Bridge."
                 )
             App.Console.PrintWarning(warning + "\n")
@@ -349,11 +551,46 @@ class MCPBridgeUiManipulator:
 
 
 class _StatusBarPrefObserver:
-    """Refresh the status-bar button when its preferences are saved."""
+    """Refresh the status-bar button and migrate a legacy Port on save."""
 
     def onChange(self, _grp, param=None):
+        from freecad.mcp_bridge import config
+
+        if param in (None, "Port", "ListenAddress"):
+            config.migrate_legacy_port()
         if param in (None, "ShowStatusButton", "StatusButtonPosition"):
             show_toggle_state()
+
+
+def _install_pref_page_filter(mw):
+    """Connect `generateTokenButton` when the Preferences page opens."""
+    try:
+        from PySide.QtCore import QEvent, QObject
+        from PySide.QtWidgets import QApplication, QPushButton
+    except Exception:
+        return
+
+    app = QApplication.instance()
+    if app is None or getattr(mw, "_mcp_pref_filter", None) is not None:
+        return
+
+    class _PrefPageFilter(QObject):
+        def eventFilter(self, obj, event):
+            if (
+                event.type() == QEvent.Show
+                and isinstance(obj, QPushButton)
+                and obj.objectName() == "generateTokenButton"
+                and not obj.property("mcp_token_hooked")
+            ):
+                obj.setProperty("mcp_token_hooked", True)
+                obj.clicked.connect(
+                    lambda *_: generate_and_show_token(parent=obj.window())
+                )
+            return False
+
+    flt = _PrefPageFilter(mw)
+    mw._mcp_pref_filter = flt
+    app.installEventFilter(flt)
 
 
 def ensure_startup_ui():
@@ -361,6 +598,8 @@ def ensure_startup_ui():
     import FreeCAD as App
     import FreeCADGui as Gui
     from PySide.QtCore import QTimer
+
+    from freecad.mcp_bridge import config
 
     mw = Gui.getMainWindow()
     if mw is None:
@@ -376,9 +615,11 @@ def ensure_startup_ui():
     if not getattr(App, "MCPBridgeHooksConnected", False):
         App.MCPBridgeHooksConnected = True
         mw.workbenchActivated.connect(lambda *_args: App.MCPBridgeInjectUi())
+        config.migrate_legacy_port()
         App.MCPBridgePrefGroup = App.ParamGet(PREF_GROUP)
         App.MCPBridgePrefObserver = _StatusBarPrefObserver()
         App.MCPBridgePrefGroup.Attach(App.MCPBridgePrefObserver)
+        _install_pref_page_filter(mw)
 
     App.MCPBridgeInjectUi()
 
@@ -403,6 +644,12 @@ if App.MCPBridgeCommand in Gui.listCommands():
 MCP_Bridge.register(App.MCPBridgeCommand, MCPBridgeCommand())
 
 if not getattr(App, "MCPBridgePrefAdded", False):
+    from freecad.mcp_bridge import config
+
+    try:
+        config.migrate_legacy_port()
+    except Exception:
+        pass
     _prefs_ui = preferences_ui_path()
     if os.path.isfile(_prefs_ui):
         try:
