@@ -21,13 +21,13 @@ Please include:
 
 ## Privacy, connections, and trust
 
-By default, the bridge listens on loopback (`127.0.0.1`) only, and
+By default, the bridge listens on `127.0.0.1:39280`, and
 only while you toggle it on in your FreeCAD session. Adding another
 address in **Listen address** in **Edit → Preferences → MCP Bridge**
 exposes the HTTP endpoint on that address with no authentication or
 encryption: any machine that can reach the address and port can run
 Python code in FreeCAD as your user account. FreeCAD asks you to
-accept the risks for each address once and warns in the status bar
+accept the risks for each entry once and warns in the status bar
 and **Report view** at each start.
 
 See [README § Privacy Policy](README.md#privacy-policy) for how the

@@ -24,7 +24,7 @@ The server runs only while you toggle it on, and only on your own machine.
      at the bridge with:
      - **Transport:** Streamable HTTP
      - **URL:** `http://127.0.0.1:<PORT>/mcp`, where `127.0.0.1:<PORT>`
-       is the entry in **Listen address** in Preferences
+       is a loopback entry in **Listen address** in Preferences
        (`127.0.0.1:39280`, the default)
 
      For example, in Claude Code's `.mcp.json` (with `39280`, the
@@ -100,8 +100,8 @@ change a model — for example:
   `127.0.0.1:39280`). Keep a `127.0.0.1:<PORT>` entry in the list if
   you use the Claude Desktop extension, which connects to `127.0.0.1`.
   The first time you turn the bridge on with any non-loopback entry in
-  the list, FreeCAD asks you to accept the security risks for those
-  entries, and each start with a non-loopback entry warns in the
+  the list, FreeCAD asks you to accept the security risks for each
+  entry once, and each start with a non-loopback entry warns in the
   status bar and **Report view**.
 - **Max response timeout** — how long the bridge waits for each page's
   output, counted from when that page starts (default 15 s). The agent
@@ -144,12 +144,12 @@ MCP Bridge is designed for **local** control of FreeCAD.
 - By default, the bridge opens a loopback-only port
   (`127.0.0.1:39280`), and only while the bridge is switched on,
   which you do yourself, each session. Any process on your machine
-  can reach the open loopback port, not only your MCP client. If
-  **Listen address** includes a non-loopback `address:port` entry
-  (and you accept the first-time risk dialog for it), the bridge
-  listens on the listed entries. There is no authentication or
-  encryption, so any machine that can reach a non-loopback address
-  and port can run Python code in FreeCAD as your user account.
+  can reach the open loopback port, not only your MCP client. The
+  bridge listens on every entry in **Listen address** with no
+  authentication or encryption. If **Listen address** includes a
+  non-loopback `address:port` entry (once you accept the first-time
+  risk dialog), any machine that can reach that address and port can
+  run Python code in FreeCAD as your user account.
 - Your agent can run code in your live FreeCAD session — macro-level
   access, with no sandbox on the bridge side. That makes your MCP
   client the guardrail. Use a client you trust, and set it to ask

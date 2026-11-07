@@ -504,7 +504,7 @@ On a non-loopback address, the HTTP server speaks plain HTTP with no
 authentication or client-address filter, so any machine that can reach
 the configured address and port can run Python code in the live
 FreeCAD session as the user. Allowed only after the user has accepted
-the risk for that address and accompanied by a warning on every
+the risk for each entry once and accompanied by a warning on every
 start.
 
 **Origin header validation — required**
@@ -615,7 +615,7 @@ automatically.
 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
-| Listen address | `127.0.0.1:39280` | List of `address:port` entries (`[ipv6]:port` for IPv6) to bind; if unset, inherits a previously saved `Port` value; missing port or bind conflict at startup logs an error and leaves the bridge off; non-loopback entries require one-time user risk acceptance per entry (`AcceptedListenAddresses`) and log a warning in the status bar and Report view on each start |
+| Listen address | `127.0.0.1:39280` | List of `address:port` entries (`[ipv6]:port` for IPv6) to bind; if unset, inherits a previously saved `Port` value; missing port or bind conflict at startup logs an error and leaves the bridge off; non-loopback entries require user risk acceptance for each entry once (`AcceptedListenAddresses`) and log a warning in the status bar and Report view on each start |
 | Max response timeout (s) | 15 | Max wait in `execute_python` and `get_output_page` before returning with `has_more: true` |
 | Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |
 | Page history retention (min) | 5 | How long output stays readable after the job finishes running, or after its last valid page fetch or replay. |

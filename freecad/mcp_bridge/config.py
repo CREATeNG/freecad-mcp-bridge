@@ -33,43 +33,43 @@ def parse_listen_entry(entry: str) -> tuple[str, int]:
     """Parse an `address:port` or `[ipv6]:port` entry into `(host, port)`."""
     item = (entry or "").strip()
     if not item:
-        raise ValueError("Empty listen address entry; expected address:port")
+        raise ValueError("Empty listen address entry. Use address:port.")
     if item.startswith("["):
         if "]:" not in item:
             if item.endswith("]"):
                 raise ValueError(
-                    f"Listen address '{item}' has no port; use [ipv6]:port"
+                    f"Listen address '{item}' has no port. Use [ipv6]:port."
                 )
             raise ValueError(
-                f"Invalid IPv6 listen address '{item}'; use [ipv6]:port"
+                f"Invalid IPv6 listen address '{item}'. Use [ipv6]:port."
             )
         host, port_part = item[1:].rsplit("]:", 1)
         if not host or ":" not in host or "[" in host or "]" in host:
             raise ValueError(
-                f"Invalid IPv6 listen address '{item}'; use [ipv6]:port"
+                f"Invalid IPv6 listen address '{item}'. Use [ipv6]:port."
             )
     else:
         if ":" not in item:
             raise ValueError(
-                f"Listen address '{item}' has no port; use address:port"
+                f"Listen address '{item}' has no port. Use address:port."
             )
         if item.count(":") > 1:
             raise ValueError(
                 f"IPv6 listen address '{item}' needs brackets around the "
-                "address; use [ipv6]:port"
+                "address. Use [ipv6]:port."
             )
         host, port_part = item.rsplit(":", 1)
         if not host or "[" in host or "]" in host:
             raise ValueError(
-                f"Invalid listen address '{item}'; use address:port"
+                f"Invalid listen address '{item}'. Use address:port."
             )
     if not port_part:
         raise ValueError(
-            f"Listen address '{item}' has no port; use address:port"
+            f"Listen address '{item}' has no port. Use address:port."
         )
     if not port_part.isdigit() or not (1 <= int(port_part) <= 65535):
         raise ValueError(
-            f"Invalid port in listen address '{item}'; port must be 1-65535"
+            f"Invalid port in listen address '{item}'. Use a port in 1-65535."
         )
     return host, int(port_part)
 

@@ -249,7 +249,7 @@ class HttpServer:
             ]
         except ValueError as exc:
             FreeCAD.Console.PrintDeveloperError(
-                f"{LOG_PREFIX} {exc}. Change the listen address in Edit → "
+                f"{LOG_PREFIX} {exc} Change the listen address in Edit → "
                 "Preferences → MCP Bridge.\n"
             )
             raise
