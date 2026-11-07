@@ -656,6 +656,49 @@ test("plain HTTP against a loopback port that speaks HTTPS names the TLS setting
   }
 });
 
+test("with no certificate set, an HTTPS port answers initialize and tools/list, and tools/call returns the HTTPS message", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shim-https-offline-"));
+  try {
+    const serverCert = makeSelfSignedCert(tmpDir, "server", "127.0.0.1");
+    const httpsBridge = await startBridge(() => ({ status: 200, text: "" }), {
+      cert: serverCert.cert,
+      key: serverCert.key,
+    });
+    const shim = startShim(httpsBridge.port);
+    const endpoint = `https://127.0.0.1:${httpsBridge.port}/mcp`;
+    shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }) + "\n");
+    shim.send(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }) + "\n");
+    shim.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/call",
+        params: { name: "execute_python", arguments: { code: "print(1)" } },
+      }) + "\n"
+    );
+    const replies = await shim.waitForLines(3);
+    const initReply = replies.find((r) => r.id === 1);
+    const listReply = replies.find((r) => r.id === 2);
+    const callReply = replies.find((r) => r.id === 3);
+    assert.equal(initReply.error, undefined);
+    assert.equal(initReply.result.protocolVersion, "2025-11-25");
+    assert.equal(initReply.result.serverInfo.name, "freecad-mcp-bridge");
+    assert.deepEqual(listReply.result.tools, readJson(path.join(SHIM_DIR, "tools.json")));
+    assert.equal(listReply.error, undefined);
+    const error = JSON.parse(callReply.result.content[0].text).error;
+    assert.equal(
+      error,
+      `FreeCAD MCP Bridge serves HTTPS at ${endpoint}, and this connection was plain HTTP. ` +
+        "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to FreeCAD's certificate, " +
+        "or untick Also require on loopback in FreeCAD's Edit → Preferences → MCP Bridge."
+    );
+    await shim.stop();
+    httpsBridge.close();
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test("a plain HTTP reply slower than 2 s still succeeds", async () => {
   const bridge = await startBridge(async ({ body }) => {
     await delay(3000);

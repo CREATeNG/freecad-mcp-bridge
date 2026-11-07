@@ -100,9 +100,18 @@ def _watch_for_stop(stop_file: str, timeout_s: float) -> None:
             QTimer.singleShot(POLL_MS, check)
 
     def thread_watch():
-        # 10 s, not 2: draining Qt events and saving coverage can be
-        # slow on a loaded runner, and that slowness is not a hung loop.
+        # grace_s covers two waits. The main thread can be busy
+        # long enough that quit has not started, and a busy loop
+        # is not a hung one. After quit starts, draining Qt
+        # events and saving coverage can be slow on a loaded
+        # runner, and that slowness is not a hung loop either.
         grace_s = 10.0
+        not_started = (
+            f"quit not started within {grace_s:.0f} s of the stop file"
+        )
+        not_exited = (
+            f"FreeCAD not exited within {grace_s:.0f} s of quit starting"
+        )
         stop_seen_at = None
         quit_seen_at = None
         while True:
@@ -119,27 +128,16 @@ def _watch_for_stop(stop_file: str, timeout_s: float) -> None:
                     quit_seen_at is None
                     and now - stop_seen_at >= grace_s
                 ):
-                    _fail_if_still_here(
-                        "quit not started within 10 s of the stop file"
-                    )
+                    _fail_if_still_here(not_started)
                 elif (
                     quit_seen_at is not None
                     and now - quit_seen_at >= grace_s
                 ):
-                    _fail_if_still_here(
-                        "FreeCAD not exited within 10 s of quit starting"
-                    )
+                    _fail_if_still_here(not_exited)
             elif now > deadline + grace_s:
-                common._write_ci_log(
-                    f"No stop file after {timeout_s:.0f} s; quitting",
-                    level="FAIL",
+                _fail_if_still_here(
+                    f"No stop file after {timeout_s:.0f} s; quitting"
                 )
-                common.log_group_end()
-                common._save_coverage()
-                common._flush_stdio()
-                if sys.platform.startswith("win"):
-                    common._terminate_windows_process(1)
-                os._exit(1)
 
     timer.timeout.connect(check)
     timer.start(POLL_MS)

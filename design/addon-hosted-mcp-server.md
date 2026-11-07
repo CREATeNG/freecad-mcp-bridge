@@ -577,9 +577,11 @@ against `tools.py`, so a client started before FreeCAD comes up
 cleanly. A `tools/call` then gets a tool result whose `error` says
 to start FreeCAD and turn the bridge on; any other request gets a
 JSON-RPC error saying the same. When no certificate file is set and
-a TLS handshake to the port completes, the request is answered the
-same way, with an error saying the bridge serves HTTPS and to set
-TLS certificate file (PEM) or untick Also require on loopback.
+a TLS handshake to the port completes, the shim answers initialize
+and tools/list as it does when the bridge is unreachable. Any other
+request gets an error of the same two shapes, saying the bridge
+serves HTTPS and to set TLS certificate file (PEM) or untick Also
+require on loopback.
 
 **Shim — no SDK**
 

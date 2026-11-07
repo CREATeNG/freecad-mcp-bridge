@@ -13,9 +13,10 @@
  * (tools.json is a copy of the addon's tool list), and answers a tools/call
  * with a tool-level error saying how to start the bridge, so the client
  * starts cleanly instead of reporting a failed server. When no certificate
- * file is set and a TLS handshake to the port completes, the request is
- * answered with a tool-level error saying the bridge serves HTTPS and to
- * set TLS certificate file (PEM) or untick Also require on loopback. Node
+ * file is set and a TLS handshake to the port completes, it answers
+ * initialize and tools/list the same way. Any other request gets an error
+ * saying the bridge serves HTTPS and to set TLS certificate file (PEM) or
+ * untick Also require on loopback. Node
  * stdlib only (global fetch and node:https, >=18).
  */
 
@@ -260,7 +261,14 @@ async function forward(rawLine, message) {
       !redirect &&
       (await portServesHttps(PORT))
     ) {
-      sendErrorReply(message, PLAIN_HTTP_TO_HTTPS_MESSAGE);
+      // initialize and tools/list succeed locally, as when the bridge
+      // is down, so the client starts and the hint arrives on a tool call.
+      if (message.method === "initialize" || message.method === "tools/list") {
+        const result = offlineResult(message, err);
+        writeLine(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }));
+      } else {
+        sendErrorReply(message, PLAIN_HTTP_TO_HTTPS_MESSAGE);
+      }
       return;
     }
     if (TLS_CERT_FILE && code !== "ECONNREFUSED" && !redirect) {
