@@ -2,6 +2,7 @@ import os
 
 import FreeCAD as App
 import FreeCADGui as Gui
+import MCP_Bridge
 
 from freecad.mcp_bridge import bridge
 from freecad.mcp_bridge.constants import (
@@ -400,7 +401,7 @@ if App.MCPBridgeCommand in Gui.listCommands():
         Gui.removeCommand(App.MCPBridgeCommand)
     except Exception:
         pass
-Gui.addCommand(App.MCPBridgeCommand, MCPBridgeCommand())
+MCP_Bridge.register(App.MCPBridgeCommand, MCPBridgeCommand())
 
 if not getattr(App, "MCPBridgePrefAdded", False):
     _prefs_ui = preferences_ui_path()

@@ -122,7 +122,7 @@ repeatable checks.
 
 | Check | What to verify by hand |
 |-------|------------------------|
-| Toolbar hide across restart, and Customize category | Uncheck **MCP Bridge** in **View → Toolbars** (or the toolbar context menu), switch workbench and restart FreeCAD: the toolbar stays hidden while the status-bar button remains available. Check **MCP Bridge** again and restart FreeCAD: the toolbar stays shown. In **Tools → Customize**, the **MCP Bridge On/Off** command is listed under `init_gui`. |
+| Toolbar hide across restart, and Customize category | Uncheck **MCP Bridge** in **View → Toolbars** (or the toolbar context menu), switch workbench and restart FreeCAD: the toolbar stays hidden while the status-bar button remains available. Check **MCP Bridge** again and restart FreeCAD: the toolbar stays shown. In **Tools → Customize**, the **MCP Bridge On/Off** command is listed under `MCP_Bridge`. |
 
 ## Install verification
 
@@ -242,8 +242,8 @@ Addon Manager loads the live Addons Index catalog (`CreateAddonListWorker.get_re
 as `freecad-mcp-bridge`, the way a developer places the addon,
 then runs the same on-disk check, restart verify, and acceptance
 phases as the other modes. The checkout is the repo root, which
-holds `package.xml` and `freecad/` (`init_gui.py` is
-`freecad/mcp_bridge/init_gui.py`). The copy leaves out the
+holds `package.xml`, `MCP_Bridge.py`, and `freecad/` (`init_gui.py`
+is `freecad/mcp_bridge/init_gui.py`). The copy leaves out the
 checkout's `.git` and `.github` directories. On FreeCAD 1.1
 the Mod folder is the versioned `v1-1` directory (on Windows,
 `%APPDATA%\FreeCAD\v1-1\Mod`). `RELEASE_INSTALL_TAG` names the
@@ -324,7 +324,7 @@ FreeCAD process after restart. Does **not** call `App.MCPBridgeInjectUi()` — i
 
 | Step | Proves |
 |------|--------|
-| Auto-registration | The addon's command registers on startup with no manual injection — `init_gui.py`'s own startup hooks ran |
+| Auto-registration | The addon's command registers on startup under the `MCP_Bridge` category in **Tools → Customize**, with no manual injection — `init_gui.py`'s own startup hooks ran |
 | Install dir | The installed addon directory exists |
 | Preferences page | The installed `preferences.ui` contains the line telling the user how to start or stop the bridge |
 | Toolbar injection | The **MCP Bridge On/Off** toolbar action is found without manual injection |

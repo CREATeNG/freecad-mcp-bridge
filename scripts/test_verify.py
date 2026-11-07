@@ -46,6 +46,84 @@ def _verify_addon_startup() -> None:
     common.log_notice(f"Addon command {command_id!r} registered on startup")
 
 
+def _verify_command_category() -> None:
+    """Confirm Tools -> Customize lists the command under MCP_Bridge."""
+    import FreeCADGui as Gui
+    from PySide.QtCore import QCoreApplication, Qt
+    from PySide.QtWidgets import (
+        QComboBox,
+        QDialog,
+        QTabWidget,
+        QTreeWidget,
+    )
+
+    mw = Gui.getMainWindow()
+    if mw is None:
+        common.fail("MainWindow is None during command-category check")
+
+    Gui.runCommand("Std_DlgCustomize")
+    QCoreApplication.processEvents()
+    dlg = next(
+        (
+            d
+            for d in mw.findChildren(QDialog)
+            if d.findChild(QTabWidget, "Gui__Dialog__TabWidget") is not None
+        ),
+        None,
+    )
+    if dlg is None:
+        common.fail("Could not open Tools -> Customize dialog")
+
+    try:
+        combo = dlg.findChild(QComboBox, "categoryBox")
+        tree = dlg.findChild(QTreeWidget, "commandTreeWidget")
+        if combo is None or tree is None:
+            common.fail(
+                "Customize dialog is missing categoryBox or command tree"
+            )
+
+        categories = [
+            combo.itemData(i, Qt.UserRole) for i in range(combo.count())
+        ]
+        if "init_gui" in categories:
+            common.fail(
+                f"Customize category still reads 'init_gui' ({categories})"
+            )
+        idx = combo.findData("MCP_Bridge")
+        if idx < 0 or combo.itemText(idx) != "MCP_Bridge":
+            common.fail(
+                "Customize category 'MCP_Bridge' not found "
+                f"(categories: {categories})"
+            )
+
+        combo.setCurrentIndex(idx)
+        combo.activated.emit(idx)
+        common._drain_qt_events(250)
+
+        commands = []
+        for i in range(tree.topLevelItemCount()):
+            item = tree.topLevelItem(i)
+            raw = item.data(1, Qt.UserRole)
+            if isinstance(raw, (bytes, bytearray)):
+                raw = raw.decode("utf-8", errors="replace")
+            elif hasattr(raw, "data"):
+                raw = bytes(raw.data()).decode("utf-8", errors="replace")
+            commands.append((str(raw), item.text(1)))
+
+        if ("MCP_Bridge_Toggle", "MCP Bridge On/Off") not in commands:
+            common.fail(
+                "Command 'MCP_Bridge_Toggle' not listed under Customize "
+                f"category 'MCP_Bridge' (found: {commands})"
+            )
+    finally:
+        dlg.close()
+        QCoreApplication.processEvents()
+
+    common.log_notice(
+        "Command 'MCP_Bridge_Toggle' is under category 'MCP_Bridge'"
+    )
+
+
 def _report_view_text() -> str:
     """Return visible Report view text (where Console.PrintMessage appears)."""
     import FreeCADGui as Gui
@@ -565,6 +643,7 @@ def _run() -> None:
     common.log_opengl_info()
 
     _verify_addon_startup()
+    _verify_command_category()
     _verify_preferences_line()
     common.check_bridge_off_at_startup()
     _assert_status_button(False)
