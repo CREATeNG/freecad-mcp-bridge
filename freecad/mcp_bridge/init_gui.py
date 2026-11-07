@@ -27,11 +27,11 @@ if os.path.isdir(_icons_dir):
     Gui.addIconPath(_icons_dir.replace("\\", "/"))
 
 
-def _risk_dialog_text(addresses, port):
+def _risk_dialog_text(entries):
     """Return (title, text) for the first-time non-loopback risk dialog."""
-    if isinstance(addresses, str):
-        addresses = [addresses]
-    unaccepted_endpoints = "\n".join(f"{a}:{port}" for a in addresses)
+    if isinstance(entries, str):
+        entries = [entries]
+    unaccepted_endpoints = "\n".join(entries)
     title = f"{DISPLAY_NAME} — Listen beyond this machine?"
     body = f"""Listening on these addresses makes this FreeCAD session \
 reachable from other machines:
@@ -47,12 +47,12 @@ Accept these risks and start the bridge?"""
     return title, body
 
 
-def _confirm_non_loopback_risk(addresses, port):
-    """Ask the user to accept the risks of listening on `addresses`."""
+def _confirm_non_loopback_risk(entries):
+    """Ask the user to accept the risks of listening on `entries`."""
     import FreeCADGui as Gui
     from PySide.QtWidgets import QMessageBox
 
-    title, body = _risk_dialog_text(addresses, port)
+    title, body = _risk_dialog_text(entries)
     box = QMessageBox(
         QMessageBox.Warning,
         title,
@@ -95,28 +95,27 @@ class MCPBridgeCommand:
 
         started = False
         stopped = False
-        port_taken = False
+        bad_listen = False
         try:
             if bridge.is_running():
                 bridge.stop()
                 status = f"{DISPLAY_NAME}: Offline"
                 stopped = True
             else:
-                addresses = config.listen_addresses()
-                port = config.port()
+                entries = config.listen_addresses()
+                for entry in entries:
+                    config.parse_listen_entry(entry)
                 non_loopback = [
-                    a
-                    for a in addresses
-                    if not config.is_loopback_address(a)
+                    entry
+                    for entry in entries
+                    if not config.is_loopback_address(entry)
                 ]
                 unaccepted = [
-                    a
-                    for a in non_loopback
-                    if not config.is_address_accepted(a)
+                    entry
+                    for entry in non_loopback
+                    if not config.is_address_accepted(entry)
                 ]
-                if unaccepted and not _confirm_non_loopback_risk(
-                    unaccepted, port
-                ):
+                if unaccepted and not _confirm_non_loopback_risk(unaccepted):
                     status = f"{DISPLAY_NAME}: Offline"
                     mw = Gui.getMainWindow()
                     if mw:
@@ -124,10 +123,10 @@ class MCPBridgeCommand:
                     show_toggle_state()
                     App.Console.PrintNotification(status + "\n")
                     return
-                bridge.start(addresses=addresses, port=port)
-                for addr in unaccepted:
-                    config.accept_address(addr)
-                endpoints = ", ".join(f"{a}:{port}" for a in addresses)
+                bridge.start(addresses=entries)
+                for entry in unaccepted:
+                    config.accept_address(entry)
+                endpoints = ", ".join(entries)
                 if non_loopback:
                     status = (
                         f"{DISPLAY_NAME}: Listening on {endpoints} "
@@ -141,7 +140,7 @@ class MCPBridgeCommand:
                 f"{LOG_PREFIX} Error toggling bridge: {e}\n"
             )
             status = f"{DISPLAY_NAME}: Could not start ({e})"
-            port_taken = isinstance(e, OSError)
+            bad_listen = isinstance(e, (OSError, ValueError))
         mw = Gui.getMainWindow()
         if mw:
             mw.statusBar().showMessage(status)
@@ -150,9 +149,9 @@ class MCPBridgeCommand:
             App.Console.PrintNotification(status + "\n")
         else:
             warning = status
-            if port_taken:
+            if bad_listen:
                 warning += (
-                    ". Change the port in Edit → "
+                    ". Change the listen address in Edit → "
                     "Preferences → MCP Bridge."
                 )
             App.Console.PrintWarning(warning + "\n")

@@ -41,7 +41,7 @@
     "port": {
       "type": "number",
       "title": "FreeCAD MCP Bridge port",
-      "description": "Requires the MCP Bridge addon installed and switched on in FreeCAD. Must match the Port in FreeCAD's Edit → Preferences → MCP Bridge. Extension 0.1.26.",
+      "description": "Requires the MCP Bridge addon installed and switched on in FreeCAD. Must match the port of a 127.0.0.1 entry in FreeCAD's Edit → Preferences → MCP Bridge → Listen address. Extension 0.1.26.",
       "default": 39280,
       "required": false
     }

@@ -75,9 +75,12 @@ def _run() -> None:
         common.fail("ACCEPTANCE_READY_FILE and ACCEPTANCE_STOP_FILE must be set")
 
     common.start_bridge()
-    port = config.port()
+    entry = config.listen_addresses()[0]
+    _, port = config.parse_listen_entry(entry)
     _write_ready_file(ready_file, port)
-    common.log_notice(f"Bridge ready on 127.0.0.1:{port}; serving until {stop_file} appears")
+    common.log_notice(
+        f"Bridge ready on {entry}; serving until {stop_file} appears"
+    )
     _watch_for_stop(stop_file, float(common.env("ACCEPTANCE_TIMEOUT_S", "600")))
     # Return to FreeCAD's event loop: jobs run there, as they do for a user.
 

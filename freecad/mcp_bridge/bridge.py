@@ -9,11 +9,9 @@ from freecad.mcp_bridge.http_server import HttpServer
 _server = HttpServer()
 
 
-def start(
-    addresses: list[str] | None = None, port: int | None = None
-) -> None:
-    """Start the HTTP MCP server (idempotent)."""
-    _server.start(addresses=addresses, port=port)
+def start(addresses: list[str] | None = None) -> None:
+    """Start the HTTP MCP server on `addresses` (idempotent)."""
+    _server.start(addresses=addresses)
 
 
 def stop() -> None:

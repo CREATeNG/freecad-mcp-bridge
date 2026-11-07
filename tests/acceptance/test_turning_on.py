@@ -37,15 +37,23 @@ action = Gui.Command.get(App.MCPBridgeCommand).getAction()[0]
 
 def set_port(port):
     if port == -1:
+        params.RemString('ListenAddress')
         params.RemInt('Port')
     else:
-        params.SetInt('Port', port)
+        params.SetString('ListenAddress', f'127.0.0.1:{port}')
 """
 
 
 def saved_port():
-    """The Port preference as saved, or NO_PREFERENCE if unset."""
-    return int(mcp.run(PREFERENCES + "print(params.GetInt('Port', -1))"))
+    """The port in ListenAddress or Port, or NO_PREFERENCE if unset."""
+    code = PREFERENCES + """
+raw = params.GetString('ListenAddress', '').strip()
+if raw:
+    print(int(raw.split()[0].rsplit(':', 1)[1]))
+else:
+    print(params.GetInt('Port', -1))
+"""
+    return int(mcp.run(code))
 
 
 def restart_on(port):
@@ -190,7 +198,7 @@ class PortTests(unittest.TestCase):
             seen["status"],
         )
         self.assertIn(f"Could not bind 127.0.0.1:{port}", seen["report"])
-        self.assertIn("Change the port in Edit", seen["report"])
+        self.assertIn("Change the listen address in Edit", seen["report"])
         self.assertIn("Preferences", seen["report"])
 
 
@@ -199,6 +207,8 @@ def non_loopback_flow(address, seen_file, continue_file):
     waiting for `continue_file` while the bridge is up on `address` so the
     test runner can talk to both `address` and `127.0.0.1`, then restores
     preferences and restarts on loopback."""
+    entry = f"{address}:{PORT}"
+    loopback_entry = f"127.0.0.1:{PORT}"
     return PREFERENCES + f"""
 import json
 import os
@@ -262,7 +272,17 @@ def click_dialog_button(label, prefix):
 def step_decline():
     if bridge.is_running():
         action.trigger()
-    params.SetString('ListenAddress', '127.0.0.1\\n' + {address!r})
+    # First check that an entry without a port is rejected and leaves the
+    # bridge off.
+    params.SetString('ListenAddress', {address!r})
+    before_no_port = len(report_view_text())
+    action.trigger()
+    seen['no_port_running'] = bridge.is_running()
+    seen['no_port_status'] = mw.statusBar().currentMessage()
+    seen['no_port_report'] = report_view_text()[before_no_port:]
+    params.SetString(
+        'ListenAddress', {loopback_entry!r} + '\\n' + {entry!r}
+    )
     params.RemString('AcceptedListenAddresses')
     QTimer.singleShot(
         150, lambda: click_dialog_button('Cancel', 'decline')
@@ -309,11 +329,11 @@ def wait_for_runner():
     seen['second_running'] = bridge.is_running()
     seen['second_status'] = mw.statusBar().currentMessage()
     seen['second_report'] = report_view_text()[before:]
-    # Start with the LAN address alone (removing 127.0.0.1): loopback
-    # must not be bound, while the LAN address is bound.
+    # Start with the LAN entry alone (removing 127.0.0.1): loopback
+    # must not be bound, while the LAN entry is bound.
     if bridge.is_running():
         action.trigger()
-    params.SetString('ListenAddress', {address!r})
+    params.SetString('ListenAddress', {entry!r})
     action.trigger()
     seen['lan_only_running'] = bridge.is_running()
     seen['lan_only_lan_open'] = can_connect({address!r}, {PORT})
@@ -344,7 +364,7 @@ class ListenAddressTests(unittest.TestCase):
     def test_non_loopback_address_requires_acceptance_binds_list_and_warns(
         self,
     ):
-        """Non-loopback addresses ask once, bind the list, and warn."""
+        """Non-loopback entries ask once, bind the list, and warn."""
         address = non_loopback_address()
         if address is None:
             self.skipTest("this machine has no non-loopback IPv4 address")
@@ -379,6 +399,12 @@ class ListenAddressTests(unittest.TestCase):
 
         self.assertEqual(lan_out, "from lan address\n")
         self.assertEqual(loopback_out, "from loopback alongside\n")
+        self.assertFalse(seen.get("no_port_running"))
+        self.assertIn(address, seen.get("no_port_status", ""))
+        self.assertIn(
+            "Change the listen address in Edit",
+            seen.get("no_port_report", ""),
+        )
         self.assertTrue(seen.get("decline_dialog_found"))
         self.assertFalse(seen.get("decline_port_open_during_dialog"))
         self.assertEqual(
@@ -398,7 +424,8 @@ class ListenAddressTests(unittest.TestCase):
         self.assertFalse(seen.get("accept_port_open_during_dialog"))
         self.assertTrue(seen.get("accepted_running"))
         self.assertEqual(
-            json.loads(seen.get("accepted_saved", "[]")), [address]
+            json.loads(seen.get("accepted_saved", "[]")),
+            [f"{address}:{PORT}"],
         )
         expected_status = (
             f"MCP Bridge: Listening on 127.0.0.1:{PORT}, "

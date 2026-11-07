@@ -29,7 +29,6 @@ PAGE = ROOT / "freecad" / "mcp_bridge" / "Resources" / "Ui" / "preferences.ui"
 PREF_ROOT = "User parameter:BaseApp/Preferences"
 SETTINGS = (
     "ListenAddress",
-    "Port",
     "MaxResponseTimeoutSeconds",
     "MaxPageSize",
     "MaxHistoryRetentionMinutes",
@@ -106,15 +105,16 @@ class PreferencePageTests(unittest.TestCase):
                 self.assertEqual(saved_in, PREF_GROUP)
 
     def test_the_page_shows_the_documented_defaults(self):
-        """The page shows defaults 127.0.0.1, 39280, 15 s, 32 K characters,
+        """The page shows defaults 127.0.0.1:39280, 15 s, 32 K characters,
         5 min, and the status-bar button shown on the right."""
         settings = page_settings()
-        self.assertEqual(settings["ListenAddress"]["plainText"], "127.0.0.1")
         self.assertEqual(
-            settings["ListenAddress"]["placeholderText"], "127.0.0.1"
+            settings["ListenAddress"]["plainText"], "127.0.0.1:39280"
+        )
+        self.assertEqual(
+            settings["ListenAddress"]["placeholderText"], "127.0.0.1:39280"
         )
         spin_names = (
-            "Port",
             "MaxResponseTimeoutSeconds",
             "MaxPageSize",
             "MaxHistoryRetentionMinutes",
@@ -126,7 +126,6 @@ class PreferencePageTests(unittest.TestCase):
         self.assertEqual(
             shown,
             {
-                "Port": (39280, None),
                 "MaxResponseTimeoutSeconds": (15, " s"),
                 "MaxPageSize": (32, " K characters"),
                 "MaxHistoryRetentionMinutes": (5, " min"),
@@ -150,19 +149,19 @@ class PreferencePageTests(unittest.TestCase):
 
 class UnsetPreferenceTests(unittest.TestCase):
     def test_with_nothing_saved_the_bridge_uses_the_documented_defaults(self):
-        """With nothing saved: 127.0.0.1, port 39280, 15 s, 32,768 chars,
-        5 min, button shown on the right."""
+        """With nothing saved: 127.0.0.1:39280, 15 s, 32,768 chars, 5 min,
+        button shown on the right."""
         config, params, groups = fresh_config()
-        self.assertEqual(config.listen_addresses(), ["127.0.0.1"])
-        self.assertEqual(config.port(), 39280)
+        self.assertEqual(config.listen_addresses(), ["127.0.0.1:39280"])
         self.assertEqual(config.max_response_timeout_ms(), 15_000)
         self.assertEqual(config.max_page_size_chars(), 32_768)
         self.assertEqual(config.max_history_retention_ms(), 5 * 60_000)
         self.assertIs(config.show_status_button(), True)
         self.assertEqual(config.status_button_position(), 0)
-        # What it read is what the preference page saves.
+        # What it read is what the preference page saves (plus Port as the
+        # upgrade fallback when ListenAddress has never been saved).
         self.assertEqual(set(groups), {PREF_GROUP})
-        self.assertEqual(params.read, set(SETTINGS))
+        self.assertEqual(params.read, set(SETTINGS) | {"Port"})
 
 
 def _fresh_init_gui():
@@ -608,8 +607,9 @@ class ToolbarVisibilityTests(unittest.TestCase):
 
 class ListenAddressAcceptanceTests(unittest.TestCase):
     def test_listen_addresses_and_loopback_detection(self):
-        """ListenAddress splits on whitespace, commas, and semicolons (holding
-        colons), deduplicates in order, and detects loopback by IP property."""
+        """ListenAddress splits on whitespace, commas, and semicolons (with
+        colons marking ports), deduplicates in order, inherits an upgraded
+        Port when ListenAddress is unset, and detects loopback by IP."""
         store = {}
 
         class DictParams:
@@ -619,33 +619,67 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             def SetString(self, name, value):
                 store[name] = value
 
+            def GetInt(self, name, default=0):
+                return store.get(name, default)
+
         freecad = types.SimpleNamespace(ParamGet=lambda _g: DictParams())
         with mock.patch.dict(sys.modules, {"FreeCAD": freecad}):
             sys.modules.pop("freecad.mcp_bridge.config", None)
             config = importlib.import_module("freecad.mcp_bridge.config")
 
-            self.assertEqual(config.listen_addresses(), ["127.0.0.1"])
+            self.assertEqual(config.listen_addresses(), ["127.0.0.1:39280"])
+            store["Port"] = 41234
+            self.assertEqual(config.listen_addresses(), ["127.0.0.1:41234"])
             store["ListenAddress"] = (
-                "127.0.0.1\n192.168.1.50, 10.0.0.5; [::1] 127.0.0.1"
+                "127.0.0.1:39280\n192.168.1.50:39280, 10.0.0.5:39281; "
+                "[::1]:39280 127.0.0.1:39280"
             )
             self.assertEqual(
                 config.listen_addresses(),
-                ["127.0.0.1", "192.168.1.50", "10.0.0.5", "[::1]"],
+                [
+                    "127.0.0.1:39280",
+                    "192.168.1.50:39280",
+                    "10.0.0.5:39281",
+                    "[::1]:39280",
+                ],
             )
             store["ListenAddress"] = "   \n , ; "
-            self.assertEqual(config.listen_addresses(), ["127.0.0.1"])
+            self.assertEqual(config.listen_addresses(), ["127.0.0.1:41234"])
+            store.pop("Port", None)
+            self.assertEqual(config.listen_addresses(), ["127.0.0.1:39280"])
 
-            self.assertTrue(config.is_loopback_address("127.0.0.1"))
-            self.assertTrue(config.is_loopback_address("127.0.0.2"))
-            self.assertTrue(config.is_loopback_address("::1"))
-            self.assertTrue(config.is_loopback_address("[::1]"))
-            self.assertTrue(config.is_loopback_address("localhost"))
-            self.assertFalse(config.is_loopback_address("0.0.0.0"))
-            self.assertFalse(config.is_loopback_address("192.168.1.50"))
-            self.assertFalse(config.is_loopback_address("my-lan-host"))
+            self.assertEqual(
+                config.parse_listen_entry("127.0.0.1:39280"),
+                ("127.0.0.1", 39280),
+            )
+            self.assertEqual(
+                config.parse_listen_entry("[::1]:39280"), ("::1", 39280)
+            )
+            for bad in (
+                "127.0.0.1",
+                "[::1]",
+                "::1:39280",
+                "127.0.0.1:",
+                ":39280",
+                "127.0.0.1:0",
+                "127.0.0.1:70000",
+                "127.0.0.1:abc",
+            ):
+                with self.subTest(bad=bad):
+                    with self.assertRaises(ValueError) as ctx:
+                        config.parse_listen_entry(bad)
+                    self.assertIn(bad, str(ctx.exception))
+
+            self.assertTrue(config.is_loopback_address("127.0.0.1:39280"))
+            self.assertTrue(config.is_loopback_address("127.0.0.2:39280"))
+            self.assertTrue(config.is_loopback_address("[::1]:39280"))
+            self.assertTrue(config.is_loopback_address("localhost:39280"))
+            self.assertFalse(config.is_loopback_address("0.0.0.0:39280"))
+            self.assertFalse(config.is_loopback_address("192.168.1.50:39280"))
+            self.assertFalse(config.is_loopback_address("my-lan-host:39280"))
 
     def test_per_address_acceptance_is_stored_and_queried_by_address(self):
-        """Loopback is always accepted; non-loopback addresses are stored as
+        """Loopback is always accepted; non-loopback entries are stored as
         distinct items in AcceptedListenAddresses."""
         store = {}
 
@@ -660,37 +694,44 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
         with mock.patch.dict(sys.modules, {"FreeCAD": freecad}):
             sys.modules.pop("freecad.mcp_bridge.config", None)
             config = importlib.import_module("freecad.mcp_bridge.config")
-            self.assertTrue(config.is_address_accepted("127.0.0.1"))
-            self.assertTrue(config.is_address_accepted("127.0.0.2"))
-            self.assertTrue(config.is_address_accepted("localhost"))
-            self.assertFalse(config.is_address_accepted("192.168.1.50"))
-            self.assertFalse(config.is_address_accepted("0.0.0.0"))
+            self.assertTrue(config.is_address_accepted("127.0.0.1:39280"))
+            self.assertTrue(config.is_address_accepted("127.0.0.2:39280"))
+            self.assertTrue(config.is_address_accepted("[::1]:39280"))
+            self.assertTrue(config.is_address_accepted("localhost:39280"))
+            self.assertFalse(config.is_address_accepted("192.168.1.50:39280"))
+            self.assertFalse(config.is_address_accepted("0.0.0.0:39280"))
 
-            config.accept_address("192.168.1.50")
-            self.assertTrue(config.is_address_accepted("192.168.1.50"))
-            self.assertFalse(config.is_address_accepted("0.0.0.0"))
+            config.accept_address("192.168.1.50:39280")
+            self.assertTrue(config.is_address_accepted("192.168.1.50:39280"))
+            self.assertFalse(config.is_address_accepted("192.168.1.50:39281"))
+            self.assertFalse(config.is_address_accepted("0.0.0.0:39280"))
             self.assertEqual(
-                config.accepted_listen_addresses(), ["192.168.1.50"]
+                config.accepted_listen_addresses(), ["192.168.1.50:39280"]
             )
 
-            config.accept_address("0.0.0.0")
-            self.assertTrue(config.is_address_accepted("192.168.1.50"))
-            self.assertTrue(config.is_address_accepted("0.0.0.0"))
+            config.accept_address("0.0.0.0:39280")
+            self.assertTrue(config.is_address_accepted("192.168.1.50:39280"))
+            self.assertTrue(config.is_address_accepted("0.0.0.0:39280"))
             self.assertEqual(
                 config.accepted_listen_addresses(),
-                ["192.168.1.50", "0.0.0.0"],
+                ["192.168.1.50:39280", "0.0.0.0:39280"],
             )
 
             # An item containing a comma is kept as one item, never split.
-            config.accept_address("192.168.1.60,192.168.1.61")
-            self.assertFalse(config.is_address_accepted("192.168.1.60"))
-            self.assertFalse(config.is_address_accepted("192.168.1.61"))
+            config.accept_address("192.168.1.60:39280,192.168.1.61:39280")
+            self.assertFalse(
+                config.is_address_accepted("192.168.1.60:39280")
+            )
+            self.assertFalse(
+                config.is_address_accepted("192.168.1.61:39280")
+            )
 
     def test_non_loopback_start_prompts_once_and_warns_each_start(self):
-        """Turning on with unaccepted non-loopback addresses shows one risk
+        """Turning on with unaccepted non-loopback entries shows one risk
         dialog for them, uses a single preference snapshot, records acceptance
-        only after bridge.start succeeds, and warns on every start."""
-        store = {"ListenAddress": "127.0.0.1\n192.168.1.50"}
+        only after bridge.start succeeds, rejects entries without a port, and
+        warns on every start."""
+        store = {"ListenAddress": "127.0.0.1:39280\n192.168.1.50:39280"}
         running = False
         start_calls = []
         start_error = None
@@ -744,13 +785,13 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
         )
         fake_bridge = types.SimpleNamespace(
             is_running=lambda: running,
-            start=lambda addresses=None, port=None: None,
+            start=lambda addresses=None: None,
             stop=lambda: None,
         )
 
-        def start_bridge(addresses=None, port=None):
+        def start_bridge(addresses=None):
             nonlocal running
-            start_calls.append((addresses, port))
+            start_calls.append(list(addresses) if addresses else None)
             if start_error is not None:
                 raise start_error
             running = True
@@ -776,21 +817,21 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             init_gui = importlib.import_module("freecad.mcp_bridge.init_gui")
             init_gui.show_toggle_state = lambda: None
 
-            def fake_confirm(addresses, port):
-                prompts.append((list(addresses), port))
+            def fake_confirm(entries):
+                prompts.append(list(entries))
                 if mutate_during_dialog is not None:
                     mutate_during_dialog()
                 return decision
 
             init_gui._confirm_non_loopback_risk = fake_confirm
             title, body = init_gui._risk_dialog_text(
-                ["192.168.1.50", "10.0.0.5"], 39280
+                ["192.168.1.50:39280", "10.0.0.5:39281"]
             )
             self.assertEqual(
                 title, "MCP Bridge — Listen beyond this machine?"
             )
             self.assertIn(
-                "192.168.1.50:39280\n10.0.0.5:39280",
+                "192.168.1.50:39280\n10.0.0.5:39281",
                 body,
             )
             self.assertIn("No authentication", body)
@@ -800,11 +841,21 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
 
             cmd = init_gui.MCPBridgeCommand()
 
-            # 1. Decline: bridge stays off and address is not accepted.
+            # 0. Entry without a port fails before any dialog, names the
+            # entry, and leaves the bridge off.
+            store["ListenAddress"] = "127.0.0.1:39280\n192.168.1.50"
+            cmd.Activated()
+            self.assertFalse(running)
+            self.assertEqual(prompts, [])
+            self.assertIn("192.168.1.50", statuses[-1])
+            self.assertIn("Change the listen address in Edit", warnings[-1])
+
+            # 1. Decline: bridge stays off and entry is not accepted.
+            store["ListenAddress"] = "127.0.0.1:39280\n192.168.1.50:39280"
             decision = False
             cmd.Activated()
             self.assertFalse(running)
-            self.assertEqual(prompts, [(["192.168.1.50"], 39280)])
+            self.assertEqual(prompts, [["192.168.1.50:39280"]])
             self.assertEqual(statuses[-1], "MCP Bridge: Offline")
             self.assertEqual(config.accepted_listen_addresses(), [])
 
@@ -818,18 +869,17 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
 
             # 3. Accept when Preferences changes mid-dialog: snapshot is used.
             def mutate_prefs():
-                store["ListenAddress"] = "10.0.0.99"
-                store["Port"] = 41000
+                store["ListenAddress"] = "10.0.0.99:41000"
 
             mutate_during_dialog = mutate_prefs
             cmd.Activated()
             mutate_during_dialog = None
             self.assertTrue(running)
             self.assertEqual(
-                start_calls[-1], (["127.0.0.1", "192.168.1.50"], 39280)
+                start_calls[-1], ["127.0.0.1:39280", "192.168.1.50:39280"]
             )
             self.assertEqual(
-                config.accepted_listen_addresses(), ["192.168.1.50"]
+                config.accepted_listen_addresses(), ["192.168.1.50:39280"]
             )
             self.assertEqual(
                 statuses[-1],
@@ -838,9 +888,8 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 "encryption)",
             )
 
-            # 4. Stop and start again at the accepted address: no prompt.
-            store["ListenAddress"] = "127.0.0.1\n192.168.1.50"
-            store.pop("Port", None)
+            # 4. Stop and start again at the accepted entry: no prompt.
+            store["ListenAddress"] = "127.0.0.1:39280\n192.168.1.50:39280"
             cmd.Activated()
             self.assertFalse(running)
             prompt_count = len(prompts)
@@ -851,29 +900,34 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 "(warning: no authentication or encryption)", statuses[-1]
             )
 
-            # 5. Add two new non-loopback addresses: one dialog lists both.
+            # 5. Add two new non-loopback entries: one dialog lists both.
             cmd.Activated()
             store["ListenAddress"] = (
-                "127.0.0.1\n192.168.1.50\n10.0.0.5\n0.0.0.0"
+                "127.0.0.1:39280\n192.168.1.50:39280\n"
+                "10.0.0.5:39281\n0.0.0.0:39282"
             )
             cmd.Activated()
             self.assertTrue(running)
             self.assertEqual(
-                prompts[-1], (["10.0.0.5", "0.0.0.0"], 39280)
+                prompts[-1], ["10.0.0.5:39281", "0.0.0.0:39282"]
             )
             self.assertEqual(
                 config.accepted_listen_addresses(),
-                ["192.168.1.50", "10.0.0.5", "0.0.0.0"],
+                [
+                    "192.168.1.50:39280",
+                    "10.0.0.5:39281",
+                    "0.0.0.0:39282",
+                ],
             )
             sys.modules.pop("freecad.mcp_bridge.init_gui", None)
 
     def test_http_server_binds_configured_list_and_rolls_back_on_failure(
         self,
     ):
-        """HttpServer binds the exact configured address list, warns when any
-        address is non-loopback, and rolls back cleanly on bind or thread
+        """HttpServer binds the exact configured address:port list, warns when
+        any entry is non-loopback, and rolls back cleanly on bind or thread
         start failure without shutting down an unstarted server."""
-        store = {"ListenAddress": "127.0.0.1", "Port": 39280}
+        store = {"ListenAddress": "127.0.0.1:39280"}
         messages = []
         warnings = []
         errors = []
@@ -954,57 +1008,83 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             ):
                 srv = http_server.HttpServer()
 
-                # 1. Default loopback: binds 127.0.0.1 only, no warning.
+                # 1. Default loopback: binds 127.0.0.1:39280 only, no warning.
                 srv.start()
                 self.assertEqual(bound, [("127.0.0.1", 39280)])
                 self.assertEqual(warnings, [])
                 srv.stop()
 
-                # 2. List with loopback and LAN: binds both in order, warns.
+                # 2. List with loopback, LAN, and IPv6 on distinct ports.
                 bound.clear()
                 shut_down.clear()
                 closed.clear()
-                store["ListenAddress"] = "127.0.0.1\n192.168.1.50"
+                store["ListenAddress"] = (
+                    "127.0.0.1:39280\n192.168.1.50:39281\n[::1]:39282"
+                )
                 srv.start()
                 self.assertEqual(
                     bound,
-                    [("127.0.0.1", 39280), ("192.168.1.50", 39280)],
+                    [
+                        ("127.0.0.1", 39280),
+                        ("192.168.1.50", 39281),
+                        ("::1", 39282),
+                    ],
                 )
                 self.assertEqual(len(warnings), 1)
                 self.assertEqual(
                     warnings[0],
                     "[MCP Bridge] WARNING: listening on 127.0.0.1:39280, "
-                    "192.168.1.50:39280 with no authentication or "
-                    "encryption. Any machine that can reach these addresses "
-                    "can run Python code in FreeCAD as your user account: "
-                    "192.168.1.50:39280.\n",
+                    "192.168.1.50:39281, [::1]:39282 with no authentication "
+                    "or encryption. Any machine that can reach these "
+                    "addresses can run Python code in FreeCAD as your user "
+                    "account: 192.168.1.50:39281.\n",
                 )
                 srv.stop()
                 self.assertEqual(
                     shut_down,
-                    [("192.168.1.50", 39280), ("127.0.0.1", 39280)],
+                    [
+                        ("::1", 39282),
+                        ("192.168.1.50", 39281),
+                        ("127.0.0.1", 39280),
+                    ],
                 )
                 self.assertEqual(
                     closed,
-                    [("192.168.1.50", 39280), ("127.0.0.1", 39280)],
+                    [
+                        ("::1", 39282),
+                        ("192.168.1.50", 39281),
+                        ("127.0.0.1", 39280),
+                    ],
                 )
 
                 # 3. LAN only (127.0.0.1 removed): binds LAN only, warns.
                 bound.clear()
                 warnings.clear()
-                store["ListenAddress"] = "192.168.1.50"
+                store["ListenAddress"] = "192.168.1.50:39280"
                 srv.start()
                 self.assertEqual(bound, [("192.168.1.50", 39280)])
                 self.assertEqual(len(warnings), 1)
                 srv.stop()
 
-                # 4. Bind failure on 2nd address: closes 1st, stays off.
+                # 4. Entry without port: raises ValueError before binding.
+                bound.clear()
+                errors.clear()
+                store["ListenAddress"] = "127.0.0.1:39280\n192.168.1.50"
+                with self.assertRaises(ValueError):
+                    srv.start()
+                self.assertFalse(srv.is_running())
+                self.assertEqual(bound, [])
+                self.assertIn("192.168.1.50", errors[-1])
+
+                # 5. Bind failure on 2nd address: closes 1st, stays off.
                 bound.clear()
                 shut_down.clear()
                 closed.clear()
                 errors.clear()
                 fail_bind_on = "192.168.1.50"
-                store["ListenAddress"] = "127.0.0.1\n192.168.1.50"
+                store["ListenAddress"] = (
+                    "127.0.0.1:39280\n192.168.1.50:39280"
+                )
                 with self.assertRaises(OSError):
                     srv.start()
                 fail_bind_on = None
@@ -1015,7 +1095,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                     "Could not bind 192.168.1.50:39280", errors[-1]
                 )
 
-                # 5. Thread start failure on 2nd server: shuts down 1st,
+                # 6. Thread start failure on 2nd server: shuts down 1st,
                 # closes both, never calls shutdown() on unstarted 2nd.
                 bound.clear()
                 shut_down.clear()

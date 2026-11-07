@@ -379,13 +379,18 @@ Tool-call results and paging are otherwise identical on both
 transports: each waits up to the configured timeout for the first
 page, then polls via `get_output_page` if needed.
 
-**Port**
+**Listen addresses and ports**
 
-A static port, **39280** by default, user-configurable in FreeCAD
-preferences.
-On conflict at startup: log a clear error directing the user to Edit → Preferences →
-MCP Bridge. No silent increment. Dynamic port rejected — HTTP clients configure the
-endpoint URL directly; a changing port would require reconfiguration each session.
+Configured in **Listen address** in FreeCAD preferences as a list of
+`address:port` entries (`[ipv6]:port` for IPv6), **`127.0.0.1:39280`**
+by default. When **Listen address** has never been saved, the default
+entry uses any previously saved `Port` preference so an upgraded
+profile keeps its custom port. On a missing or invalid port, or a bind
+conflict at startup: log a clear error naming the entry and directing
+the user to Edit → Preferences → MCP Bridge, and keep the bridge off.
+No silent port increment. Dynamic port rejected — HTTP clients
+configure the endpoint URL directly; a changing port would require
+reconfiguration each session.
 
 **Session management**
 
@@ -464,26 +469,27 @@ state. If the capability belongs anywhere, it is upstream
 
 **Loopback by default, user-toggled, with per-address risk acceptance**
 
-By default, the server binds to `127.0.0.1` only. It starts only when
-the user activates the toggle, and stops when they deactivate it. This
-satisfies the Addon Index transparency and deferred-activation
+By default, the server binds to `127.0.0.1:39280` only. It starts only
+when the user activates the toggle, and stops when they deactivate it.
+This satisfies the Addon Index transparency and deferred-activation
 requirements.
 
-In Preferences, the user can configure a list of listen addresses
-(defaulting to `127.0.0.1`). The server binds an HTTP listener on
-each listed address and shares a single main-thread execution queue
-across them; if any listed address cannot be bound, all bound
-listeners are closed and the bridge stays off. Loopback is bound only
-when included in the list (the Claude Desktop shim connects to
-`127.0.0.1`). When the bridge is turned on with any non-loopback
-address not yet accepted, one modal warning dialog lists those
-addresses and states the risks — no authentication, no encryption,
-and any machine that can reach those addresses and port can run
-Python code in FreeCAD as the user — and the bridge stays off unless
-the user accepts. Acceptance is stored per address in FreeCAD
-preferences (`AcceptedListenAddresses`) once the start succeeds.
-Every start with any non-loopback address warns in the status bar and
-the Report view.
+In Preferences, the user can configure a list of `address:port`
+entries (`[ipv6]:port` for IPv6), defaulting to `127.0.0.1:39280`.
+Every entry requires a port; if any entry lacks a valid port or
+cannot be bound, all bound listeners are closed and the bridge stays
+off. The server binds an HTTP listener on each listed entry and
+shares a single main-thread execution queue across them. Loopback is
+bound only when included in the list (the Claude Desktop shim
+connects to `127.0.0.1` on its configured port). When the bridge is
+turned on with any non-loopback entry not yet accepted, one modal
+warning dialog lists those entries and states the risks — no
+authentication, no encryption, and any machine that can reach those
+addresses can run Python code in FreeCAD as the user — and the
+bridge stays off unless the user accepts. Acceptance is stored per
+entry in FreeCAD preferences (`AcceptedListenAddresses`) once the
+start succeeds. Every start with any non-loopback entry warns in the
+status bar and the Report view.
 
 **Security posture — noted trade-offs**
 
@@ -597,8 +603,8 @@ asset for Claude Desktop users.
 
 Stored at `User parameter:BaseApp/Preferences/Mod/freecad-mcp-bridge`.
 
-The listen addresses and port are read at server start; timeout and
-page size are read per request. Retention is read when each job finishes
+The listen addresses are read at server start; timeout and page size
+are read per request. Retention is read when each job finishes
 running and fixes that job's retention interval, also used for later
 extensions. Preference changes affect jobs that finish afterwards, not
 histories whose intervals are already set.
@@ -609,8 +615,7 @@ automatically.
 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
-| Listen address | `127.0.0.1` | List of addresses to bind; non-loopback addresses require one-time user risk acceptance per address (`AcceptedListenAddresses`) and log a warning in the status bar and Report view on each start |
-| Port | 39280 | Error logged on conflict at startup |
+| Listen address | `127.0.0.1:39280` | List of `address:port` entries (`[ipv6]:port` for IPv6) to bind; if unset, inherits a previously saved `Port` value; missing port or bind conflict at startup logs an error and leaves the bridge off; non-loopback entries require one-time user risk acceptance per entry (`AcceptedListenAddresses`) and log a warning in the status bar and Report view on each start |
 | Max response timeout (s) | 15 | Max wait in `execute_python` and `get_output_page` before returning with `has_more: true` |
 | Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |
 | Page history retention (min) | 5 | How long output stays readable after the job finishes running, or after its last valid page fetch or replay. |

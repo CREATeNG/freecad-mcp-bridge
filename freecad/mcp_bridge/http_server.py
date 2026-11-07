@@ -1,8 +1,8 @@
 """In-process HTTP server hosting the MCP endpoint.
 
 A ThreadingHTTPServer runs on a background thread for each configured listen
-address (127.0.0.1 by default). Each request is served in MCP 2026-07-28 or
-2025-11-25, whichever it is in, or rejected (see mcp_protocol.py), and
+address (127.0.0.1:39280 by default). Each request is served in MCP 2026-07-28
+or 2025-11-25, whichever it is in, or rejected (see mcp_protocol.py), and
 answered as plain JSON. Tool calls (execute_python, execute_python_file,
 get_output_page) run code on the Qt main thread via the Executor. Output is
 paged through the job's page history (see paging.py) when it outlasts the
@@ -220,30 +220,36 @@ class HttpServer:
             thread.is_alive() for _, thread in self._servers
         )
 
-    def start(
-        self,
-        addresses: list[str] | None = None,
-        port: int | None = None,
-    ) -> None:
+    def start(self, addresses: list[str] | None = None) -> None:
         if self.is_running():
             return
-        bind_hosts = (
+        entries = (
             list(addresses)
             if addresses is not None
             else config.listen_addresses()
         )
-        if not bind_hosts:
-            bind_hosts = list(config.listen_addresses())
-        bind_port = port if port is not None else config.port()
+        if not entries:
+            entries = list(config.listen_addresses())
+        try:
+            targets = [
+                (entry, *config.parse_listen_entry(entry))
+                for entry in entries
+            ]
+        except ValueError as exc:
+            FreeCAD.Console.PrintDeveloperError(
+                f"{LOG_PREFIX} {exc}. Change the listen address in Edit → "
+                "Preferences → MCP Bridge.\n"
+            )
+            raise
         # Created here so it inherits main-thread affinity (start() is called
         # from the toolbar toggle / GUI startup, both on the main thread).
         self._executor = Executor()
 
         bound_servers = []
-        failed_host = bind_hosts[0]
+        failed_entry = entries[0]
         try:
-            for host in bind_hosts:
-                failed_host = host
+            for entry, host, bind_port in targets:
+                failed_entry = entry
                 srv = paging.MaintenanceHTTPServer(
                     (host, bind_port), McpRequestHandler
                 )
@@ -257,8 +263,8 @@ class HttpServer:
             self._servers = []
             self._executor = None
             FreeCAD.Console.PrintDeveloperError(
-                f"{LOG_PREFIX} Could not bind {failed_host}:{bind_port} "
-                f"({exc}). Change the port in Edit → Preferences → "
+                f"{LOG_PREFIX} Could not bind {failed_entry} ({exc}). "
+                "Change the listen address in Edit → Preferences → "
                 "MCP Bridge.\n"
             )
             raise
@@ -294,23 +300,19 @@ class HttpServer:
 
         self._servers = started_servers
         endpoints_with_path = ", ".join(
-            f"{host}:{bind_port}{ENDPOINT_PATH}" for host in bind_hosts
+            f"{entry}{ENDPOINT_PATH}" for entry in entries
         )
         FreeCAD.Console.PrintMessage(
             f"{LOG_PREFIX} HTTP server listening on {endpoints_with_path}\n"
         )
         non_loopback = [
-            host
-            for host in bind_hosts
-            if not config.is_loopback_address(host)
+            entry
+            for entry in entries
+            if not config.is_loopback_address(entry)
         ]
         if non_loopback:
-            endpoints = ", ".join(
-                f"{host}:{bind_port}" for host in bind_hosts
-            )
-            non_loopback_endpoints = ", ".join(
-                f"{host}:{bind_port}" for host in non_loopback
-            )
+            endpoints = ", ".join(entries)
+            non_loopback_endpoints = ", ".join(non_loopback)
             FreeCAD.Console.PrintWarning(
                 f"{LOG_PREFIX} WARNING: listening on {endpoints} with no "
                 "authentication or encryption. Any machine that can reach "
