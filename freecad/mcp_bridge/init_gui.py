@@ -210,6 +210,7 @@ class MCPBridgeCommand:
                 entries = config.listen_addresses()
                 req_token = config.require_token()
                 req_tls = config.require_tls()
+                req_on_loopback = config.require_on_loopback()
                 cert_file = config.tls_cert_file()
                 key_file = config.tls_key_file()
                 for entry in entries:
@@ -219,7 +220,8 @@ class MCPBridgeCommand:
                     for entry in entries
                     if not config.is_loopback_address(entry)
                 ]
-                if non_loopback and req_tls:
+                protected = entries if req_on_loopback else non_loopback
+                if protected and req_tls:
                     config.build_ssl_context(cert_file, key_file)
                 unaccepted = [
                     entry
@@ -238,7 +240,7 @@ class MCPBridgeCommand:
                     show_toggle_state()
                     App.Console.PrintNotification(status + "\n")
                     return
-                if non_loopback and req_token and not config.token_hash():
+                if protected and req_token and not config.token_hash():
                     generate_and_show_token()
                 bridge.start(
                     addresses=entries,
@@ -246,6 +248,7 @@ class MCPBridgeCommand:
                     require_tls=req_tls,
                     tls_cert_file=cert_file,
                     tls_key_file=key_file,
+                    require_on_loopback=req_on_loopback,
                 )
                 for entry in unaccepted:
                     config.accept_address(entry)

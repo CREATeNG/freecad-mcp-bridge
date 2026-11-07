@@ -2,23 +2,35 @@
 /*
  * FreeCAD MCP Bridge - Claude Desktop shim.
  *
- * A zero-dependency stdio <-> HTTP proxy. Claude Desktop speaks MCP over stdio
- * (newline-delimited JSON-RPC); this forwards each message to the addon's HTTP
- * endpoint (http://127.0.0.1:<port>/mcp), unwraps the JSON or SSE reply, and
- * writes it back on stdout.
+ * A zero-dependency stdio <-> HTTP/HTTPS proxy. Claude Desktop speaks MCP over
+ * stdio (newline-delimited JSON-RPC); this forwards each message to the addon's
+ * endpoint (http://127.0.0.1:<port>/mcp, or https://127.0.0.1:<port>/mcp when
+ * FREECAD_MCP_TLS_CERT_FILE is set, with Authorization: Bearer <token> when
+ * FREECAD_MCP_TOKEN is set), unwraps the JSON or SSE reply, and writes it back
+ * on stdout.
  *
  * When FreeCAD isn't reachable, it answers initialize and tools/list itself
  * (tools.json is a copy of the addon's tool list), and answers a tools/call
  * with a tool-level error saying how to start the bridge, so the client
  * starts cleanly instead of reporting a failed server. Node stdlib only
- * (global fetch, >=18).
+ * (global fetch and node:https, >=18).
  */
 
 const fs = require("fs");
+const https = require("https");
 const path = require("path");
 
-const PORT = process.env.FREECAD_MCP_PORT || "39280";
-const ENDPOINT = `http://127.0.0.1:${PORT}/mcp`;
+function envSetting(name) {
+  const val = (process.env[name] || "").trim();
+  if (!val || /^\$\{user_config\.[^}]+\}$/.test(val)) return "";
+  return val;
+}
+
+const PORT = envSetting("FREECAD_MCP_PORT") || "39280";
+const TOKEN = envSetting("FREECAD_MCP_TOKEN");
+const TLS_CERT_FILE = envSetting("FREECAD_MCP_TLS_CERT_FILE");
+const SCHEME = TLS_CERT_FILE ? "https" : "http";
+const ENDPOINT = `${SCHEME}://127.0.0.1:${PORT}/mcp`;
 const LEGACY_PROTOCOL_VERSION = "2025-11-25";
 const MODERN_PROTOCOL_VERSION = "2026-07-28";
 const META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion";
@@ -26,6 +38,10 @@ const TOOLS = JSON.parse(fs.readFileSync(path.join(__dirname, "tools.json"), "ut
 const VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf8")).version;
 const UNREACHABLE_HINT =
   "FreeCAD isn't reachable. Start FreeCAD and turn the bridge on with the MCP Bridge toolbar button, then try again.";
+const UNAUTHORIZED_MESSAGE =
+  `FreeCAD MCP Bridge requires a bearer token and did not accept this request's (401 Unauthorized at ${ENDPOINT}). ` +
+  "Set Bearer token in the FreeCAD MCP Bridge extension settings in Claude Desktop to the token FreeCAD showed when it was generated, " +
+  "or click Generate new token in FreeCAD's Edit → Preferences → MCP Bridge for a new one.";
 
 function writeLine(text) {
   process.stdout.write(text + "\n");
@@ -33,6 +49,59 @@ function writeLine(text) {
 
 function fetchErrorMessage(err) {
   return err.cause && err.cause.message ? `${err.message}: ${err.cause.message}` : err.message;
+}
+
+function errorCode(err) {
+  return (err && err.cause && err.cause.code) || (err && err.code) || "";
+}
+
+function tlsErrorMessage(err) {
+  const detail = fetchErrorMessage(err);
+  return (
+    `FreeCAD MCP Bridge TLS connection failed at ${ENDPOINT} (${detail}). ` +
+    "Check that TLS certificate file (PEM) in the extension settings is FreeCAD's certificate and covers 127.0.0.1. " +
+    "Check that Also require on loopback and Require TLS (HTTPS) are on in FreeCAD's Edit → Preferences → MCP Bridge. " +
+    "While Also require on loopback is off, leave the certificate setting blank."
+  );
+}
+
+function toolErrorResult(errorText) {
+  return {
+    content: [
+      {
+        type: "text",
+        text: JSON.stringify({
+          page: [],
+          has_more: false,
+          error: errorText,
+        }),
+      },
+    ],
+    isError: true,
+  };
+}
+
+function sendErrorReply(message, errorText) {
+  if (message.method === "tools/call") {
+    writeLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: message.id,
+        result: toolErrorResult(errorText),
+      })
+    );
+  } else {
+    writeLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: message.id,
+        error: {
+          code: -32001,
+          message: errorText,
+        },
+      })
+    );
+  }
 }
 
 function offlineResult(message, err) {
@@ -47,19 +116,7 @@ function offlineResult(message, err) {
     case "tools/list":
       return { tools: TOOLS };
     case "tools/call":
-      return {
-        content: [
-          {
-            type: "text",
-            text: JSON.stringify({
-              page: [],
-              has_more: false,
-              error: `${UNREACHABLE_HINT} (${ENDPOINT}: ${fetchErrorMessage(err)})`,
-            }),
-          },
-        ],
-        isError: true,
-      };
+      return toolErrorResult(`${UNREACHABLE_HINT} (${ENDPOINT}: ${fetchErrorMessage(err)})`);
     default:
       return null;
   }
@@ -69,6 +126,9 @@ function bridgeHeaders(message) {
   // Stdio has no headers. The version the body already declares is the
   // one the bridge checks; a body with none is the legacy handshake.
   const headers = { "Content-Type": "application/json" };
+  if (TOKEN) {
+    headers["Authorization"] = `Bearer ${TOKEN}`;
+  }
   const meta = message.params && message.params._meta;
   const declared = meta && meta[META_PROTOCOL_VERSION];
   const version = typeof declared === "string" ? declared : LEGACY_PROTOCOL_VERSION;
@@ -83,20 +143,80 @@ function bridgeHeaders(message) {
   return headers;
 }
 
+function postHttps(headers, body) {
+  return new Promise((resolve, reject) => {
+    let ca;
+    try {
+      ca = fs.readFileSync(TLS_CERT_FILE);
+    } catch (err) {
+      reject(err);
+      return;
+    }
+    const payload = Buffer.from(body, "utf8");
+    const req = https.request(
+      ENDPOINT,
+      {
+        method: "POST",
+        headers: { ...headers, "Content-Length": String(payload.length) },
+        ca,
+      },
+      (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400) {
+          res.resume();
+          const err = new Error("redirect mode is set to 'error': unexpected redirect");
+          err.code = "ERR_UNEXPECTED_REDIRECT";
+          reject(err);
+          return;
+        }
+        const chunks = [];
+        res.on("data", (chunk) => chunks.push(chunk));
+        res.on("end", () => {
+          const text = Buffer.concat(chunks).toString("utf8");
+          resolve({
+            status: res.statusCode || 0,
+            contentType: String(res.headers["content-type"] || ""),
+            text: async () => text,
+          });
+        });
+      }
+    );
+    req.on("error", reject);
+    req.end(payload);
+  });
+}
+
+async function postBridge(message, rawLine) {
+  const headers = bridgeHeaders(message);
+  if (TLS_CERT_FILE) {
+    return postHttps(headers, rawLine);
+  }
+  const res = await fetch(ENDPOINT, {
+    method: "POST",
+    headers,
+    body: rawLine,
+    redirect: "error",
+  });
+  return {
+    status: res.status,
+    contentType: res.headers.get("content-type") || "",
+    text: () => res.text(),
+  };
+}
+
 async function forward(rawLine, message) {
   // JSON-RPC notifications omit "id" entirely and get no reply.
   const isNotification = message.id === undefined;
 
   let res;
   try {
-    res = await fetch(ENDPOINT, {
-      method: "POST",
-      headers: bridgeHeaders(message),
-      body: rawLine,
-      redirect: "error",
-    });
+    res = await postBridge(message, rawLine);
   } catch (err) {
     if (isNotification) return;
+    const code = errorCode(err);
+    if (TLS_CERT_FILE && code !== "ECONNREFUSED" && code !== "ERR_UNEXPECTED_REDIRECT") {
+      sendErrorReply(message, tlsErrorMessage(err));
+      return;
+    }
     const result = offlineResult(message, err);
     if (result) {
       writeLine(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }));
@@ -120,7 +240,12 @@ async function forward(rawLine, message) {
   const bodyText = await res.text();
   if (isNotification) return;
 
-  const contentType = (res.headers.get("content-type") || "").toLowerCase();
+  if (res.status === 401) {
+    sendErrorReply(message, UNAUTHORIZED_MESSAGE);
+    return;
+  }
+
+  const contentType = res.contentType.toLowerCase();
   if (contentType.includes("text/event-stream")) {
     // SSE stream: pull each event's JSON-RPC envelope out of its data field(s)
     // and write one line per event.

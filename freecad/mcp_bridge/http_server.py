@@ -303,6 +303,7 @@ class HttpServer:
         require_tls: bool | None = None,
         tls_cert_file: str | None = None,
         tls_key_file: str | None = None,
+        require_on_loopback: bool | None = None,
     ) -> None:
         if self.is_running():
             return
@@ -324,6 +325,11 @@ class HttpServer:
             config.require_tls()
             if require_tls is None
             else bool(require_tls)
+        )
+        req_on_loopback = (
+            config.require_on_loopback()
+            if require_on_loopback is None
+            else bool(require_on_loopback)
         )
         cert_file = (
             config.tls_cert_file()
@@ -351,20 +357,20 @@ class HttpServer:
             for entry in entries
             if not config.is_loopback_address(entry)
         ]
+        protected = entries if req_on_loopback else non_loopback
         ssl_context = None
-        if non_loopback and req_tls:
+        if protected and req_tls:
             try:
                 ssl_context = config.build_ssl_context(cert_file, key_file)
             except ValueError as exc:
                 FreeCAD.Console.PrintDeveloperError(f"{LOG_PREFIX} {exc}\n")
                 raise
-        if non_loopback and req_token and not config.token_hash():
+        if protected and req_token and not config.token_hash():
             msg = (
-                "A bearer token is required for non-loopback listen "
-                "addresses and none has been generated. Turn the bridge "
-                "on with MCP Bridge On/Off to generate one, or click "
-                "Generate new token in Edit → Preferences → MCP Bridge, "
-                "or untick Require bearer token there."
+                "A bearer token is required and none has been generated. "
+                "Turn the bridge on with MCP Bridge On/Off to generate "
+                "one, or click Generate new token in Edit → Preferences "
+                "→ MCP Bridge, or untick Require bearer token there."
             )
             FreeCAD.Console.PrintDeveloperError(f"{LOG_PREFIX} {msg}\n")
             raise ValueError(msg)
@@ -378,13 +384,14 @@ class HttpServer:
             for entry, host, bind_port in targets:
                 failed_entry = entry
                 is_loopback = config.is_loopback_address(entry)
+                protect_entry = req_on_loopback or not is_loopback
                 srv = paging.MaintenanceHTTPServer(
                     (host, bind_port), McpRequestHandler
                 )
                 bound_servers.append(srv)
                 srv.executor = self._executor
-                srv.require_token = bool(req_token and not is_loopback)
-                if ssl_context is not None and not is_loopback:
+                srv.require_token = bool(req_token and protect_entry)
+                if ssl_context is not None and protect_entry:
                     srv.socket = ssl_context.wrap_socket(
                         srv.socket,
                         server_side=True,

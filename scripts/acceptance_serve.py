@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 import time
 
 _script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -43,25 +44,75 @@ def _write_ready_file(path: str, port: int) -> None:
 
 def _watch_for_stop(stop_file: str, timeout_s: float) -> None:
     import FreeCAD as App
+    import FreeCADGui as Gui
     from PySide.QtCore import QTimer
 
     deadline = time.monotonic() + timeout_s
-    timer = QTimer()
+    mw = Gui.getMainWindow()
+    timer = QTimer(mw) if mw is not None else QTimer()
+    done = False
 
     def check():
+        nonlocal done
+        if done:
+            return
         if os.path.exists(stop_file):
+            done = True
             timer.stop()
             common.log_notice("Stop file seen; quitting")
             common.log_group_end()
             common.quit_freecad(0)
         elif time.monotonic() > deadline:
+            done = True
             timer.stop()
             common.fail(f"No stop file after {timeout_s:.0f} s; quitting")
+        else:
+            QTimer.singleShot(POLL_MS, check)
+
+    def thread_watch():
+        stop_seen_at = None
+        while not done:
+            time.sleep(POLL_MS / 1000.0)
+            if done:
+                return
+            now = time.monotonic()
+            if os.path.exists(stop_file):
+                if stop_seen_at is None:
+                    stop_seen_at = now
+                elif now - stop_seen_at >= 2.0:
+                    common._write_ci_log(
+                        "Stop file seen; quitting", level="PASS"
+                    )
+                    common.log_group_end()
+                    common._save_coverage()
+                    common._flush_stdio()
+                    if sys.platform.startswith("win"):
+                        common._terminate_windows_process(0)
+                    os._exit(0)
+            elif now > deadline + 2.0:
+                common._write_ci_log(
+                    f"No stop file after {timeout_s:.0f} s; quitting",
+                    level="FAIL",
+                )
+                common.log_group_end()
+                common._save_coverage()
+                common._flush_stdio()
+                if sys.platform.startswith("win"):
+                    common._terminate_windows_process(1)
+                os._exit(1)
 
     timer.timeout.connect(check)
     timer.start(POLL_MS)
-    # Keep the timer alive after this script's namespace is released.
+    QTimer.singleShot(POLL_MS, check)
+    watcher = threading.Thread(
+        target=thread_watch, name="acceptance-stop-watcher", daemon=True
+    )
+    watcher.start()
+    # Keep the timer and callback alive after this script's namespace is
+    # released.
     App.AcceptanceStopTimer = timer
+    App.AcceptanceStopCheck = check
+    App.AcceptanceStopWatcher = watcher
 
 
 def _run() -> None:

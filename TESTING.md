@@ -36,10 +36,12 @@ report to the job summary.
 
 The [Node test suite](tests/shim/shim.test.js) tests the shim in
 [mcp-stdio-shim/](mcp-stdio-shim/). It launches the shim as a child
-process against a stand-in HTTP bridge or a closed loopback port.
-Among the checks are input framing, forwarding and protocol headers,
-JSON and SSE replies, notification silence, and the fallback responses
-when FreeCAD is unreachable.
+process against a stand-in HTTP or HTTPS bridge or a closed loopback
+port. Among the checks are input framing, forwarding and protocol
+headers, bearer token forwarding, HTTPS with a trusted certificate,
+clear errors on a rejected token or TLS failure, JSON and SSE
+replies, notification silence, and the fallback responses when
+FreeCAD is unreachable.
 
 Use Node 20 to match CI; no FreeCAD or third-party Node packages are
 needed:
@@ -63,9 +65,10 @@ behaviors it checks are execution and file execution, stdout/stderr and
 tracebacks, output paging and replay, retention preferences, execution
 order, GUI event handling, the two supported MCP protocol versions,
 HTTP and Origin validation, loopback and non-loopback listen-address
-binding, bearer token authentication and TLS encryption on non-loopback
-entries, per-entry risk acceptance and start warnings, port changes
-and stopping the bridge with running or queued jobs. When `BUNDLE_MCPB`
+binding, bearer token authentication and TLS encryption on
+non-loopback and loopback entries, per-entry risk acceptance and
+start warnings, port changes and stopping the bridge with running or
+queued jobs. When `BUNDLE_MCPB`
 names a packed `.mcpb`, `test_bundle_mcp.py` calls that shim
 over stdio, in both protocol versions, and then expects it
 to exit. With no bundle named, that test skips;

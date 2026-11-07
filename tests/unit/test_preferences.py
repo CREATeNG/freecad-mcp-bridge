@@ -33,6 +33,7 @@ SETTINGS = (
     "RequireTls",
     "TlsCertFile",
     "TlsKeyFile",
+    "RequireOnLoopback",
     "MaxResponseTimeoutSeconds",
     "MaxPageSize",
     "MaxHistoryRetentionMinutes",
@@ -154,6 +155,24 @@ class PreferencePageTests(unittest.TestCase):
         pem_filter = "PEM files (*.pem *.crt *.key);;All files (*)"
         self.assertEqual(settings["TlsCertFile"]["filter"], pem_filter)
         self.assertEqual(settings["TlsKeyFile"]["filter"], pem_filter)
+        self.assertEqual(
+            settings["TlsCertFile"]["toolTip"],
+            "PEM certificate file for HTTPS.",
+        )
+        self.assertEqual(
+            settings["TlsKeyFile"]["toolTip"],
+            "PEM private key file for HTTPS.",
+        )
+        self.assertEqual(
+            settings["RequireOnLoopback"]["text"],
+            "Also require on loopback",
+        )
+        self.assertEqual(
+            settings["RequireOnLoopback"]["toolTip"],
+            "Apply Require bearer token and Require TLS (HTTPS) to loopback "
+            "entries too.",
+        )
+        self.assertEqual(settings["RequireOnLoopback"]["checked"], "false")
         widgets_by_name = {
             w.get("name"): {
                 prop.get("name"): prop[0].text
@@ -161,6 +180,10 @@ class PreferencePageTests(unittest.TestCase):
             }
             for w in ET.parse(PAGE).iter("widget")
         }
+        self.assertEqual(
+            widgets_by_name["securityGroup"]["title"],
+            "Security",
+        )
         self.assertEqual(
             widgets_by_name["tlsCertFileLabel"]["text"],
             "TLS certificate file (PEM)",
@@ -178,7 +201,8 @@ class PreferencePageTests(unittest.TestCase):
         self.assertIn(
             "https://&lt;ADDRESS&gt;:&lt;PORT&gt;/mcp with the bearer token, "
             "while Require TLS (HTTPS) and Require bearer token are on, as "
-            "they are by default.",
+            "they are by default. With Also require on loopback on, loopback "
+            "entries work the same way.",
             widgets_by_name["clientNote"]["text"],
         )
         spin_names = (
@@ -222,6 +246,7 @@ class UnsetPreferenceTests(unittest.TestCase):
         self.assertEqual(config.listen_addresses(), ["127.0.0.1:39280"])
         self.assertIs(config.require_token(), True)
         self.assertIs(config.require_tls(), True)
+        self.assertIs(config.require_on_loopback(), False)
         self.assertEqual(config.tls_cert_file(), "")
         self.assertEqual(config.tls_key_file(), "")
         self.assertEqual(config.max_response_timeout_ms(), 15_000)
@@ -1072,7 +1097,8 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             self.assertEqual(prompts, [])
             self.assertEqual(shown_tokens, [])
             self.assertIn(
-                "TLS is required for non-loopback listen addresses",
+                "TLS is required and needs a certificate file and a private "
+                "key file.",
                 statuses[-1],
             )
             self.assertIn("untick Require TLS there.", warnings[-1])
@@ -1080,6 +1106,40 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 "Change the listen address in Edit", warnings[-1]
             )
             store["RequireTls"] = False
+
+            # 0c. With only loopback entries and RequireOnLoopback=True,
+            # RequireTls=True without cert/key fails safe the same way, and
+            # RequireToken=True with no TokenHash generates and shows the
+            # first token once without showing the non-loopback risk dialog.
+            store["ListenAddress"] = "127.0.0.1:39280"
+            store["RequireOnLoopback"] = True
+            store["RequireTls"] = True
+            cmd.Activated()
+            self.assertFalse(running)
+            self.assertEqual(prompts, [])
+            self.assertEqual(shown_tokens, [])
+            self.assertIn(
+                "TLS is required and needs a certificate file and a private "
+                "key file.",
+                statuses[-1],
+            )
+            store["RequireTls"] = False
+            store["RequireToken"] = True
+            cmd.Activated()
+            self.assertTrue(running)
+            self.assertEqual(prompts, [])
+            self.assertEqual(len(shown_tokens), 1)
+            self.assertTrue(config.verify_token(shown_tokens[0]))
+            self.assertEqual(
+                statuses[-1], "MCP Bridge: Listening on 127.0.0.1:39280"
+            )
+            cmd.Activated()
+            self.assertFalse(running)
+            shown_tokens.clear()
+            store.pop("TokenHash", None)
+            store["RequireToken"] = False
+            store["RequireOnLoopback"] = False
+            store["ListenAddress"] = "127.0.0.1:39280\n192.168.1.50:39280"
 
             # 1. Decline: bridge stays off and entry is not accepted.
             decision = False
@@ -1361,7 +1421,8 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 self.assertFalse(srv.is_running())
                 self.assertEqual(bound, [])
                 self.assertIn(
-                    "TLS is required for non-loopback listen addresses",
+                    "TLS is required and needs a certificate file and a "
+                    "private key file.",
                     errors[-1],
                 )
                 with mock.patch.object(
@@ -1374,8 +1435,8 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                             tls_cert_file="cert.pem", tls_key_file="key.pem"
                         )
                     self.assertIn(
-                        "A bearer token is required for non-loopback listen "
-                        "addresses and none has been generated.",
+                        "A bearer token is required and none has been "
+                        "generated.",
                         str(no_tok_ctx.exception),
                     )
                     self.assertEqual(config.token_hash(), "")
@@ -1421,6 +1482,55 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                     "192.168.1.50:39281.\n",
                 )
                 srv.stop()
+
+                # 2c. With RequireOnLoopback=True on loopback-only: enforces
+                # both RequireToken and RequireTls on 127.0.0.1 without
+                # logging a non-loopback warning.
+                bound.clear()
+                closed.clear()
+                warnings.clear()
+                errors.clear()
+                wrapped_sockets.clear()
+                store["ListenAddress"] = "127.0.0.1:39280"
+                store["RequireOnLoopback"] = True
+                with self.assertRaises(ValueError):
+                    srv.start()
+                self.assertIn(
+                    "TLS is required and needs a certificate file and a "
+                    "private key file.",
+                    errors[-1],
+                )
+                store.pop("TokenHash", None)
+                with mock.patch.object(
+                    config,
+                    "build_ssl_context",
+                    return_value=FakeSSLContext(),
+                ):
+                    with self.assertRaises(ValueError) as loop_no_tok:
+                        srv.start(
+                            tls_cert_file="cert.pem", tls_key_file="key.pem"
+                        )
+                    self.assertIn(
+                        "A bearer token is required and none has been "
+                        "generated.",
+                        str(loop_no_tok.exception),
+                    )
+                    config.generate_and_store_token()
+                    srv.start(
+                        tls_cert_file="cert.pem", tls_key_file="key.pem"
+                    )
+                self.assertTrue(srv.is_running())
+                self.assertTrue(srv._servers[0][0].require_token)
+                self.assertEqual(
+                    wrapped_sockets,
+                    [
+                        "tls(raw-sock-127.0.0.1:39280, "
+                        "server_side=True, do_handshake_on_connect=False)"
+                    ],
+                )
+                self.assertEqual(warnings, [])
+                srv.stop()
+                store["RequireOnLoopback"] = False
                 store["RequireToken"] = False
                 store["RequireTls"] = False
 

@@ -33,7 +33,9 @@
       "command": "node",
       "args": ["${__dirname}/index.js"],
       "env": {
-        "FREECAD_MCP_PORT": "${user_config.port}"
+        "FREECAD_MCP_PORT": "${user_config.port}",
+        "FREECAD_MCP_TOKEN": "${user_config.token}",
+        "FREECAD_MCP_TLS_CERT_FILE": "${user_config.tls_cert_file}"
       }
     }
   },
@@ -43,6 +45,19 @@
       "title": "FreeCAD MCP Bridge port",
       "description": "Requires the MCP Bridge addon installed and switched on in FreeCAD. Must match the port of a 127.0.0.1 entry in FreeCAD's Edit → Preferences → MCP Bridge → Listen address. Extension 0.1.26.",
       "default": 39280,
+      "required": false
+    },
+    "token": {
+      "type": "string",
+      "sensitive": true,
+      "title": "Bearer token",
+      "description": "Leave blank unless Also require on loopback and Require bearer token are on in FreeCAD's Edit → Preferences → MCP Bridge. Then paste the token FreeCAD showed when it was generated.",
+      "required": false
+    },
+    "tls_cert_file": {
+      "type": "file",
+      "title": "TLS certificate file (PEM)",
+      "description": "Leave blank unless Also require on loopback and Require TLS (HTTPS) are on in FreeCAD's Edit → Preferences → MCP Bridge. Then select the PEM certificate file set there. It must cover 127.0.0.1. With a certificate set while the bridge serves plain HTTP on loopback, the connection fails.",
       "required": false
     }
   }

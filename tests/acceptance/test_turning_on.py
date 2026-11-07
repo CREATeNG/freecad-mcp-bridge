@@ -326,6 +326,7 @@ orig_addr = params.GetString('ListenAddress', '')
 orig_accepted = params.GetString('AcceptedListenAddresses', '')
 orig_req_token = params.GetBool('RequireToken', True)
 orig_req_tls = params.GetBool('RequireTls', True)
+orig_req_on_loopback = params.GetBool('RequireOnLoopback', False)
 orig_token_hash = params.GetString('TokenHash', '')
 orig_cert = params.GetString('TlsCertFile', '')
 orig_key = params.GetString('TlsKeyFile', '')
@@ -461,6 +462,7 @@ def wait_for_runner():
         params.RemString('AcceptedListenAddresses')
     params.SetBool('RequireToken', orig_req_token)
     params.SetBool('RequireTls', orig_req_tls)
+    params.SetBool('RequireOnLoopback', orig_req_on_loopback)
     if orig_token_hash:
         params.SetString('TokenHash', orig_token_hash)
     else:
@@ -652,6 +654,8 @@ class ListenAddressTests(unittest.TestCase):
             phase1_file = seen_file + ".phase1"
             phase2_go = os.path.join(folder, "phase2_go")
             phase2_file = seen_file + ".phase2"
+            phase3_go = os.path.join(folder, "phase3_go")
+            phase3_file = seen_file + ".phase3"
             finish_go = os.path.join(folder, "finish_go")
 
             mcp.run(
@@ -664,6 +668,8 @@ class ListenAddressTests(unittest.TestCase):
                     phase1_file,
                     phase2_go,
                     phase2_file,
+                    phase3_go,
+                    phase3_file,
                     finish_go,
                 )
             )
@@ -772,6 +778,65 @@ class ListenAddressTests(unittest.TestCase):
             self.assertEqual(status_new, 200)
             self.assertEqual(out2, "https with token2\n")
 
+            # Trigger phase 3: turn Also require on loopback on with only
+            # 127.0.0.1 in ListenAddress.
+            open(phase3_go, "w", encoding="utf-8").close()
+            self.assertTrue(
+                wait_for_file(phase3_file),
+                "the bridge did not reach the loopback TLS + token "
+                "phase-3 state",
+            )
+            with open(phase3_file, encoding="utf-8") as handle:
+                p3 = json.load(handle)
+            token3 = p3["token3"]
+            self.assertNotEqual(token2, token3)
+            loopback_https_url = f"https://127.0.0.1:{PORT}/mcp"
+            loopback_http_url = f"http://127.0.0.1:{PORT}/mcp"
+
+            # Plain HTTP to 127.0.0.1 now fails because TLS is required on
+            # loopback too.
+            with self.assertRaises(Exception):
+                _post_mcp(
+                    loopback_http_url,
+                    "print('plain loopback')",
+                    ssl_context=None,
+                )
+
+            # HTTPS on 127.0.0.1 without a token gets 401 with
+            # WWW-Authenticate: Bearer.
+            lb_no_tok, lb_auth_no_tok = _post_mcp(
+                loopback_https_url,
+                "print('loopback no token')",
+                ssl_context=client_ctx,
+                token=None,
+            )
+            self.assertEqual(lb_no_tok, 401)
+            self.assertEqual(lb_auth_no_tok, "Bearer")
+
+            # HTTPS on 127.0.0.1 with token3 succeeds.
+            lb_ok, lb_out = _post_mcp(
+                loopback_https_url,
+                "print('loopback https with token3')",
+                ssl_context=client_ctx,
+                token=token3,
+            )
+            self.assertEqual(lb_ok, 200)
+            self.assertEqual(lb_out, "loopback https with token3\n")
+
+            # The Claude Desktop stdio shim connects over HTTPS on 127.0.0.1
+            # when given the token and certificate file.
+            if node_bin is not None:
+                shim_tls_out = _run_via_stdio_shim(
+                    node_bin,
+                    PORT,
+                    "print('desktop shim on loopback https')",
+                    token=token3,
+                    tls_cert_file=cert_path,
+                )
+                self.assertEqual(
+                    shim_tls_out, "desktop shim on loopback https\n"
+                )
+
             open(finish_go, "w", encoding="utf-8").close()
             self.assertTrue(
                 wait_for_file(seen_file),
@@ -787,7 +852,8 @@ class ListenAddressTests(unittest.TestCase):
         # and left the bridge off.
         self.assertFalse(seen.get("no_cert_running"))
         self.assertIn(
-            "TLS is required for non-loopback listen addresses",
+            "TLS is required and needs a certificate file and a private "
+            "key file.",
             seen.get("no_cert_status", ""),
         )
         self.assertIn(
@@ -844,6 +910,24 @@ class ListenAddressTests(unittest.TestCase):
         self.assertEqual(seen.get("started_status"), expected_status)
         self.assertIn(expected_warning, seen.get("started_report", ""))
 
+        # 6. With Also require on loopback on and only 127.0.0.1 in
+        # ListenAddress: missing certificate fails safe, first start shows the
+        # token dialog without the non-loopback risk dialog, and status has no
+        # non-loopback warning.
+        self.assertFalse(seen.get("loopback_no_cert_running"))
+        self.assertIn(
+            "TLS is required and needs a certificate file and a private "
+            "key file.",
+            seen.get("loopback_no_cert_status", ""),
+        )
+        self.assertFalse(seen.get("loopback_risk_dialog_found"))
+        self.assertTrue(seen.get("loopback_token_dialog_found"))
+        self.assertTrue(seen.get("loopback_started_running"))
+        self.assertEqual(
+            seen.get("loopback_started_status"),
+            f"MCP Bridge: Listening on 127.0.0.1:{PORT}",
+        )
+
 
 def _post_mcp(url, code, ssl_context=None, token=None):
     """Send an MCP 2025-11-25 tools/call execute_python POST and return
@@ -884,7 +968,9 @@ def _post_mcp(url, code, ssl_context=None, token=None):
         return err.code, err.headers.get("WWW-Authenticate", "")
 
 
-def _run_via_stdio_shim(node_bin, port, code):
+def _run_via_stdio_shim(
+    node_bin, port, code, token=None, tls_cert_file=None
+):
     """Run `code` through `mcp-stdio-shim/index.js` over stdio against
     `127.0.0.1:port` and return stdout text."""
     shim_js = os.path.abspath(
@@ -898,6 +984,14 @@ def _run_via_stdio_shim(node_bin, port, code):
     )
     env = os.environ.copy()
     env["FREECAD_MCP_PORT"] = str(port)
+    if token is not None:
+        env["FREECAD_MCP_TOKEN"] = token
+    else:
+        env.pop("FREECAD_MCP_TOKEN", None)
+    if tls_cert_file is not None:
+        env["FREECAD_MCP_TLS_CERT_FILE"] = tls_cert_file
+    else:
+        env.pop("FREECAD_MCP_TLS_CERT_FILE", None)
     msg = json.dumps(
         {
             "jsonrpc": "2.0",
@@ -946,6 +1040,8 @@ def _token_and_tls_flow(
     phase1_file,
     phase2_go,
     phase2_file,
+    phase3_go,
+    phase3_file,
     finish_go,
 ):
     entry = f"{address}:{PORT}"
@@ -972,6 +1068,7 @@ orig_addr = params.GetString('ListenAddress', '')
 orig_accepted = params.GetString('AcceptedListenAddresses', '')
 orig_req_token = params.GetBool('RequireToken', True)
 orig_req_tls = params.GetBool('RequireTls', True)
+orig_req_on_loopback = params.GetBool('RequireOnLoopback', False)
 orig_token_hash = params.GetString('TokenHash', '')
 orig_cert = params.GetString('TlsCertFile', '')
 orig_key = params.GetString('TlsKeyFile', '')
@@ -1032,6 +1129,7 @@ def step_no_cert_then_start():
     params.RemString('TokenHash')
     params.RemBool('RequireToken')
     params.RemBool('RequireTls')
+    params.RemBool('RequireOnLoopback')
     params.RemString('TlsCertFile')
     params.RemString('TlsKeyFile')
     before_no_cert = len(report_view_text())
@@ -1143,6 +1241,42 @@ def wait_for_phase2():
     )
     with open({phase2_file!r}, 'w', encoding='utf-8') as handle:
         json.dump(seen, handle)
+    QTimer.singleShot(200, wait_for_phase3)
+
+
+def wait_for_phase3():
+    if not os.path.exists({phase3_go!r}):
+        QTimer.singleShot(200, wait_for_phase3)
+        return
+    if bridge.is_running():
+        action.trigger()
+    params.SetString('ListenAddress', {loopback_entry!r})
+    params.SetBool('RequireOnLoopback', True)
+    params.RemString('AcceptedListenAddresses')
+    params.RemString('TokenHash')
+    params.RemString('TlsCertFile')
+    before_lb_no_cert = len(report_view_text())
+    action.trigger()
+    seen['loopback_no_cert_running'] = bridge.is_running()
+    seen['loopback_no_cert_status'] = mw.statusBar().currentMessage()
+    seen['loopback_no_cert_report'] = report_view_text()[before_lb_no_cert:]
+
+    params.SetString('TlsCertFile', {cert_path!r})
+    params.SetString('TlsKeyFile', {key_path!r})
+    seen['loopback_risk_dialog_found'] = False
+    seen['loopback_token_dialog_found'] = False
+    QTimer.singleShot(
+        150,
+        lambda: handle_dialogs(
+            'loopback_risk_dialog', 'loopback_token_dialog'
+        ),
+    )
+    action.trigger()
+    seen['loopback_started_running'] = bridge.is_running()
+    seen['loopback_started_status'] = mw.statusBar().currentMessage()
+    seen['token3'] = seen.get('loopback_token_dialog_value', '')
+    with open({phase3_file!r}, 'w', encoding='utf-8') as handle:
+        json.dump(seen, handle)
     QTimer.singleShot(200, wait_for_finish)
 
 
@@ -1162,6 +1296,7 @@ def wait_for_finish():
         params.RemString('AcceptedListenAddresses')
     params.SetBool('RequireToken', orig_req_token)
     params.SetBool('RequireTls', orig_req_tls)
+    params.SetBool('RequireOnLoopback', orig_req_on_loopback)
     if orig_token_hash:
         params.SetString('TokenHash', orig_token_hash)
     else:

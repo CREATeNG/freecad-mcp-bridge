@@ -492,30 +492,32 @@ per entry in FreeCAD's preferences (`AcceptedListenAddresses`) once
 the start succeeds. Every start with any non-loopback entry warns in
 the status bar and the Report view.
 
-**Non-loopback authentication and encryption — on by default, opt-out**
+**Authentication and encryption — on by default beyond loopback, opt-in on loopback**
 
-Two preferences apply across all non-loopback entries while leaving
-loopback entries and the Claude Desktop stdio shim unchanged:
+Two preferences apply across all non-loopback entries by default, and
+a third preference (`RequireOnLoopback`, default `false`) applies
+them to loopback entries as well. While `RequireOnLoopback` is off,
+loopback entries use plain HTTP without a token:
 
 - **Bearer token (`RequireToken`, default `true`)** — when enabled,
-  every request to a non-loopback listener must carry
+  every request to a listener that requires a token must carry
   `Authorization: Bearer <token>` or is rejected with `401
   Unauthorized`. The addon generates a 256-bit random token, shows it
   once in a modal dialog with a note that it will not be stored or
   shown again, and stores only its SHA-256 hex digest (`TokenHash`) in
   FreeCAD's preferences, compared in constant time. The first token is
-  generated and shown when the user turns the bridge on with a
-  non-loopback entry and no `TokenHash` is stored, or when the user
+  generated and shown when the user turns the bridge on with an entry
+  that requires a token and no `TokenHash` is stored, or when the user
   clicks **Generate new token** in Preferences. Generating a new token
   replaces `TokenHash` and immediately refuses the old token.
-- **TLS (`RequireTls`, default `true`)** — when enabled, non-loopback
-  listeners serve HTTPS using the user-configured certificate file
-  (`TlsCertFile`) and private key file (`TlsKeyFile`) with Python's
-  standard-library `ssl` module. The addon does not generate
-  certificates. If `RequireTls` is enabled and a non-loopback entry is
-  configured without readable, valid certificate and key files,
-  startup fails with an error directing the user to Edit → Preferences
-  → MCP Bridge and the bridge stays off.
+- **TLS (`RequireTls`, default `true`)** — when enabled, listeners
+  that require TLS serve HTTPS using the user-configured certificate
+  file (`TlsCertFile`) and private key file (`TlsKeyFile`) with
+  Python's standard-library `ssl` module. The addon does not generate
+  certificates. If `RequireTls` is enabled and an entry that requires
+  TLS is configured without readable, valid certificate and key
+  files, startup fails with an error directing the user to Edit →
+  Preferences → MCP Bridge and the bridge stays off.
 
 **Security posture — noted trade-offs**
 
@@ -546,21 +548,29 @@ present and is not `localhost` or `127.0.0.1`.
 
 Some MCP clients speak only stdio for local servers. A small
 zero-dependency Node.js shim (`mcp-stdio-shim/index.js`) ships with
-the addon as a stdio ↔ HTTP proxy. Each newline-delimited JSON-RPC
-message on stdin is forwarded as an HTTP POST, body unchanged. A
-JSON reply, or each event of an SSE reply, is unwrapped and written
-back on stdout as one line. Stdio carries no headers, so the shim sets
-`MCP-Protocol-Version` from
+the addon as a stdio ↔ HTTP/HTTPS proxy. Each newline-delimited
+JSON-RPC message on stdin is forwarded as an HTTP POST, body
+unchanged. A JSON reply, or each event of an SSE reply, is unwrapped
+and written back on stdout as one line. Stdio carries no headers, so
+the shim sets `MCP-Protocol-Version` from
 `params._meta["io.modelcontextprotocol/protocolVersion"]` when that
 field is present, and to `2025-11-25` when it is not. When the
 version is `2026-07-28` it also sets `Mcp-Method` from the message's
 method and, for `tools/call`, `Mcp-Name` from `params.name`. Node
-stdlib only (global `fetch`, Node ≥ 18); Claude Desktop bundles
-Node.js, so no user-side runtime install is needed. The shim reads
-the port from the `FREECAD_MCP_PORT` environment variable (default
-39280). Notifications (no `id`) get no reply. While the bridge
-answers, `initialize` is forwarded with every other message. If the
-bridge is unreachable, the shim answers `initialize` itself with
+stdlib only (global `fetch` and `node:https`, Node ≥ 18); Claude
+Desktop bundles Node.js, so no user-side runtime install is needed.
+The shim reads the port from `FREECAD_MCP_PORT` (default 39280), an
+optional bearer token from `FREECAD_MCP_TOKEN`, and an optional PEM
+certificate path from `FREECAD_MCP_TLS_CERT_FILE` (all wired from
+`user_config` in `manifest.json`). When a token is set, it sends
+`Authorization: Bearer <token>`; when a certificate file is set, it
+connects to `https://127.0.0.1:<port>/mcp` and trusts that
+certificate (which must cover `127.0.0.1`). A `401` response or a
+TLS/certificate failure is surfaced as a tool-result or JSON-RPC
+error naming the extension settings and **Also require on loopback**.
+Notifications (no `id`) get no reply. While the bridge answers,
+`initialize` is forwarded with every other message. If the bridge is
+unreachable, the shim answers `initialize` itself with
 `protocolVersion` `2025-11-25`, and `tools/list` from `tools.json`,
 a copy of the addon's tool list that release preparation checks
 against `tools.py`, so a client started before FreeCAD comes up
@@ -641,9 +651,10 @@ automatically.
 | Parameter | Default | Notes |
 |-----------|---------|-------|
 | Listen address | `127.0.0.1:39280` | List of `address:port` entries (`[ipv6]:port` for IPv6) to bind; if unset, inherits a previously saved `Port` value; missing port or bind conflict at startup logs an error and leaves the bridge off; non-loopback entries require user risk acceptance for each entry once (`AcceptedListenAddresses`) and log a warning in the status bar and Report view on each start |
-| Require bearer token | `true` | Requires `Authorization: Bearer <token>` on non-loopback entries; stores only a SHA-256 hash (`TokenHash`) and shows the generated token once |
-| Require TLS (HTTPS) | `true` | Serves HTTPS on non-loopback entries using `TlsCertFile` and `TlsKeyFile`; fails to start on a non-loopback entry if enabled without valid certificate and key files |
-| TLS certificate file (PEM) / TLS private key file (PEM) | `""` | PEM certificate (`TlsCertFile`) and private key (`TlsKeyFile`) paths for HTTPS on non-loopback entries |
+| Require bearer token | `true` | Requires `Authorization: Bearer <token>` on non-loopback entries (and on loopback when `RequireOnLoopback` is `true`); stores only a SHA-256 hash (`TokenHash`) and shows the generated token once |
+| Require TLS (HTTPS) | `true` | Serves HTTPS on non-loopback entries (and on loopback when `RequireOnLoopback` is `true`) using `TlsCertFile` and `TlsKeyFile`; fails to start on an entry that requires TLS if enabled without valid certificate and key files |
+| TLS certificate file (PEM) / TLS private key file (PEM) | `""` | PEM certificate (`TlsCertFile`) and private key (`TlsKeyFile`) paths for HTTPS |
+| Also require on loopback | `false` | Applies **Require bearer token** and **Require TLS (HTTPS)** to loopback entries too (`RequireOnLoopback`) |
 | Max response timeout (s) | 15 | Max wait in `execute_python` and `get_output_page` before returning with `has_more: true` |
 | Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |
 | Page history retention (min) | 5 | How long output stays readable after the job finishes running, or after its last valid page fetch or replay. |

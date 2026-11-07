@@ -1,11 +1,11 @@
 """Runtime configuration for the MCP Bridge, read from FreeCAD preferences.
 
 Values live under PREF_GROUP and are read fresh on each access. The listen
-addresses and non-loopback security settings are read at server start (and
-token verification reads the stored token hash per request). Timeout and
-page size are read per request. Retention is read when a job finishes
-running. Status-bar button settings are read when the status-bar button is
-created or refreshed.
+addresses and security settings are read at server start (and token
+verification reads the stored token hash per request). Timeout and page size
+are read per request. Retention is read when a job finishes running.
+Status-bar button settings are read when the status-bar button is created or
+refreshed.
 """
 
 import hashlib
@@ -25,6 +25,7 @@ from freecad.mcp_bridge.constants import (
     DEFAULT_MAX_PAGE_SIZE_KB,
     DEFAULT_MAX_RESPONSE_TIMEOUT_S,
     DEFAULT_PORT,
+    DEFAULT_REQUIRE_ON_LOOPBACK,
     DEFAULT_REQUIRE_TLS,
     DEFAULT_REQUIRE_TOKEN,
     DEFAULT_SHOW_STATUS_BUTTON,
@@ -178,8 +179,16 @@ def accept_address(address: str) -> None:
 
 
 def require_token() -> bool:
-    """Whether non-loopback entries require a bearer token."""
+    """Whether non-loopback entries (and loopback when RequireOnLoopback is on)
+    require a bearer token."""
     return _params().GetBool("RequireToken", DEFAULT_REQUIRE_TOKEN)
+
+
+def require_on_loopback() -> bool:
+    """Whether RequireToken and RequireTls also apply on loopback."""
+    return _params().GetBool(
+        "RequireOnLoopback", DEFAULT_REQUIRE_ON_LOOPBACK
+    )
 
 
 def token_hash() -> str:
@@ -215,17 +224,18 @@ def verify_token(
 
 
 def require_tls() -> bool:
-    """Whether non-loopback entries serve HTTPS."""
+    """Whether non-loopback entries (and loopback when RequireOnLoopback is on)
+    serve HTTPS."""
     return _params().GetBool("RequireTls", DEFAULT_REQUIRE_TLS)
 
 
 def tls_cert_file() -> str:
-    """Path to the TLS certificate file for non-loopback entries."""
+    """Path to the TLS certificate file for HTTPS."""
     return _params().GetString("TlsCertFile", "").strip()
 
 
 def tls_key_file() -> str:
-    """Path to the TLS private key file for non-loopback entries."""
+    """Path to the TLS private key file for HTTPS."""
     return _params().GetString("TlsKeyFile", "").strip()
 
 
@@ -235,9 +245,9 @@ def build_ssl_context(cert_file: str, key_file: str) -> ssl.SSLContext:
     key = (key_file or "").strip()
     if not cert or not key:
         raise ValueError(
-            "TLS is required for non-loopback listen addresses and needs "
-            "a certificate file and a private key file. Select both in "
-            "Edit → Preferences → MCP Bridge, or untick Require TLS there."
+            "TLS is required and needs a certificate file and a private "
+            "key file. Select both in Edit → Preferences → MCP Bridge, "
+            "or untick Require TLS there."
         )
     try:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
