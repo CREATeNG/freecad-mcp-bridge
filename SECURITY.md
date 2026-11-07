@@ -27,7 +27,7 @@ non-loopback entry in **Listen address** in **Edit → Preferences →
 MCP Bridge** exposes the endpoint beyond this machine. Non-loopback
 entries require a bearer token and TLS (HTTPS) by default, and
 either can be turned off in Preferences. **Also require on loopback**
-(off by default) applies them to loopback entries too. FreeCAD keeps
+(off by default) applies both to loopback entries too. FreeCAD keeps
 only a one-way SHA-256 hash of the token in FreeCAD's preferences,
 and TLS uses your own certificate and private key files. Any client
 that can reach a non-loopback entry (with the bearer token, when

@@ -42,6 +42,22 @@ def _write_ready_file(path: str, port: int) -> None:
     os.replace(partial, path)
 
 
+def _dump_thread_stacks() -> None:
+    """Append every thread's stack to the CI log."""
+    import faulthandler
+
+    path = common._ci_log_path()
+    if not path:
+        return
+    try:
+        with open(path, "ab") as handle:
+            faulthandler.dump_traceback(handle, all_threads=True)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except OSError:
+        pass
+
+
 def _watch_for_stop(stop_file: str, timeout_s: float) -> None:
     import FreeCAD as App
     import FreeCADGui as Gui
@@ -81,14 +97,16 @@ def _watch_for_stop(stop_file: str, timeout_s: float) -> None:
                     stop_seen_at = now
                 elif now - stop_seen_at >= 2.0:
                     common._write_ci_log(
-                        "Stop file seen; quitting", level="PASS"
+                        "Qt event loop didn't answer",
+                        level="FAIL",
                     )
+                    _dump_thread_stacks()
                     common.log_group_end()
                     common._save_coverage()
                     common._flush_stdio()
                     if sys.platform.startswith("win"):
-                        common._terminate_windows_process(0)
-                    os._exit(0)
+                        common._terminate_windows_process(1)
+                    os._exit(1)
             elif now > deadline + 2.0:
                 common._write_ci_log(
                     f"No stop file after {timeout_s:.0f} s; quitting",

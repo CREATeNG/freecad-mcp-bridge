@@ -181,7 +181,7 @@ MCP Bridge is designed for **local** control of FreeCAD.
   bridge listens on every entry in **Listen address**. Non-loopback
   entries require a bearer token and TLS (HTTPS) by default, and
   either can be turned off in Preferences. **Also require on
-  loopback** (off by default) applies them to loopback entries too.
+  loopback** (off by default) applies both to loopback entries too.
   Once you accept the first-time risk dialog, the bridge listens on
   the non-loopback entries too. Any client that can reach one, with
   the bearer token when it is required, can run Python code in
