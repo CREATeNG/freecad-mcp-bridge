@@ -8,7 +8,9 @@ Turns the bridge on through the real toolbar action, writes the bridge's port
 to the ready file, and returns to FreeCAD's own event loop, so jobs run exactly
 as they do for a user. The acceptance tests run outside FreeCAD, as an MCP
 client would. FreeCAD quits once the stop file appears, or fails after the
-hard timeout.
+hard timeout. If quit has not started 10 s after the stop file appeared,
+or FreeCAD has not exited 10 s after quit started, the process logs
+which, dumps every thread's stack, and exits 1.
 
 Environment:
   ACCEPTANCE_READY_FILE     Written with the bridge's port once it is listening (required)
@@ -58,6 +60,18 @@ def _dump_thread_stacks() -> None:
         pass
 
 
+def _fail_if_still_here(message: str) -> None:
+    """Log the hang, dump every thread, and exit 1."""
+    common._write_ci_log(message, level="FAIL")
+    _dump_thread_stacks()
+    common.log_group_end()
+    common._save_coverage()
+    common._flush_stdio()
+    if sys.platform.startswith("win"):
+        common._terminate_windows_process(1)
+    os._exit(1)
+
+
 def _watch_for_stop(stop_file: str, timeout_s: float) -> None:
     import FreeCAD as App
     import FreeCADGui as Gui
@@ -86,28 +100,36 @@ def _watch_for_stop(stop_file: str, timeout_s: float) -> None:
             QTimer.singleShot(POLL_MS, check)
 
     def thread_watch():
+        # 10 s, not 2: draining Qt events and saving coverage can be
+        # slow on a loaded runner, and that slowness is not a hung loop.
+        grace_s = 10.0
         stop_seen_at = None
-        while not done:
+        quit_seen_at = None
+        while True:
             time.sleep(POLL_MS / 1000.0)
-            if done:
-                return
             now = time.monotonic()
+            # check() sets done, then quit_freecad. Stay in this loop
+            # either way: a hang inside that quit is still a hang.
+            if done and quit_seen_at is None:
+                quit_seen_at = now
             if os.path.exists(stop_file):
                 if stop_seen_at is None:
                     stop_seen_at = now
-                elif now - stop_seen_at >= 2.0:
-                    common._write_ci_log(
-                        "Qt event loop didn't answer",
-                        level="FAIL",
+                elif (
+                    quit_seen_at is None
+                    and now - stop_seen_at >= grace_s
+                ):
+                    _fail_if_still_here(
+                        "quit not started within 10 s of the stop file"
                     )
-                    _dump_thread_stacks()
-                    common.log_group_end()
-                    common._save_coverage()
-                    common._flush_stdio()
-                    if sys.platform.startswith("win"):
-                        common._terminate_windows_process(1)
-                    os._exit(1)
-            elif now > deadline + 2.0:
+                elif (
+                    quit_seen_at is not None
+                    and now - quit_seen_at >= grace_s
+                ):
+                    _fail_if_still_here(
+                        "FreeCAD not exited within 10 s of quit starting"
+                    )
+            elif now > deadline + grace_s:
                 common._write_ci_log(
                     f"No stop file after {timeout_s:.0f} s; quitting",
                     level="FAIL",

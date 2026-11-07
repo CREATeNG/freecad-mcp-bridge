@@ -12,8 +12,11 @@
  * When FreeCAD isn't reachable, it answers initialize and tools/list itself
  * (tools.json is a copy of the addon's tool list), and answers a tools/call
  * with a tool-level error saying how to start the bridge, so the client
- * starts cleanly instead of reporting a failed server. Node stdlib only
- * (global fetch and node:https, >=18).
+ * starts cleanly instead of reporting a failed server. When no certificate
+ * file is set and a TLS handshake to the port completes, the request is
+ * answered with a tool-level error saying the bridge serves HTTPS and to
+ * set TLS certificate file (PEM) or untick Also require on loopback. Node
+ * stdlib only (global fetch and node:https, >=18).
  */
 
 const fs = require("fs");
@@ -32,8 +35,9 @@ const TOKEN = envSetting("FREECAD_MCP_TOKEN");
 const TLS_CERT_FILE = envSetting("FREECAD_MCP_TLS_CERT_FILE");
 const SCHEME = TLS_CERT_FILE ? "https" : "http";
 const ENDPOINT = `${SCHEME}://127.0.0.1:${PORT}/mcp`;
+const HTTPS_ENDPOINT = `https://127.0.0.1:${PORT}/mcp`;
 const PLAIN_HTTP_TO_HTTPS_MESSAGE =
-  `FreeCAD MCP Bridge serves HTTPS at ${ENDPOINT}, and this connection was plain HTTP. ` +
+  `FreeCAD MCP Bridge serves HTTPS at ${HTTPS_ENDPOINT}, and this connection was plain HTTP. ` +
   "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to FreeCAD's certificate, " +
   "or untick Also require on loopback in FreeCAD's Edit → Preferences → MCP Bridge.";
 const LEGACY_PROTOCOL_VERSION = "2025-11-25";
@@ -84,8 +88,6 @@ function portServesHttps(port) {
         },
         () => done(true)
       );
-      socket.setTimeout(2000);
-      socket.on("timeout", () => done(false));
       socket.on("error", () => done(false));
     } catch {
       done(false);
@@ -233,7 +235,6 @@ async function postBridge(message, rawLine) {
     headers,
     body: rawLine,
     redirect: "error",
-    signal: AbortSignal.timeout(2000),
   });
   return {
     status: res.status,
@@ -262,7 +263,7 @@ async function forward(rawLine, message) {
       sendErrorReply(message, PLAIN_HTTP_TO_HTTPS_MESSAGE);
       return;
     }
-    if (TLS_CERT_FILE && code !== "ECONNREFUSED" && code !== "ERR_UNEXPECTED_REDIRECT") {
+    if (TLS_CERT_FILE && code !== "ECONNREFUSED" && !redirect) {
       sendErrorReply(message, tlsErrorMessage(err));
       return;
     }

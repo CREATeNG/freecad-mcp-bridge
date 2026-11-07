@@ -576,7 +576,10 @@ a copy of the addon's tool list that release preparation checks
 against `tools.py`, so a client started before FreeCAD comes up
 cleanly. A `tools/call` then gets a tool result whose `error` says
 to start FreeCAD and turn the bridge on; any other request gets a
-JSON-RPC error saying the same.
+JSON-RPC error saying the same. When no certificate file is set and
+a TLS handshake to the port completes, the request is answered the
+same way, with an error saying the bridge serves HTTPS and to set
+TLS certificate file (PEM) or untick Also require on loopback.
 
 **Shim — no SDK**
 

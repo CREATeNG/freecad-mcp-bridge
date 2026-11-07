@@ -25,10 +25,11 @@ async function startBridge(reply, tlsOptions = null) {
   const handler = (req, res) => {
     let body = "";
     req.on("data", (chunk) => (body += chunk));
-    req.on("end", () => {
+    req.on("end", async () => {
       const request = { method: req.method, url: req.url, headers: req.headers, body };
       requests.push(request);
-      const { status = 200, type = "application/json", text } = reply(request);
+      const answered = await reply(request);
+      const { status = 200, type = "application/json", text } = answered;
       res.writeHead(status, { "Content-Type": type });
       res.end(text);
     });
@@ -624,7 +625,7 @@ test("plain HTTP against a loopback port that speaks HTTPS names the TLS setting
     );
     const [reply] = await shim.waitForLines(1);
     const error = JSON.parse(reply.result.content[0].text).error;
-    const endpoint = `http://127.0.0.1:${httpsBridge.port}/mcp`;
+    const endpoint = `https://127.0.0.1:${httpsBridge.port}/mcp`;
     assert.equal(
       error,
       `FreeCAD MCP Bridge serves HTTPS at ${endpoint}, and this connection was plain HTTP. ` +
@@ -653,4 +654,25 @@ test("plain HTTP against a loopback port that speaks HTTPS names the TLS setting
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+});
+
+test("a plain HTTP reply slower than 2 s still succeeds", async () => {
+  const bridge = await startBridge(async ({ body }) => {
+    await delay(3000);
+    const message = JSON.parse(body);
+    return {
+      text: JSON.stringify({
+        jsonrpc: "2.0",
+        id: message.id,
+        result: { echoed: message.method },
+      }),
+    };
+  });
+  const shim = startShim(bridge.port);
+  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }) + "\n");
+  const [reply] = await shim.waitForLines(1);
+  assert.equal(reply.result.echoed, "ping");
+  assert.doesNotMatch(JSON.stringify(reply), /isn't reachable/);
+  await shim.stop();
+  bridge.close();
 });
