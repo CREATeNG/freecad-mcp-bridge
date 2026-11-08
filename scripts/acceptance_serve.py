@@ -78,10 +78,11 @@ _ask_gui_error_logged = False
 def _ask_gui(check) -> None:
     """Queue check on the application thread.
 
-    A timer parented to the main window is not delivered on macOS
-    once a modal QMessageBox has run. A zero-timer posted to the
-    application still runs in a live event loop. A thread stuck in
-    Python never runs it, and the guard still fires.
+    On macOS CI, once a modal dialog had run, a timer that was
+    already running was seen to stop, parented or not, while a
+    timer started afterwards and a posted event still arrived.
+    This posts check to the application. A thread stuck in Python
+    never runs it, and the 10 s check still fires.
     """
     global _ask_gui_error_logged
     try:
