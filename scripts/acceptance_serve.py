@@ -72,6 +72,22 @@ def _fail_if_still_here(message: str) -> None:
     os._exit(1)
 
 
+def _ask_gui(check) -> None:
+    """Queue check on the application thread.
+
+    A timer parented to the main window is not delivered on macOS
+    once a modal QMessageBox has run. A zero-timer posted to the
+    application still runs in a live event loop. A thread stuck in
+    Python never runs it, and the guard still fires.
+    """
+    from PySide.QtCore import QCoreApplication, QTimer
+
+    app = QCoreApplication.instance()
+    if app is None:
+        return
+    QTimer.singleShot(0, app, check)
+
+
 def _watch_for_stop(stop_file: str, timeout_s: float) -> None:
     import FreeCAD as App
     import FreeCADGui as Gui
@@ -122,6 +138,8 @@ def _watch_for_stop(stop_file: str, timeout_s: float) -> None:
             if done and quit_seen_at is None:
                 quit_seen_at = now
             if os.path.exists(stop_file):
+                if quit_seen_at is None:
+                    _ask_gui(check)
                 if stop_seen_at is None:
                     stop_seen_at = now
                 elif (
