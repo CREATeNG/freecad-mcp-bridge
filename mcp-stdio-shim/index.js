@@ -244,15 +244,38 @@ async function postBridge(message, rawLine) {
   };
 }
 
+function writeResult(id, result) {
+  writeLine(JSON.stringify({ jsonrpc: "2.0", id, result }));
+}
+
 async function forward(rawLine, message) {
-  // JSON-RPC notifications omit "id" entirely and get no reply.
+  // A notification has no id and no reply. initialize, tools/list
+  // and ping are answered here. Only a tool call contacts the bridge.
   const isNotification = message.id === undefined;
+  if (isNotification) return;
+  if (message.method === "initialize" || message.method === "tools/list") {
+    writeResult(message.id, offlineResult(message, null));
+    return;
+  }
+  if (message.method === "ping") {
+    writeResult(message.id, {});
+    return;
+  }
+  if (message.method !== "tools/call") {
+    writeLine(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: message.id,
+        error: { code: -32601, message: "Method not found" },
+      })
+    );
+    return;
+  }
 
   let res;
   try {
     res = await postBridge(message, rawLine);
   } catch (err) {
-    if (isNotification) return;
     const code = errorCode(err);
     const redirect = /redirect/i.test(fetchErrorMessage(err));
     if (
@@ -261,43 +284,18 @@ async function forward(rawLine, message) {
       !redirect &&
       (await portServesHttps(PORT))
     ) {
-      // initialize and tools/list succeed locally, as when the bridge
-      // is down, so the client starts and the hint arrives on a tool call.
-      if (message.method === "initialize" || message.method === "tools/list") {
-        const result = offlineResult(message, err);
-        writeLine(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }));
-      } else {
-        sendErrorReply(message, PLAIN_HTTP_TO_HTTPS_MESSAGE);
-      }
+      sendErrorReply(message, PLAIN_HTTP_TO_HTTPS_MESSAGE);
       return;
     }
     if (TLS_CERT_FILE && code !== "ECONNREFUSED" && !redirect) {
       sendErrorReply(message, tlsErrorMessage(err));
       return;
     }
-    const result = offlineResult(message, err);
-    if (result) {
-      writeLine(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }));
-    } else {
-      writeLine(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: message.id,
-          error: {
-            code: -32001,
-            message:
-              `FreeCAD MCP Bridge unreachable at ${ENDPOINT} (${fetchErrorMessage(err)}). ` +
-              "Is the bridge running? Toggle it on from the MCP Bridge toolbar in FreeCAD.",
-          },
-        })
-      );
-    }
+    writeResult(message.id, offlineResult(message, err));
     return;
   }
 
   const bodyText = await res.text();
-  if (isNotification) return;
-
   if (res.status === 401) {
     sendErrorReply(message, UNAUTHORIZED_MESSAGE);
     return;

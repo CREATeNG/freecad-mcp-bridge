@@ -127,7 +127,7 @@ test("the shim runs on the current Node, which is 18 or newer", async () => {
 test("the shim sends to the port named by FREECAD_MCP_PORT", async () => {
   const bridge = await startBridge(echo);
   const shim = startShim(bridge.port);
-  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }) + "\n");
+  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call" }) + "\n");
   await shim.waitForLines(1);
   assert.equal(bridge.requests.length, 1);
   await shim.stop();
@@ -137,8 +137,8 @@ test("the shim sends to the port named by FREECAD_MCP_PORT", async () => {
 test("each stdin line is POSTed unchanged to /mcp", async () => {
   const bridge = await startBridge(echo);
   const shim = startShim(bridge.port);
-  const first = '{"jsonrpc": "2.0",  "id": 1, "method": "ping"}';
-  const second = '{"id":2,"method":"tools/list","jsonrpc":"2.0"}';
+  const first = '{"jsonrpc": "2.0",  "id": 1, "method": "tools/call"}';
+  const second = '{"id":2,"method":"tools/call","jsonrpc":"2.0"}';
   // Split the first message across writes, and share a write with the second.
   shim.send(first.slice(0, 10));
   await delay(50);
@@ -155,7 +155,7 @@ test("each stdin line is POSTed unchanged to /mcp", async () => {
 test("a message with no protocol version is forwarded as 2025-11-25", async () => {
   const bridge = await startBridge(echo);
   const shim = startShim(bridge.port);
-  const line = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" });
+  const line = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call" });
   shim.send(line + "\n");
   await shim.waitForLines(1);
   const sent = bridge.requests[0];
@@ -166,22 +166,22 @@ test("a message with no protocol version is forwarded as 2025-11-25", async () =
   bridge.close();
 });
 
-test("a 2026 message is forwarded with its own protocol version and method", async () => {
+test("a request other than a tool call is not sent on, even with a protocol version", async () => {
   const bridge = await startBridge(echo);
   const shim = startShim(bridge.port);
-  const line = JSON.stringify({
-    jsonrpc: "2.0",
-    id: 1,
-    method: "server/discover",
-    params: { _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" } },
-  });
-  shim.send(line + "\n");
-  await shim.waitForLines(1);
-  const sent = bridge.requests[0];
-  assert.equal(sent.body, line);
-  assert.equal(sent.headers["mcp-protocol-version"], "2026-07-28");
-  assert.equal(sent.headers["mcp-method"], "server/discover");
-  assert.equal(sent.headers["mcp-name"], undefined);
+  shim.send(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "server/discover",
+      params: { _meta: { "io.modelcontextprotocol/protocolVersion": "2026-07-28" } },
+    }) + "\n"
+  );
+  const [reply] = await shim.waitForLines(1);
+  await delay(100);
+  assert.equal(bridge.requests.length, 0);
+  assert.equal(reply.error.code, -32601);
+  assert.equal(reply.error.message, "Method not found");
   await shim.stop();
   bridge.close();
 });
@@ -253,7 +253,7 @@ test("a two-event SSE reply comes back as two JSON-RPC lines in order", async ()
     text: `event: message\ndata: ${first}\n\nevent: message\ndata: ${second}\n\n`,
   }));
   const shim = startShim(bridge.port);
-  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 9, method: "subscriptions/listen" }) + "\n");
+  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 9, method: "tools/call" }) + "\n");
   await shim.waitForLines(2);
   await delay(100);
   assert.deepEqual(shim.lines, [first, second]);
@@ -270,7 +270,7 @@ test("an SSE event whose JSON spans two data lines comes back as one JSON-RPC li
       'data: "id": 9007199254740993, "result": {"ok": true}}\r\n\r\n',
   }));
   const shim = startShim(bridge.port);
-  shim.send('{"jsonrpc":"2.0","id":9007199254740993,"method":"ping"}\n');
+  shim.send('{"jsonrpc":"2.0","id":9007199254740993,"method":"tools/call"}\n');
   await shim.waitForLines(1);
   await delay(100);
   assert.deepEqual(shim.lines, ['{"jsonrpc": "2.0", "id": 9007199254740993, "result": {"ok": true}}']);
@@ -286,7 +286,7 @@ test("a two-event SSE reply framed with CR comes back as two JSON-RPC lines", as
     text: `event: message\rdata: ${first}\r\revent: message\rdata: ${second}\r\r`,
   }));
   const shim = startShim(bridge.port);
-  shim.send('{"jsonrpc":"2.0","id":11,"method":"subscriptions/listen"}\n');
+  shim.send('{"jsonrpc":"2.0","id":11,"method":"tools/call"}\n');
   await shim.waitForLines(2);
   await delay(100);
   assert.deepEqual(shim.lines, [first, second]);
@@ -302,7 +302,7 @@ test("a trailing SSE event with no blank line after it is still written", async 
     text: `event: message\ndata: ${first}\n\nevent: message\ndata: ${second}`,
   }));
   const shim = startShim(bridge.port);
-  shim.send('{"jsonrpc":"2.0","id":12,"method":"subscriptions/listen"}\n');
+  shim.send('{"jsonrpc":"2.0","id":12,"method":"tools/call"}\n');
   await shim.waitForLines(2);
   await delay(100);
   assert.deepEqual(shim.lines, [first, second]);
@@ -310,20 +310,45 @@ test("a trailing SSE event with no blank line after it is still written", async 
   bridge.close();
 });
 
-test("a notification gets no reply on stdout", async () => {
-  // The stand-in answers even the notification, so silence is the shim's doing.
+test("a notification gets no reply and is not sent on", async () => {
   const bridge = await startBridge(echo);
   const shim = startShim(bridge.port);
   shim.send(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
-  while (bridge.requests.length < 1) await delay(10);
   await delay(200);
-  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "ping" }) + "\n");
+  assert.equal(bridge.requests.length, 0);
+  assert.equal(shim.lines.length, 0);
+  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call" }) + "\n");
   const replies = await shim.waitForLines(1);
-  await delay(200);
+  await delay(50);
+  assert.equal(bridge.requests.length, 1);
   assert.deepEqual(shim.lines.map((l) => JSON.parse(l).id), [2]);
-  assert.equal(replies[0].result.echoed, "ping");
+  assert.equal(replies[0].result.echoed, "tools/call");
   await shim.stop();
   bridge.close();
+});
+
+test("initialize and tools/list do not contact a listening bridge, or a port nothing listens on", async () => {
+  const bridge = await startBridge(echo);
+  const shim = startShim(bridge.port);
+  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }) + "\n");
+  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }) + "\n");
+  const replies = await shim.waitForLines(2);
+  await delay(200);
+  assert.equal(bridge.requests.length, 0);
+  assert.equal(replies.find((r) => r.id === 1).result.protocolVersion, "2025-11-25");
+  assert.ok(replies.find((r) => r.id === 2).result.tools.length > 0);
+  await shim.stop();
+  bridge.close();
+
+  const down = startShim(await closedPort());
+  const started = Date.now();
+  down.send(JSON.stringify({ jsonrpc: "2.0", id: 3, method: "initialize", params: {} }) + "\n");
+  down.send(JSON.stringify({ jsonrpc: "2.0", id: 4, method: "tools/list" }) + "\n");
+  const downReplies = await down.waitForLines(2);
+  assert.ok(Date.now() - started < 1000);
+  assert.equal(downReplies.find((r) => r.id === 3).error, undefined);
+  assert.equal(downReplies.find((r) => r.id === 4).error, undefined);
+  await down.stop();
 });
 
 // --- The bridge is unreachable -------------------------------------------
@@ -366,12 +391,21 @@ test("with the bridge unreachable, a tool call says to start FreeCAD and turn th
   assert.match(payload.error, /turn the bridge on/i);
 });
 
-test("with the bridge unreachable, other requests get an error explaining how to enable the bridge", async () => {
-  const reply = await askOffline({ jsonrpc: "2.0", id: 4, method: "ping" });
-  assert.equal(reply.id, 4);
-  assert.equal(typeof reply.error.code, "number");
-  assert.match(reply.error.message, /MCP Bridge toolbar/);
-  assert.equal(reply.result, undefined);
+test("ping is answered locally with an empty result and is not sent on", async () => {
+  const bridge = await startBridge(echo);
+  const shim = startShim(bridge.port);
+  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 4, method: "ping" }) + "\n");
+  const [reply] = await shim.waitForLines(1);
+  await delay(100);
+  assert.equal(bridge.requests.length, 0);
+  assert.deepEqual(reply.result, {});
+  assert.equal(reply.error, undefined);
+  await shim.stop();
+  bridge.close();
+
+  const down = await askOffline({ jsonrpc: "2.0", id: 5, method: "ping" });
+  assert.deepEqual(down.result, {});
+  assert.equal(down.error, undefined);
 });
 
 test("a redirect from the bridge port is refused and the target receives nothing", async () => {
@@ -400,9 +434,8 @@ test("a redirect from the bridge port is refused and the target receives nothing
   await delay(100);
   assert.equal(toolReply.result.isError, true);
   assert.match(JSON.parse(toolReply.result.content[0].text).error, /unexpected redirect/);
-  assert.equal(typeof pingReply.error.code, "number");
-  assert.match(pingReply.error.message, /unexpected redirect/);
-  assert.equal(pingReply.result, undefined);
+  assert.deepEqual(pingReply.result, {});
+  assert.equal(pingReply.error, undefined);
   assert.equal(target.requests.length, 0);
   await shim.stop();
   await new Promise((resolve) => redirector.close(resolve));
@@ -484,9 +517,9 @@ test("with neither token nor certificate set, the shim sends plain HTTP with no 
     FREECAD_MCP_TOKEN: "",
     FREECAD_MCP_TLS_CERT_FILE: "",
   });
-  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }) + "\n");
+  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call" }) + "\n");
   const [reply] = await shim.waitForLines(1);
-  assert.equal(reply.result.echoed, "ping");
+  assert.equal(reply.result.echoed, "tools/call");
   assert.equal(bridge.requests[0].headers["authorization"], undefined);
   await shim.stop();
   bridge.close();
@@ -495,9 +528,9 @@ test("with neither token nor certificate set, the shim sends plain HTTP with no 
 test("with FREECAD_MCP_TOKEN set, the shim sends Authorization: Bearer <token>", async () => {
   const bridge = await startBridge(echo);
   const shim = startShim(bridge.port, { FREECAD_MCP_TOKEN: "secret-loopback-token" });
-  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }) + "\n");
+  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call" }) + "\n");
   const [reply] = await shim.waitForLines(1);
-  assert.equal(reply.result.echoed, "ping");
+  assert.equal(reply.result.echoed, "tools/call");
   assert.equal(bridge.requests[0].headers["authorization"], "Bearer secret-loopback-token");
   await shim.stop();
   bridge.close();
@@ -528,8 +561,9 @@ test("a 401 Unauthorized from the bridge fails with a clear message naming the e
   assert.match(toolError, /Set Bearer token in the FreeCAD MCP Bridge extension settings/);
   assert.match(toolError, /Generate new token/);
   assert.doesNotMatch(toolError, /FREECAD_MCP_TOKEN/);
-  assert.equal(pingReply.error.code, -32001);
-  assert.equal(pingReply.error.message, toolError);
+  assert.deepEqual(pingReply.result, {});
+  assert.equal(pingReply.error, undefined);
+  assert.equal(bridge.requests.length, 1);
   await shim.stop();
   bridge.close();
 });
@@ -546,9 +580,9 @@ test("with FREECAD_MCP_TLS_CERT_FILE set, the shim connects over HTTPS and trust
       FREECAD_MCP_TOKEN: "tls-token",
       FREECAD_MCP_TLS_CERT_FILE: serverCert.certPath,
     });
-    shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }) + "\n");
+    shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call" }) + "\n");
     const [reply] = await shim.waitForLines(1);
-    assert.equal(reply.result.echoed, "ping");
+    assert.equal(reply.result.echoed, "tools/call");
     assert.equal(bridge.requests[0].headers["authorization"], "Bearer tls-token");
     await shim.stop();
     bridge.close();
@@ -594,11 +628,19 @@ test("an untrusted certificate or a certificate set while the bridge serves plai
     const shimPlain = startShim(httpBridge.port, {
       FREECAD_MCP_TLS_CERT_FILE: serverCert.certPath,
     });
-    shimPlain.send(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "ping" }) + "\n");
+    shimPlain.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: { name: "execute_python", arguments: { code: "print(1)" } },
+      }) + "\n"
+    );
     const [plainReply] = await shimPlain.waitForLines(1);
-    assert.equal(plainReply.error.code, -32001);
-    assert.match(plainReply.error.message, /TLS connection failed/);
-    assert.match(plainReply.error.message, /While Also require on loopback is off, leave the certificate setting blank/);
+    assert.equal(plainReply.result.isError, true);
+    const plainError = JSON.parse(plainReply.result.content[0].text).error;
+    assert.match(plainError, /TLS connection failed/);
+    assert.match(plainError, /While Also require on loopback is off, leave the certificate setting blank/);
     await shimPlain.stop();
     httpBridge.close();
   } finally {
@@ -712,9 +754,9 @@ test("a plain HTTP reply slower than 2 s still succeeds", async () => {
     };
   });
   const shim = startShim(bridge.port);
-  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }) + "\n");
+  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call" }) + "\n");
   const [reply] = await shim.waitForLines(1);
-  assert.equal(reply.result.echoed, "ping");
+  assert.equal(reply.result.echoed, "tools/call");
   assert.doesNotMatch(JSON.stringify(reply), /isn't reachable/);
   await shim.stop();
   bridge.close();
