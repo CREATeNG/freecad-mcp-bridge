@@ -549,10 +549,12 @@ present and is not `localhost` or `127.0.0.1`.
 Some MCP clients speak only stdio for local servers. A small
 zero-dependency Node.js shim (`mcp-stdio-shim/index.js`) ships with
 the addon as a stdio ↔ HTTP/HTTPS proxy. Each newline-delimited
-JSON-RPC message on stdin is forwarded as an HTTP POST, body
-unchanged. A JSON reply, or each event of an SSE reply, is unwrapped
-and written back on stdout as one line. Stdio carries no headers, so
-the shim sets `MCP-Protocol-Version` from
+JSON-RPC tools/call on stdin is forwarded as an HTTP POST, body
+unchanged. A JSON reply is unwrapped and written back on stdout as
+one line. The shim offers protocol version `2025-11-25` only, and a
+`tools/call` that names `2026-07-28` is still forwarded with that
+version. Stdio carries no headers, so the shim sets
+`MCP-Protocol-Version` from
 `params._meta["io.modelcontextprotocol/protocolVersion"]` when that
 field is present, and to `2025-11-25` when it is not. When the
 version is `2026-07-28` it also sets `Mcp-Method` from the message's

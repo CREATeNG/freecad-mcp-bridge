@@ -2,22 +2,25 @@
 /*
  * FreeCAD MCP Bridge - Claude Desktop shim.
  *
- * A zero-dependency stdio <-> HTTP/HTTPS proxy. Claude Desktop speaks MCP over
- * stdio (newline-delimited JSON-RPC); this forwards each message to the addon's
- * endpoint (http://127.0.0.1:<port>/mcp, or https://127.0.0.1:<port>/mcp when
- * FREECAD_MCP_TLS_CERT_FILE is set, with Authorization: Bearer <token> when
- * FREECAD_MCP_TOKEN is set), unwraps the JSON or SSE reply, and writes it back
- * on stdout.
+ * A zero-dependency stdio <-> HTTP/HTTPS proxy. Claude Desktop speaks
+ * MCP over stdio (newline-delimited JSON-RPC); this forwards each
+ * tools/call to the addon's endpoint
+ * (http://127.0.0.1:<port>/mcp, or https://127.0.0.1:<port>/mcp when
+ * FREECAD_MCP_TLS_CERT_FILE is set, with Authorization: Bearer <token>
+ * when FREECAD_MCP_TOKEN is set), unwraps the JSON reply, and writes
+ * it back on stdout.
  *
  * The shim answers initialize and tools/list itself (tools.json is a
  * copy of the addon's tool list) and does not contact the bridge for
  * them, so the client starts cleanly whether or not FreeCAD is up.
- * Only a tools/call is sent on. When that call finds the bridge
- * unreachable, serving HTTPS with no certificate set, returning 401,
- * or failing TLS, the tool result's error says which. A ping is
- * answered locally with an empty result. A notification is not sent
- * and gets no reply. Any other method gets a method-not-found error.
- * Node stdlib only (global fetch and node:https, >=18).
+ * It answers server/discover locally, with 2025-11-25 the only
+ * supported version. Only a tools/call is sent on. When that call
+ * finds the bridge unreachable, serving HTTPS with no certificate
+ * set, returning 401, or failing TLS, the tool result's error says
+ * which. A ping is answered locally with an empty result. A
+ * notification is not sent and gets no reply. Any other method gets
+ * a method-not-found error naming the method. Node stdlib only
+ * (global fetch and node:https, >=18).
  */
 
 const fs = require("fs");

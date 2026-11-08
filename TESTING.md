@@ -39,8 +39,8 @@ The [Node test suite](tests/shim/shim.test.js) tests the shim in
 process against a stand-in HTTP or HTTPS bridge or a closed loopback
 port. Among the checks are input framing, forwarding and protocol
 headers, bearer token forwarding, HTTPS with a trusted certificate,
-clear errors on a rejected token or TLS failure, JSON and SSE
-replies, notification silence, and the fallback responses when
+clear errors on a rejected token or TLS failure, JSON replies,
+notification silence, and the fallback responses when
 FreeCAD is unreachable.
 
 Use Node 20 to match CI; no FreeCAD or third-party Node packages are
