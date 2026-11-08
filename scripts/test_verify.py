@@ -396,7 +396,14 @@ def _verify_toolbar_hide() -> None:
             )
 
         tb.toggleViewAction().trigger()
-        QCoreApplication.processEvents()
+        import time
+
+        deadline = time.monotonic() + 3.0
+        while time.monotonic() < deadline:
+            QCoreApplication.processEvents()
+            if tb.isVisible():
+                break
+            time.sleep(0.05)
         if not tb.isVisible():
             common.fail(
                 "MCP Bridge toolbar did not become visible when shown again"
