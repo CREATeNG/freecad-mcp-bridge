@@ -553,7 +553,9 @@ JSON-RPC tools/call on stdin is forwarded as an HTTP POST, body
 unchanged. A JSON reply is unwrapped and written back on stdout as
 one line. The shim offers protocol version `2025-11-25` only, and a
 `tools/call` that names `2026-07-28` is still forwarded with that
-version. Stdio carries no headers, so the shim sets
+version. `server/discover` gets a method-not-found error naming
+the method, which tells a newer client to fall back to
+`initialize`. Stdio carries no headers, so the shim sets
 `MCP-Protocol-Version` from
 `params._meta["io.modelcontextprotocol/protocolVersion"]` when that
 field is present, and to `2025-11-25` when it is not. When the

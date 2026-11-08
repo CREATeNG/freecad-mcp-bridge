@@ -13,8 +13,9 @@
  * The shim answers initialize and tools/list itself (tools.json is a
  * copy of the addon's tool list) and does not contact the bridge for
  * them, so the client starts cleanly whether or not FreeCAD is up.
- * It answers server/discover locally, with 2025-11-25 the only
- * supported version. Only a tools/call is sent on. When that call
+ * server/discover gets a method-not-found error naming the method,
+ * which tells a newer client to fall back to initialize. Only a
+ * tools/call is sent on. When that call
  * finds the bridge unreachable, serving HTTPS with no certificate
  * set, returning 401, or failing TLS, the tool result's error says
  * which. A ping is answered locally with an empty result. A
