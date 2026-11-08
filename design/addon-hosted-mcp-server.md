@@ -381,11 +381,12 @@ page, then polls via `get_output_page` if needed.
 
 **Listen addresses and ports**
 
-Configured in **Listen address** in FreeCAD preferences as a list of
+Configured in **Listen addresses** in FreeCAD preferences as a list of
 `address:port` entries (`[ipv6]:port` for IPv6), **`127.0.0.1:39280`**
-by default. When **Listen address** has never been saved, the default
-entry uses any previously saved `Port` preference so an upgraded
-profile keeps its custom port. On a missing or invalid port, or a bind
+by default. When the **Listen addresses** setting has never been
+saved, the default entry uses any previously saved `Port`
+preference so an upgraded profile keeps its custom port. On a
+missing or invalid port, or a bind
 conflict at startup: log a clear error naming the entry and directing
 the user to Edit → Preferences → MCP Bridge, and keep the bridge off.
 No silent port increment. Dynamic port rejected — HTTP clients
@@ -656,7 +657,7 @@ automatically.
 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
-| Listen address | `127.0.0.1:39280` | List of `address:port` entries (`[ipv6]:port` for IPv6) to bind; if unset, inherits a previously saved `Port` value; missing port or bind conflict at startup logs an error and leaves the bridge off; non-loopback entries require user risk acceptance for each entry once (`AcceptedListenAddresses`) and log a warning in the status bar and Report view on each start |
+| Listen addresses | `127.0.0.1:39280` | List of `address:port` entries (`[ipv6]:port` for IPv6) to bind; if unset, inherits a previously saved `Port` value; missing port or bind conflict at startup logs an error and leaves the bridge off; non-loopback entries require user risk acceptance for each entry once (`AcceptedListenAddresses`) and log a warning in the status bar and Report view on each start |
 | Require bearer token | `true` | Requires `Authorization: Bearer <token>` on non-loopback entries (and on loopback when `RequireOnLoopback` is `true`); stores only a SHA-256 hash (`TokenHash`) and shows the generated token once |
 | Require TLS (HTTPS) | `true` | Serves HTTPS on non-loopback entries (and on loopback when `RequireOnLoopback` is `true`) using `TlsCertFile` and `TlsKeyFile`; fails to start on an entry that requires TLS if enabled without valid certificate and key files |
 | TLS certificate file (PEM) / TLS private key file (PEM) | `""` | PEM certificate (`TlsCertFile`) and private key (`TlsKeyFile`) paths for HTTPS |

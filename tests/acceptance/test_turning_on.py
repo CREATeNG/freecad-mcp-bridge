@@ -295,7 +295,7 @@ class PortTests(unittest.TestCase):
             seen["status"],
         )
         self.assertIn(f"Could not bind 127.0.0.1:{port}", seen["report"])
-        self.assertIn("Change the listen address in Edit", seen["report"])
+        self.assertIn("Change the listen addresses in Edit", seen["report"])
         self.assertIn("Preferences", seen["report"])
 
 
@@ -528,7 +528,7 @@ class ListenAddressTests(unittest.TestCase):
         self.assertFalse(seen.get("no_port_running"))
         self.assertIn(address, seen.get("no_port_status", ""))
         self.assertIn(
-            "Change the listen address in Edit",
+            "Change the listen addresses in Edit",
             seen.get("no_port_report", ""),
         )
         self.assertTrue(seen.get("decline_dialog_found"))

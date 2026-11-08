@@ -194,9 +194,9 @@ class PreferencePageTests(unittest.TestCase):
         )
         self.assertEqual(
             widgets_by_name["serverHint"]["text"],
-            "To start or stop the bridge, click <b>MCP Bridge On/Off</b> "
-            "in the <b>MCP Bridge</b> toolbar. While active, it listens "
-            "on the <b>Listen address</b> entries below.",
+            "To start or stop the bridge, click <b>MCP On/Off</b> "
+            "in the status bar. While active, it listens "
+            "on the addresses below.",
         )
         self.assertIn(
             "https://&lt;ADDRESS&gt;:&lt;PORT&gt;/mcp with the bearer token, "
@@ -1086,7 +1086,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             self.assertFalse(running)
             self.assertEqual(prompts, [])
             self.assertIn("192.168.1.50", statuses[-1])
-            self.assertIn("Change the listen address in Edit", warnings[-1])
+            self.assertIn("Change the listen addresses in Edit", warnings[-1])
 
             # 0b. With RequireTls=True and no certificate/key set, a
             # non-loopback start fails before any dialog and stays off.
@@ -1103,7 +1103,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             )
             self.assertIn("untick Require TLS there.", warnings[-1])
             self.assertNotIn(
-                "Change the listen address in Edit", warnings[-1]
+                "Change the listen addresses in Edit", warnings[-1]
             )
             store["RequireTls"] = False
 

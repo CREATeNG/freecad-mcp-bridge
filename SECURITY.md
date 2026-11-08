@@ -23,7 +23,7 @@ Please include:
 
 By default, the bridge listens on `127.0.0.1:39280`, and
 only while you toggle it on in your FreeCAD session. Adding a
-non-loopback entry in **Listen address** in **Edit → Preferences →
+non-loopback entry in **Listen addresses** in **Edit → Preferences →
 MCP Bridge** exposes the endpoint beyond this machine. Non-loopback
 entries require a bearer token and TLS (HTTPS) by default, and
 either can be turned off in Preferences. **Also require on loopback**

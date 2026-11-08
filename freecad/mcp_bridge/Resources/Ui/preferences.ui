@@ -30,7 +30,7 @@
          <enum>Qt::RichText</enum>
         </property>
         <property name="text">
-         <string>To start or stop the bridge, click &lt;b&gt;MCP Bridge On/Off&lt;/b&gt; in the &lt;b&gt;MCP Bridge&lt;/b&gt; toolbar. While active, it listens on the &lt;b&gt;Listen address&lt;/b&gt; entries below.</string>
+         <string>To start or stop the bridge, click &lt;b&gt;MCP On/Off&lt;/b&gt; in the status bar. While active, it listens on the addresses below.</string>
         </property>
         <property name="wordWrap">
          <bool>true</bool>
@@ -42,7 +42,7 @@
         <item row="0" column="0">
          <widget class="QLabel" name="listenAddressLabel">
           <property name="text">
-           <string>Listen address</string>
+           <string>Listen addresses</string>
           </property>
          </widget>
         </item>
@@ -212,7 +212,9 @@
      </property>
      <layout class="QFormLayout" name="securityLayout">
       <item row="0" column="0" colspan="2">
-       <widget class="Gui::PrefCheckBox" name="requireTokenCheckBox">
+       <layout class="QHBoxLayout" name="tokenRow">
+        <item>
+         <widget class="Gui::PrefCheckBox" name="requireTokenCheckBox">
         <property name="toolTip">
          <string>Require a bearer token on non-loopback listen addresses.</string>
         </property>
@@ -229,18 +231,39 @@
          <cstring>Mod/freecad-mcp-bridge</cstring>
         </property>
        </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="generateTokenButton">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="toolTip">
+           <string>Generate a new bearer token and show it once.</string>
+          </property>
+          <property name="text">
+           <string>Generate new token</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="tokenRowSpacer">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>10</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
       </item>
-      <item row="1" column="1">
-       <widget class="QPushButton" name="generateTokenButton">
-        <property name="toolTip">
-         <string>Generate a new bearer token and show it once.</string>
-        </property>
-        <property name="text">
-         <string>Generate new token</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="0" colspan="2">
+      <item row="1" column="0" colspan="2">
        <widget class="Gui::PrefCheckBox" name="requireTlsCheckBox">
         <property name="toolTip">
          <string>Serve HTTPS on non-loopback listen addresses with the files below.</string>
@@ -259,14 +282,14 @@
         </property>
        </widget>
       </item>
-      <item row="3" column="0">
+      <item row="2" column="0">
        <widget class="QLabel" name="tlsCertFileLabel">
         <property name="text">
          <string>TLS certificate file (PEM)</string>
         </property>
        </widget>
       </item>
-      <item row="3" column="1">
+      <item row="2" column="1">
        <widget class="Gui::PrefFileChooser" name="tlsCertFileChooser">
         <property name="toolTip">
          <string>PEM certificate file for HTTPS.</string>
@@ -285,14 +308,14 @@
         </property>
        </widget>
       </item>
-      <item row="4" column="0">
+      <item row="3" column="0">
        <widget class="QLabel" name="tlsKeyFileLabel">
         <property name="text">
          <string>TLS private key file (PEM)</string>
         </property>
        </widget>
       </item>
-      <item row="4" column="1">
+      <item row="3" column="1">
        <widget class="Gui::PrefFileChooser" name="tlsKeyFileChooser">
         <property name="toolTip">
          <string>PEM private key file for HTTPS.</string>
@@ -311,7 +334,7 @@
         </property>
        </widget>
       </item>
-      <item row="5" column="0" colspan="2">
+      <item row="4" column="0" colspan="2">
        <widget class="Gui::PrefCheckBox" name="requireOnLoopbackCheckBox">
         <property name="toolTip">
          <string>Apply Require bearer token and Require TLS (HTTPS) to loopback entries too.</string>
@@ -424,7 +447,7 @@
          <enum>Qt::RichText</enum>
         </property>
         <property name="text">
-         <string>Most MCP clients speak HTTP — connect them directly to http://127.0.0.1:&amp;lt;PORT&amp;gt;/mcp for a loopback entry in Listen address above. For a non-loopback entry it is https://&amp;lt;ADDRESS&amp;gt;:&amp;lt;PORT&amp;gt;/mcp with the bearer token, while Require TLS (HTTPS) and Require bearer token are on, as they are by default. With Also require on loopback on, loopback entries work the same way.&lt;br/&gt;&lt;br/&gt;Clients that only speak stdio — e.g. Claude Desktop (not Claude Code) — need a small connector: &lt;a href="https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest/download/freecad-mcp-bridge.mcpb"&gt;Download the bundle&lt;/a&gt;.</string>
+         <string>Most MCP clients speak HTTP — connect them directly to http://127.0.0.1:&amp;lt;PORT&amp;gt;/mcp for a loopback entry in Listen addresses above. For a non-loopback entry it is https://&amp;lt;ADDRESS&amp;gt;:&amp;lt;PORT&amp;gt;/mcp with the bearer token, while Require TLS (HTTPS) and Require bearer token are on, as they are by default. With Also require on loopback on, loopback entries work the same way.&lt;br/&gt;&lt;br/&gt;Clients that only speak stdio — e.g. Claude Desktop (not Claude Code) — need a small connector: &lt;a href="https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest/download/freecad-mcp-bridge.mcpb"&gt;Download the bundle&lt;/a&gt;.</string>
         </property>
         <property name="wordWrap">
          <bool>true</bool>

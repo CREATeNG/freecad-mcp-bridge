@@ -278,7 +278,7 @@ class MCPBridgeCommand:
             warning = status
             if bad_listen:
                 warning += (
-                    ". Change the listen address in Edit → "
+                    ". Change the listen addresses in Edit → "
                     "Preferences → MCP Bridge."
                 )
             App.Console.PrintWarning(warning + "\n")

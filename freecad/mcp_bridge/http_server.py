@@ -348,7 +348,7 @@ class HttpServer:
             ]
         except ValueError as exc:
             FreeCAD.Console.PrintDeveloperError(
-                f"{LOG_PREFIX} {exc} Change the listen address in Edit → "
+                f"{LOG_PREFIX} {exc} Change the listen addresses in Edit → "
                 "Preferences → MCP Bridge.\n"
             )
             raise
@@ -406,7 +406,7 @@ class HttpServer:
             self._executor = None
             FreeCAD.Console.PrintDeveloperError(
                 f"{LOG_PREFIX} Could not bind {failed_entry} ({exc}). "
-                "Change the listen address in Edit → Preferences → "
+                "Change the listen addresses in Edit → Preferences → "
                 "MCP Bridge.\n"
             )
             raise
