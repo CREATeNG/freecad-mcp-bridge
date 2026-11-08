@@ -21,6 +21,20 @@ Please include:
 
 ## Privacy, connections, and trust
 
+By default, the bridge listens on `127.0.0.1:39280`, and
+only while you toggle it on in your FreeCAD session. Adding a
+non-loopback entry in **Listen addresses** in **Edit → Preferences →
+MCP Bridge** exposes the endpoint beyond this machine. Non-loopback
+entries require a bearer token and TLS (HTTPS) by default, and
+either can be turned off in Preferences. **Apply to loopback**
+(off by default) applies both to loopback entries too. FreeCAD keeps
+only a one-way SHA-256 hash of the token in FreeCAD's preferences,
+and TLS uses your own certificate and private key files. Any client
+that can reach a non-loopback entry (with the bearer token, when
+required) can run Python code in FreeCAD as your user account.
+FreeCAD asks you to accept the remaining risks for each entry once
+and warns in the status bar and **Report view** at each start.
+
 See [README § Privacy Policy](README.md#privacy-policy) for how the
 bridge (the MCP server inside FreeCAD) and your MCP client interact,
 and what runs locally vs through your MCP client.

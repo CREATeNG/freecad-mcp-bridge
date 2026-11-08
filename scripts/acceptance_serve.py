@@ -8,7 +8,9 @@ Turns the bridge on through the real toolbar action, writes the bridge's port
 to the ready file, and returns to FreeCAD's own event loop, so jobs run exactly
 as they do for a user. The acceptance tests run outside FreeCAD, as an MCP
 client would. FreeCAD quits once the stop file appears, or fails after the
-hard timeout.
+hard timeout. If quit has not started 10 s after the stop file appeared,
+or FreeCAD has not exited 10 s after quit started, the process logs
+which, dumps every thread's stack, and exits 1.
 
 Environment:
   ACCEPTANCE_READY_FILE     Written with the bridge's port once it is listening (required)
@@ -22,6 +24,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 import time
 
 _script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -41,27 +44,148 @@ def _write_ready_file(path: str, port: int) -> None:
     os.replace(partial, path)
 
 
+def _dump_thread_stacks() -> None:
+    """Append every thread's stack to the CI log."""
+    import faulthandler
+
+    path = common._ci_log_path()
+    if not path:
+        return
+    try:
+        with open(path, "ab") as handle:
+            faulthandler.dump_traceback(handle, all_threads=True)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except OSError:
+        pass
+
+
+def _fail_if_still_here(message: str) -> None:
+    """Log the hang, dump every thread, and exit 1."""
+    common._write_ci_log(message, level="FAIL")
+    _dump_thread_stacks()
+    common.log_group_end()
+    common._save_coverage()
+    common._flush_stdio()
+    if sys.platform.startswith("win"):
+        common._terminate_windows_process(1)
+    os._exit(1)
+
+
+_ask_gui_error_logged = False
+
+
+def _ask_gui(check) -> None:
+    """Queue check on the application thread.
+
+    On macOS CI, once a modal dialog had run, a timer that was
+    already running was seen to stop, parented or not, while a
+    timer started afterwards and a posted event still arrived.
+    This posts check to the application. A thread stuck in Python
+    never runs it, and the 10 s check still fires.
+    """
+    global _ask_gui_error_logged
+    try:
+        from PySide.QtCore import QCoreApplication, QTimer
+
+        app = QCoreApplication.instance()
+        if app is None:
+            return
+        QTimer.singleShot(0, app, check)
+    except Exception:
+        if _ask_gui_error_logged:
+            return
+        _ask_gui_error_logged = True
+        import traceback
+
+        common._write_ci_log(
+            "Could not post the stop check:\n"
+            + traceback.format_exc().rstrip(),
+            level="WARN",
+        )
+
+
 def _watch_for_stop(stop_file: str, timeout_s: float) -> None:
     import FreeCAD as App
+    import FreeCADGui as Gui
     from PySide.QtCore import QTimer
 
     deadline = time.monotonic() + timeout_s
-    timer = QTimer()
+    mw = Gui.getMainWindow()
+    timer = QTimer(mw) if mw is not None else QTimer()
+    done = False
 
     def check():
+        nonlocal done
+        if done:
+            return
         if os.path.exists(stop_file):
+            done = True
             timer.stop()
             common.log_notice("Stop file seen; quitting")
             common.log_group_end()
             common.quit_freecad(0)
         elif time.monotonic() > deadline:
+            done = True
             timer.stop()
             common.fail(f"No stop file after {timeout_s:.0f} s; quitting")
+        else:
+            QTimer.singleShot(POLL_MS, check)
+
+    def thread_watch():
+        # grace_s covers two waits. The main thread can be busy
+        # long enough that quit has not started, and a busy loop
+        # is not a hung one. After quit starts, draining Qt
+        # events and saving coverage can be slow on a loaded
+        # runner, and that slowness is not a hung loop either.
+        grace_s = 10.0
+        not_started = (
+            f"quit not started within {grace_s:.0f} s of the stop file"
+        )
+        not_exited = (
+            f"FreeCAD not exited within {grace_s:.0f} s of quit starting"
+        )
+        stop_seen_at = None
+        quit_seen_at = None
+        while True:
+            time.sleep(POLL_MS / 1000.0)
+            now = time.monotonic()
+            # check() sets done, then quit_freecad. Stay in this loop
+            # either way: a hang inside that quit is still a hang.
+            if done and quit_seen_at is None:
+                quit_seen_at = now
+            if os.path.exists(stop_file):
+                if quit_seen_at is None:
+                    _ask_gui(check)
+                if stop_seen_at is None:
+                    stop_seen_at = now
+                elif (
+                    quit_seen_at is None
+                    and now - stop_seen_at >= grace_s
+                ):
+                    _fail_if_still_here(not_started)
+                elif (
+                    quit_seen_at is not None
+                    and now - quit_seen_at >= grace_s
+                ):
+                    _fail_if_still_here(not_exited)
+            elif now > deadline + grace_s:
+                _fail_if_still_here(
+                    f"No stop file after {timeout_s:.0f} s; quitting"
+                )
 
     timer.timeout.connect(check)
     timer.start(POLL_MS)
-    # Keep the timer alive after this script's namespace is released.
+    QTimer.singleShot(POLL_MS, check)
+    watcher = threading.Thread(
+        target=thread_watch, name="acceptance-stop-watcher", daemon=True
+    )
+    watcher.start()
+    # Keep the timer and callback alive after this script's namespace is
+    # released.
     App.AcceptanceStopTimer = timer
+    App.AcceptanceStopCheck = check
+    App.AcceptanceStopWatcher = watcher
 
 
 def _run() -> None:
@@ -75,9 +199,12 @@ def _run() -> None:
         common.fail("ACCEPTANCE_READY_FILE and ACCEPTANCE_STOP_FILE must be set")
 
     common.start_bridge()
-    port = config.port()
+    entry = config.listen_addresses()[0]
+    _, port = config.parse_listen_entry(entry)
     _write_ready_file(ready_file, port)
-    common.log_notice(f"Bridge ready on 127.0.0.1:{port}; serving until {stop_file} appears")
+    common.log_notice(
+        f"Bridge ready on {entry}; serving until {stop_file} appears"
+    )
     _watch_for_stop(stop_file, float(common.env("ACCEPTANCE_TIMEOUT_S", "600")))
     # Return to FreeCAD's event loop: jobs run there, as they do for a user.
 

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 if _script_dir not in sys.path:
@@ -159,9 +160,9 @@ def _report_view_text() -> str:
 
 
 _PREFS_LINE = (
-    "To start or stop the bridge, click <b>MCP Bridge On/Off</b> "
-    "in the <b>MCP Bridge</b> toolbar. While active, it listens "
-    "on the port configured below."
+    "To start or stop the bridge, click <b>MCP On/Off</b> "
+    "in the status bar. While active, it listens "
+    "on the addresses below."
 )
 
 
@@ -359,6 +360,17 @@ def _verify_toolbar_hide() -> None:
                 return tb
         return None
 
+    def _wait_until(ready) -> bool:
+        """Pump events until ready() is true, for up to 3 s."""
+        deadline = time.monotonic() + 3.0
+        while True:
+            QCoreApplication.processEvents()
+            if ready():
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.05)
+
     try:
         tb = _find_toolbar()
         if tb is None or not tb.isVisible():
@@ -370,8 +382,7 @@ def _verify_toolbar_hide() -> None:
             )
 
         toggle.trigger()
-        QCoreApplication.processEvents()
-        if tb.isVisible():
+        if not _wait_until(lambda: not tb.isVisible()):
             common.fail(
                 "MCP Bridge toolbar remained visible after toggleViewAction"
             )
@@ -381,14 +392,19 @@ def _verify_toolbar_hide() -> None:
             )
 
         Gui.activateWorkbench(other_wb)
-        QCoreApplication.processEvents()
-        tb = _find_toolbar()
-        visible = None if tb is None else tb.isVisible()
-        if tb is None or visible:
+
+        def _still_hidden() -> bool:
+            found = _find_toolbar()
+            return found is not None and not found.isVisible()
+
+        if not _wait_until(_still_hidden):
+            tb = _find_toolbar()
+            visible = None if tb is None else tb.isVisible()
             common.fail(
                 "MCP Bridge toolbar did not stay hidden after workbench "
                 f"switch (tb={tb!r}, visible={visible})"
             )
+        tb = _find_toolbar()
         if tb_params.GetBool(DISPLAY_NAME, True):
             common.fail(
                 "MainWindow/Toolbars parameter was not saved as False "
@@ -396,17 +412,20 @@ def _verify_toolbar_hide() -> None:
             )
 
         tb.toggleViewAction().trigger()
-        QCoreApplication.processEvents()
-        if not tb.isVisible():
+        if not _wait_until(lambda: tb.isVisible()):
             common.fail(
                 "MCP Bridge toolbar did not become visible when shown again"
             )
 
         Gui.activateWorkbench(initial_wb)
-        QCoreApplication.processEvents()
-        tb = _find_toolbar()
-        visible = None if tb is None else tb.isVisible()
-        if tb is None or not visible:
+
+        def _still_shown() -> bool:
+            found = _find_toolbar()
+            return found is not None and found.isVisible()
+
+        if not _wait_until(_still_shown):
+            tb = _find_toolbar()
+            visible = None if tb is None else tb.isVisible()
             common.fail(
                 "MCP Bridge toolbar did not stay shown after workbench "
                 f"switch (tb={tb!r}, visible={visible})"
@@ -526,7 +545,8 @@ def _http_exec_probe(code: str, timeout_ms: int) -> dict:
     from freecad.mcp_bridge import config
     from freecad.mcp_bridge.constants import PROTOCOL_VERSION
 
-    url = f"http://127.0.0.1:{config.port()}/mcp"
+    entry = config.listen_addresses()[0]
+    url = f"http://{entry}/mcp"
     timeout_s = timeout_ms / 1000.0
     result: dict = {}
 

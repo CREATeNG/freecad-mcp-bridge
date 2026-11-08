@@ -379,13 +379,19 @@ Tool-call results and paging are otherwise identical on both
 transports: each waits up to the configured timeout for the first
 page, then polls via `get_output_page` if needed.
 
-**Port**
+**Listen addresses and ports**
 
-A static port, **39280** by default, user-configurable in FreeCAD
-preferences.
-On conflict at startup: log a clear error directing the user to Edit → Preferences →
-MCP Bridge. No silent increment. Dynamic port rejected — HTTP clients configure the
-endpoint URL directly; a changing port would require reconfiguration each session.
+Configured in **Listen addresses** in FreeCAD preferences as a list of
+`address:port` entries (`[ipv6]:port` for IPv6), **`127.0.0.1:39280`**
+by default. When the **Listen addresses** setting has never been
+saved, the default entry uses any previously saved `Port`
+preference so an upgraded profile keeps its custom port. On a
+missing or invalid port, or a bind
+conflict at startup: log a clear error naming the entry and directing
+the user to Edit → Preferences → MCP Bridge, and keep the bridge off.
+No silent port increment. Dynamic port rejected — HTTP clients
+configure the endpoint URL directly; a changing port would require
+reconfiguration each session.
 
 **Session management**
 
@@ -462,19 +468,72 @@ state. If the capability belongs anywhere, it is upstream
 
 ## Security
 
-**Loopback only, user-toggled**
+**Loopback by default, user-toggled, with per-address risk acceptance**
 
-The server binds to `127.0.0.1` only, never `0.0.0.0`. It starts only when the user
-activates the toolbar toggle, and stops when they deactivate it. This satisfies the
-Addon Index transparency and deferred-activation requirements.
+By default, the server binds to `127.0.0.1:39280` only. It starts only
+when the user activates the toggle, and stops when they deactivate it.
 
-**Security posture — noted trade-off**
+In Preferences, the user can configure a list of `address:port`
+entries (`[ipv6]:port` for IPv6), defaulting to `127.0.0.1:39280`.
+Every entry requires a port; if any entry lacks a valid port or
+cannot be bound, all bound listeners are closed and the bridge stays
+off. The server binds an HTTP listener on each listed entry and
+shares a single main-thread execution queue across them. Loopback is
+bound only when included in the list (the Claude Desktop shim
+connects to `127.0.0.1` on its configured port). When the bridge is
+turned on with any non-loopback entry not yet accepted, one modal
+warning dialog lists those entries and states the remaining risks:
 
-A loopback TCP port is accessible to any local process while active. Named sockets
-(Windows named pipes / UNIX domain sockets) can be restricted to the OS user on most
-platforms (Qt notes that macOS does not honour socket file permissions); a TCP loopback
-port cannot. Accepted on the basis that the attack
-surface is local-only and the user controls the toggle.
+- lack of authentication when **Require bearer token** is off;
+- lack of encryption when **Require TLS (HTTPS)** is off;
+- remote Python code execution in FreeCAD as the user.
+
+The bridge stays off unless the user accepts. Acceptance is stored
+per entry in FreeCAD's preferences (`AcceptedListenAddresses`) once
+the start succeeds. Every start with any non-loopback entry warns in
+the status bar and the Report view.
+
+**Authentication and encryption — on by default beyond loopback, opt-in on loopback**
+
+Two preferences apply across all non-loopback entries by default, and
+a third preference (`RequireOnLoopback`, default `false`) applies
+them to loopback entries as well. While `RequireOnLoopback` is off,
+loopback entries use plain HTTP without a token:
+
+- **Bearer token (`RequireToken`, default `true`)** — when enabled,
+  every request to a listener that requires a token must carry
+  `Authorization: Bearer <token>` or is rejected with `401
+  Unauthorized`. The addon generates a 256-bit random token, shows it
+  once in a modal dialog with a note that it will not be stored or
+  shown again, and stores only its SHA-256 hex digest (`TokenHash`) in
+  FreeCAD's preferences, compared in constant time. The first token is
+  generated and shown when the user turns the bridge on with an entry
+  that requires a token and no `TokenHash` is stored, or when the user
+  clicks **Generate new token** in Preferences. Generating a new token
+  replaces `TokenHash` and immediately refuses the old token.
+- **TLS (`RequireTls`, default `true`)** — when enabled, listeners
+  that require TLS serve HTTPS using the user-configured certificate
+  file (`TlsCertFile`) and private key file (`TlsKeyFile`) with
+  Python's standard-library `ssl` module. The addon does not generate
+  certificates. If `RequireTls` is enabled and an entry that requires
+  TLS is configured without readable, valid certificate and key
+  files, startup fails with an error directing the user to Edit →
+  Preferences → MCP Bridge and the bridge stays off.
+
+**Security posture — noted trade-offs**
+
+On loopback (`127.0.0.1`), the TCP port is accessible to any local
+process while active. Named sockets (Windows named pipes / UNIX domain
+sockets) can be restricted to the OS user on most platforms (Qt notes
+that macOS does not honour socket file permissions); a TCP loopback
+port cannot. Accepted on the basis that by default the listener is
+local-only and the user controls the toggle.
+
+On a non-loopback address, any client that can reach the configured
+address and port (with the bearer token, when `RequireToken` is on)
+can run Python code in the live FreeCAD session as the user. Allowed
+only after the user has accepted the risk for each entry once and
+accompanied by a warning on every start.
 
 **Origin header validation — required**
 
@@ -490,27 +549,41 @@ present and is not `localhost` or `127.0.0.1`.
 
 Some MCP clients speak only stdio for local servers. A small
 zero-dependency Node.js shim (`mcp-stdio-shim/index.js`) ships with
-the addon as a stdio ↔ HTTP proxy. Each newline-delimited JSON-RPC
-message on stdin is forwarded as an HTTP POST, body unchanged. A
-JSON reply, or each event of an SSE reply, is unwrapped and written
-back on stdout as one line. Stdio carries no headers, so the shim sets
+the addon as a stdio ↔ HTTP/HTTPS proxy. Each newline-delimited
+JSON-RPC tools/call on stdin is forwarded as an HTTP POST, body
+unchanged. A JSON reply is unwrapped and written back on stdout as
+one line. The shim offers protocol version `2025-11-25` only, and a
+`tools/call` that names `2026-07-28` is still forwarded with that
+version. `server/discover` gets a method-not-found error naming
+the method, which tells a client that also speaks `2025-11-25` to
+fall back to `initialize`. A client that speaks `2026-07-28` only
+cannot use the shim. Stdio carries no headers, so the shim sets
 `MCP-Protocol-Version` from
 `params._meta["io.modelcontextprotocol/protocolVersion"]` when that
 field is present, and to `2025-11-25` when it is not. When the
 version is `2026-07-28` it also sets `Mcp-Method` from the message's
 method and, for `tools/call`, `Mcp-Name` from `params.name`. Node
-stdlib only (global `fetch`, Node ≥ 18); Claude Desktop bundles
-Node.js, so no user-side runtime install is needed. The shim reads
-the port from the `FREECAD_MCP_PORT` environment variable (default
-39280). Notifications (no `id`) get no reply. While the bridge
-answers, `initialize` is forwarded with every other message. If the
-bridge is unreachable, the shim answers `initialize` itself with
-`protocolVersion` `2025-11-25`, and `tools/list` from `tools.json`,
-a copy of the addon's tool list that release preparation checks
-against `tools.py`, so a client started before FreeCAD comes up
-cleanly. A `tools/call` then gets a tool result whose `error` says
-to start FreeCAD and turn the bridge on; any other request gets a
-JSON-RPC error saying the same.
+stdlib only (global `fetch` and `node:https`, Node ≥ 18); Claude
+Desktop bundles Node.js, so no user-side runtime install is needed.
+The shim reads the port from `FREECAD_MCP_PORT` (default 39280), an
+optional bearer token from `FREECAD_MCP_TOKEN`, and an optional PEM
+certificate path from `FREECAD_MCP_TLS_CERT_FILE` (all wired from
+`user_config` in `manifest.json`). When a token is set, it sends
+`Authorization: Bearer <token>`; when a certificate file is set, it
+connects to `https://127.0.0.1:<port>/mcp` and trusts that
+certificate (which must cover `127.0.0.1`). Notifications (no `id`)
+get no reply and are not sent on. The shim answers `initialize`
+itself with `protocolVersion` `2025-11-25` and a tools capability
+only, and `tools/list` from `tools.json`, a copy of the addon's tool
+list that release preparation checks against `tools.py`. It does not
+contact the bridge for either, whether or not FreeCAD is up. Only a
+`tools/call` is sent on. When that call finds the bridge
+unreachable, serving HTTPS with no certificate set, returning 401,
+or failing TLS, the tool result's `error` names that case and what
+to change, the bridge's toggle in FreeCAD or the extension's
+settings. A `ping` is answered locally with an empty result and is
+not sent on. Any other method gets a JSON-RPC method-not-found
+error, code `-32601`, and is not sent on.
 
 **Shim — no SDK**
 
@@ -572,11 +645,11 @@ asset for Claude Desktop users.
 
 Stored at `User parameter:BaseApp/Preferences/Mod/freecad-mcp-bridge`.
 
-The port is read at server start; timeout and page size are read per
-request. Retention is read when each job finishes running and fixes that
-job's retention interval, also used for later extensions. Preference
-changes affect jobs that finish afterwards, not histories whose
-intervals are already set.
+The listen addresses are read at server start; timeout and page size
+are read per request. Retention is read when each job finishes
+running and fixes that job's retention interval, also used for later
+extensions. Preference changes affect jobs that finish afterwards, not
+histories whose intervals are already set.
 
 The preference page is registered as a `.ui` file and appears in Edit →
 Preferences → MCP Bridge. FreeCAD wires widgets to the parameter store
@@ -584,7 +657,11 @@ automatically.
 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
-| Port | 39280 | Error logged on conflict at startup |
+| Listen addresses | `127.0.0.1:39280` | List of `address:port` entries (`[ipv6]:port` for IPv6) to bind; if unset, inherits a previously saved `Port` value; missing port or bind conflict at startup logs an error and leaves the bridge off; non-loopback entries require user risk acceptance for each entry once (`AcceptedListenAddresses`) and log a warning in the status bar and Report view on each start |
+| Require bearer token | `true` | Requires `Authorization: Bearer <token>` on non-loopback entries (and on loopback when `RequireOnLoopback` is `true`); stores only a SHA-256 hash (`TokenHash`) and shows the generated token once |
+| Require TLS (HTTPS) | `true` | Serves HTTPS on non-loopback entries (and on loopback when `RequireOnLoopback` is `true`) using `TlsCertFile` and `TlsKeyFile`; fails to start on an entry that requires TLS if enabled without valid certificate and key files |
+| TLS certificate file (PEM) / TLS private key file (PEM) | `""` | PEM certificate (`TlsCertFile`) and private key (`TlsKeyFile`) paths for HTTPS |
+| Apply to loopback | `false` | Applies **Require bearer token** and **Require TLS (HTTPS)** to loopback entries too (`RequireOnLoopback`) |
 | Max response timeout (s) | 15 | Max wait in `execute_python` and `get_output_page` before returning with `has_more: true` |
 | Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |
 | Page history retention (min) | 5 | How long output stays readable after the job finishes running, or after its last valid page fetch or replay. |

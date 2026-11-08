@@ -351,6 +351,15 @@ class MaintenanceHTTPServer(ThreadingHTTPServer):
 
     allow_reuse_address = sys.platform != "win32"
 
+    def __init__(
+        self, server_address, RequestHandlerClass, bind_and_activate=True
+    ):
+        if ":" in server_address[0]:
+            self.address_family = socket.AF_INET6
+        super().__init__(
+            server_address, RequestHandlerClass, bind_and_activate
+        )
+
     # Windows lets two SO_REUSEADDR sockets share a port,
     # so binding a taken port wouldn't fail.
     def server_bind(self):
