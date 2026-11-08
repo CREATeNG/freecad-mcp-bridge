@@ -9,15 +9,15 @@
  * FREECAD_MCP_TOKEN is set), unwraps the JSON or SSE reply, and writes it back
  * on stdout.
  *
- * When FreeCAD isn't reachable, it answers initialize and tools/list itself
- * (tools.json is a copy of the addon's tool list), and answers a tools/call
- * with a tool-level error saying how to start the bridge, so the client
- * starts cleanly instead of reporting a failed server. When no certificate
- * file is set and a TLS handshake to the port completes, it answers
- * initialize and tools/list the same way. Any other request gets an error
- * saying the bridge serves HTTPS and to set TLS certificate file (PEM) or
- * untick Also require on loopback. Node
- * stdlib only (global fetch and node:https, >=18).
+ * The shim answers initialize and tools/list itself (tools.json is a
+ * copy of the addon's tool list) and does not contact the bridge for
+ * them, so the client starts cleanly whether or not FreeCAD is up.
+ * Only a tools/call is sent on. When that call finds the bridge
+ * unreachable, serving HTTPS with no certificate set, returning 401,
+ * or failing TLS, the tool result's error says which. A ping is
+ * answered locally with an empty result. A notification is not sent
+ * and gets no reply. Any other method gets a method-not-found error.
+ * Node stdlib only (global fetch and node:https, >=18).
  */
 
 const fs = require("fs");

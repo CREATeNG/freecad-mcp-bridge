@@ -565,23 +565,19 @@ certificate path from `FREECAD_MCP_TLS_CERT_FILE` (all wired from
 `user_config` in `manifest.json`). When a token is set, it sends
 `Authorization: Bearer <token>`; when a certificate file is set, it
 connects to `https://127.0.0.1:<port>/mcp` and trusts that
-certificate (which must cover `127.0.0.1`). A `401` response or a
-TLS/certificate failure is surfaced as a tool-result or JSON-RPC
-error naming the extension settings and **Also require on loopback**.
-Notifications (no `id`) get no reply. While the bridge answers,
-`initialize` is forwarded with every other message. If the bridge is
-unreachable, the shim answers `initialize` itself with
-`protocolVersion` `2025-11-25`, and `tools/list` from `tools.json`,
-a copy of the addon's tool list that release preparation checks
-against `tools.py`, so a client started before FreeCAD comes up
-cleanly. A `tools/call` then gets a tool result whose `error` says
-to start FreeCAD and turn the bridge on; any other request gets a
-JSON-RPC error saying the same. When no certificate file is set and
-a TLS handshake to the port completes, the shim answers initialize
-and tools/list as it does when the bridge is unreachable. Any other
-request gets an error of the same two shapes, saying the bridge
-serves HTTPS and to set TLS certificate file (PEM) or untick Also
-require on loopback.
+certificate (which must cover `127.0.0.1`). Notifications (no `id`)
+get no reply and are not sent on. The shim answers `initialize`
+itself with `protocolVersion` `2025-11-25` and a tools capability
+only, and `tools/list` from `tools.json`, a copy of the addon's tool
+list that release preparation checks against `tools.py`. It does not
+contact the bridge for either, whether or not FreeCAD is up. Only a
+`tools/call` is sent on. When that call finds the bridge
+unreachable, serving HTTPS with no certificate set, returning 401,
+or failing TLS, the tool result's `error` names that case and what
+to change, the bridge's toggle in FreeCAD or the extension's
+settings. A `ping` is answered locally with an empty result and is
+not sent on. Any other method gets a JSON-RPC method-not-found
+error, code `-32601`, and is not sent on.
 
 **Shim — no SDK**
 
