@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import sys
+import time
 
 _script_dir = os.path.dirname(os.path.abspath(__file__))
 if _script_dir not in sys.path:
@@ -359,6 +360,17 @@ def _verify_toolbar_hide() -> None:
                 return tb
         return None
 
+    def _wait_until(ready) -> bool:
+        """Pump events until ready() is true, for up to 3 s."""
+        deadline = time.monotonic() + 3.0
+        while True:
+            QCoreApplication.processEvents()
+            if ready():
+                return True
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.05)
+
     try:
         tb = _find_toolbar()
         if tb is None or not tb.isVisible():
@@ -370,8 +382,7 @@ def _verify_toolbar_hide() -> None:
             )
 
         toggle.trigger()
-        QCoreApplication.processEvents()
-        if tb.isVisible():
+        if not _wait_until(lambda: not tb.isVisible()):
             common.fail(
                 "MCP Bridge toolbar remained visible after toggleViewAction"
             )
@@ -381,14 +392,19 @@ def _verify_toolbar_hide() -> None:
             )
 
         Gui.activateWorkbench(other_wb)
-        QCoreApplication.processEvents()
-        tb = _find_toolbar()
-        visible = None if tb is None else tb.isVisible()
-        if tb is None or visible:
+
+        def _still_hidden() -> bool:
+            found = _find_toolbar()
+            return found is not None and not found.isVisible()
+
+        if not _wait_until(_still_hidden):
+            tb = _find_toolbar()
+            visible = None if tb is None else tb.isVisible()
             common.fail(
                 "MCP Bridge toolbar did not stay hidden after workbench "
                 f"switch (tb={tb!r}, visible={visible})"
             )
+        tb = _find_toolbar()
         if tb_params.GetBool(DISPLAY_NAME, True):
             common.fail(
                 "MainWindow/Toolbars parameter was not saved as False "
@@ -396,24 +412,20 @@ def _verify_toolbar_hide() -> None:
             )
 
         tb.toggleViewAction().trigger()
-        import time
-
-        deadline = time.monotonic() + 3.0
-        while time.monotonic() < deadline:
-            QCoreApplication.processEvents()
-            if tb.isVisible():
-                break
-            time.sleep(0.05)
-        if not tb.isVisible():
+        if not _wait_until(lambda: tb.isVisible()):
             common.fail(
                 "MCP Bridge toolbar did not become visible when shown again"
             )
 
         Gui.activateWorkbench(initial_wb)
-        QCoreApplication.processEvents()
-        tb = _find_toolbar()
-        visible = None if tb is None else tb.isVisible()
-        if tb is None or not visible:
+
+        def _still_shown() -> bool:
+            found = _find_toolbar()
+            return found is not None and found.isVisible()
+
+        if not _wait_until(_still_shown):
+            tb = _find_toolbar()
+            visible = None if tb is None else tb.isVisible()
             common.fail(
                 "MCP Bridge toolbar did not stay shown after workbench "
                 f"switch (tb={tb!r}, visible={visible})"

@@ -100,7 +100,8 @@ def _ask_gui(check) -> None:
 
         common._write_ci_log(
             "Could not post the stop check:\n"
-            + traceback.format_exc().rstrip()
+            + traceback.format_exc().rstrip(),
+            level="WARN",
         )
 
 
