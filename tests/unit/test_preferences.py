@@ -199,7 +199,8 @@ class PreferencePageTests(unittest.TestCase):
             "on the addresses below.",
         )
         self.assertIn(
-            "https://&lt;ADDRESS&gt;:&lt;PORT&gt;/mcp</span> with the bearer token. "
+            "<nobr>https:&#x2060;//&#x2060;&lt;ADDRESS&gt;&#x2060;:"
+            "&#x2060;&lt;PORT&gt;/mcp</nobr> with the bearer token. "
             "<b>Apply to loopback</b> extends that to loopback entries.",
             widgets_by_name["clientNote"]["text"],
         )
