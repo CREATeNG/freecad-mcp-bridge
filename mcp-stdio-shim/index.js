@@ -44,6 +44,7 @@ const PLAIN_HTTP_TO_HTTPS_MESSAGE =
 const LEGACY_PROTOCOL_VERSION = "2025-11-25";
 const MODERN_PROTOCOL_VERSION = "2026-07-28";
 const META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion";
+const META_SERVER_INFO = "io.modelcontextprotocol/serverInfo";
 const TOOLS = JSON.parse(fs.readFileSync(path.join(__dirname, "tools.json"), "utf8"));
 const VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf8")).version;
 const UNREACHABLE_HINT =
@@ -248,6 +249,21 @@ function writeResult(id, result) {
   writeLine(JSON.stringify({ jsonrpc: "2.0", id, result }));
 }
 
+// 2026-07-28 discover shape. supportedVersions is only the legacy
+// version: a client that starts here falls back to initialize.
+function discoverResult() {
+  return {
+    resultType: "complete",
+    supportedVersions: [LEGACY_PROTOCOL_VERSION],
+    capabilities: { tools: {} },
+    _meta: {
+      [META_SERVER_INFO]: { name: "freecad-mcp-bridge", version: VERSION },
+    },
+    ttlMs: 0,
+    cacheScope: "public",
+  };
+}
+
 async function forward(rawLine, message) {
   // A notification has no id and no reply. initialize, tools/list
   // and ping are answered here. Only a tool call contacts the bridge.
@@ -261,12 +277,19 @@ async function forward(rawLine, message) {
     writeResult(message.id, {});
     return;
   }
+  if (message.method === "server/discover") {
+    writeResult(message.id, discoverResult());
+    return;
+  }
   if (message.method !== "tools/call") {
     writeLine(
       JSON.stringify({
         jsonrpc: "2.0",
         id: message.id,
-        error: { code: -32601, message: "Method not found" },
+        error: {
+          code: -32601,
+          message: `Method not found: ${message.method}`,
+        },
       })
     );
     return;
@@ -298,28 +321,6 @@ async function forward(rawLine, message) {
   const bodyText = await res.text();
   if (res.status === 401) {
     sendErrorReply(message, UNAUTHORIZED_MESSAGE);
-    return;
-  }
-
-  const contentType = res.contentType.toLowerCase();
-  if (contentType.includes("text/event-stream")) {
-    // SSE stream: pull each event's JSON-RPC envelope out of its data field(s)
-    // and write one line per event.
-    for (const event of bodyText.replace(/\r\n?/g, "\n").split("\n\n")) {
-      const dataLines = event
-        .split("\n")
-        .filter((line) => line.startsWith("data:"))
-        .map((line) => line.slice("data:".length).trim());
-      const joined = dataLines.join("\n").trim();
-      if (!joined) continue;
-      try {
-        JSON.parse(joined);
-        writeLine(joined.replace(/\n/g, " ").trim());
-      } catch {
-        // Lenient fallback: not SSE-standard parsing.
-        writeLine(dataLines.join(""));
-      }
-    }
     return;
   }
   const payload = bodyText.trim();

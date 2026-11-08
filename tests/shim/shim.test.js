@@ -166,7 +166,7 @@ test("a message with no protocol version is forwarded as 2025-11-25", async () =
   bridge.close();
 });
 
-test("a request other than a tool call is not sent on, even with a protocol version", async () => {
+test("server/discover is answered locally with 2025-11-25 as the only supported version and does not contact the bridge", async () => {
   const bridge = await startBridge(echo);
   const shim = startShim(bridge.port);
   shim.send(
@@ -180,8 +180,33 @@ test("a request other than a tool call is not sent on, even with a protocol vers
   const [reply] = await shim.waitForLines(1);
   await delay(100);
   assert.equal(bridge.requests.length, 0);
+  assert.equal(reply.error, undefined);
+  assert.deepEqual(reply.result, {
+    resultType: "complete",
+    supportedVersions: ["2025-11-25"],
+    capabilities: { tools: {} },
+    _meta: {
+      "io.modelcontextprotocol/serverInfo": {
+        name: "freecad-mcp-bridge",
+        version: readJson(path.join(SHIM_DIR, "package.json")).version,
+      },
+    },
+    ttlMs: 0,
+    cacheScope: "public",
+  });
+  await shim.stop();
+  bridge.close();
+});
+
+test("a method the shim does not offer names that method and is not sent on", async () => {
+  const bridge = await startBridge(echo);
+  const shim = startShim(bridge.port);
+  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "no/such/method" }) + "\n");
+  const [reply] = await shim.waitForLines(1);
+  await delay(100);
+  assert.equal(bridge.requests.length, 0);
   assert.equal(reply.error.code, -32601);
-  assert.equal(reply.error.message, "Method not found");
+  assert.equal(reply.error.message, "Method not found: no/such/method");
   await shim.stop();
   bridge.close();
 });
@@ -218,94 +243,6 @@ test("a plain JSON reply comes back as one JSON-RPC line", async () => {
   assert.deepEqual(line, reply);
   await delay(100);
   assert.equal(shim.lines.length, 1);
-  await shim.stop();
-  bridge.close();
-});
-
-test("a single-event SSE reply comes back as one JSON-RPC line", async () => {
-  const raw = '{"jsonrpc":"2.0","id":9007199254740993,"result":{"content":[{"type":"text","text":"{\\"page\\":[]}"}]}}';
-  const bridge = await startBridge(() => ({
-    type: "text/event-stream",
-    text: `event: message\ndata: ${raw}\n\n`,
-  }));
-  const shim = startShim(bridge.port);
-  shim.send('{"jsonrpc":"2.0","id":9007199254740993,"method":"tools/call"}\n');
-  await shim.waitForLines(1);
-  await delay(100);
-  assert.deepEqual(shim.lines, [raw]);
-  await shim.stop();
-  bridge.close();
-});
-
-test("a two-event SSE reply comes back as two JSON-RPC lines in order", async () => {
-  const first = JSON.stringify({
-    jsonrpc: "2.0",
-    method: "notifications/subscriptions/acknowledged",
-    params: { _meta: { "io.modelcontextprotocol/subscriptionId": 9 }, notifications: {} },
-  });
-  const second = JSON.stringify({
-    jsonrpc: "2.0",
-    id: 9,
-    result: { _meta: { "io.modelcontextprotocol/subscriptionId": 9 } },
-  });
-  const bridge = await startBridge(() => ({
-    type: "text/event-stream",
-    text: `event: message\ndata: ${first}\n\nevent: message\ndata: ${second}\n\n`,
-  }));
-  const shim = startShim(bridge.port);
-  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 9, method: "tools/call" }) + "\n");
-  await shim.waitForLines(2);
-  await delay(100);
-  assert.deepEqual(shim.lines, [first, second]);
-  await shim.stop();
-  bridge.close();
-});
-
-test("an SSE event whose JSON spans two data lines comes back as one JSON-RPC line", async () => {
-  const bridge = await startBridge(() => ({
-    type: "text/event-stream",
-    text:
-      'event: message\r\n' +
-      'data: {"jsonrpc": "2.0",\r\n' +
-      'data: "id": 9007199254740993, "result": {"ok": true}}\r\n\r\n',
-  }));
-  const shim = startShim(bridge.port);
-  shim.send('{"jsonrpc":"2.0","id":9007199254740993,"method":"tools/call"}\n');
-  await shim.waitForLines(1);
-  await delay(100);
-  assert.deepEqual(shim.lines, ['{"jsonrpc": "2.0", "id": 9007199254740993, "result": {"ok": true}}']);
-  await shim.stop();
-  bridge.close();
-});
-
-test("a two-event SSE reply framed with CR comes back as two JSON-RPC lines", async () => {
-  const first = '{"jsonrpc":"2.0","id":11,"result":{"step":1}}';
-  const second = '{"jsonrpc":"2.0","id":11,"result":{"step":2}}';
-  const bridge = await startBridge(() => ({
-    type: "text/event-stream",
-    text: `event: message\rdata: ${first}\r\revent: message\rdata: ${second}\r\r`,
-  }));
-  const shim = startShim(bridge.port);
-  shim.send('{"jsonrpc":"2.0","id":11,"method":"tools/call"}\n');
-  await shim.waitForLines(2);
-  await delay(100);
-  assert.deepEqual(shim.lines, [first, second]);
-  await shim.stop();
-  bridge.close();
-});
-
-test("a trailing SSE event with no blank line after it is still written", async () => {
-  const first = '{"jsonrpc":"2.0","id":12,"result":{"step":1}}';
-  const second = '{"jsonrpc":"2.0","id":12,"result":{"step":2}}';
-  const bridge = await startBridge(() => ({
-    type: "text/event-stream",
-    text: `event: message\ndata: ${first}\n\nevent: message\ndata: ${second}`,
-  }));
-  const shim = startShim(bridge.port);
-  shim.send('{"jsonrpc":"2.0","id":12,"method":"tools/call"}\n');
-  await shim.waitForLines(2);
-  await delay(100);
-  assert.deepEqual(shim.lines, [first, second]);
   await shim.stop();
   bridge.close();
 });
