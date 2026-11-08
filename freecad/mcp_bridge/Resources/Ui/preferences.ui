@@ -103,8 +103,20 @@
             <property name="toolTip">
              <string>The bridge's wait per page.</string>
             </property>
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
             <property name="suffix">
              <string> s</string>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>72</width>
+              <height>0</height>
+             </size>
             </property>
             <property name="minimum">
              <number>1</number>
@@ -127,6 +139,28 @@
            </widget>
           </item>
           <item>
+           <widget class="QWidget" name="pagingGap1">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>28</width>
+              <height>0</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>28</width>
+              <height>16777215</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+          <item>
            <widget class="QLabel" name="pageSizeLabel">
             <property name="text">
              <string>Max page size</string>
@@ -138,8 +172,20 @@
             <property name="toolTip">
              <string>Splits long output by page size.</string>
             </property>
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
             <property name="suffix">
              <string> K characters</string>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>120</width>
+              <height>0</height>
+             </size>
             </property>
             <property name="minimum">
              <number>1</number>
@@ -162,6 +208,28 @@
            </widget>
           </item>
           <item>
+           <widget class="QWidget" name="pagingGap2">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>28</width>
+              <height>0</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>28</width>
+              <height>16777215</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+          <item>
            <widget class="QLabel" name="retentionLabel">
             <property name="text">
              <string>Page history retention</string>
@@ -173,8 +241,20 @@
             <property name="toolTip">
              <string>Idle time before finished output expires.</string>
             </property>
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
             <property name="suffix">
              <string> min</string>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>96</width>
+              <height>0</height>
+             </size>
             </property>
             <property name="minimum">
              <number>1</number>
@@ -195,6 +275,19 @@
              <cstring>Mod/freecad-mcp-bridge</cstring>
             </property>
            </widget>
+          </item>
+          <item>
+           <spacer name="pagingRowSpacer">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>10</height>
+             </size>
+            </property>
+           </spacer>
           </item>
          </layout>
         </item>
@@ -233,6 +326,28 @@
           </property>
           <property name="prefPath" stdset="0">
            <cstring>Mod/freecad-mcp-bridge</cstring>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QWidget" name="tlsTokenGap">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>28</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>28</width>
+            <height>16777215</height>
+           </size>
           </property>
          </widget>
         </item>
@@ -371,8 +486,8 @@
      <property name="title">
       <string>Status bar</string>
      </property>
-     <layout class="QFormLayout" name="statusBarLayout">
-      <item row="0" column="0" colspan="2">
+     <layout class="QHBoxLayout" name="statusBarLayout">
+      <item>
        <widget class="Gui::PrefCheckBox" name="showStatusButtonCheckBox">
         <property name="toolTip">
          <string>Display toggle button in the status bar</string>
@@ -391,15 +506,21 @@
         </property>
        </widget>
       </item>
-      <item row="1" column="0">
+      <item>
        <widget class="QLabel" name="statusButtonPositionLabel">
         <property name="text">
          <string>Position</string>
         </property>
        </widget>
       </item>
-      <item row="1" column="1">
+      <item>
        <widget class="Gui::PrefComboBox" name="statusButtonPositionComboBox">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
         <property name="toolTip">
          <string>Where the button sits on the status bar.</string>
         </property>
@@ -423,6 +544,19 @@
          </property>
         </item>
        </widget>
+      </item>
+      <item>
+       <spacer name="statusBarRowSpacer">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>20</width>
+          <height>10</height>
+         </size>
+        </property>
+       </spacer>
       </item>
      </layout>
     </widget>
