@@ -415,7 +415,7 @@
            <string>Apply Require bearer token and Require TLS (HTTPS) to loopback entries too.</string>
           </property>
           <property name="text">
-           <string>Also require on loopback</string>
+           <string>Apply to loopback</string>
           </property>
           <property name="checked">
            <bool>false</bool>
@@ -608,7 +608,7 @@
          <enum>Qt::RichText</enum>
         </property>
         <property name="text">
-         <string>Most MCP clients speak HTTP — connect them directly to http://127.0.0.1:&amp;lt;PORT&amp;gt;/mcp for a loopback entry in Listen addresses above. For a non-loopback entry it is https://&amp;lt;ADDRESS&amp;gt;:&amp;lt;PORT&amp;gt;/mcp with the bearer token, while Require TLS (HTTPS) and Require bearer token are on, as they are by default. With Also require on loopback on, loopback entries work the same way.&lt;br/&gt;&lt;br/&gt;Clients that only speak stdio — e.g. Claude Desktop (not Claude Code) — need a small connector: &lt;a href="https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest/download/freecad-mcp-bridge.mcpb"&gt;Download the bundle&lt;/a&gt;.</string>
+         <string>Most MCP clients speak HTTP — connect them directly to http://127.0.0.1:&amp;lt;PORT&amp;gt;/mcp for a loopback entry in Listen addresses above. For a non-loopback entry it is https://&amp;lt;ADDRESS&amp;gt;:&amp;lt;PORT&amp;gt;/mcp with the bearer token, while Require TLS (HTTPS) and Require bearer token are on, as they are by default. With Apply to loopback on, loopback entries work the same way.&lt;br/&gt;&lt;br/&gt;Clients that only speak stdio — e.g. Claude Desktop (not Claude Code) — need a small connector: &lt;a href="https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest/download/freecad-mcp-bridge.mcpb"&gt;Download the bundle&lt;/a&gt;.</string>
         </property>
         <property name="wordWrap">
          <bool>true</bool>

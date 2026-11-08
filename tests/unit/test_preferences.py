@@ -165,7 +165,7 @@ class PreferencePageTests(unittest.TestCase):
         )
         self.assertEqual(
             settings["RequireOnLoopback"]["text"],
-            "Also require on loopback",
+            "Apply to loopback",
         )
         self.assertEqual(
             settings["RequireOnLoopback"]["toolTip"],
@@ -201,7 +201,7 @@ class PreferencePageTests(unittest.TestCase):
         self.assertIn(
             "https://&lt;ADDRESS&gt;:&lt;PORT&gt;/mcp with the bearer token, "
             "while Require TLS (HTTPS) and Require bearer token are on, as "
-            "they are by default. With Also require on loopback on, loopback "
+            "they are by default. With Apply to loopback on, loopback "
             "entries work the same way.",
             widgets_by_name["clientNote"]["text"],
         )

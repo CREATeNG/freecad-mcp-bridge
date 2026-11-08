@@ -661,7 +661,7 @@ automatically.
 | Require bearer token | `true` | Requires `Authorization: Bearer <token>` on non-loopback entries (and on loopback when `RequireOnLoopback` is `true`); stores only a SHA-256 hash (`TokenHash`) and shows the generated token once |
 | Require TLS (HTTPS) | `true` | Serves HTTPS on non-loopback entries (and on loopback when `RequireOnLoopback` is `true`) using `TlsCertFile` and `TlsKeyFile`; fails to start on an entry that requires TLS if enabled without valid certificate and key files |
 | TLS certificate file (PEM) / TLS private key file (PEM) | `""` | PEM certificate (`TlsCertFile`) and private key (`TlsKeyFile`) paths for HTTPS |
-| Also require on loopback | `false` | Applies **Require bearer token** and **Require TLS (HTTPS)** to loopback entries too (`RequireOnLoopback`) |
+| Apply to loopback | `false` | Applies **Require bearer token** and **Require TLS (HTTPS)** to loopback entries too (`RequireOnLoopback`) |
 | Max response timeout (s) | 15 | Max wait in `execute_python` and `get_output_page` before returning with `has_more: true` |
 | Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |
 | Page history retention (min) | 5 | How long output stays readable after the job finishes running, or after its last valid page fetch or replay. |

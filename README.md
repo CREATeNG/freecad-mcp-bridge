@@ -57,12 +57,12 @@ The server is off until you toggle it on, each session — click the button agai
    is pre-filled with `39280`, the default; set it to match the port
    of a `127.0.0.1` entry in FreeCAD's **Listen addresses** and check
    that the extension is **Enabled**. Leave **Bearer token** and
-   **TLS certificate file (PEM)** blank unless **Also require on
-   loopback** is on in FreeCAD's Preferences. With it on, paste the
+   **TLS certificate file (PEM)** blank unless **Apply to loopback**
+   is on in FreeCAD's Preferences. With it on, paste the
    token into **Bearer token** when **Require bearer token** is on,
    and select FreeCAD's PEM certificate file in **TLS certificate
    file (PEM)** when **Require TLS (HTTPS)** is on. A certificate
-   set while **Also require on loopback** is off makes the extension
+   set while **Apply to loopback** is off makes the extension
    try HTTPS against plain HTTP and fail. On the Linux beta, the
    extension's tools default to **Needs approval**.
 
@@ -123,8 +123,8 @@ change a model — for example:
   after a gap that long without a fetch, unread output is gone.
 - **Require bearer token** (on by default) — requires
   `Authorization: Bearer <token>` on non-loopback entries in
-  **Listen addresses**, and on loopback entries when **Also require on
-  loopback** is on. With **Also require on loopback** off, loopback
+  **Listen addresses**, and on loopback entries when **Apply to
+  loopback** is on. With **Apply to loopback** off, loopback
   entries need no token. When you first turn the bridge on with an
   entry that requires a token and none has been generated, or when
   you click **Generate new token**, FreeCAD generates a random
@@ -133,14 +133,14 @@ change a model — for example:
   replaces the old one.
 - **Require TLS (HTTPS)** (on by default) — serves HTTPS on
   non-loopback entries in **Listen addresses**, and on loopback
-  entries when **Also require on loopback** is on, using **TLS
+  entries when **Apply to loopback** is on, using **TLS
   certificate file (PEM)** and **TLS private key file (PEM)**. With
-  **Also require on loopback** off, loopback entries use HTTP. The
+  **Apply to loopback** off, loopback entries use HTTP. The
   certificate must cover the address clients connect to (`127.0.0.1`
   in its Subject Alternative Name for the Claude Desktop extension).
   With this on and either file not set, starting with an entry that
   requires TLS fails and leaves the bridge off.
-- **Also require on loopback** (off by default) — applies **Require
+- **Apply to loopback** (off by default) — applies **Require
   bearer token** and **Require TLS (HTTPS)** to loopback entries in
   **Listen addresses** as well. With this on, local clients, the
   Claude Desktop extension among them, need the bearer token and the
@@ -180,8 +180,8 @@ MCP Bridge is designed for **local** control of FreeCAD.
   can reach the open loopback port, not only your MCP client. The
   bridge listens on every entry in **Listen addresses**. Non-loopback
   entries require a bearer token and TLS (HTTPS) by default, and
-  either can be turned off in Preferences. **Also require on
-  loopback** (off by default) applies both to loopback entries too.
+  either can be turned off in Preferences. **Apply to loopback**
+  (off by default) applies both to loopback entries too.
   Once you accept the first-time risk dialog, the bridge listens on
   the non-loopback entries too. Any client that can reach one, with
   the bearer token when it is required, can run Python code in

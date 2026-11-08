@@ -778,7 +778,7 @@ class ListenAddressTests(unittest.TestCase):
             self.assertEqual(status_new, 200)
             self.assertEqual(out2, "https with token2\n")
 
-            # Trigger phase 3: turn Also require on loopback on with only
+            # Trigger phase 3: turn Apply to loopback on with only
             # 127.0.0.1 in ListenAddress.
             open(phase3_go, "w", encoding="utf-8").close()
             self.assertTrue(
@@ -910,7 +910,7 @@ class ListenAddressTests(unittest.TestCase):
         self.assertEqual(seen.get("started_status"), expected_status)
         self.assertIn(expected_warning, seen.get("started_report", ""))
 
-        # 6. With Also require on loopback on and only 127.0.0.1 in
+        # 6. With Apply to loopback on and only 127.0.0.1 in
         # ListenAddress: missing certificate fails safe, first start shows the
         # token dialog without the non-loopback risk dialog, and status has no
         # non-loopback warning.

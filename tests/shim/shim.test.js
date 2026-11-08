@@ -428,12 +428,12 @@ test("manifest.json declares optional port, sensitive bearer token, and TLS cert
   assert.equal(cfg.token.sensitive, true);
   assert.equal(cfg.token.required, false);
   assert.equal(cfg.token.title, "Bearer token");
-  assert.match(cfg.token.description, /Also require on loopback/);
+  assert.match(cfg.token.description, /Apply to loopback/);
   assert.equal(cfg.tls_cert_file.type, "file");
   assert.equal(cfg.tls_cert_file.required, false);
   assert.equal(cfg.tls_cert_file.title, "TLS certificate file (PEM)");
   assert.match(cfg.tls_cert_file.description, /127\.0\.0\.1/);
-  assert.match(cfg.tls_cert_file.description, /Also require on loopback/);
+  assert.match(cfg.tls_cert_file.description, /Apply to loopback/);
 });
 
 test("with neither token nor certificate set, the shim sends plain HTTP with no Authorization header", async () => {
@@ -516,7 +516,7 @@ test("with FREECAD_MCP_TLS_CERT_FILE set, the shim connects over HTTPS and trust
   }
 });
 
-test("an untrusted certificate or a certificate set while the bridge serves plain HTTP fails with a clear message naming Also require on loopback", async () => {
+test("an untrusted certificate or a certificate set while the bridge serves plain HTTP fails with a clear message naming Apply to loopback", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shim-tls-fail-"));
   try {
     const serverCert = makeSelfSignedCert(tmpDir, "server", "127.0.0.1");
@@ -544,11 +544,11 @@ test("an untrusted certificate or a certificate set while the bridge serves plai
     assert.match(untrustedError, /TLS connection failed/);
     assert.match(untrustedError, /TLS certificate file \(PEM\)/);
     assert.match(untrustedError, /covers 127\.0\.0\.1/);
-    assert.match(untrustedError, /Also require on loopback/);
+    assert.match(untrustedError, /Apply to loopback/);
     await shimUntrusted.stop();
     httpsBridge.close();
 
-    // 2. Plain-HTTP bridge (Also require on loopback is off) while a certificate is set.
+    // 2. Plain-HTTP bridge (Apply to loopback is off) while a certificate is set.
     const httpBridge = await startBridge(echo);
     const shimPlain = startShim(httpBridge.port, {
       FREECAD_MCP_TLS_CERT_FILE: serverCert.certPath,
@@ -565,7 +565,7 @@ test("an untrusted certificate or a certificate set while the bridge serves plai
     assert.equal(plainReply.result.isError, true);
     const plainError = JSON.parse(plainReply.result.content[0].text).error;
     assert.match(plainError, /TLS connection failed/);
-    assert.match(plainError, /While Also require on loopback is off, leave the certificate setting blank/);
+    assert.match(plainError, /While Apply to loopback is off, leave the certificate setting blank/);
     await shimPlain.stop();
     httpBridge.close();
   } finally {
@@ -597,7 +597,7 @@ test("plain HTTP against a loopback port that speaks HTTPS names the TLS setting
       error,
       `FreeCAD MCP Bridge serves HTTPS at ${endpoint}, and this connection was plain HTTP. ` +
         "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to FreeCAD's certificate, " +
-        "or untick Also require on loopback in FreeCAD's Edit → Preferences → MCP Bridge."
+        "or untick Apply to loopback in FreeCAD's Edit → Preferences → MCP Bridge."
     );
     assert.doesNotMatch(error, /isn't reachable/);
     await shim.stop();
@@ -657,7 +657,7 @@ test("with no certificate set, an HTTPS port answers initialize and tools/list, 
       error,
       `FreeCAD MCP Bridge serves HTTPS at ${endpoint}, and this connection was plain HTTP. ` +
         "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to FreeCAD's certificate, " +
-        "or untick Also require on loopback in FreeCAD's Edit → Preferences → MCP Bridge."
+        "or untick Apply to loopback in FreeCAD's Edit → Preferences → MCP Bridge."
     );
     await shim.stop();
     httpsBridge.close();

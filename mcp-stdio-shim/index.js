@@ -44,7 +44,7 @@ const HTTPS_ENDPOINT = `https://127.0.0.1:${PORT}/mcp`;
 const PLAIN_HTTP_TO_HTTPS_MESSAGE =
   `FreeCAD MCP Bridge serves HTTPS at ${HTTPS_ENDPOINT}, and this connection was plain HTTP. ` +
   "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to FreeCAD's certificate, " +
-  "or untick Also require on loopback in FreeCAD's Edit → Preferences → MCP Bridge.";
+  "or untick Apply to loopback in FreeCAD's Edit → Preferences → MCP Bridge.";
 const LEGACY_PROTOCOL_VERSION = "2025-11-25";
 const MODERN_PROTOCOL_VERSION = "2026-07-28";
 const META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion";
@@ -105,8 +105,8 @@ function tlsErrorMessage(err) {
   return (
     `FreeCAD MCP Bridge TLS connection failed at ${ENDPOINT} (${detail}). ` +
     "Check that TLS certificate file (PEM) in the extension settings is FreeCAD's certificate and covers 127.0.0.1. " +
-    "Check that Also require on loopback and Require TLS (HTTPS) are on in FreeCAD's Edit → Preferences → MCP Bridge. " +
-    "While Also require on loopback is off, leave the certificate setting blank."
+    "Check that the Apply to loopback and Require TLS (HTTPS) settings are on in FreeCAD's Edit → Preferences → MCP Bridge. " +
+    "While Apply to loopback is off, leave the certificate setting blank."
   );
 }
 
