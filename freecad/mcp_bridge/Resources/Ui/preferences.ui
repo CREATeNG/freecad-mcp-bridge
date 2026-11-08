@@ -38,7 +38,7 @@
        </widget>
       </item>
       <item>
-       <layout class="QHBoxLayout" name="serverFields" stretch="0,1,2">
+       <layout class="QHBoxLayout" name="serverFields" stretch="0,1,0,2">
         <item>
          <widget class="QLabel" name="listenAddressLabel">
           <property name="text">
@@ -92,6 +92,28 @@
           </property>
          </widget>
         </item>
+        <item>
+         <widget class="QWidget" name="addressPagingGap">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>28</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>28</width>
+            <height>16777215</height>
+           </size>
+          </property>
+         </widget>
+        </item>
         <item alignment="Qt::AlignTop">
          <layout class="QFormLayout" name="pagingForm">
           <property name="verticalSpacing">
@@ -126,8 +148,14 @@
             </property>
             <property name="minimumSize">
              <size>
-              <width>72</width>
+              <width>120</width>
               <height>0</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>120</width>
+              <height>16777215</height>
              </size>
             </property>
             <property name="minimum">
@@ -177,6 +205,12 @@
               <height>0</height>
              </size>
             </property>
+            <property name="maximumSize">
+             <size>
+              <width>120</width>
+              <height>16777215</height>
+             </size>
+            </property>
             <property name="minimum">
              <number>1</number>
             </property>
@@ -220,8 +254,14 @@
             </property>
             <property name="minimumSize">
              <size>
-              <width>96</width>
+              <width>120</width>
               <height>0</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>120</width>
+              <height>16777215</height>
              </size>
             </property>
             <property name="minimum">
