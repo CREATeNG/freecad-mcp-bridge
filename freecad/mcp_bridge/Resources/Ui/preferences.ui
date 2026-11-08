@@ -102,13 +102,13 @@
           </property>
           <property name="minimumSize">
            <size>
-            <width>28</width>
+            <width>12</width>
             <height>0</height>
            </size>
           </property>
           <property name="maximumSize">
            <size>
-            <width>28</width>
+            <width>12</width>
             <height>16777215</height>
            </size>
           </property>
@@ -334,13 +334,13 @@
           </property>
           <property name="minimumSize">
            <size>
-            <width>28</width>
+            <width>12</width>
             <height>0</height>
            </size>
           </property>
           <property name="maximumSize">
            <size>
-            <width>28</width>
+            <width>12</width>
             <height>16777215</height>
            </size>
           </property>
@@ -391,13 +391,13 @@
           </property>
           <property name="minimumSize">
            <size>
-            <width>28</width>
+            <width>12</width>
             <height>0</height>
            </size>
           </property>
           <property name="maximumSize">
            <size>
-            <width>28</width>
+            <width>12</width>
             <height>16777215</height>
            </size>
           </property>
@@ -405,12 +405,6 @@
         </item>
         <item>
          <widget class="Gui::PrefCheckBox" name="requireOnLoopbackCheckBox">
-          <property name="minimumSize">
-           <size>
-            <width>180</width>
-            <height>0</height>
-           </size>
-          </property>
           <property name="toolTip">
            <string>Apply Require bearer token and Require TLS (HTTPS) to loopback entries too.</string>
           </property>
@@ -608,7 +602,7 @@
          <enum>Qt::RichText</enum>
         </property>
         <property name="text">
-         <string>Most MCP clients speak HTTP — connect them directly to http://127.0.0.1:&amp;lt;PORT&amp;gt;/mcp for a loopback entry in Listen addresses above. For a non-loopback entry it is https://&amp;lt;ADDRESS&amp;gt;:&amp;lt;PORT&amp;gt;/mcp with the bearer token, while Require TLS (HTTPS) and Require bearer token are on, as they are by default. With Apply to loopback on, loopback entries work the same way.&lt;br/&gt;&lt;br/&gt;Clients that only speak stdio — e.g. Claude Desktop (not Claude Code) — need a small connector: &lt;a href="https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest/download/freecad-mcp-bridge.mcpb"&gt;Download the bundle&lt;/a&gt;.</string>
+         <string>A loopback entry uses http://127.0.0.1:&amp;lt;PORT&amp;gt;/mcp. By default, beyond loopback, use https://&amp;lt;ADDRESS&amp;gt;:&amp;lt;PORT&amp;gt;/mcp with the bearer token. &lt;b&gt;Apply to loopback&lt;/b&gt; extends that to loopback entries. Claude Desktop speaks stdio only and needs this connector: &lt;a href="https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest/download/freecad-mcp-bridge.mcpb"&gt;Download the bundle&lt;/a&gt;.</string>
         </property>
         <property name="wordWrap">
          <bool>true</bool>

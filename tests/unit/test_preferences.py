@@ -199,10 +199,8 @@ class PreferencePageTests(unittest.TestCase):
             "on the addresses below.",
         )
         self.assertIn(
-            "https://&lt;ADDRESS&gt;:&lt;PORT&gt;/mcp with the bearer token, "
-            "while Require TLS (HTTPS) and Require bearer token are on, as "
-            "they are by default. With Apply to loopback on, loopback "
-            "entries work the same way.",
+            "https://&lt;ADDRESS&gt;:&lt;PORT&gt;/mcp with the bearer token. "
+            "<b>Apply to loopback</b> extends that to loopback entries.",
             widgets_by_name["clientNote"]["text"],
         )
         spin_names = (
