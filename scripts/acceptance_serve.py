@@ -72,6 +72,9 @@ def _fail_if_still_here(message: str) -> None:
     os._exit(1)
 
 
+_ask_gui_error_logged = False
+
+
 def _ask_gui(check) -> None:
     """Queue check on the application thread.
 
@@ -80,12 +83,24 @@ def _ask_gui(check) -> None:
     application still runs in a live event loop. A thread stuck in
     Python never runs it, and the guard still fires.
     """
-    from PySide.QtCore import QCoreApplication, QTimer
+    global _ask_gui_error_logged
+    try:
+        from PySide.QtCore import QCoreApplication, QTimer
 
-    app = QCoreApplication.instance()
-    if app is None:
-        return
-    QTimer.singleShot(0, app, check)
+        app = QCoreApplication.instance()
+        if app is None:
+            return
+        QTimer.singleShot(0, app, check)
+    except Exception:
+        if _ask_gui_error_logged:
+            return
+        _ask_gui_error_logged = True
+        import traceback
+
+        common._write_ci_log(
+            "Could not post the stop check:\n"
+            + traceback.format_exc().rstrip()
+        )
 
 
 def _watch_for_stop(stop_file: str, timeout_s: float) -> None:
