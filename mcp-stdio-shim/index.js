@@ -14,9 +14,9 @@
  * copy of the addon's tool list) and does not contact the bridge for
  * them, so the client starts cleanly whether or not FreeCAD is up.
  * server/discover gets a method-not-found error naming the method,
- * which tells a newer client to fall back to initialize. Only a
- * tools/call is sent on. When that call
- * finds the bridge unreachable, serving HTTPS with no certificate
+ * which tells a client that also speaks 2025-11-25 to fall back to
+ * initialize. Only a tools/call is sent on. When that call finds
+ * the bridge unreachable, serving HTTPS with no certificate
  * set, returning 401, or failing TLS, the tool result's error says
  * which. A ping is answered locally with an empty result. A
  * notification is not sent and gets no reply. Any other method gets

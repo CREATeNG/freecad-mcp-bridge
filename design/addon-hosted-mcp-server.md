@@ -554,8 +554,9 @@ unchanged. A JSON reply is unwrapped and written back on stdout as
 one line. The shim offers protocol version `2025-11-25` only, and a
 `tools/call` that names `2026-07-28` is still forwarded with that
 version. `server/discover` gets a method-not-found error naming
-the method, which tells a newer client to fall back to
-`initialize`. Stdio carries no headers, so the shim sets
+the method, which tells a client that also speaks `2025-11-25` to
+fall back to `initialize`. A client that speaks `2026-07-28` only
+cannot use the shim. Stdio carries no headers, so the shim sets
 `MCP-Protocol-Version` from
 `params._meta["io.modelcontextprotocol/protocolVersion"]` when that
 field is present, and to `2025-11-25` when it is not. When the
