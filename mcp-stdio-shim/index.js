@@ -47,7 +47,6 @@ const PLAIN_HTTP_TO_HTTPS_MESSAGE =
 const LEGACY_PROTOCOL_VERSION = "2025-11-25";
 const MODERN_PROTOCOL_VERSION = "2026-07-28";
 const META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion";
-const META_SERVER_INFO = "io.modelcontextprotocol/serverInfo";
 const TOOLS = JSON.parse(fs.readFileSync(path.join(__dirname, "tools.json"), "utf8"));
 const VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf8")).version;
 const UNREACHABLE_HINT =
@@ -219,7 +218,6 @@ function postHttps(headers, body) {
           const text = Buffer.concat(chunks).toString("utf8");
           resolve({
             status: res.statusCode || 0,
-            contentType: String(res.headers["content-type"] || ""),
             text: async () => text,
           });
         });
@@ -243,28 +241,12 @@ async function postBridge(message, rawLine) {
   });
   return {
     status: res.status,
-    contentType: res.headers.get("content-type") || "",
     text: () => res.text(),
   };
 }
 
 function writeResult(id, result) {
   writeLine(JSON.stringify({ jsonrpc: "2.0", id, result }));
-}
-
-// 2026-07-28 discover shape. supportedVersions is only the legacy
-// version: a client that starts here falls back to initialize.
-function discoverResult() {
-  return {
-    resultType: "complete",
-    supportedVersions: [LEGACY_PROTOCOL_VERSION],
-    capabilities: { tools: {} },
-    _meta: {
-      [META_SERVER_INFO]: { name: "freecad-mcp-bridge", version: VERSION },
-    },
-    ttlMs: 0,
-    cacheScope: "public",
-  };
 }
 
 async function forward(rawLine, message) {
@@ -280,10 +262,8 @@ async function forward(rawLine, message) {
     writeResult(message.id, {});
     return;
   }
-  if (message.method === "server/discover") {
-    writeResult(message.id, discoverResult());
-    return;
-  }
+  // server/discover falls through. A DiscoverResult would make a
+  // newer client stay modern; method-not-found sends it to initialize.
   if (message.method !== "tools/call") {
     writeLine(
       JSON.stringify({

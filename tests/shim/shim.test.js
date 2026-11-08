@@ -166,7 +166,7 @@ test("a message with no protocol version is forwarded as 2025-11-25", async () =
   bridge.close();
 });
 
-test("server/discover is answered locally with 2025-11-25 as the only supported version and does not contact the bridge", async () => {
+test("server/discover gets method-not-found and does not contact the bridge", async () => {
   const bridge = await startBridge(echo);
   const shim = startShim(bridge.port);
   shim.send(
@@ -180,20 +180,8 @@ test("server/discover is answered locally with 2025-11-25 as the only supported 
   const [reply] = await shim.waitForLines(1);
   await delay(100);
   assert.equal(bridge.requests.length, 0);
-  assert.equal(reply.error, undefined);
-  assert.deepEqual(reply.result, {
-    resultType: "complete",
-    supportedVersions: ["2025-11-25"],
-    capabilities: { tools: {} },
-    _meta: {
-      "io.modelcontextprotocol/serverInfo": {
-        name: "freecad-mcp-bridge",
-        version: readJson(path.join(SHIM_DIR, "package.json")).version,
-      },
-    },
-    ttlMs: 0,
-    cacheScope: "public",
-  });
+  assert.equal(reply.error.code, -32601);
+  assert.equal(reply.error.message, "Method not found: server/discover");
   await shim.stop();
   bridge.close();
 });
