@@ -38,18 +38,21 @@
        </widget>
       </item>
       <item>
-       <layout class="QFormLayout" name="formLayout">
-        <item row="0" column="0">
+       <layout class="QHBoxLayout" name="serverFields" stretch="0,1,2">
+        <item>
          <widget class="QLabel" name="listenAddressLabel">
           <property name="text">
            <string>Listen addresses</string>
           </property>
+          <property name="alignment">
+           <set>Qt::AlignTop</set>
+          </property>
          </widget>
         </item>
-        <item row="0" column="1">
+        <item>
          <widget class="Gui::PrefTextEdit" name="listenAddressTextEdit">
           <property name="sizePolicy">
-           <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+           <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
             <horstretch>0</horstretch>
             <verstretch>0</verstretch>
            </sizepolicy>
@@ -63,7 +66,7 @@
           <property name="maximumSize">
            <size>
             <width>16777215</width>
-            <height>68</height>
+            <height>16777215</height>
            </size>
           </property>
           <property name="toolTip">
@@ -89,16 +92,16 @@
           </property>
          </widget>
         </item>
-        <item row="1" column="0" colspan="2">
-         <layout class="QHBoxLayout" name="pagingRow">
-          <item>
+        <item>
+         <layout class="QFormLayout" name="pagingForm">
+          <item row="0" column="0">
            <widget class="QLabel" name="timeoutLabel">
             <property name="text">
              <string>Max response timeout</string>
             </property>
            </widget>
           </item>
-          <item>
+          <item row="0" column="1">
            <widget class="Gui::PrefSpinBox" name="timeoutSpinBox">
             <property name="toolTip">
              <string>The bridge's wait per page.</string>
@@ -138,36 +141,14 @@
             </property>
            </widget>
           </item>
-          <item>
-           <widget class="QWidget" name="pagingGap1">
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>28</width>
-              <height>0</height>
-             </size>
-            </property>
-            <property name="maximumSize">
-             <size>
-              <width>28</width>
-              <height>16777215</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <item>
+          <item row="1" column="0">
            <widget class="QLabel" name="pageSizeLabel">
             <property name="text">
              <string>Max page size</string>
             </property>
            </widget>
           </item>
-          <item>
+          <item row="1" column="1">
            <widget class="Gui::PrefSpinBox" name="pageSizeSpinBox">
             <property name="toolTip">
              <string>Splits long output by page size.</string>
@@ -207,36 +188,14 @@
             </property>
            </widget>
           </item>
-          <item>
-           <widget class="QWidget" name="pagingGap2">
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>28</width>
-              <height>0</height>
-             </size>
-            </property>
-            <property name="maximumSize">
-             <size>
-              <width>28</width>
-              <height>16777215</height>
-             </size>
-            </property>
-           </widget>
-          </item>
-          <item>
+          <item row="2" column="0">
            <widget class="QLabel" name="retentionLabel">
             <property name="text">
              <string>Page history retention</string>
             </property>
            </widget>
           </item>
-          <item>
+          <item row="2" column="1">
            <widget class="Gui::PrefSpinBox" name="retentionSpinBox">
             <property name="toolTip">
              <string>Idle time before finished output expires.</string>
@@ -275,19 +234,6 @@
              <cstring>Mod/freecad-mcp-bridge</cstring>
             </property>
            </widget>
-          </item>
-          <item>
-           <spacer name="pagingRowSpacer">
-            <property name="orientation">
-             <enum>Qt::Horizontal</enum>
-            </property>
-            <property name="sizeHint" stdset="0">
-             <size>
-              <width>20</width>
-              <height>10</height>
-             </size>
-            </property>
-           </spacer>
           </item>
          </layout>
         </item>
@@ -387,6 +333,53 @@
          </widget>
         </item>
         <item>
+         <widget class="QWidget" name="tokenLoopbackGap">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="minimumSize">
+           <size>
+            <width>28</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>28</width>
+            <height>16777215</height>
+           </size>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="Gui::PrefCheckBox" name="requireOnLoopbackCheckBox">
+          <property name="minimumSize">
+           <size>
+            <width>180</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="toolTip">
+           <string>Apply Require bearer token and Require TLS (HTTPS) to loopback entries too.</string>
+          </property>
+          <property name="text">
+           <string>Also require on loopback</string>
+          </property>
+          <property name="checked">
+           <bool>false</bool>
+          </property>
+          <property name="prefEntry" stdset="0">
+           <cstring>RequireOnLoopback</cstring>
+          </property>
+          <property name="prefPath" stdset="0">
+           <cstring>Mod/freecad-mcp-bridge</cstring>
+          </property>
+         </widget>
+        </item>
+        <item>
          <spacer name="tokenRowSpacer">
           <property name="orientation">
            <enum>Qt::Horizontal</enum>
@@ -447,25 +440,6 @@
         </property>
         <property name="prefEntry" stdset="0">
          <cstring>TlsKeyFile</cstring>
-        </property>
-        <property name="prefPath" stdset="0">
-         <cstring>Mod/freecad-mcp-bridge</cstring>
-        </property>
-       </widget>
-      </item>
-      <item row="3" column="0" colspan="2">
-       <widget class="Gui::PrefCheckBox" name="requireOnLoopbackCheckBox">
-        <property name="toolTip">
-         <string>Apply Require bearer token and Require TLS (HTTPS) to loopback entries too.</string>
-        </property>
-        <property name="text">
-         <string>Also require on loopback</string>
-        </property>
-        <property name="checked">
-         <bool>false</bool>
-        </property>
-        <property name="prefEntry" stdset="0">
-         <cstring>RequireOnLoopback</cstring>
         </property>
         <property name="prefPath" stdset="0">
          <cstring>Mod/freecad-mcp-bridge</cstring>
