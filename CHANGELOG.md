@@ -1,3 +1,42 @@
+## 0.1.27
+
+**What's new since 0.1.26**
+
+- **Listen beyond this machine:** in Preferences → **MCP Bridge**,
+  **Listen addresses** replaces the **Port** field: a list of
+  `address:port` entries, one per line, `127.0.0.1:39280` by default.
+  A port you had changed carries into the default entry. The first
+  time the bridge starts with entries beyond this machine, a dialog
+  lists them and the risks that still apply, and **Cancel** starts
+  nothing.
+- **Bearer token and TLS:** beyond loopback, **Require bearer token**
+  and **Require TLS (HTTPS)** are on by default, and either can be
+  turned off. FreeCAD generates the token, shows it once, and keeps
+  only its SHA-256 hash. **Generate new token** replaces it. TLS uses
+  your own certificate and private key files. With either missing,
+  the bridge doesn't start on such an entry and says what to do.
+  **Apply to loopback**, off by default, applies both to loopback
+  entries too.
+- **Claude Desktop extension:** two optional settings, **Bearer
+  token** and **TLS certificate file (PEM)**, for when **Apply to
+  loopback** is on. The extension answers Claude Desktop's start-up
+  itself and contacts FreeCAD only when a tool is called, so a
+  connection problem comes back as that call's result, saying what to
+  do.
+- **Toolbar stays hidden:** hiding the **MCP Bridge** toolbar now
+  lasts across workbench switches and restarts, and **Tools →
+  Customize** lists its command under **MCP_Bridge**.
+- **Preferences and docs:** the Preferences page has a **Security**
+  group and a shorter **Connect an MCP client** note. The README and
+  `SECURITY.md` describe the new settings.
+- **Behind the scenes:** a release now ships the exact `.mcpb` that
+  passed its pull request's Claude Desktop check. The macOS acceptance
+  run fails with thread stacks instead of hanging, and Windows CI runs
+  FreeCAD with software OpenGL. The release checklist now puts a read
+  of the release notes before the version pull request merges.
+
+Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini (Google) and Codex (OpenAI), with Cursor among their tools.
+
 ## 0.1.26
 
 **What's new since 0.1.25**
