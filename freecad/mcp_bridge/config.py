@@ -340,6 +340,25 @@ def _certificate_hosts_from_decoded(decoded: dict) -> set[str]:
     return hosts
 
 
+def _certificate_not_yet_valid_date(decoded: dict) -> str | None:
+    """Return the UTC `YYYY-MM-DD` start date when `decoded` is not yet
+    valid, or `None` when already valid or when `notBefore` cannot be
+    parsed."""
+    not_before = decoded.get("notBefore")
+    if not isinstance(not_before, str) or not not_before.strip():
+        return None
+    try:
+        starts_at = ssl.cert_time_to_seconds(not_before)
+    except (ValueError, OverflowError, OSError):
+        return None
+    if time.time() < starts_at:
+        dt = datetime.datetime.fromtimestamp(
+            starts_at, tz=datetime.timezone.utc
+        )
+        return dt.strftime("%Y-%m-%d")
+    return None
+
+
 def _certificate_expired_date(decoded: dict) -> str | None:
     """Return the UTC `YYYY-MM-DD` expiry date when `decoded` has expired,
     or `None` when still valid or when `notAfter` cannot be parsed."""
@@ -430,9 +449,17 @@ def build_ssl_context(
             FreeCAD.Console.PrintWarning(
                 f"[{DISPLAY_NAME}] WARNING: could not inspect the TLS "
                 "certificate for expiry or address coverage. Continuing "
-                "without those checks.\n"
+                "without those checks. Connect by the listed address, "
+                "not by a name.\n"
             )
             return context
+        not_before_date = _certificate_not_yet_valid_date(decoded)
+        if not_before_date is not None:
+            raise ValueError(
+                f"The TLS certificate is not valid until {not_before_date}. "
+                "Generate the certificate again in Edit → Preferences → "
+                "MCP Bridge."
+            )
         expired_date = _certificate_expired_date(decoded)
         if expired_date is not None:
             raise ValueError(

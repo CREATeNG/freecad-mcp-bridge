@@ -7,8 +7,8 @@
  * tools/call to the addon's endpoint on FREECAD_MCP_HOST (127.0.0.1 by
  * default; "localhost" in any letter case is taken as 127.0.0.1, and
  * 127.x.x.x and ::1 are treated as loopback). On loopback it connects
- * to http://<host>:<port>/mcp (or https://<host>:<port>/mcp when
- * FREECAD_MCP_TLS_CERT_FILE is set) and sends Authorization: Bearer
+ * to http://<host>:<port>/mcp whatever FREECAD_MCP_TLS_CERT_FILE is
+ * set to and sends Authorization: Bearer
  * from the token file in FREECAD_MCP_TOKEN_DIR, or
  * <home>/.freecad-mcp-bridge otherwise. A pasted token of at least 32
  * characters is written there only on loopback, only when its hash
@@ -186,7 +186,7 @@ try {
   pastedNote = WRITE_FAILED_MESSAGE;
 }
 const TLS_CERT_FILE = envSetting("FREECAD_MCP_TLS_CERT_FILE");
-const SCHEME = !IS_DEFAULT_HOST || TLS_CERT_FILE ? "https" : "http";
+const SCHEME = IS_DEFAULT_HOST ? "http" : "https";
 const ENDPOINT = `${SCHEME}://${URL_HOST}:${PORT}/mcp`;
 const HTTPS_ENDPOINT = `https://${URL_HOST}:${PORT}/mcp`;
 const PLAIN_HTTP_TO_HTTPS_MESSAGE =
@@ -285,15 +285,9 @@ function portServesHttps(port) {
 
 function tlsErrorMessage(err) {
   const detail = fetchErrorMessage(err);
-  if (!IS_DEFAULT_HOST) {
-    return (
-      `FreeCAD MCP Bridge TLS connection failed at ${ENDPOINT} (${detail}). ` +
-      `Check that TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings is a copy of FreeCAD's certificate file, not the private key, and covers ${BARE_HOST}.`
-    );
-  }
   return (
     `FreeCAD MCP Bridge TLS connection failed at ${ENDPOINT} (${detail}). ` +
-    "The bridge serves HTTP on loopback, so leave the certificate setting blank for a loopback connection."
+    `Check that TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings is a copy of FreeCAD's certificate file, not the private key, and covers ${BARE_HOST}.`
   );
 }
 
@@ -421,7 +415,7 @@ function postHttps(headers, body) {
 
 async function postBridge(message, rawLine) {
   const headers = bridgeHeaders(message);
-  if (!IS_DEFAULT_HOST || TLS_CERT_FILE) {
+  if (!IS_DEFAULT_HOST) {
     return postHttps(headers, rawLine);
   }
   const res = await fetch(ENDPOINT, {
@@ -531,7 +525,7 @@ async function forward(rawLine, message) {
     const code = errorCode(err);
     const redirect = /redirect/i.test(fetchErrorMessage(err));
     if (
-      !TLS_CERT_FILE &&
+      IS_DEFAULT_HOST &&
       code !== "ECONNREFUSED" &&
       !redirect &&
       (await portServesHttps(PORT))
@@ -539,7 +533,7 @@ async function forward(rawLine, message) {
       sendErrorReply(message, PLAIN_HTTP_TO_HTTPS_MESSAGE);
       return;
     }
-    if (TLS_CERT_FILE && code !== "ECONNREFUSED" && !redirect) {
+    if (!IS_DEFAULT_HOST && code !== "ECONNREFUSED" && !redirect) {
       sendErrorReply(message, tlsErrorMessage(err));
       return;
     }

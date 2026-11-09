@@ -1900,6 +1900,31 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 "the certificate again in Edit → Preferences → MCP Bridge.",
             )
 
+            # A certificate that is not yet valid fails naming its start date.
+            future_decoded = {
+                **fake_decoded,
+                "notBefore": "Jan  1 00:00:00 2099 GMT",
+                "notAfter": "Jan  1 00:00:00 2100 GMT",
+            }
+            with (
+                mock.patch.object(
+                    config.ssl._ssl,
+                    "_test_decode_cert",
+                    return_value=future_decoded,
+                ),
+                self.assertRaises(ValueError) as not_yet_valid,
+            ):
+                config.build_ssl_context(
+                    "cert.pem",
+                    "key.pem",
+                    ["192.168.1.50:39280"],
+                )
+            self.assertEqual(
+                str(not_yet_valid.exception),
+                "The TLS certificate is not valid until 2099-01-01. Generate "
+                "the certificate again in Edit → Preferences → MCP Bridge.",
+            )
+
             # An expired certificate fails naming the expiry date.
             expired_decoded = {
                 **fake_decoded,
@@ -1947,7 +1972,8 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 [
                     "[MCP Bridge] WARNING: could not inspect the TLS "
                     "certificate for expiry or address coverage. Continuing "
-                    "without those checks.\n"
+                    "without those checks. Connect by the listed address, "
+                    "not by a name.\n"
                 ],
             )
             warnings.clear()

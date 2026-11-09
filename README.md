@@ -63,8 +63,7 @@ The server is off until you toggle it on, each session — click the button agai
    - **On loopback:** Leave **Bearer token** and **TLS certificate
      file (PEM)** blank. FreeCAD writes the token at the first start
      to a file only you can read, the extension reads that file, and
-     the bridge serves HTTP (a certificate set against plain HTTP
-     makes the connection fail). Paste a token of at least 32
+     the bridge and extension use HTTP. Paste a token of at least 32
      characters into **Bearer token** only to replace that token file
      for every client, and a shorter one is ignored.
    - **Beyond loopback:** Paste FreeCAD's bearer token into **Bearer

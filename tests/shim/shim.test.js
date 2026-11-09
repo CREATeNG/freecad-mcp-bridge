@@ -467,9 +467,10 @@ test("manifest.json declares optional FreeCAD machine, port, sensitive bearer to
   assert.equal(cfg.tls_cert_file.type, "file");
   assert.equal(cfg.tls_cert_file.required, false);
   assert.equal(cfg.tls_cert_file.title, "TLS certificate file (PEM)");
-  assert.match(cfg.tls_cert_file.description, /Leave blank on loopback/);
+  assert.match(cfg.tls_cert_file.description, /Used beyond loopback only/);
   assert.match(cfg.tls_cert_file.description, /copy of FreeCAD's certificate file, not the private key/);
   assert.match(cfg.tls_cert_file.description, /trusts only that certificate/);
+  assert.match(cfg.tls_cert_file.description, /On loopback the extension uses HTTP/);
 });
 
 function pastedText(result) {
@@ -720,80 +721,51 @@ test("a 401 names the token file the extension used, with and without a token", 
   bridge.close();
 });
 
-test("with FREECAD_MCP_TLS_CERT_FILE set, the shim connects over HTTPS and trusts that certificate", async () => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shim-tls-"));
+test("on loopback, the shim uses HTTP whatever FREECAD_MCP_TLS_CERT_FILE is set to", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shim-loopback-cert-ignored-"));
   try {
     const serverCert = makeSelfSignedCert(tmpDir, "server", "127.0.0.1");
-    const bridge = await startBridge(echo, {
-      cert: serverCert.cert,
-      key: serverCert.key,
-    });
-    const shim = startShim(bridge.port, {
-      FREECAD_MCP_TOKEN: TOKEN_OK,
-      FREECAD_MCP_TLS_CERT_FILE: serverCert.certPath,
-    });
-    shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call" }) + "\n");
-    const [reply] = await shim.waitForLines(1);
-    assert.equal(reply.result.echoed, "tools/call");
-    assert.equal(bridge.requests[0].headers["authorization"], `Bearer ${TOKEN_OK}`);
-    await shim.stop();
-    bridge.close();
-  } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  }
-});
-
-test("an untrusted certificate or a certificate set while the bridge serves plain HTTP fails with a clear message", async () => {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shim-tls-fail-"));
-  try {
-    const serverCert = makeSelfSignedCert(tmpDir, "server", "127.0.0.1");
-    const otherCert = makeSelfSignedCert(tmpDir, "other", "127.0.0.1");
-
-    // 1. HTTPS bridge with a different certificate than the shim trusts.
-    const httpsBridge = await startBridge(echo, {
-      cert: serverCert.cert,
-      key: serverCert.key,
-    });
-    const shimUntrusted = startShim(httpsBridge.port, {
-      FREECAD_MCP_TLS_CERT_FILE: otherCert.certPath,
-    });
-    shimUntrusted.send(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "tools/call",
-        params: { name: "execute_python", arguments: { code: "print(1)" } },
-      }) + "\n"
-    );
-    const [untrustedReply] = await shimUntrusted.waitForLines(1);
-    assert.equal(untrustedReply.result.isError, true);
-    const untrustedError = JSON.parse(untrustedReply.result.content[0].text).error;
-    assert.match(untrustedError, /TLS connection failed/);
-    assert.doesNotMatch(untrustedError, /covers 127\.0\.0\.1/);
-    assert.match(untrustedError, /HTTP on loopback/);
-    await shimUntrusted.stop();
-    httpsBridge.close();
-
-    // 2. Plain-HTTP bridge while a certificate is set.
     const httpBridge = await startBridge(echo);
-    const shimPlain = startShim(httpBridge.port, {
-      FREECAD_MCP_TLS_CERT_FILE: serverCert.certPath,
-    });
-    shimPlain.send(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: 2,
-        method: "tools/call",
-        params: { name: "execute_python", arguments: { code: "print(1)" } },
-      }) + "\n"
+    for (const host of ["127.0.0.1", "localhost", "127.0.0.2"]) {
+      const shim = startShim(
+        httpBridge.port,
+        {
+          FREECAD_MCP_HOST: host === "127.0.0.2" ? "127.0.0.1" : host,
+          FREECAD_MCP_TLS_CERT_FILE: serverCert.certPath,
+        },
+        { seedToken: TOKEN_OK }
+      );
+      shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call" }) + "\n");
+      const [reply] = await shim.waitForLines(1);
+      assert.equal(reply.result.echoed, "tools/call");
+      assert.equal(httpBridge.requests.at(-1).headers["authorization"], `Bearer ${TOKEN_OK}`);
+      await shim.stop();
+    }
+    const missingCertShim = startShim(
+      httpBridge.port,
+      { FREECAD_MCP_TLS_CERT_FILE: path.join(tmpDir, "does-not-exist.pem") },
+      { seedToken: TOKEN_OK }
     );
-    const [plainReply] = await shimPlain.waitForLines(1);
-    assert.equal(plainReply.result.isError, true);
-    const plainError = JSON.parse(plainReply.result.content[0].text).error;
-    assert.match(plainError, /TLS connection failed/);
-    assert.match(plainError, /leave the certificate setting blank for a loopback connection/);
-    await shimPlain.stop();
+    missingCertShim.send(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call" }) + "\n");
+    const [missingReply] = await missingCertShim.waitForLines(1);
+    assert.equal(missingReply.result.echoed, "tools/call");
+    await missingCertShim.stop();
     httpBridge.close();
+
+    const bridgeV6 = await startBridge(echo, null, "::1");
+    const shimV6 = startShim(
+      bridgeV6.port,
+      {
+        FREECAD_MCP_HOST: "::1",
+        FREECAD_MCP_TLS_CERT_FILE: serverCert.certPath,
+      },
+      { seedToken: TOKEN_OK }
+    );
+    shimV6.send(JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/call" }) + "\n");
+    const [replyV6] = await shimV6.waitForLines(1);
+    assert.equal(replyV6.result.echoed, "tools/call");
+    await shimV6.stop();
+    bridgeV6.close();
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

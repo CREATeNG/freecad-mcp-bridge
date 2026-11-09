@@ -645,10 +645,8 @@ loopback, and only when its hash differs from the `pasted` file
 beside the token and the folder already exists. A shorter paste, a
 missing folder, or a write error is a note on the tool result, and
 the call is still sent. On loopback, the shim connects to
-`http://<host>:<port>/mcp` by default (or
-`https://<host>:<port>/mcp` when a certificate file is set,
-trusting only that certificate). Loopback serves HTTP, so the
-certificate setting stays blank for a loopback connection.
+`http://<host>:<port>/mcp` whatever `FREECAD_MCP_TLS_CERT_FILE`
+is set to.
 When `FREECAD_MCP_HOST` names an address or hostname beyond loopback,
 the shim connects to `https://<host>:<port>/mcp`, requires both
 `FREECAD_MCP_TLS_CERT_FILE` and `FREECAD_MCP_TOKEN`, trusts only that
