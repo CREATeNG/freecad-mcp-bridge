@@ -192,8 +192,8 @@ change a model — for example:
   list, and an MCP client connecting to an address beyond loopback
   must trust the bridge's certificate. Starting with an entry beyond
   loopback fails and leaves the bridge off when either file is not
-  set, when the certificate has expired, or when the certificate does
-  not cover the address.
+  set, when the certificate is not yet valid or has expired, or when
+  the certificate does not cover the address.
 - **Permission mode** — **Ask** (the default) shows you an agent's
   code before it runs. **Unrestricted** runs it unseen, with your
   full permissions. [What the AI can do](#what-the-ai-can-do) has

@@ -1038,6 +1038,7 @@ class ListenAddressTests(unittest.TestCase):
             seen.get("gen_cert_dialog_text", ""),
         )
         self.assertTrue(seen.get("gen_cert_covers_address"))
+        self.assertTrue(seen.get("gen_cert_unsaved_before_ok"))
 
         # 2. Risk dialog listed only the remaining risk (code execution with
         # the bearer token), not No authentication or No encryption.
@@ -1364,8 +1365,8 @@ def step_no_cert_then_start():
     seen['uncovered_cert_report'] = report_view_text()[before_uncovered:]
 
     # Generate certificate asks before replacing the existing setting,
-    # writes tls-cert.pem and tls-key.pem covering the address, and saves
-    # both preference fields.
+    # writes tls-cert.pem and tls-key.pem covering the address, and fills
+    # both file fields without saving preferences.
     from freecad.mcp_bridge import config as bridge_cfg, init_gui
     seen['gen_cert_replace_dialog_found'] = False
     seen['gen_cert_dialog_found'] = False
@@ -1389,6 +1390,10 @@ def step_no_cert_then_start():
 
     QTimer.singleShot(150, handle_cert_dialogs)
     gen_pair = init_gui.generate_and_show_certificate()
+    seen['gen_cert_unsaved_before_ok'] = (
+        params.GetString('TlsCertFile', '') == {uncovered_cert_path!r}
+        and params.GetString('TlsKeyFile', '') == {uncovered_key_path!r}
+    )
     seen['gen_cert_covers_address'] = bool(
         gen_pair
         and bridge_cfg.certificate_covers_host(

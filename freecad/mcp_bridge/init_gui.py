@@ -300,7 +300,8 @@ def _chooser_file_name(host, object_name):
     try:
         from PySide.QtWidgets import QLineEdit, QWidget
     except Exception:
-        return ""
+        QLineEdit = None
+        QWidget = object
     chooser = host.findChild(QWidget, object_name)
     if chooser is None:
         return ""
@@ -311,9 +312,10 @@ def _chooser_file_name(host, object_name):
         val = chooser.fileName()
         if isinstance(val, str) and val.strip():
             return val.strip()
-    line = chooser.findChild(QLineEdit)
-    if line is not None:
-        return (line.text() or "").strip()
+    if QLineEdit is not None:
+        line = chooser.findChild(QLineEdit)
+        if line is not None:
+            return (line.text() or "").strip()
     return ""
 
 
@@ -324,7 +326,8 @@ def _set_chooser_file_name(host, object_name, path):
     try:
         from PySide.QtWidgets import QLineEdit, QWidget
     except Exception:
-        return
+        QLineEdit = None
+        QWidget = object
     chooser = host.findChild(QWidget, object_name)
     if chooser is None:
         return
@@ -334,9 +337,10 @@ def _set_chooser_file_name(host, object_name, path):
             chooser.setFileName(path)
         except Exception:
             pass
-    line = chooser.findChild(QLineEdit)
-    if line is not None:
-        line.setText(path)
+    if QLineEdit is not None:
+        line = chooser.findChild(QLineEdit)
+        if line is not None:
+            line.setText(path)
 
 
 def _cert_would_replace(host=None):
@@ -399,8 +403,8 @@ def _show_cert_message(title, body, warning, object_name, parent=None):
 
 def generate_and_show_certificate(parent=None):
     """Generate a self-signed TLS certificate and private key for the
-    addresses beyond loopback in `Listen addresses`, fill and save both TLS
-    file settings, and show the certificate path and covered addresses."""
+    addresses beyond loopback in `Listen addresses`, fill both TLS file
+    fields, and show the certificate path and covered addresses."""
     from freecad.mcp_bridge import config, tls_cert
 
     host = parent
@@ -470,11 +474,19 @@ def generate_and_show_certificate(parent=None):
         return None
 
     c_str, k_str = str(c_path), str(k_path)
-    config._params().SetString("TlsCertFile", c_str)
-    config._params().SetString("TlsKeyFile", k_str)
     _set_chooser_file_name(host, "tlsCertFileChooser", c_str)
     _set_chooser_file_name(host, "tlsKeyFileChooser", k_str)
-    _sync_open_listen_note()
+    if host is not None:
+        try:
+            from PySide.QtWidgets import QLabel
+        except Exception:
+            QLabel = object
+        try:
+            note = host.findChild(QLabel, "listenAddressNote")
+            if note is not None:
+                note.setText(_listen_address_note_text(c_str))
+        except Exception:
+            pass
     title, body = _cert_generated_dialog_text(c_str, hosts)
     _show_cert_message(
         title,

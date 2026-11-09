@@ -2668,7 +2668,8 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
     def test_generate_certificate_button_flow_and_replace_confirmation(self):
         """Generate certificate refuses when there is no address beyond
         loopback, asks before replacing an existing certificate or setting,
-        and fills and saves both TLS file settings."""
+        and fills both TLS file fields without saving preferences (so Cancel
+        leaves the old paths and OK saves the new ones)."""
         btn = next(
             widget
             for widget in ET.parse(PAGE).iter("widget")
@@ -2696,6 +2697,51 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
             def SetString(self, name, val):
                 store[name] = val
 
+        class FakeChooser:
+            def __init__(self, initial=""):
+                self._props = {"fileName": initial}
+
+            def property(self, name):
+                return self._props.get(name, "")
+
+            def setProperty(self, name, val):
+                self._props[name] = val
+
+            def fileName(self):
+                return self._props.get("fileName", "")
+
+            def setFileName(self, val):
+                self._props["fileName"] = val
+
+            def findChild(self, *_args):
+                return None
+
+        class FakeLabel:
+            def __init__(self):
+                self.text = ""
+
+            def setText(self, val):
+                self.text = val
+
+        class FakePrefPage:
+            def __init__(self):
+                self.cert_chooser = FakeChooser()
+                self.key_chooser = FakeChooser()
+                self.note_label = FakeLabel()
+                self._children = {
+                    "tlsCertFileChooser": self.cert_chooser,
+                    "tlsKeyFileChooser": self.key_chooser,
+                    "listenAddressNote": self.note_label,
+                }
+
+            def findChild(self, _cls, name=""):
+                return self._children.get(name)
+
+            def accept(self):
+                store["TlsCertFile"] = self.cert_chooser.fileName()
+                store["TlsKeyFile"] = self.key_chooser.fileName()
+
+        page = FakePrefPage()
         messages = []
         replace_answers = []
         init_gui._show_cert_message = (
@@ -2722,7 +2768,9 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
             ):
                 # 1. Loopback only -> warning dialog, nothing written.
                 store["ListenAddress"] = "127.0.0.1:39280\n[::1]:39281"
-                self.assertIsNone(init_gui.generate_and_show_certificate())
+                self.assertIsNone(
+                    init_gui.generate_and_show_certificate(parent=page)
+                )
                 self.assertEqual(len(messages), 1)
                 self.assertEqual(
                     messages[-1],
@@ -2737,18 +2785,22 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                 self.assertFalse((Path(folder) / "tls-cert.pem").exists())
 
                 # 2. Address beyond loopback, nothing existing -> writes both
-                # files without asking to replace, saves preferences, shows
-                # path and covered addresses.
+                # files without asking to replace, fills both fields on the
+                # page without saving preferences yet, and shows path and
+                # covered addresses.
                 messages.clear()
                 store["ListenAddress"] = (
                     "127.0.0.1:39280\n192.168.1.50:39280\nfreecad.local:39281"
                 )
-                result = init_gui.generate_and_show_certificate()
+                result = init_gui.generate_and_show_certificate(parent=page)
                 expected_cert = str(Path(folder) / "tls-cert.pem")
                 expected_key = str(Path(folder) / "tls-key.pem")
                 self.assertEqual(result, (expected_cert, expected_key))
-                self.assertEqual(store["TlsCertFile"], expected_cert)
-                self.assertEqual(store["TlsKeyFile"], expected_key)
+                self.assertEqual(page.cert_chooser.fileName(), expected_cert)
+                self.assertEqual(page.key_chooser.fileName(), expected_key)
+                self.assertIn(expected_cert, page.note_label.text)
+                self.assertNotIn("TlsCertFile", store)
+                self.assertNotIn("TlsKeyFile", store)
                 self.assertEqual(len(messages), 1)
                 self.assertEqual(
                     messages[-1][0], "MCP Bridge: TLS certificate"
@@ -2759,7 +2811,9 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                 self.assertIn("freecad.local", messages[-1][1])
 
                 # 3. Existing files/settings -> asks before replacing; No
-                # leaves existing files untouched; Yes replaces them.
+                # leaves existing files untouched; Yes replaces the files on
+                # disk and fills the fields, while Cancel in Preferences
+                # leaves the old saved paths and OK saves the new ones.
                 rep_title, rep_body = init_gui._cert_replace_dialog_text()
                 self.assertEqual(
                     rep_title, "MCP Bridge: Replace TLS certificate?"
@@ -2769,13 +2823,21 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                     "will need the new certificate file.",
                     rep_body,
                 )
+                store["TlsCertFile"] = "/old/cert.pem"
+                store["TlsKeyFile"] = "/old/key.pem"
+                page.cert_chooser.setFileName("/old/cert.pem")
+                page.key_chooser.setFileName("/old/key.pem")
                 (Path(folder) / "tls-cert.pem").write_text(
                     "keep-existing", encoding="utf-8"
                 )
                 messages.clear()
                 replace_answers.append(False)
-                self.assertIsNone(init_gui.generate_and_show_certificate())
+                self.assertIsNone(
+                    init_gui.generate_and_show_certificate(parent=page)
+                )
                 self.assertEqual(messages, [])
+                self.assertEqual(page.cert_chooser.fileName(), "/old/cert.pem")
+                self.assertEqual(page.key_chooser.fileName(), "/old/key.pem")
                 self.assertEqual(
                     (Path(folder) / "tls-cert.pem").read_text(
                         encoding="utf-8"
@@ -2783,14 +2845,24 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                     "keep-existing",
                 )
                 replace_answers.append(True)
-                result2 = init_gui.generate_and_show_certificate()
+                result2 = init_gui.generate_and_show_certificate(parent=page)
                 self.assertEqual(result2, (expected_cert, expected_key))
+                self.assertEqual(page.cert_chooser.fileName(), expected_cert)
+                self.assertEqual(page.key_chooser.fileName(), expected_key)
+                # Before OK (or if the user clicks Cancel), saved preferences
+                # keep the old paths while the files on disk stay as generated.
+                self.assertEqual(store["TlsCertFile"], "/old/cert.pem")
+                self.assertEqual(store["TlsKeyFile"], "/old/key.pem")
                 self.assertEqual(
                     (Path(folder) / "tls-cert.pem").read_text(
                         encoding="utf-8"
                     ),
                     self.cert_pem,
                 )
+                # Clicking OK in Preferences saves the filled field values.
+                page.accept()
+                self.assertEqual(store["TlsCertFile"], expected_cert)
+                self.assertEqual(store["TlsKeyFile"], expected_key)
 
 
 if __name__ == "__main__":
