@@ -90,11 +90,10 @@ function readPasteRecord() {
   }
 }
 
+const retrySleep = new Int32Array(new SharedArrayBuffer(4));
+
 function sleepMs(ms) {
-  const until = Date.now() + ms;
-  while (Date.now() < until) {
-    // A sharing error is brief. A few retries cover it.
-  }
+  Atomics.wait(retrySleep, 0, 0, ms);
 }
 
 function replaceFile(source, dest) {
@@ -173,12 +172,22 @@ const UNREACHABLE_HINT =
   "FreeCAD isn't reachable. Start FreeCAD and turn the bridge on with the MCP Bridge toolbar button, then try again.";
 function unauthorizedMessage() {
   const file = tokenFilePath();
-  if (readTokenFile()) {
+  let token = "";
+  let error = null;
+  try {
+    token = fs.readFileSync(file, "utf8").trim();
+  } catch (err) {
+    error = err;
+  }
+  if (token) {
     return (
       `FreeCAD refused the token from ${file}. ` +
       "FreeCAD and the extension must use the same token file. " +
       "Check that FREECAD_MCP_TOKEN_DIR, if set, is the same for both."
     );
+  }
+  if (error && error.code !== "ENOENT") {
+    return `Could not read the token file at ${file} (${error.message}).`;
   }
   return (
     `No token file at ${file}. ` +

@@ -673,6 +673,31 @@ test("a 401 names the token file the extension used, with and without a token", 
       "Turn the bridge on in FreeCAD once, or check FREECAD_MCP_TOKEN_DIR."
   );
   await missing.stop();
+
+  const blocked = startShim(bridge.port, {}, { prepareTokenDir: false });
+  fs.mkdirSync(blocked.tokenDir, { recursive: true });
+  fs.mkdirSync(blocked.tokenFile);
+  let readError = "";
+  try {
+    fs.readFileSync(blocked.tokenFile, "utf8");
+  } catch (err) {
+    readError = err.message;
+  }
+  blocked.send(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      id: 4,
+      method: "tools/call",
+      params: { name: "execute_python", arguments: { code: "print(1)" } },
+    }) + "\n"
+  );
+  const [blockedReply] = await blocked.waitForLines(1);
+  const blockedBody = JSON.parse(blockedReply.result.content[0].text);
+  assert.equal(
+    blockedBody.error,
+    `Could not read the token file at ${blocked.tokenFile} (${readError}).`
+  );
+  await blocked.stop();
   bridge.close();
 });
 
