@@ -75,9 +75,8 @@ class Executor(QObject):
     def call_on_main(self, fn):
         """Run `fn` on the main thread and return its result.
 
-        The caller, on a request thread, waits. A modal dialog inside
-        `fn` runs its own loop on the main thread, so this wait is not
-        the response timeout.
+        The caller waits while `fn` runs on the main thread. A modal
+        dialog inside `fn` runs its own loop there.
         """
         app = QCoreApplication.instance()
         if app is not None and QThread.currentThread() is app.thread():

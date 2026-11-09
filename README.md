@@ -84,9 +84,13 @@ Once connected, the agent has these tools:
 - **`execute_python(code)`** — run Python in your FreeCAD session. `App`/`FreeCAD` and `Gui`/`FreeCADGui` are pre-bound, and `__name__` is `"__main__"`, so a script's `if __name__ == "__main__":` block runs. Output (stdout, stderr, exceptions) is returned to the client and mirrored to FreeCAD's **Report view**, so you can watch its output in real time.
 - **`execute_python_file(filepath)`** — read a local `.py` file
   (absolute path) and show its path and whole text in FreeCAD.
-  **Run** runs that text, with `__file__` set to the path.
-  **Don't run** is the default, and the agent is told you
-  declined. **Trust any file** asks if you are really sure. Only
+  **Run** runs that text, with `__file__` set to the path. The
+  call waits up to **Max response timeout**, dialog included.
+  A run that finishes in that time comes back in the same answer.
+  **Don't run** in that time comes back as an error. Otherwise
+  the answer carries a job token and the agent uses
+  `get_output_page`. **Don't run** is the default. **Trust any
+  file** asks if you are really sure. Only
   **Yes** turns it on. Every file an agent sends then runs unseen,
   with your full permissions. A label beside the On/Off button
   says **MCP: trusts any file** while that is on, even when the button
@@ -127,9 +131,12 @@ change a model — for example:
   covers both. Each later start keeps a line in the status bar and
   **Report view**. A later new address beyond loopback asks once on
   its own.
-- **Max response timeout** — how long the bridge waits for each page's
-  output, counted from when that page starts (default 15 s). The agent
-  fetches the rest with `get_output_page`.
+- **Max response timeout** — how long the bridge waits for a page
+  (default 15 s). A file an agent sends counts the dialog in that
+  wait, from the call. Keep it below the client's own request
+  limit, about a minute for some clients. Claude Code's is about
+  60 s, and the preference allows up to 600 s. The agent fetches
+  the rest with `get_output_page`.
 - **Max page size** — the most one page may be, as the JSON the agent
   reads, in units of 1,024 characters (default 32, that is 32,768). A
   newline counts as two characters. Larger output is split into pages

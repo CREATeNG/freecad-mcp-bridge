@@ -1,8 +1,8 @@
 """Ask before execute_python_file runs a file.
 
 The bridge has already read the file. The dialog shows that text, and
-the job runs that same text. The ask happens on FreeCAD's main thread,
-before the response timeout starts.
+the job runs that same text. The ask happens on FreeCAD's main thread.
+The call's response timeout includes that wait.
 """
 
 from freecad.mcp_bridge.constants import DISPLAY_NAME

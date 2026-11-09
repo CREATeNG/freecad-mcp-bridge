@@ -13,9 +13,8 @@ is acknowledged.
 
 import json
 import os
-import socket
-import ssl
 import threading
+import time
 from http.server import BaseHTTPRequestHandler
 import FreeCAD
 
@@ -30,42 +29,12 @@ from freecad.mcp_bridge.executor import Executor
 _LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1")
 
 
-def _peek_one(sock):
-    """Peek one byte. SSLSocket.recv rejects MSG_PEEK with ValueError."""
-    if isinstance(sock, ssl.SSLSocket):
-        return socket.socket.recv(sock, 1, socket.MSG_PEEK)
-    return sock.recv(1, socket.MSG_PEEK)
+def _remaining_ms(started, timeout_ms) -> int:
+    """Milliseconds of `timeout_ms` still left since `started`."""
+    spent = (time.monotonic() - started) * 1000.0
+    return max(0, int(timeout_ms - spent))
 
 
-def client_is_open(sock) -> bool:
-    """True when the request socket still has the other end connected.
-
-    A peek does not consume bytes. No data yet means the client is
-    still there. An empty peek or a socket error means it has gone.
-    A TLS socket is peeked on the underlying socket. ValueError,
-    which MSG_PEEK raises on SSLSocket.recv, leaves the client open.
-    """
-    if sock is None:
-        return False
-    blocking = True
-    try:
-        blocking = sock.getblocking()
-    except OSError:
-        return False
-    try:
-        sock.setblocking(False)
-        try:
-            peeked = _peek_one(sock)
-        except (BlockingIOError, InterruptedError, ValueError):
-            return True
-        except OSError:
-            return False
-        return peeked != b""
-    finally:
-        try:
-            sock.setblocking(blocking)
-        except OSError:
-            return False
 PARSE_ERROR = -32700
 TLS_HANDSHAKE_TIMEOUT_S = 5.0
 
@@ -195,6 +164,7 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         if name == "execute_python":
             self._run_code(req_id, version, args.get("code", ""), drain_args)
         elif name == "execute_python_file":
+            started = time.monotonic()
             filepath = args.get("filepath", "")
             try:
                 with open(filepath, "r", encoding="utf-8") as handle:
@@ -211,35 +181,29 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                 )
                 return
             shown = os.path.abspath(filepath)
-            with self.server.executor.file_turn() as turn:
-                decision = self.server.executor.call_on_main(
-                    lambda: file_prompt.confirm(shown, code)
+            if config.trust_any_file():
+                self._run_shown(
+                    req_id, version, code, shown, started, drain_args
                 )
-                # The dialog is closed. A departed client does not run.
-                still_open = client_is_open(
-                    getattr(self, "connection", None)
-                )
-                if decision == file_prompt.RUN and still_open:
-                    token, output_queue = paging.start_page()
-                    turn.queue((code, output_queue, shown, token))
-                else:
-                    token = None
-            if token is None:
-                if decision != file_prompt.RUN and client_is_open(
-                    getattr(self, "connection", None)
-                ):
-                    self._send_tool_result(
-                        req_id,
-                        version,
-                        {
-                            "has_more": False,
-                            "error": file_prompt.decline_message(shown),
-                            "page": [],
-                        },
-                    )
                 return
-            # The dialog wait is over. The timeout clock starts in fetch.
-            result = paging.fetch(token, 0, *drain_args)
+            token, output_queue = paging.start_page()
+            paging.mark_awaiting_user(token)
+            retention_ms = config.max_history_retention_ms()
+            threading.Thread(
+                target=self._ask_file,
+                args=(shown, code, token, output_queue, retention_ms),
+                name="mcp-file-dialog",
+                daemon=True,
+            ).start()
+            # The clock started at the call, so the dialog counts.
+            result = paging.fetch(
+                token,
+                0,
+                _remaining_ms(started, drain_args[0]),
+                drain_args[1],
+            )
+            if result.pop("awaiting_user", False):
+                result = paging.remember_shown_notice(token)
             self._send_tool_result(req_id, version, result)
         elif name == "get_output_page":
             page_no = _as_page_no(args.get("page_no"))
@@ -263,6 +227,45 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                     f"Unknown tool: {name}",
                 ),
             )
+
+    def _run_shown(
+        self, req_id, version, code, shown, started, drain_args
+    ):
+        """Run a trusted file. The timeout is what the call has left."""
+        token, output_queue = paging.start_page()
+        self.server.executor.submit(
+            code, output_queue, shown, token=token
+        )
+        result = paging.fetch(
+            token,
+            0,
+            _remaining_ms(started, drain_args[0]),
+            drain_args[1],
+        )
+        self._send_tool_result(req_id, version, result)
+
+    def _ask_file(self, shown, code, token, output_queue, retention_ms):
+        """Show the dialog, then run the shown text or record a decline.
+
+        One dialog at a time: file_turn holds the job queue until the
+        user answers.
+        """
+        with self.server.executor.file_turn() as turn:
+            decision = file_prompt.DECLINE
+            try:
+                decision = self.server.executor.call_on_main(
+                    lambda: file_prompt.confirm(shown, code)
+                )
+            finally:
+                paging.clear_awaiting_user(token)
+                if decision == file_prompt.RUN:
+                    turn.queue((code, output_queue, shown, token))
+                else:
+                    paging.decline_job(
+                        token,
+                        file_prompt.decline_message(shown),
+                        retention_ms,
+                    )
 
     def _run_code(self, req_id, version, code, drain_args, filepath=None):
         token, output_queue = paging.start_page()

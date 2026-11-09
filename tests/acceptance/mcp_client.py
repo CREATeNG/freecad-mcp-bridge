@@ -19,6 +19,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
+from freecad.mcp_bridge.paging import NOT_ANSWERED_YET, SHOWN_NOTICE
+
 # Required, so the suite never runs against a FreeCAD session by accident.
 BRIDGE_URL = os.environ.get("BRIDGE_URL", "")
 if not BRIDGE_URL:
@@ -256,8 +258,13 @@ def follow(first, version=PROTOCOL_VERSION):
         if "error" in result:
             raise AssertionError(f"get_output_page failed: {result}")
         further_page = result.get("page_no") == next_no
+        page = result.get("page") or []
+        waiting = (
+            len(page) == 1
+            and page[0].get("text") in (SHOWN_NOTICE, NOT_ANSWERED_YET)
+        )
         retry = "page_no" not in result and result["has_more"] and (
-            result["page"] == []
+            page == [] or waiting
         )
         if not (further_page or retry):
             raise AssertionError(

@@ -33,6 +33,14 @@ from freecad.mcp_bridge.mcp_protocol import serialized_page_length
 # End-of-output marker placed on a job's queue by the executor.
 SENTINEL = object()
 
+# What the agent reads when the file dialog outlasts the first answer,
+# and on each later page while that dialog is still open.
+SHOWN_NOTICE = (
+    "This file has been shown to the user in FreeCAD and is "
+    "waiting for their answer.\n"
+)
+NOT_ANSWERED_YET = "The user has not answered yet.\n"
+
 _BUFFER = {}
 _BUFFER_LOCK = threading.Lock()
 
@@ -55,6 +63,8 @@ def start_page():
             "finished": False,
             "retention_s": None,  # seconds, sampled once at finish
             "expire_at": None,  # monotonic deadline; None until finish
+            "awaiting_user": False,
+            "decline": None,
         }
     return token, output_queue
 
@@ -77,6 +87,56 @@ def note_execution_finished(token, output_queue, retention_ms):
         entry["finished"] = True
         entry["retention_s"] = interval
         entry["expire_at"] = time.monotonic() + interval
+
+
+def mark_awaiting_user(token) -> None:
+    """The file dialog is open. This job does not expire yet."""
+    with _BUFFER_LOCK:
+        entry = _BUFFER.get(token)
+        if entry is not None:
+            entry["awaiting_user"] = True
+
+
+def clear_awaiting_user(token) -> None:
+    """The user has answered. Later pages are ordinary output."""
+    with _BUFFER_LOCK:
+        entry = _BUFFER.get(token)
+        if entry is not None:
+            entry["awaiting_user"] = False
+
+
+def decline_job(token, message, retention_ms) -> None:
+    """Close a declined file as an error page and start retention."""
+    interval = max(0.0, retention_ms / 1000.0)
+    with _BUFFER_LOCK:
+        entry = _BUFFER.get(token)
+        if entry is None:
+            return
+        entry["decline"] = message
+        entry["awaiting_user"] = False
+        entry["finished"] = True
+        entry["retention_s"] = interval
+        entry["expire_at"] = time.monotonic() + interval
+        entry["queue"].put(SENTINEL)
+
+
+def remember_shown_notice(token):
+    """Store the shown-file notice as the next page and return it."""
+    page = [{"stream": "stdout", "text": SHOWN_NOTICE}]
+    with _BUFFER_LOCK:
+        entry = _BUFFER.get(token)
+        if entry is None:
+            return _expired_result()
+        page_no = len(entry["history"])
+        entry["history"].append(
+            {"page_no": page_no, "page": page, "has_more": True}
+        )
+    return {
+        "has_more": True,
+        "page_no": page_no,
+        "job_token": token,
+        "page": page,
+    }
 
 
 def _expired_result():
@@ -148,26 +208,53 @@ def fetch(token, page_no, timeout_ms, page_size_chars):
         history = entry["history"]
         if kind == "replay":
             snap = history[page_no]
-            return {
+            result = {
                 "has_more": snap["has_more"],
                 "page_no": page_no,
                 "job_token": token,
                 "page": snap["page"],
             }
+            if snap.get("error"):
+                result["error"] = snap["error"]
+            return result
         page, done = _drain(
             entry, timeout_ms, page_size_chars, page_no, token
         )
+        with _BUFFER_LOCK:
+            decline = entry.get("decline")
+            awaiting = bool(entry.get("awaiting_user"))
         if page or done:
-            history.append(
-                {"page_no": page_no, "page": page, "has_more": not done}
-            )
+            has_more = not done
+            snap = {
+                "page_no": page_no,
+                "page": page,
+                "has_more": has_more,
+            }
+            if done and decline:
+                snap["error"] = decline
+                snap["has_more"] = False
+                has_more = False
+            history.append(snap)
             if done:
                 entry["complete"] = True
-            return {
-                "has_more": not done,
+            result = {
+                "has_more": has_more,
                 "page_no": page_no,
                 "job_token": token,
                 "page": page,
+            }
+            if snap.get("error"):
+                result["error"] = snap["error"]
+            return result
+        if awaiting:
+            # Not stored: the same page_no is asked again.
+            return {
+                "has_more": True,
+                "job_token": token,
+                "awaiting_user": True,
+                "page": [
+                    {"stream": "stdout", "text": NOT_ANSWERED_YET}
+                ],
             }
         # Empty non-final drain: not stored, no page_no.
         return {"has_more": True, "job_token": token, "page": []}

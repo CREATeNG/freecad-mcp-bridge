@@ -11,6 +11,7 @@ import threading
 import time
 import unittest
 
+from freecad.mcp_bridge.paging import NOT_ANSWERED_YET, SHOWN_NOTICE
 from tests.acceptance import mcp_client as mcp
 
 # Prints a marker, then, still running, waits for FreeCAD's Report view to
@@ -172,7 +173,11 @@ class ScriptFileTests(unittest.TestCase):
                     "print(App is FreeCAD, Gui is FreeCADGui, __name__)\n"
                 )
             output = mcp.text(mcp.follow(mcp.execute_file(path)))
-        self.assertEqual(output.splitlines(), [path, "True True __main__"])
+        skip = {SHOWN_NOTICE.strip(), NOT_ANSWERED_YET.strip()}
+        lines = [
+            line for line in output.splitlines() if line not in skip
+        ]
+        self.assertEqual(lines, [path, "True True __main__"])
 
     def test_a_file_that_cannot_be_read_returns_an_explanatory_error_and_no_job(self):
         """A file that cannot be read returns an empty final result with an explanatory error and no job token."""
