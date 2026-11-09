@@ -387,6 +387,7 @@ class MCPBridgeCommand:
         mw = Gui.getMainWindow()
         if mw:
             mw.statusBar().showMessage(status)
+            refresh_trust_marker()
         show_toggle_state()
         if started or stopped:
             App.Console.PrintNotification(status + "\n")
@@ -398,6 +399,30 @@ class MCPBridgeCommand:
                     "Preferences → MCP Bridge."
                 )
             App.Console.PrintWarning(warning + "\n")
+
+
+TRUST_MARKER = " (trusts any file)"
+
+
+def refresh_trust_marker():
+    """Show or clear the status-bar marker for Trust any file."""
+    import FreeCADGui as Gui
+
+    from freecad.mcp_bridge import config
+
+    mw = Gui.getMainWindow()
+    if mw is None:
+        return
+    bar = mw.statusBar()
+    message = bar.currentMessage() or ""
+    base = message.replace(TRUST_MARKER, "")
+    listening = base.startswith(f"{DISPLAY_NAME}: Listening")
+    if config.trust_any_file() and listening:
+        shown = base + TRUST_MARKER
+    else:
+        shown = base
+    if shown != message:
+        bar.showMessage(shown)
 
 
 def _status_button_on_color(rgb):
@@ -679,6 +704,8 @@ class _StatusBarPrefObserver:
             config.migrate_legacy_port()
         if param in (None, "ShowStatusButton", "StatusButtonPosition"):
             show_toggle_state()
+        if param in (None, "TrustAnyFile"):
+            refresh_trust_marker()
 
 
 def _install_pref_page_filter(mw):

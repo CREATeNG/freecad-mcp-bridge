@@ -205,7 +205,30 @@ def execute(code, version=PROTOCOL_VERSION):
     return call_tool("execute_python", {"code": code}, version=version)
 
 
+def _arm_run_file_dialog():
+    """Click Run if the file dialog appears. Trust-any skips the dialog."""
+    run(
+        "from PySide.QtCore import QTimer\n"
+        "from PySide.QtWidgets import QApplication, QPushButton\n"
+        "tries = {'n': 40}\n"
+        "def click():\n"
+        "    tries['n'] -= 1\n"
+        "    app = QApplication.instance()\n"
+        "    widget = app.activeModalWidget() if app else None\n"
+        "    name = widget.objectName() if widget is not None else ''\n"
+        "    if name == 'MCPBridgeRunFileDialog':\n"
+        "        for btn in widget.findChildren(QPushButton):\n"
+        "            if btn.text() == 'Run':\n"
+        "                btn.click()\n"
+        "                return\n"
+        "    if tries['n'] > 0:\n"
+        "        QTimer.singleShot(50, click)\n"
+        "QTimer.singleShot(50, click)\n"
+    )
+
+
 def execute_file(filepath):
+    _arm_run_file_dialog()
     return call_tool("execute_python_file", {"filepath": filepath})
 
 

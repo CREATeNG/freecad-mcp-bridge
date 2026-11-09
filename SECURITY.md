@@ -33,7 +33,12 @@ certificate and private key files. Loopback entries use HTTP. Any
 client that can reach an entry, with the bearer token, can run
 Python code in FreeCAD as your user account. The first start asks
 you to accept that, loopback included, and each later start warns
-in the status bar and **Report view**. A request that carries an
+in the status bar and **Report view**. Before a file an agent
+sends is run, FreeCAD shows its path and whole text. **Don't run**
+is the default. **Trust any file** stays off until you confirm a
+second dialog, and the status bar then shows **trusts any file**.
+Turn it off in **Edit → Preferences → MCP Bridge**. A request that
+carries an
 `Origin` header is refused, as is a `Host` header that does not
 name the address that listener is bound to.
 

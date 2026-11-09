@@ -40,6 +40,7 @@ SETTINGS = (
     "MaxHistoryRetentionMinutes",
     "ShowStatusButton",
     "StatusButtonPosition",
+    "TrustAnyFile",
 )
 
 
@@ -145,6 +146,8 @@ class PreferencePageTests(unittest.TestCase):
             "below.",
         )
         self.assertEqual(settings["RequireTls"]["checked"], "true")
+        self.assertEqual(settings["TrustAnyFile"]["text"], "Trust any file")
+        self.assertEqual(settings["TrustAnyFile"]["checked"], "false")
         self.assertIn(settings["TlsCertFile"]["fileName"], (None, ""))
         self.assertIn(settings["TlsKeyFile"]["fileName"], (None, ""))
         pem_filter = "PEM files (*.pem *.crt *.key);;All files (*)"
@@ -236,6 +239,7 @@ class UnsetPreferenceTests(unittest.TestCase):
         self.assertEqual(config.max_history_retention_ms(), 5 * 60_000)
         self.assertIs(config.show_status_button(), True)
         self.assertEqual(config.status_button_position(), 0)
+        self.assertIs(config.trust_any_file(), False)
         # What it read is what the preference page saves (plus Port as the
         # upgrade fallback when ListenAddress has never been saved).
         self.assertEqual(set(groups), {PREF_GROUP})
@@ -967,6 +971,9 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
         class FakeStatusBar:
             def showMessage(self, msg):
                 statuses.append(msg)
+
+            def currentMessage(self):
+                return ""
 
         class FakeMainWindow:
             def statusBar(self):

@@ -407,6 +407,25 @@
         </property>
        </widget>
       </item>
+      <item row="3" column="0" colspan="2">
+       <widget class="Gui::PrefCheckBox" name="trustAnyFileCheckBox">
+        <property name="toolTip">
+         <string>While this is on, every file an agent sends runs without being shown, with your full permissions.</string>
+        </property>
+        <property name="text">
+         <string>Trust any file</string>
+        </property>
+        <property name="checked">
+         <bool>false</bool>
+        </property>
+        <property name="prefEntry" stdset="0">
+         <cstring>TrustAnyFile</cstring>
+        </property>
+        <property name="prefPath" stdset="0">
+         <cstring>Mod/freecad-mcp-bridge</cstring>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>

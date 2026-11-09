@@ -15,10 +15,11 @@ produced.
 
 import queue
 import sys
+import threading
 import traceback
 
 import FreeCAD
-from PySide.QtCore import QObject, Qt, Signal
+from PySide.QtCore import QCoreApplication, QObject, Qt, QThread, Signal
 
 from freecad.mcp_bridge import config, paging
 
@@ -42,6 +43,7 @@ class TeeWriter:
 class Executor(QObject):
     # Pure wake-up: carries no job data. Jobs travel only through _jobs.
     wake_up = Signal()
+    ask = Signal(object)
 
     def __init__(self):
         super().__init__()
@@ -50,6 +52,37 @@ class Executor(QObject):
         self._busy = False  # main-thread only: True while a job is running
         self._stopped = False  # set by shutdown(); no further job is taken
         self.wake_up.connect(self._dispatch, Qt.QueuedConnection)
+        self.ask.connect(self._run_ask, Qt.QueuedConnection)
+
+    def call_on_main(self, fn):
+        """Run `fn` on the main thread and return its result.
+
+        The caller, on a request thread, waits. A modal dialog inside
+        `fn` runs its own loop on the main thread, so this wait is not
+        the response timeout.
+        """
+        app = QCoreApplication.instance()
+        if app is not None and QThread.currentThread() is app.thread():
+            return fn()
+        done = threading.Event()
+        box = {}
+
+        def wrapped():
+            try:
+                box["value"] = fn()
+            except BaseException as exc:
+                box["error"] = exc
+            finally:
+                done.set()
+
+        self.ask.emit(wrapped)
+        done.wait()
+        if "error" in box:
+            raise box["error"]
+        return box.get("value")
+
+    def _run_ask(self, fn):
+        fn()
 
     def submit(self, code, output_queue, filepath=None, token=None):
         """Queue the job and wake the dispatcher. Called from a request thread."""

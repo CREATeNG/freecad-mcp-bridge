@@ -17,7 +17,7 @@ import threading
 from http.server import BaseHTTPRequestHandler
 import FreeCAD
 
-from freecad.mcp_bridge import config, mcp_protocol, paging
+from freecad.mcp_bridge import config, file_prompt, mcp_protocol, paging
 from freecad.mcp_bridge.constants import (
     ENDPOINT_PATH,
     LOG_PREFIX,
@@ -170,9 +170,23 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                     },
                 )
                 return
-            self._run_code(
-                req_id, version, code, drain_args, os.path.abspath(filepath)
+            shown = os.path.abspath(filepath)
+            decision = self.server.executor.call_on_main(
+                lambda: file_prompt.confirm(shown, code)
             )
+            if decision != file_prompt.RUN:
+                self._send_tool_result(
+                    req_id,
+                    version,
+                    {
+                        "has_more": False,
+                        "error": file_prompt.decline_message(shown),
+                        "page": [],
+                    },
+                )
+                return
+            # The dialog has closed. The timeout clock starts in fetch.
+            self._run_code(req_id, version, code, drain_args, shown)
         elif name == "get_output_page":
             page_no = _as_page_no(args.get("page_no"))
             if page_no is None:

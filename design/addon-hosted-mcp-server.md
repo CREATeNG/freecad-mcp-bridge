@@ -32,12 +32,23 @@ The MCP server exposes three tools (schemas in `tools.py`).
 - **`execute_python(code)`** — initiates a job that runs Python inside the live FreeCAD
   session, with `App`/`Gui` pre-bound and `__name__` set to `"__main__"`. Stdout and stderr
   are captured as tagged output chunks.
-- **`execute_python_file(filepath)`** — initiates a job that
-  reads a local file (absolute path) and runs it the same way,
-  with `__file__` set to the file's path. The bridge reads the
-  file before the job is queued. If the file cannot be read,
-  the tool returns `has_more: false`, an `error` message, and
-  `page: []` — no job, no page history, and no `job_token`.
+- **`execute_python_file(filepath)`** — reads a local file
+  (absolute path) once. Unless **Trust any file** is on, FreeCAD
+  shows a dialog with that path and the whole text, and the
+  buttons **Run**, **Don't run** (the default), and **Trust any
+  file**. The job runs exactly that text, with `__file__` set to
+  the path. **Don't run** returns `has_more: false`, an `error`
+  saying the user declined, and `page: []`, with no job.
+  **Trust any file** opens a second dialog. Only **Yes** turns
+  the preference on, and the shown file then runs. While it is
+  on, the status bar shows `trusts any file`, and **Trust any
+  file** in Preferences turns it off. It is off by default and
+  stays on until turned off. The wait for the dialog is on the
+  main thread and ends before the response timeout starts, so
+  that wait does not count against **Max response timeout**.
+  If the file cannot be read, the tool returns `has_more: false`,
+  an `error` message, and `page: []` — no job, no page history,
+  and no `job_token`.
 - **`get_output_page(job_token, page_no)`** — fetches the requested page from a job's page
   history. Both arguments are required.
 
@@ -67,8 +78,9 @@ client that keeps only the start can still continue.
 
 **Non-blocking**
 
-`execute_python` and `execute_python_file` (once the file is read
-successfully) queue a job for the Qt main thread, then return a response
+`execute_python`, and `execute_python_file` after its dialog (or at
+once when **Trust any file** is on), queue a job for the Qt main
+thread, then return a response
 — even if the job is still queued or running. The response carries the
 job's first page when the job has produced output or finished; a quiet
 job's first response is empty and unnumbered (see *Page history*). The

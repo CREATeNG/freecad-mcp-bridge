@@ -247,6 +247,16 @@ def verify_token(
     return _tokens_match(candidate, token_file.read_token())
 
 
+def trust_any_file() -> bool:
+    """Whether an agent's file runs without being shown. Off by default."""
+    return _params().GetBool("TrustAnyFile", False)
+
+
+def set_trust_any_file(enabled: bool) -> None:
+    """Remember that every file an agent sends may run unseen."""
+    _params().SetBool("TrustAnyFile", bool(enabled))
+
+
 def require_tls() -> bool:
     """Whether non-loopback entries serve HTTPS.
 
