@@ -542,17 +542,20 @@ def _http_exec_probe(code: str, timeout_ms: int) -> dict:
 
     from PySide.QtCore import QCoreApplication, QThread
 
-    from freecad.mcp_bridge import config
+    from freecad.mcp_bridge import config, token_file
     from freecad.mcp_bridge.constants import PROTOCOL_VERSION
 
     entry = config.listen_addresses()[0]
     url = f"http://{entry}/mcp"
     timeout_s = timeout_ms / 1000.0
     result: dict = {}
+    token = token_file.read_token()
 
     def _post(payload):
         # A valid request in the bridge's protocol version: version, client
         # info and capabilities in _meta, mirrored in the headers.
+        # The token is the one FreeCAD wrote, from FREECAD_MCP_TOKEN_DIR
+        # or <home>/.freecad-mcp-bridge.
         params = payload["params"]
         params["_meta"] = {
             "io.modelcontextprotocol/protocolVersion": PROTOCOL_VERSION,
@@ -562,16 +565,19 @@ def _http_exec_probe(code: str, timeout_ms: int) -> dict:
             },
             "io.modelcontextprotocol/clientCapabilities": {},
         }
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            "MCP-Protocol-Version": PROTOCOL_VERSION,
+            "Mcp-Method": payload["method"],
+            "Mcp-Name": params["name"],
+        }
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
         req = urllib.request.Request(
             url,
             data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Content-Type": "application/json",
-                "Accept": "application/json, text/event-stream",
-                "MCP-Protocol-Version": PROTOCOL_VERSION,
-                "Mcp-Method": payload["method"],
-                "Mcp-Name": params["name"],
-            },
+            headers=headers,
         )
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
             body = resp.read().decode("utf-8")

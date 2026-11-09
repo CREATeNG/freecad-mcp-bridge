@@ -5,7 +5,8 @@ Usage:
   python send_cmd.py <port> -f script.py
 
 The bridge must be running (MCP Bridge toolbar toggle on) in FreeCAD.
-Requests are sent as MCP protocol version 2026-07-28.
+Requests are sent as MCP protocol version 2026-07-28, with the bearer
+token from FREECAD_MCP_TOKEN_DIR/token, or <home>/.freecad-mcp-bridge/token.
 Stdlib only — runs on any Python 3, no FreeCAD or pip dependencies.
 """
 
@@ -14,9 +15,20 @@ import os
 import sys
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 PROTOCOL_VERSION = "2026-07-28"
 CLIENT_INFO = {"name": "send_cmd", "version": "0"}
+
+
+def _token_from_file():
+    """The bearer token FreeCAD wrote, or '' when the file is absent."""
+    override = os.environ.get("FREECAD_MCP_TOKEN_DIR", "").strip()
+    folder = Path(override) if override else Path.home() / ".freecad-mcp-bridge"
+    try:
+        return (folder / "token").read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
 
 
 def _rpc(port, method, params, req_id):
@@ -40,6 +52,9 @@ def _rpc(port, method, params, req_id):
     }
     if method == "tools/call":
         headers["Mcp-Name"] = params["name"]
+    token = _token_from_file()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     req = urllib.request.Request(
         url, data=json.dumps(payload).encode("utf-8"), headers=headers
     )
