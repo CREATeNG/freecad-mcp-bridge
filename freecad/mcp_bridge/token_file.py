@@ -12,11 +12,14 @@ from __future__ import annotations
 import os
 import stat
 import sys
+import tempfile
+import time
 from pathlib import Path
 
 DIR_NAME = ".freecad-mcp-bridge"
 FILE_NAME = "token"
 MIN_TOKEN_LENGTH = 32
+_REPLACE_ATTEMPTS = 5
 
 
 def token_dir() -> Path:
@@ -44,13 +47,48 @@ def read_token() -> str:
 
 
 def write_token(token: str) -> None:
-    """Write `token` into the file, creating a user-only folder first."""
+    """Write `token` by replacing the file from a temporary file.
+
+    The temporary file is in the same folder, so it inherits that
+    folder's user-only entry. A reader never sees an empty token file.
+    """
     directory = token_dir()
     directory.mkdir(parents=True, exist_ok=True)
     _user_only(directory, is_dir=True)
-    path = token_path()
-    path.write_text(token.strip() + "\n", encoding="utf-8")
-    _user_only(path, is_dir=False)
+    descriptor, name = tempfile.mkstemp(
+        prefix=".token-", suffix=".tmp", dir=directory
+    )
+    temporary = Path(name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(token.strip() + "\n")
+        _user_only(temporary, is_dir=False)
+        _replace_file(temporary, token_path())
+    except OSError:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def _replace_file(source: Path, dest: Path) -> None:
+    """Replace `dest` with `source`. Retry a Windows sharing error."""
+    for attempt in range(_REPLACE_ATTEMPTS):
+        try:
+            os.replace(source, dest)
+            return
+        except OSError as exc:
+            if (
+                not _sharing_violation(exc)
+                or attempt == _REPLACE_ATTEMPTS - 1
+            ):
+                raise
+            time.sleep(0.05 * (attempt + 1))
+
+
+def _sharing_violation(exc: OSError) -> bool:
+    """True for a Windows sharing or lock error."""
+    if not sys.platform.startswith("win"):
+        return False
+    return getattr(exc, "winerror", None) in (32, 33)
 
 
 def _user_only(path: Path, *, is_dir: bool) -> None:

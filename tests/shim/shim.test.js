@@ -616,7 +616,7 @@ test("FREECAD_MCP_TOKEN_DIR selects the folder, not the home folder", async () =
   fs.rmSync(override, { recursive: true, force: true });
 });
 
-test("a 401 says the token file and FreeCAD disagree, and a pasted-token note sits beside error", async () => {
+test("a 401 names the token file the extension used, with and without a token", async () => {
   const bridge = await startBridge(() => ({
     status: 401,
     type: "text/plain",
@@ -642,17 +642,37 @@ test("a 401 says the token file and FreeCAD disagree, and a pasted-token note si
   assert.equal(toolReply.result.isError, true);
   assert.equal(toolReply.result.note, undefined);
   const toolBody = JSON.parse(toolReply.result.content[0].text);
-  assert.match(toolBody.error, /401 Unauthorized/);
-  assert.match(toolBody.error, /The token file and FreeCAD disagree/);
-  assert.match(toolBody.error, /Clear Bearer token/);
-  assert.match(toolBody.error, /Generate new token/);
-  assert.doesNotMatch(toolBody.error, /to the token FreeCAD showed/);
+  assert.equal(
+    toolBody.error,
+    `FreeCAD refused the token from ${shim.tokenFile}. ` +
+      "FreeCAD and the extension must use the same token file. " +
+      "Check that FREECAD_MCP_TOKEN_DIR, if set, is the same for both."
+  );
   assert.match(toolBody.note, /shorter than 32 characters/);
-  assert.doesNotMatch(toolBody.error, /FREECAD_MCP_TOKEN/);
   assert.deepEqual(pingReply.result, {});
   assert.equal(pingReply.error, undefined);
   assert.equal(bridge.requests.length, 1);
+  const leftovers = fs.readdirSync(shim.tokenDir).filter((name) => name.endsWith(".tmp"));
+  assert.deepEqual(leftovers, []);
   await shim.stop();
+
+  const missing = startShim(bridge.port, {}, { prepareTokenDir: false });
+  missing.send(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      id: 3,
+      method: "tools/call",
+      params: { name: "execute_python", arguments: { code: "print(1)" } },
+    }) + "\n"
+  );
+  const [noneReply] = await missing.waitForLines(1);
+  const noneBody = JSON.parse(noneReply.result.content[0].text);
+  assert.equal(
+    noneBody.error,
+    `No token file at ${missing.tokenFile}. ` +
+      "Turn the bridge on in FreeCAD once, or check FREECAD_MCP_TOKEN_DIR."
+  );
+  await missing.stop();
   bridge.close();
 });
 

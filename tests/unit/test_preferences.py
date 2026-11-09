@@ -1892,6 +1892,12 @@ class TokenFileTests(unittest.TestCase):
                 (Path(folder) / "token").read_text(encoding="utf-8").strip(),
                 "a" * 32,
             )
+            leftovers = [
+                name
+                for name in os.listdir(folder)
+                if name.endswith(".tmp")
+            ]
+            self.assertEqual(leftovers, [])
             if os.name == "nt":
                 self.assertEqual(
                     _windows_ace_count(Path(folder) / "token"), 1
@@ -1941,6 +1947,35 @@ class TokenFileTests(unittest.TestCase):
         ):
             self.assertIsNone(init_gui.generate_and_show_token())
         self.assertEqual(shown, ["access denied"])
+
+    def test_a_windows_sharing_error_retries_the_replace(self):
+        """A sharing error on Windows retries the replace, then the token is whole."""
+        if os.name != "nt":
+            self.skipTest("the retry is for a Windows sharing error")
+        from freecad.mcp_bridge import token_file
+
+        with tempfile.TemporaryDirectory() as folder:
+            with mock.patch.dict(
+                os.environ, {"FREECAD_MCP_TOKEN_DIR": folder}
+            ):
+                real = os.replace
+                calls = {"n": 0}
+
+                def flaky(source, dest):
+                    calls["n"] += 1
+                    if calls["n"] < 3:
+                        error = PermissionError(13, "sharing", source, 32)
+                        error.winerror = 32
+                        raise error
+                    return real(source, dest)
+
+                with mock.patch("os.replace", side_effect=flaky):
+                    token_file.write_token("c" * 32)
+            self.assertGreaterEqual(calls["n"], 3)
+            self.assertEqual(
+                (Path(folder) / "token").read_text(encoding="utf-8").strip(),
+                "c" * 32,
+            )
 
 
 if __name__ == "__main__":

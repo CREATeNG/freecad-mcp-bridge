@@ -90,9 +90,45 @@ function readPasteRecord() {
   }
 }
 
+function sleepMs(ms) {
+  const until = Date.now() + ms;
+  while (Date.now() < until) {
+    // A sharing error is brief. A few retries cover it.
+  }
+}
+
+function replaceFile(source, dest) {
+  const attempts = 5;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      fs.renameSync(source, dest);
+      return;
+    } catch (err) {
+      const sharing = process.platform === "win32"
+        && (err.code === "EPERM" || err.code === "EBUSY" || err.code === "EACCES");
+      if (!sharing || attempt === attempts - 1) throw err;
+      sleepMs(50 * (attempt + 1));
+    }
+  }
+}
+
 function writeUserOnly(file, text) {
-  fs.writeFileSync(file, text, { encoding: "utf8", mode: 0o600 });
-  if (process.platform !== "win32") fs.chmodSync(file, 0o600);
+  const temporary = path.join(
+    path.dirname(file),
+    `.${path.basename(file)}.${process.pid}.${Date.now()}.tmp`
+  );
+  try {
+    fs.writeFileSync(temporary, text, { encoding: "utf8", mode: 0o600 });
+    if (process.platform !== "win32") fs.chmodSync(temporary, 0o600);
+    replaceFile(temporary, file);
+  } catch (err) {
+    try {
+      fs.unlinkSync(temporary);
+    } catch {
+      // The temporary file is already gone, or was never created.
+    }
+    throw err;
+  }
 }
 
 let pastedNote = "";
@@ -135,11 +171,20 @@ const TOOLS = JSON.parse(fs.readFileSync(path.join(__dirname, "tools.json"), "ut
 const VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf8")).version;
 const UNREACHABLE_HINT =
   "FreeCAD isn't reachable. Start FreeCAD and turn the bridge on with the MCP Bridge toolbar button, then try again.";
-const UNAUTHORIZED_MESSAGE =
-  `FreeCAD MCP Bridge requires a bearer token and did not accept this request (401 Unauthorized at ${ENDPOINT}). ` +
-  "The token file and FreeCAD disagree, or the pasted token is stale. " +
-  "Clear Bearer token in the FreeCAD MCP Bridge extension settings, " +
-  "or click Generate new token in FreeCAD's Edit → Preferences → MCP Bridge.";
+function unauthorizedMessage() {
+  const file = tokenFilePath();
+  if (readTokenFile()) {
+    return (
+      `FreeCAD refused the token from ${file}. ` +
+      "FreeCAD and the extension must use the same token file. " +
+      "Check that FREECAD_MCP_TOKEN_DIR, if set, is the same for both."
+    );
+  }
+  return (
+    `No token file at ${file}. ` +
+    "Turn the bridge on in FreeCAD once, or check FREECAD_MCP_TOKEN_DIR."
+  );
+}
 
 function writeLine(text) {
   process.stdout.write(text + "\n");
@@ -432,7 +477,7 @@ async function forward(rawLine, message) {
 
   const bodyText = await res.text();
   if (res.status === 401) {
-    sendErrorReply(message, UNAUTHORIZED_MESSAGE);
+    sendErrorReply(message, unauthorizedMessage());
     return;
   }
   writeBridgeLine(bodyText.trim());

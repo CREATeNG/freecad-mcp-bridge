@@ -516,7 +516,9 @@ write keeps any entry an existing file already had, until FreeCAD's
 next write resets it. On Linux and macOS the folder is
 mode `0700` and the file is mode `0600`. FreeCAD creates the folder
 and the file at the first start, shows the token once, and writes the
-file. **Generate new token** replaces the file and shows the new
+file. The write goes to a temporary file in that folder and then
+replaces the token file, so a reader never sees it empty.
+**Generate new token** replaces the file and shows the new
 token once. Preferences do not keep a hash. The old `TokenHash`,
 `RequireToken` and `RequireOnLoopback` values are left unread. A
 running bridge, when a request's token does not match, reads the file
