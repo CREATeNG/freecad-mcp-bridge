@@ -1901,6 +1901,69 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 "the certificate again in Edit → Preferences → MCP Bridge.",
             )
 
+            # An expired certificate fails naming the expiry date.
+            expired_decoded = {
+                **fake_decoded,
+                "notAfter": "Jan  1 00:00:00 2020 GMT",
+            }
+            with (
+                mock.patch.object(
+                    config.ssl._ssl,
+                    "_test_decode_cert",
+                    return_value=expired_decoded,
+                ),
+                self.assertRaises(ValueError) as expired,
+            ):
+                config.build_ssl_context(
+                    "cert.pem",
+                    "key.pem",
+                    ["192.168.1.50:39280"],
+                )
+            self.assertEqual(
+                str(expired.exception),
+                "The TLS certificate expired on 2020-01-01. Generate "
+                "the certificate again in Edit → Preferences → MCP Bridge.",
+            )
+
+            # When _test_decode_cert is missing or raises, start goes ahead
+            # with a warning in Report view, and certificate_hosts is empty.
+            warnings = []
+            config.FreeCAD.Console = types.SimpleNamespace(
+                PrintWarning=warnings.append
+            )
+            with mock.patch.object(
+                config.ssl._ssl,
+                "_test_decode_cert",
+                side_effect=RuntimeError("no decoder"),
+            ):
+                self.assertEqual(config.certificate_hosts("cert.pem"), set())
+                ctx = config.build_ssl_context(
+                    "cert.pem",
+                    "key.pem",
+                    ["192.168.1.50:39280"],
+                )
+                self.assertIsNotNone(ctx)
+            self.assertEqual(
+                warnings,
+                [
+                    "[MCP Bridge] WARNING: could not inspect the TLS "
+                    "certificate for expiry or address coverage; continuing "
+                    "without those checks.\n"
+                ],
+            )
+            warnings.clear()
+            with mock.patch.object(
+                config.ssl, "_ssl", types.SimpleNamespace()
+            ):
+                self.assertEqual(config.certificate_hosts("cert.pem"), set())
+                ctx = config.build_ssl_context(
+                    "cert.pem",
+                    "key.pem",
+                    ["192.168.1.50:39280"],
+                )
+                self.assertIsNotNone(ctx)
+            self.assertEqual(len(warnings), 1)
+
 
 def _windows_ace_count(path):
     """How many allow entries the file's DACL has, on Windows."""

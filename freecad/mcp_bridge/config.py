@@ -8,6 +8,7 @@ Status-bar button settings are read when the status-bar button is created or
 refreshed.
 """
 
+import datetime
 import hashlib
 import hmac
 import ipaddress
@@ -15,6 +16,7 @@ import json
 import re
 import secrets
 import ssl
+import time
 
 import FreeCAD
 
@@ -29,6 +31,7 @@ from freecad.mcp_bridge.constants import (
     DEFAULT_PORT,
     DEFAULT_SHOW_STATUS_BUTTON,
     DEFAULT_STATUS_BUTTON_POSITION,
+    DISPLAY_NAME,
     PERMISSION_MODE_ASK,
     PERMISSION_MODE_UNRESTRICTED,
     PREF_GROUP,
@@ -302,18 +305,25 @@ def _normalize_host(raw: str) -> str:
         return host.lower()
 
 
-def certificate_hosts(cert_file: str) -> set[str]:
-    """Names and IP addresses covered by the PEM certificate `cert_file`."""
+def _decode_cert(cert_file: str) -> dict | None:
+    """Return the decoded certificate dict for `cert_file`, or `None` when
+    `ssl._ssl._test_decode_cert` is unavailable or raises."""
     cert = (cert_file or "").strip()
     if not cert:
-        return set()
+        return None
     decode = getattr(getattr(ssl, "_ssl", None), "_test_decode_cert", None)
-    if decode is None:
-        return set()
+    if not callable(decode):
+        return None
     try:
         decoded = decode(cert)
-    except (OSError, ValueError, ssl.SSLError):
-        return set()
+    except Exception:
+        return None
+    return decoded if isinstance(decoded, dict) else None
+
+
+def _certificate_hosts_from_decoded(decoded: dict) -> set[str]:
+    """Extract normalized SAN (`DNS`/`IP Address`) or fallback `commonName`
+    hosts from `decoded`."""
     hosts = set()
     for kind, value in decoded.get("subjectAltName", ()):
         if kind in ("DNS", "IP Address") and value:
@@ -328,6 +338,32 @@ def certificate_hosts(cert_file: str) -> set[str]:
                     if norm:
                         hosts.add(norm)
     return hosts
+
+
+def _certificate_expired_date(decoded: dict) -> str | None:
+    """Return the UTC `YYYY-MM-DD` expiry date when `decoded` has expired,
+    or `None` when still valid or when `notAfter` cannot be parsed."""
+    not_after = decoded.get("notAfter")
+    if not isinstance(not_after, str) or not not_after.strip():
+        return None
+    try:
+        expires_at = ssl.cert_time_to_seconds(not_after)
+    except (ValueError, OverflowError, OSError):
+        return None
+    if time.time() >= expires_at:
+        dt = datetime.datetime.fromtimestamp(
+            expires_at, tz=datetime.timezone.utc
+        )
+        return dt.strftime("%Y-%m-%d")
+    return None
+
+
+def certificate_hosts(cert_file: str) -> set[str]:
+    """Names and IP addresses covered by the PEM certificate `cert_file`."""
+    decoded = _decode_cert(cert_file)
+    if decoded is None:
+        return set()
+    return _certificate_hosts_from_decoded(decoded)
 
 
 def certificate_covers_host(
@@ -361,8 +397,8 @@ def build_ssl_context(
 ) -> ssl.SSLContext:
     """Build a server SSLContext from `cert_file` and `key_file`.
 
-    When `addresses` is given, every non-loopback address in it must be
-    covered by `cert_file`.
+    When `addresses` has entries beyond loopback, `cert_file` must not be
+    expired and must cover every entry beyond loopback.
     """
     cert = (cert_file or "").strip()
     key = (key_file or "").strip()
@@ -383,11 +419,29 @@ def build_ssl_context(
             "Check or generate the TLS files in Edit → Preferences → "
             "MCP Bridge."
         ) from exc
-    if addresses:
-        covered = certificate_hosts(cert)
-        for entry in addresses:
-            if is_loopback_address(entry):
-                continue
+    beyond_loopback = [
+        entry
+        for entry in (addresses or ())
+        if not is_loopback_address(entry)
+    ]
+    if beyond_loopback:
+        decoded = _decode_cert(cert)
+        if decoded is None:
+            FreeCAD.Console.PrintWarning(
+                f"[{DISPLAY_NAME}] WARNING: could not inspect the TLS "
+                "certificate for expiry or address coverage; continuing "
+                "without those checks.\n"
+            )
+            return context
+        expired_date = _certificate_expired_date(decoded)
+        if expired_date is not None:
+            raise ValueError(
+                f"The TLS certificate expired on {expired_date}. "
+                "Generate the certificate again in Edit → Preferences → "
+                "MCP Bridge."
+            )
+        covered = _certificate_hosts_from_decoded(decoded)
+        for entry in beyond_loopback:
             host = _entry_host(entry)
             if not certificate_covers_host(covered, host):
                 raise ValueError(
