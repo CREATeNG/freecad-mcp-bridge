@@ -28,9 +28,7 @@ CODE_DECLINE = "The user declined to run this code."
 MARKER_ASK = "MCP: Ask"
 MARKER_UNRESTRICTED = "MCP: Unrestricted"
 MODE_TOOLTIP = (
-    "Ask: FreeCAD shows you an agent's code before it runs. "
-    "Unrestricted: any code an agent sends runs with your full "
-    "permissions, unseen."
+    "Ask shows you an agent's code first. Unrestricted runs it unseen."
 )
 MODE_BODY = (
     "In Unrestricted mode, any code an agent sends runs with your "

@@ -49,7 +49,7 @@ The MCP server exposes three tools (schemas in `tools.py`).
   `MCP: Ask`, or a warning triangle and `MCP: Unrestricted`.
   Clicking the marker switches modes the same way as the
   **Permission mode** preference under **Permissions**: a
-  confirm to go Unrestricted, and back to Ask at once.
+  confirmation to go Unrestricted, and back to Ask at once.
   The dialog counts against **Max response timeout**. If the
   file cannot be read, the tool returns `has_more: false`,
   an `error` message, and `page: []` — no job, no page history,
@@ -716,7 +716,7 @@ automatically.
 | Bearer token file | `<home>/.freecad-mcp-bridge/token` | Every listener requires `Authorization: Bearer <token>`; FreeCAD writes the file at the first start and on **Generate new token**, shows the token once, and does not keep a hash; a mismatch reads the file again before refusing |
 | Require TLS (HTTPS) | `true` | Serves HTTPS on non-loopback entries using `TlsCertFile` and `TlsKeyFile`; loopback stays HTTP; fails to start on an entry beyond loopback if enabled without valid certificate and key files |
 | TLS certificate file (PEM) / TLS private key file (PEM) | `""` | PEM certificate (`TlsCertFile`) and private key (`TlsKeyFile`) paths for HTTPS |
-| Permission mode | Ask | `PermissionMode`: in Ask, FreeCAD shows an agent's code, and a file's path with it, before it runs; in Unrestricted the code runs unseen; switched in Preferences or by the status-bar marker, with a confirm to go Unrestricted |
+| Permission mode | `0` (Ask) | `PermissionMode`, `0` for Ask and `1` for Unrestricted: in Ask, FreeCAD shows an agent's code, and a file's path with it, before it runs; in Unrestricted the code runs unseen; switched in Preferences or by the status-bar marker, with a confirmation to go Unrestricted; only that confirmed choice writes it, and the Preferences box has no preference entry of its own, so FreeCAD's own OK writes nothing for it |
 | Max response timeout (s) | 15 | Max wait for the first answer of `execute_python` and `execute_python_file`, dialog included, and for each later page, before returning with `has_more: true` |
 | Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |
 | Page history retention (min) | 5 | How long output stays readable after the job finishes running, or after its last valid page fetch or replay. |

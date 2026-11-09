@@ -426,7 +426,7 @@
          </widget>
         </item>
         <item>
-         <widget class="Gui::PrefComboBox" name="permissionModeComboBox">
+         <widget class="QComboBox" name="permissionModeComboBox">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
             <horstretch>0</horstretch>
@@ -434,16 +434,10 @@
            </sizepolicy>
           </property>
           <property name="toolTip">
-           <string>Ask: FreeCAD shows you an agent's code before it runs. Unrestricted: any code an agent sends runs with your full permissions, unseen.</string>
+           <string>Ask shows you an agent's code first. Unrestricted runs it unseen.</string>
           </property>
           <property name="currentIndex">
            <number>0</number>
-          </property>
-          <property name="prefEntry" stdset="0">
-           <cstring>PermissionMode</cstring>
-          </property>
-          <property name="prefPath" stdset="0">
-           <cstring>Mod/freecad-mcp-bridge</cstring>
           </property>
           <item>
            <property name="text">

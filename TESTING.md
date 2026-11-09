@@ -81,14 +81,14 @@ FreeCAD, so the run uses that folder's preferences and addons and
 never your own. The suite creates documents and temporary files,
 changes preferences and toggles the bridge, including restarting it
 on another port. It also switches the permission mode to
-Unrestricted, so its calls meet no dialog. Where it finds Ask,
-FreeCAD shows that first call's code for you to run, and the mode
-goes back to Ask when the suite ends. Tests restore preferences and
-bridge state on their normal paths; a failed test can leave that
-work unfinished.
+Unrestricted with its first call, so its later calls meet no
+dialog. Where it finds Ask, FreeCAD shows that first call's code
+for you to run, and the mode goes back to Ask when the suite ends.
+Tests restore preferences and bridge state on their normal paths; a
+failed test can leave that work unfinished.
 
-Set `FREECAD_MCP_TOKEN_DIR` to a new temporary folder before you
-start FreeCAD too, and use that same value for the test process, so
+Set `FREECAD_MCP_TOKEN_DIR` too, to a new temporary folder, before
+you start FreeCAD, and use that same value for the test process, so
 a local run never touches the real token file. Install the addon
 version under test, open a fresh FreeCAD GUI session with both
 variables set, and turn the bridge on with its toolbar button. Keep

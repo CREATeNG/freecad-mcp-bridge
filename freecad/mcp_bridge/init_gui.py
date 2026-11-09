@@ -788,6 +788,26 @@ def _sync_open_mode_box():
     file_prompt.set_mode_box_quietly(box, config.unrestricted())
 
 
+def _show_mode_in_box(box):
+    """Show the mode in the Preferences box, and connect it once.
+
+    The box has no preference entry of its own, so FreeCAD's OK writes
+    nothing for it: a confirmed choice is the only writer of the mode.
+    A box this never reaches shows Ask and changes nothing.
+    """
+    from freecad.mcp_bridge import config, file_prompt
+
+    file_prompt.set_mode_box_quietly(box, config.unrestricted())
+    if box.property("mcp_mode_hooked"):
+        return
+    box.setProperty("mcp_mode_hooked", True)
+    # activated fires on the user's choice only, never when the code
+    # sets the box.
+    box.activated.connect(
+        lambda index, box=box: _on_mode_chosen(box, index)
+    )
+
+
 def _install_pref_page_filter(mw):
     """Connect `generateTokenButton` and the Permission mode box when
     the Preferences page opens."""
@@ -817,14 +837,8 @@ def _install_pref_page_filter(mw):
                 event.type() == QEvent.Show
                 and isinstance(obj, QComboBox)
                 and obj.objectName() == "permissionModeComboBox"
-                and not obj.property("mcp_mode_hooked")
             ):
-                obj.setProperty("mcp_mode_hooked", True)
-                # activated fires on the user's choice only, never
-                # when the code sets the box.
-                obj.activated.connect(
-                    lambda index, box=obj: _on_mode_chosen(box, index)
-                )
+                _show_mode_in_box(obj)
             return False
 
     flt = _PrefPageFilter(mw)

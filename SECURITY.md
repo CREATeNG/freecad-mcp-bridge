@@ -34,13 +34,13 @@ client that can reach an entry, with the bearer token, can run
 Python code in FreeCAD as your user account. The first start asks
 you to accept that, loopback included, and each later start warns
 in the status bar and **Report view**. In the **Ask** permission
-mode, the default, FreeCAD shows code an agent sends before it
-runs. A file also shows its path. **Don't run** is the default. The
-**Unrestricted** mode, in which that code runs unseen, stays off
-until you confirm a second dialog. The status bar always shows the
-mode: a shield with a tick and **MCP: Ask**, or a warning triangle
-and **MCP: Unrestricted**. Clicking that marker switches modes the
-same way as **Permission mode** under **Permissions** in
+mode, the default, FreeCAD shows code an agent sends in a dialog
+before it runs. A file also shows its path. **Don't run** is the
+default. The **Unrestricted** mode, in which that code runs unseen,
+stays off until you confirm a second dialog. The status bar always
+shows the mode: a shield with a tick and **MCP: Ask**, or a warning
+triangle and **MCP: Unrestricted**. Clicking that marker switches
+modes the same way as **Permission mode** under **Permissions** in
 **Edit → Preferences → MCP Bridge**, and it shows whether or not
 the On/Off button is shown. A request that carries an `Origin`
 header is refused, as is a `Host` header that does not name the

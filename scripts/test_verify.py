@@ -645,13 +645,19 @@ def _verify_http_round_trip() -> None:
     from freecad.mcp_bridge import config
 
     # The probe is execute_python. In Unrestricted mode it meets no
-    # dialog.
+    # dialog. The mode goes back to Ask, where the probe found Ask,
+    # before any check below can end the process.
+    was_unrestricted = config.unrestricted()
     config.set_unrestricted(True)
     probe = common.env("RELEASE_INSTALL_PROBE", 'print("test_verify_ok")')
     expected = common.env("RELEASE_INSTALL_PROBE_EXPECT", "test_verify_ok")
     timeout_ms = int(common.env("RELEASE_INSTALL_HTTP_TIMEOUT_MS", "30000"))
 
-    result = _http_exec_probe(probe, timeout_ms)
+    try:
+        result = _http_exec_probe(probe, timeout_ms)
+    finally:
+        if not was_unrestricted:
+            config.set_unrestricted(False)
 
     if "error" in result:
         common.fail(f"HTTP exec round-trip failed: {result['error']}")

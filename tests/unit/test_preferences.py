@@ -42,7 +42,6 @@ SETTINGS = (
     "MaxHistoryRetentionMinutes",
     "ShowStatusButton",
     "StatusButtonPosition",
-    "PermissionMode",
 )
 
 
@@ -148,19 +147,28 @@ class PreferencePageTests(unittest.TestCase):
             "below.",
         )
         self.assertEqual(settings["RequireTls"]["checked"], "true")
+        mode_box = next(
+            widget
+            for widget in ET.parse(PAGE).iter("widget")
+            if widget.get("name") == "permissionModeComboBox"
+        )
+        mode_props = {
+            prop.get("name"): prop[0].text
+            for prop in mode_box.findall("property")
+        }
         self.assertEqual(
-            settings["PermissionMode"]["items"],
+            [
+                item.find("property/string").text
+                for item in mode_box.findall("item")
+            ],
             ["Ask (default)", "Unrestricted"],
         )
-        self.assertEqual(settings["PermissionMode"]["currentIndex"], "0")
-        self.assertEqual(
-            settings["PermissionMode"]["toolTip"], MODE_TOOLTIP
-        )
+        self.assertEqual(mode_props["currentIndex"], "0")
+        self.assertEqual(mode_props["toolTip"], MODE_TOOLTIP)
         self.assertEqual(
             MODE_TOOLTIP,
-            "Ask: FreeCAD shows you an agent's code before it runs. "
-            "Unrestricted: any code an agent sends runs with your full "
-            "permissions, unseen.",
+            "Ask shows you an agent's code first. Unrestricted runs "
+            "it unseen.",
         )
         self.assertIn(settings["TlsCertFile"]["fileName"], (None, ""))
         self.assertIn(settings["TlsKeyFile"]["fileName"], (None, ""))
@@ -262,10 +270,13 @@ class UnsetPreferenceTests(unittest.TestCase):
         self.assertIs(config.show_status_button(), True)
         self.assertEqual(config.status_button_position(), 0)
         self.assertIs(config.unrestricted(), False)
-        # What it read is what the preference page saves (plus Port as the
-        # upgrade fallback when ListenAddress has never been saved).
+        # What it read is what the preference page saves, plus Port as the
+        # upgrade fallback when ListenAddress has never been saved, and
+        # PermissionMode, which only a confirmed choice writes.
         self.assertEqual(set(groups), {PREF_GROUP})
-        self.assertEqual(params.read, set(SETTINGS) | {"Port"})
+        self.assertEqual(
+            params.read, set(SETTINGS) | {"Port", "PermissionMode"}
+        )
 
 
 def _fresh_init_gui():
@@ -2063,6 +2074,67 @@ class PermissionModeTests(unittest.TestCase):
                     register.assert_called_once_with(client._back_to_ask)
                     client._back_to_ask()
                     self.assertIn("set_unrestricted(False)", posted[-1])
+
+    def test_freecad_does_not_save_the_permission_mode_box(self):
+        """The box is a plain combo box with no preference entry, so
+        Preferences' own OK writes nothing for it."""
+        box = next(
+            widget
+            for widget in ET.parse(PAGE).iter("widget")
+            if widget.get("name") == "permissionModeComboBox"
+        )
+        self.assertEqual(box.get("class"), "QComboBox")
+        names = {prop.get("name") for prop in box.findall("property")}
+        self.assertNotIn("prefEntry", names)
+        self.assertNotIn("prefPath", names)
+        self.assertNotIn("PermissionMode", page_settings())
+
+    def test_showing_the_box_sets_it_from_the_mode_and_connects_it_once(
+        self,
+    ):
+        """Each time the box shows, it shows the mode in force. Its
+        handler is connected the first time only."""
+        init_gui = _fresh_init_gui()
+
+        class Box:
+            def __init__(self):
+                self.index = 0
+                self.props = {}
+                self.connected = []
+                self.activated = types.SimpleNamespace(
+                    connect=self.connected.append
+                )
+
+            def blockSignals(self, _on):
+                pass
+
+            def setCurrentIndex(self, index):
+                self.index = index
+
+            def property(self, name):
+                return self.props.get(name)
+
+            def setProperty(self, name, value):
+                self.props[name] = value
+
+        box = Box()
+        with mock.patch(
+            "freecad.mcp_bridge.config.unrestricted", return_value=True
+        ):
+            init_gui._show_mode_in_box(box)
+        self.assertEqual(box.index, 1)
+        self.assertEqual(len(box.connected), 1)
+        with mock.patch(
+            "freecad.mcp_bridge.config.unrestricted", return_value=False
+        ):
+            init_gui._show_mode_in_box(box)
+        self.assertEqual(box.index, 0)
+        self.assertEqual(len(box.connected), 1)
+        # The connected handler is the choice handler.
+        chosen = []
+        init_gui._on_mode_chosen = lambda b, index: chosen.append((b, index))
+        box.connected[0](1)
+        self.assertEqual(chosen, [(box, 1)])
 
     def test_choosing_the_mode_in_force_asks_nothing(self):
         """The Preferences box acts only on a change of mode."""
