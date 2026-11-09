@@ -51,13 +51,13 @@
       "type": "string",
       "sensitive": true,
       "title": "Bearer token",
-      "description": "Leave blank unless the Apply to loopback and Require bearer token settings are on in FreeCAD's Edit → Preferences → MCP Bridge. Then paste the token FreeCAD showed when it was generated.",
+      "description": "Optional. Paste a token of at least 32 characters to store it in the token file FreeCAD creates the first time the bridge starts. The extension then sends the token from that file. A shorter token is ignored.",
       "required": false
     },
     "tls_cert_file": {
       "type": "file",
       "title": "TLS certificate file (PEM)",
-      "description": "Leave blank unless the Apply to loopback and Require TLS (HTTPS) settings are on in FreeCAD's Edit → Preferences → MCP Bridge. Then select the PEM certificate file set there. It must cover 127.0.0.1. With a certificate set while the bridge serves plain HTTP on loopback, the connection fails.",
+      "description": "Leave blank for a loopback connection. The bridge serves HTTP on loopback, and a certificate set against plain HTTP makes the connection fail. For an address beyond loopback with Require TLS (HTTPS) on, select the PEM certificate file set in FreeCAD. It must cover 127.0.0.1 when the extension connects there.",
       "required": false
     }
   }

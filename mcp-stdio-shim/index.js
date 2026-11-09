@@ -6,9 +6,12 @@
  * MCP over stdio (newline-delimited JSON-RPC); this forwards each
  * tools/call to the addon's endpoint
  * (http://127.0.0.1:<port>/mcp, or https://127.0.0.1:<port>/mcp when
- * FREECAD_MCP_TLS_CERT_FILE is set, with Authorization: Bearer <token>
- * when FREECAD_MCP_TOKEN is set), unwraps the JSON reply, and writes
- * it back on stdout.
+ * FREECAD_MCP_TLS_CERT_FILE is set). Each tools/call sends
+ * Authorization: Bearer from <home>/.freecad-mcp-bridge/token when
+ * that file has a token. A Bearer token setting of at least 32
+ * characters is written into that file at start, when the folder
+ * already exists. The JSON reply is unwrapped and written back
+ * on stdout.
  *
  * The shim answers initialize and tools/list itself (tools.json is a
  * copy of the addon's tool list) and does not contact the bridge for
@@ -26,6 +29,7 @@
 
 const fs = require("fs");
 const https = require("https");
+const os = require("os");
 const path = require("path");
 const tls = require("tls");
 
@@ -36,15 +40,48 @@ function envSetting(name) {
 }
 
 const PORT = envSetting("FREECAD_MCP_PORT") || "39280";
-const TOKEN = envSetting("FREECAD_MCP_TOKEN");
+const PASTED_TOKEN = envSetting("FREECAD_MCP_TOKEN");
+const MIN_TOKEN_LENGTH = 32;
+const TOKEN_DIR = path.join(os.homedir(), ".freecad-mcp-bridge");
+const TOKEN_FILE = path.join(TOKEN_DIR, "token");
+const SHORT_TOKEN_MESSAGE =
+  "The bearer token pasted into the FreeCAD MCP Bridge extension was ignored because it's shorter than 32 characters.";
+const MISSING_FOLDER_MESSAGE =
+  "Turn the bridge on in FreeCAD once first, so it can create the token folder.";
+
+function readTokenFile() {
+  try {
+    return fs.readFileSync(TOKEN_FILE, "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+
+let pastedProblem = "";
+function installPastedToken() {
+  if (!PASTED_TOKEN) return;
+  if (PASTED_TOKEN.length < MIN_TOKEN_LENGTH) {
+    pastedProblem = SHORT_TOKEN_MESSAGE;
+    return;
+  }
+  if (!fs.existsSync(TOKEN_DIR)) {
+    pastedProblem = MISSING_FOLDER_MESSAGE;
+    return;
+  }
+  fs.writeFileSync(TOKEN_FILE, `${PASTED_TOKEN}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  if (process.platform !== "win32") fs.chmodSync(TOKEN_FILE, 0o600);
+}
+installPastedToken();
 const TLS_CERT_FILE = envSetting("FREECAD_MCP_TLS_CERT_FILE");
 const SCHEME = TLS_CERT_FILE ? "https" : "http";
 const ENDPOINT = `${SCHEME}://127.0.0.1:${PORT}/mcp`;
 const HTTPS_ENDPOINT = `https://127.0.0.1:${PORT}/mcp`;
 const PLAIN_HTTP_TO_HTTPS_MESSAGE =
   `FreeCAD MCP Bridge serves HTTPS at ${HTTPS_ENDPOINT}, and this connection was plain HTTP. ` +
-  "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to FreeCAD's certificate, " +
-  "or untick Apply to loopback in FreeCAD's Edit → Preferences → MCP Bridge.";
+  "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to FreeCAD's certificate.";
 const LEGACY_PROTOCOL_VERSION = "2025-11-25";
 const MODERN_PROTOCOL_VERSION = "2026-07-28";
 const META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion";
@@ -105,8 +142,7 @@ function tlsErrorMessage(err) {
   return (
     `FreeCAD MCP Bridge TLS connection failed at ${ENDPOINT} (${detail}). ` +
     "Check that TLS certificate file (PEM) in the extension settings is FreeCAD's certificate and covers 127.0.0.1. " +
-    "Check that the Apply to loopback and Require TLS (HTTPS) settings are on in FreeCAD's Edit → Preferences → MCP Bridge. " +
-    "While Apply to loopback is off, leave the certificate setting blank."
+    "The bridge serves HTTP on loopback, so leave the certificate setting blank for a loopback connection."
   );
 }
 
@@ -171,8 +207,9 @@ function bridgeHeaders(message) {
   // Stdio has no headers. The version the body already declares is the
   // one the bridge checks; a body with none is the legacy handshake.
   const headers = { "Content-Type": "application/json" };
-  if (TOKEN) {
-    headers["Authorization"] = `Bearer ${TOKEN}`;
+  const token = readTokenFile();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
   }
   const meta = message.params && message.params._meta;
   const declared = meta && meta[META_PROTOCOL_VERSION];
@@ -276,6 +313,10 @@ async function forward(rawLine, message) {
         },
       })
     );
+    return;
+  }
+  if (pastedProblem) {
+    sendErrorReply(message, pastedProblem);
     return;
   }
 

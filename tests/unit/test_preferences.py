@@ -8,8 +8,11 @@ profile does.
 """
 
 import importlib
+import os
 import re
+import stat
 import sys
+import tempfile
 import types
 import unittest
 import xml.etree.ElementTree as ET
@@ -29,11 +32,9 @@ PAGE = ROOT / "freecad" / "mcp_bridge" / "Resources" / "Ui" / "preferences.ui"
 PREF_ROOT = "User parameter:BaseApp/Preferences"
 SETTINGS = (
     "ListenAddress",
-    "RequireToken",
     "RequireTls",
     "TlsCertFile",
     "TlsKeyFile",
-    "RequireOnLoopback",
     "MaxResponseTimeoutSeconds",
     "MaxPageSize",
     "MaxHistoryRetentionMinutes",
@@ -119,14 +120,8 @@ class PreferencePageTests(unittest.TestCase):
         self.assertEqual(
             settings["ListenAddress"]["placeholderText"], "127.0.0.1:39280"
         )
-        self.assertEqual(
-            settings["RequireToken"]["text"], "Require bearer token"
-        )
-        self.assertEqual(
-            settings["RequireToken"]["toolTip"],
-            "Require a bearer token on non-loopback listen addresses.",
-        )
-        self.assertEqual(settings["RequireToken"]["checked"], "true")
+        self.assertNotIn("RequireToken", settings)
+        self.assertNotIn("RequireOnLoopback", settings)
         gen_btn = next(
             w
             for w in ET.parse(PAGE).iter("widget")
@@ -163,16 +158,6 @@ class PreferencePageTests(unittest.TestCase):
             settings["TlsKeyFile"]["toolTip"],
             "PEM private key file for HTTPS.",
         )
-        self.assertEqual(
-            settings["RequireOnLoopback"]["text"],
-            "Apply to loopback",
-        )
-        self.assertEqual(
-            settings["RequireOnLoopback"]["toolTip"],
-            "Apply Require bearer token and Require TLS (HTTPS) to loopback "
-            "entries too.",
-        )
-        self.assertEqual(settings["RequireOnLoopback"]["checked"], "false")
         widgets_by_name = {
             w.get("name"): {
                 prop.get("name"): prop[0].text
@@ -201,7 +186,7 @@ class PreferencePageTests(unittest.TestCase):
         self.assertIn(
             "<nobr>https:&#x2060;//&#x2060;&lt;ADDRESS&gt;&#x2060;:"
             "&#x2060;&lt;PORT&gt;/mcp</nobr> with the bearer token. "
-            "<b>Apply to loopback</b> extends that to loopback entries.",
+            "Every listener requires the bearer token.",
             widgets_by_name["clientNote"]["text"],
         )
         spin_names = (
@@ -781,6 +766,12 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             self.assertFalse(config.is_loopback_address("0.0.0.0:39280"))
             self.assertFalse(config.is_loopback_address("192.168.1.50:39280"))
             self.assertFalse(config.is_loopback_address("my-lan-host:39280"))
+            for unspecified in ("0.0.0.0:39280", "[::]:39280", "[::0]:80"):
+                with self.subTest(unspecified=unspecified):
+                    with self.assertRaises(ValueError) as ctx:
+                        config.parse_listen_entry(unspecified)
+                    self.assertIn("specific address", str(ctx.exception))
+                    self.assertIn(unspecified, str(ctx.exception))
 
     def test_per_address_acceptance_is_stored_and_queried_by_address(self):
         """Loopback is always accepted; non-loopback entries are stored as
@@ -830,44 +821,85 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 config.is_address_accepted("192.168.1.61:39280")
             )
 
-    def test_bearer_token_generation_stores_only_hash_and_replaces_old(self):
-        """Generating a bearer token stores only its SHA-256 hash in TokenHash,
-        verifies in constant time, and regenerating refuses the old token."""
-        store = {}
+    def test_bearer_token_is_written_to_the_file_and_reread_on_mismatch(self):
+        """Generating a bearer token writes the token file, leaves TokenHash
+        unread, and a mismatch reads the file again before refusing."""
+        store = {"TokenHash": "left-unread", "RequireToken": False}
 
         class DictParams:
+            def __init__(self):
+                self.read = set()
+
             def GetString(self, name, default=""):
+                self.read.add(name)
                 return store.get(name, default)
 
             def SetString(self, name, value):
                 store[name] = value
 
             def GetBool(self, name, default=False):
+                self.read.add(name)
                 return store.get(name, default)
 
-        freecad = types.SimpleNamespace(ParamGet=lambda _g: DictParams())
+        params = DictParams()
+        freecad = types.SimpleNamespace(ParamGet=lambda _g: params)
         with mock.patch.dict(sys.modules, {"FreeCAD": freecad}):
             sys.modules.pop("freecad.mcp_bridge.config", None)
             config = importlib.import_module("freecad.mcp_bridge.config")
-            self.assertEqual(config.token_hash(), "")
-            self.assertFalse(config.verify_token("anything"))
+            with tempfile.TemporaryDirectory() as folder:
+                home = Path(folder)
+                with mock.patch.object(
+                    config.token_file, "token_dir", return_value=home
+                ):
+                    self.assertEqual(config.token_hash(), "left-unread")
+                    self.assertTrue(config.require_token())
+                    self.assertFalse(config.require_on_loopback())
+                    self.assertNotIn("RequireToken", params.read)
+                    self.assertNotIn("RequireOnLoopback", params.read)
+                    self.assertFalse(config.verify_token("anything"))
 
-            token1 = config.generate_and_store_token()
-            self.assertGreaterEqual(len(token1), 32)
-            self.assertEqual(config.token_hash(), config.hash_token(token1))
-            self.assertNotEqual(store.get("TokenHash"), token1)
-            for val in store.values():
-                self.assertNotIn(token1, str(val))
-            self.assertTrue(config.verify_token(token1))
-            self.assertFalse(config.verify_token(token1 + "x"))
-            self.assertFalse(config.verify_token(""))
+                    token1 = config.generate_and_store_token()
+                    self.assertGreaterEqual(len(token1), 32)
+                    self.assertEqual(
+                        (home / "token").read_text(encoding="utf-8").strip(),
+                        token1,
+                    )
+                    self.assertEqual(store.get("TokenHash"), "left-unread")
+                    for val in store.values():
+                        self.assertNotIn(token1, str(val))
+                    self.assertTrue(config.verify_token(token1))
+                    self.assertFalse(config.verify_token(token1 + "x"))
+                    self.assertFalse(config.verify_token(""))
 
-            token2 = config.generate_and_store_token()
-            self.assertNotEqual(token1, token2)
-            self.assertFalse(config.verify_token(token1))
-            self.assertTrue(config.verify_token(token2))
-            for val in store.values():
-                self.assertNotIn(token2, str(val))
+                    # A mismatch reads again, so a replacement is taken up.
+                    real_read = config.token_file.read_token
+                    reads = {"n": 0}
+
+                    def flip_read():
+                        reads["n"] += 1
+                        if reads["n"] == 1:
+                            return "stale-token-value-not-the-file"
+                        return real_read()
+
+                    with mock.patch.object(
+                        config.token_file, "read_token", side_effect=flip_read
+                    ):
+                        self.assertTrue(config.verify_token(token1))
+                    self.assertEqual(reads["n"], 2)
+
+                    token2 = config.generate_and_store_token()
+                    self.assertNotEqual(token1, token2)
+                    self.assertFalse(config.verify_token(token1))
+                    self.assertTrue(config.verify_token(token2))
+                    for val in store.values():
+                        self.assertNotIn(token2, str(val))
+                    if os.name != "nt":
+                        directory_mode = stat.S_IMODE(home.stat().st_mode)
+                        file_mode = stat.S_IMODE(
+                            (home / "token").stat().st_mode
+                        )
+                        self.assertEqual(directory_mode, 0o700)
+                        self.assertEqual(file_mode, 0o600)
 
             # build_ssl_context passes an empty password callback so an
             # encrypted private key fails with ValueError instead of prompting.
@@ -912,6 +944,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
         start_calls = []
         start_error = None
         prompts = []
+        first_prompts = []
         shown_tokens = []
         statuses = []
         notifications = []
@@ -931,6 +964,9 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
 
             def GetBool(self, name, default=False):
                 return store.get(name, default)
+
+            def SetBool(self, name, value):
+                store[name] = value
 
         class FakeStatusBar:
             def showMessage(self, msg):
@@ -993,6 +1029,15 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             sys.modules.pop("freecad.mcp_bridge.init_gui", None)
             init_gui = importlib.import_module("freecad.mcp_bridge.init_gui")
             init_gui.show_toggle_state = lambda: None
+            token_root = tempfile.TemporaryDirectory()
+            self.addCleanup(token_root.cleanup)
+            token_patch = mock.patch.object(
+                config.token_file,
+                "token_dir",
+                return_value=Path(token_root.name),
+            )
+            token_patch.start()
+            self.addCleanup(token_patch.stop)
 
             def fake_confirm(
                 entries, require_token=True, require_tls=True
@@ -1004,7 +1049,16 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                     mutate_during_dialog()
                 return decision
 
+            def fake_first(
+                entries, require_token=True, require_tls=True
+            ):
+                first_prompts.append(
+                    (list(entries), bool(require_token), bool(require_tls))
+                )
+                return decision
+
             init_gui._confirm_non_loopback_risk = fake_confirm
+            init_gui._confirm_first_start = fake_first
             init_gui._show_generated_token = (
                 lambda tok, parent=None: shown_tokens.append(tok)
             )
@@ -1068,13 +1122,27 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
 
             tok_title, tok_body = init_gui._token_dialog_text("tok-sample")
             self.assertEqual(tok_title, "MCP Bridge — Bearer token")
-            self.assertIn(
-                "It will not be stored or shown again. Only a one-way hash "
-                "is kept in FreeCAD's preferences.",
-                tok_body,
-            )
+            self.assertIn("readable only by you", tok_body)
+            self.assertIn(str(config.token_file.token_path()), tok_body)
+            self.assertNotIn("one-way hash", tok_body)
             self.assertIn("Authorization: Bearer tok-sample", tok_body)
-            self.assertIn("A new token replaces the old one.", tok_body)
+            self.assertIn(
+                "Every other client then needs the new token.", tok_body
+            )
+            start_title, start_body = init_gui._first_start_dialog_text([])
+            self.assertEqual(start_title, "MCP Bridge — Start the bridge?")
+            self.assertIn("full permissions", start_body)
+            self.assertIn("only after you accept", start_body)
+            _both_title, both_body = init_gui._first_start_dialog_text(
+                ["192.168.1.50:39280"],
+                require_token=True,
+                require_tls=True,
+            )
+            self.assertIn("full permissions", both_body)
+            self.assertIn("192.168.1.50:39280", both_body)
+            self.assertIn(
+                "Accept these risks and start the bridge?", both_body
+            )
 
             cmd = init_gui.MCPBridgeCommand()
 
@@ -1106,46 +1174,66 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             )
             store["RequireTls"] = False
 
-            # 0c. With only loopback entries and RequireOnLoopback=True,
-            # RequireTls=True without cert/key fails safe the same way, and
-            # RequireToken=True with no TokenHash generates and shows the
-            # first token once without showing the non-loopback risk dialog.
+            # 0c. A first start that also has an unaccepted address
+            # beyond loopback uses one dialog, and declining saves neither
+            # acceptance. The old Apply-to-loopback preference does not
+            # make a loopback-only start demand a certificate.
+            store["ListenAddress"] = "127.0.0.1:39280\n192.168.1.50:39280"
+            store["RequireTls"] = False
+            decision = False
+            cmd.Activated()
+            self.assertFalse(running)
+            self.assertEqual(prompts, [])
+            self.assertEqual(
+                first_prompts, [(["192.168.1.50:39280"], True, False)]
+            )
+            self.assertEqual(config.accepted_listen_addresses(), [])
+            self.assertFalse(config.start_warning_accepted())
             store["ListenAddress"] = "127.0.0.1:39280"
             store["RequireOnLoopback"] = True
             store["RequireTls"] = True
             cmd.Activated()
             self.assertFalse(running)
             self.assertEqual(prompts, [])
+            self.assertEqual(first_prompts[-1], ([], True, True))
             self.assertEqual(shown_tokens, [])
-            self.assertIn(
-                "TLS is required and needs a certificate file and a private "
-                "key file.",
-                statuses[-1],
-            )
-            store["RequireTls"] = False
-            store["RequireToken"] = True
+            self.assertEqual(statuses[-1], "MCP Bridge: Offline")
+            self.assertFalse(config.start_warning_accepted())
+            decision = True
             cmd.Activated()
             self.assertTrue(running)
             self.assertEqual(prompts, [])
             self.assertEqual(len(shown_tokens), 1)
             self.assertTrue(config.verify_token(shown_tokens[0]))
+            self.assertTrue(config.start_warning_accepted())
             self.assertEqual(
-                statuses[-1], "MCP Bridge: Listening on 127.0.0.1:39280"
+                statuses[-1],
+                "MCP Bridge: Listening on 127.0.0.1:39280 "
+                "(warning: connected agents can run code with your "
+                "full permissions)",
             )
+            self.assertIn("full permissions", notifications[-1])
             cmd.Activated()
             self.assertFalse(running)
-            shown_tokens.clear()
-            store.pop("TokenHash", None)
-            store["RequireToken"] = False
+            shown_before = len(shown_tokens)
+            first_before = len(first_prompts)
+            cmd.Activated()
+            self.assertTrue(running)
+            self.assertEqual(len(shown_tokens), shown_before)
+            self.assertEqual(len(first_prompts), first_before)
+            self.assertIn("full permissions", statuses[-1])
+
+            # 1. Decline a new non-loopback entry: bridge stays off.
+            store["RequireTls"] = False
             store["RequireOnLoopback"] = False
             store["ListenAddress"] = "127.0.0.1:39280\n192.168.1.50:39280"
-
-            # 1. Decline: bridge stays off and entry is not accepted.
             decision = False
             cmd.Activated()
             self.assertFalse(running)
+            cmd.Activated()
+            self.assertFalse(running)
             self.assertEqual(
-                prompts, [(["192.168.1.50:39280"], False, False)]
+                prompts, [(["192.168.1.50:39280"], True, False)]
             )
             self.assertEqual(statuses[-1], "MCP Bridge: Offline")
             self.assertEqual(config.accepted_listen_addresses(), [])
@@ -1175,8 +1263,9 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             self.assertEqual(
                 statuses[-1],
                 "MCP Bridge: Listening on 127.0.0.1:39280, "
-                "192.168.1.50:39280 (warning: no authentication or "
-                "encryption)",
+                "192.168.1.50:39280 (warning: connected agents can "
+                "run code with your full permissions; beyond "
+                "loopback: 192.168.1.50:39280)",
             )
 
             # 4. Stop and start again at the accepted entry: no prompt.
@@ -1187,49 +1276,47 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             cmd.Activated()
             self.assertTrue(running)
             self.assertEqual(len(prompts), prompt_count)
-            self.assertIn(
-                "(warning: no authentication or encryption)", statuses[-1]
-            )
+            self.assertIn("full permissions", statuses[-1])
+            self.assertIn("beyond loopback", statuses[-1])
 
-            # 5. Enable RequireToken with no TokenHash yet: generates and
-            # shows the first token once on start, and does not show it again
-            # on the next start.
+            # 5. An empty token file on a later start shows a new token once.
+            token_file = Path(token_root.name) / "token"
+            token_file.unlink()
             cmd.Activated()
-            store["RequireToken"] = True
+            self.assertFalse(running)
             cmd.Activated()
             self.assertTrue(running)
-            self.assertEqual(len(shown_tokens), 1)
-            self.assertTrue(config.verify_token(shown_tokens[0]))
-            self.assertEqual(
-                statuses[-1],
-                "MCP Bridge: Listening on 127.0.0.1:39280, "
-                "192.168.1.50:39280 (warning: no encryption)",
-            )
-            cmd.Activated()
-            cmd.Activated()
-            self.assertEqual(len(shown_tokens), 1)
-            store["RequireToken"] = False
+            self.assertEqual(len(shown_tokens), shown_before + 1)
+            self.assertTrue(config.verify_token(shown_tokens[-1]))
 
-            # 6. Add two new non-loopback entries: one dialog lists both.
+            # 6. Add two new specific addresses: one dialog lists both.
+            # An unspecified address is refused before any dialog.
             cmd.Activated()
             store["ListenAddress"] = (
                 "127.0.0.1:39280\n192.168.1.50:39280\n"
-                "10.0.0.5:39281\n0.0.0.0:39282"
+                "10.0.0.5:39281\n10.0.0.9:39282"
             )
             cmd.Activated()
             self.assertTrue(running)
             self.assertEqual(
                 prompts[-1],
-                (["10.0.0.5:39281", "0.0.0.0:39282"], False, False),
+                (["10.0.0.5:39281", "10.0.0.9:39282"], True, False),
             )
             self.assertEqual(
                 config.accepted_listen_addresses(),
                 [
                     "192.168.1.50:39280",
                     "10.0.0.5:39281",
-                    "0.0.0.0:39282",
+                    "10.0.0.9:39282",
                 ],
             )
+            cmd.Activated()
+            prompt_count = len(prompts)
+            store["ListenAddress"] = "0.0.0.0:39280"
+            cmd.Activated()
+            self.assertFalse(running)
+            self.assertEqual(len(prompts), prompt_count)
+            self.assertIn("specific address", statuses[-1])
             sys.modules.pop("freecad.mcp_bridge.init_gui", None)
 
     def test_http_server_binds_configured_list_and_rolls_back_on_failure(
@@ -1352,12 +1439,24 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 ),
             ):
                 srv = http_server.HttpServer()
+                token_root = tempfile.TemporaryDirectory()
+                self.addCleanup(token_root.cleanup)
+                token_patch = mock.patch.object(
+                    config.token_file,
+                    "token_dir",
+                    return_value=Path(token_root.name),
+                )
+                token_patch.start()
+                self.addCleanup(token_patch.stop)
 
                 # 1. Default loopback: binds 127.0.0.1:39280 only, no warning.
                 srv.start()
                 self.assertEqual(bound, [("127.0.0.1", 39280)])
                 self.assertEqual(warnings, [])
-                self.assertFalse(srv._servers[0][0].require_token)
+                self.assertTrue(srv._servers[0][0].require_token)
+                self.assertEqual(
+                    srv._servers[0][0].bound_host, "127.0.0.1"
+                )
                 srv.stop()
 
                 # 2. List with loopback, LAN, and IPv6 on distinct ports.
@@ -1380,11 +1479,14 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 self.assertEqual(
                     warnings[0],
                     "[MCP Bridge] WARNING: listening on 127.0.0.1:39280, "
-                    "192.168.1.50:39281, [::1]:39282 with no authentication "
-                    "or encryption. Any machine that can reach these "
-                    "addresses can run Python code in FreeCAD as your user "
-                    "account: 192.168.1.50:39281.\n",
+                    "192.168.1.50:39281, [::1]:39282 with no encryption. "
+                    "Any client with the bearer token that can reach "
+                    "these addresses can run Python code in FreeCAD as "
+                    "your user account: 192.168.1.50:39281.\n",
                 )
+                self.assertTrue(srv._servers[0][0].require_token)
+                self.assertTrue(srv._servers[1][0].require_token)
+                self.assertTrue(srv._servers[2][0].require_token)
                 srv.stop()
                 self.assertEqual(
                     shut_down,
@@ -1403,12 +1505,12 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                     ],
                 )
 
-                # 2b. With RequireToken=True and RequireTls=True: missing cert
-                # raises ValueError and stays off; missing TokenHash raises
-                # ValueError without generating a hidden token; failed
-                # wrap_socket closes the bound socket; valid cert + token
-                # wraps only the non-loopback socket with
-                # do_handshake_on_connect=False and sets require_token on it.
+                # 2b. With RequireTls=True: missing cert raises ValueError and
+                # stays off; a token file is not required to bind; failed
+                # wrap_socket closes the bound socket; a valid cert wraps
+                # only the non-loopback socket with
+                # do_handshake_on_connect=False. Every listener requires
+                # the token.
                 bound.clear()
                 closed.clear()
                 warnings.clear()
@@ -1429,20 +1531,6 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                     "build_ssl_context",
                     return_value=FakeSSLContext(),
                 ):
-                    with self.assertRaises(ValueError) as no_tok_ctx:
-                        srv.start(
-                            tls_cert_file="cert.pem", tls_key_file="key.pem"
-                        )
-                    self.assertIn(
-                        "A bearer token is required and none has been "
-                        "generated.",
-                        str(no_tok_ctx.exception),
-                    )
-                    self.assertEqual(config.token_hash(), "")
-                    self.assertFalse(srv.is_running())
-                    self.assertEqual(bound, [])
-
-                    config.generate_and_store_token()
                     fail_wrap_on = True
                     with self.assertRaises(OSError):
                         srv.start(
@@ -1461,9 +1549,9 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                         tls_cert_file="cert.pem", tls_key_file="key.pem"
                     )
                 self.assertTrue(srv.is_running())
-                self.assertFalse(srv._servers[0][0].require_token)
+                self.assertTrue(srv._servers[0][0].require_token)
                 self.assertTrue(srv._servers[1][0].require_token)
-                self.assertFalse(srv._servers[2][0].require_token)
+                self.assertTrue(srv._servers[2][0].require_token)
                 self.assertEqual(
                     wrapped_sockets,
                     [
@@ -1482,9 +1570,8 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 )
                 srv.stop()
 
-                # 2c. With RequireOnLoopback=True on loopback-only: enforces
-                # both RequireToken and RequireTls on 127.0.0.1 without
-                # logging a non-loopback warning.
+                # 2c. The old Apply-to-loopback preference does not wrap
+                # loopback in TLS, and there is no non-loopback warning.
                 bound.clear()
                 closed.clear()
                 warnings.clear()
@@ -1492,46 +1579,29 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 wrapped_sockets.clear()
                 store["ListenAddress"] = "127.0.0.1:39280"
                 store["RequireOnLoopback"] = True
-                with self.assertRaises(ValueError):
-                    srv.start()
-                self.assertIn(
-                    "TLS is required and needs a certificate file and a "
-                    "private key file.",
-                    errors[-1],
-                )
-                store.pop("TokenHash", None)
-                with mock.patch.object(
-                    config,
-                    "build_ssl_context",
-                    return_value=FakeSSLContext(),
-                ):
-                    with self.assertRaises(ValueError) as loop_no_tok:
-                        srv.start(
-                            tls_cert_file="cert.pem", tls_key_file="key.pem"
-                        )
-                    self.assertIn(
-                        "A bearer token is required and none has been "
-                        "generated.",
-                        str(loop_no_tok.exception),
-                    )
-                    config.generate_and_store_token()
-                    srv.start(
-                        tls_cert_file="cert.pem", tls_key_file="key.pem"
-                    )
+                store["RequireTls"] = True
+                srv.start()
                 self.assertTrue(srv.is_running())
                 self.assertTrue(srv._servers[0][0].require_token)
-                self.assertEqual(
-                    wrapped_sockets,
-                    [
-                        "tls(raw-sock-127.0.0.1:39280, "
-                        "server_side=True, do_handshake_on_connect=False)"
-                    ],
-                )
+                self.assertEqual(wrapped_sockets, [])
                 self.assertEqual(warnings, [])
                 srv.stop()
                 store["RequireOnLoopback"] = False
                 store["RequireToken"] = False
                 store["RequireTls"] = False
+
+                # 2d. An unspecified address is refused before any bind.
+                bound.clear()
+                errors.clear()
+                for entry in ("0.0.0.0:39280", "[::]:39280"):
+                    store["ListenAddress"] = entry
+                    with self.assertRaises(ValueError) as unspecified:
+                        srv.start()
+                    self.assertIn(
+                        "specific address", str(unspecified.exception)
+                    )
+                    self.assertEqual(bound, [])
+                    self.assertFalse(srv.is_running())
 
                 # 3. LAN only (127.0.0.1 removed): binds LAN only, warns.
                 bound.clear()
@@ -1624,18 +1694,22 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 self.assertEqual(srv._servers, [])
                 self.assertIsNone(srv._executor)
 
-                # 8. McpRequestHandler._token_ok enforces Bearer token only
-                # when self.server.require_token is True.
+                # 8. Every listener checks the bearer token. A replaced
+                # file is taken up without a restart. Any Origin is
+                # refused. Host must be the bound address, with the
+                # loopback aliases on a loopback listener.
                 tok = config.generate_and_store_token()
                 handler = http_server.McpRequestHandler.__new__(
                     http_server.McpRequestHandler
                 )
-                handler.server = types.SimpleNamespace(require_token=False)
+                handler.server = types.SimpleNamespace(
+                    require_token=False, bound_host="127.0.0.1"
+                )
                 handler.headers = {}
-                self.assertTrue(handler._token_ok())
-
-                handler.server = types.SimpleNamespace(require_token=True)
                 self.assertFalse(handler._token_ok())
+                self.assertTrue(handler._origin_ok())
+                self.assertFalse(handler._host_ok())
+
                 handler.headers = {"Authorization": f"Basic {tok}"}
                 self.assertFalse(handler._token_ok())
                 handler.headers = {"Authorization": "Bearer wrong-token"}
@@ -1648,12 +1722,51 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 handler.headers = {"Authorization": f"Bearer {tok2}"}
                 self.assertTrue(handler._token_ok())
 
+                for host in ("127.0.0.1:39280", "localhost", "[::1]:39280"):
+                    handler.headers = {"Host": host}
+                    self.assertTrue(handler._host_ok(), host)
+                handler.headers = {"Host": "192.168.1.50"}
+                self.assertFalse(handler._host_ok())
+                handler.server.bound_host = "192.168.1.50"
+                handler.headers = {"Host": "192.168.1.50:39281"}
+                self.assertTrue(handler._host_ok())
+                handler.headers = {"Host": "localhost"}
+                self.assertFalse(handler._host_ok())
+                handler.headers = {"Host": "[2001:db8::5]:443"}
+                self.assertFalse(handler._host_ok())
+                handler.server.bound_host = "2001:db8::5"
+                handler.headers = {"Host": "[2001:db8::5]:443"}
+                self.assertTrue(handler._host_ok())
+
+                handler.headers = {"Origin": ""}
+                self.assertFalse(handler._origin_ok())
+                handler.headers = {"Origin": "http://127.0.0.1"}
+                self.assertFalse(handler._origin_ok())
+                handler.server.bound_host = "127.0.0.1"
+
                 # 9. A rejected POST sends 401 with WWW-Authenticate: Bearer,
                 # and handle() runs the TLS handshake with a timeout.
                 sent_status = []
                 sent_headers = []
                 written = []
-                handler.headers = {}
+                refused = []
+                handler.send_error = (
+                    lambda code, message=None, explain=None: refused.append(
+                        (code, message)
+                    )
+                )
+                handler.headers = {
+                    "Origin": "http://127.0.0.1",
+                    "Host": "127.0.0.1:39280",
+                    "Authorization": f"Bearer {tok2}",
+                }
+                handler.do_POST()
+                self.assertEqual(refused, [(403, "Forbidden Origin")])
+                handler.headers = {"Host": "evil.example"}
+                handler.do_POST()
+                self.assertEqual(refused[-1], (403, "Forbidden Host"))
+
+                handler.headers = {"Host": "127.0.0.1:39280"}
                 handler.send_response = lambda code, msg=None: (
                     sent_status.append((code, msg))
                 )

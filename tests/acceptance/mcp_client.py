@@ -16,6 +16,7 @@ import time
 import urllib.error
 import urllib.request
 from contextlib import contextmanager
+from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 # Required, so the suite never runs against a FreeCAD session by accident.
@@ -61,16 +62,30 @@ def url_for(path):
     return urlunsplit((parts.scheme, parts.netloc, path, "", ""))
 
 
+def _token_from_file():
+    """The bearer token FreeCAD wrote, or '' when the file is absent."""
+    path = Path.home() / ".freecad-mcp-bridge" / "token"
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
 def send(body=b"", method="POST", url=None, headers=None):
     """Send one raw HTTP request; return its Reply, whatever the status.
 
-    A header given as None is left out.
+    A header given as None is left out. A POST with no Authorization
+    header sends the token from the token file when that file exists.
     """
     headers = {
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
         **(headers or {}),
     }
+    if method == "POST" and "Authorization" not in headers:
+        token = _token_from_file()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(
         url or BRIDGE_URL,
         data=body if method == "POST" else None,

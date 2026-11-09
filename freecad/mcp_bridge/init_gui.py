@@ -107,17 +107,20 @@ def _confirm_non_loopback_risk(
 
 def _token_dialog_text(token):
     """Return (title, text) for the one-time bearer token dialog."""
+    from freecad.mcp_bridge import token_file
+
     title = f"{DISPLAY_NAME} — Bearer token"
-    body = f"""Copy this bearer token now. It will not be stored or shown \
-again. Only a one-way hash is kept in FreeCAD's preferences.
+    body = f"""Copy this bearer token now. It will not be shown again.
 
 {token}
 
+It is stored in {token_file.token_path()}, readable only by you. \
 Send it from your MCP client in the Authorization header:
 Authorization: Bearer {token}
 
-If you lose it, generate a new one in Edit → Preferences → MCP Bridge. \
-A new token replaces the old one."""
+If you lose it, click Generate new token in Edit → Preferences → \
+MCP Bridge. A new token replaces the old one. Every other client \
+then needs the new token."""
     return title, body
 
 
@@ -158,8 +161,60 @@ def _show_generated_token(token, parent=None):
         box.deleteLater()
 
 
+def _first_start_dialog_text(entries, require_token=True, require_tls=True):
+    """Return (title, text) for the first start, with or without addresses."""
+    title = f"{DISPLAY_NAME} — Start the bridge?"
+    permissions = (
+        "Connected agents can run Python code in FreeCAD with your "
+        "full permissions."
+    )
+    if not entries:
+        body = f"""{permissions}
+
+The bridge listens only after you accept.
+
+Accept and start the bridge?"""
+        return title, body
+    _risk_title, risk_body = _risk_dialog_text(
+        entries, require_token=require_token, require_tls=require_tls
+    )
+    body = f"""{permissions}
+
+{risk_body}"""
+    return title, body
+
+
+def _confirm_first_start(entries, require_token=True, require_tls=True):
+    """Ask the user to accept the first start. Return True if they do."""
+    import FreeCADGui as Gui
+    from PySide.QtWidgets import QDialog, QMessageBox
+
+    title, body = _first_start_dialog_text(
+        entries, require_token=require_token, require_tls=require_tls
+    )
+    box = QMessageBox(
+        QMessageBox.Warning,
+        title,
+        body,
+        QMessageBox.NoButton,
+        Gui.getMainWindow(),
+    )
+    QDialog.setWindowTitle(box, title)
+    box.setObjectName("MCPBridgeFirstStartDialog")
+    accept_btn = box.addButton("Accept and Start", QMessageBox.AcceptRole)
+    cancel_btn = box.addButton("Cancel", QMessageBox.RejectRole)
+    box.setDefaultButton(cancel_btn)
+    box.setEscapeButton(cancel_btn)
+    try:
+        box.exec()
+        return box.clickedButton() is accept_btn
+    finally:
+        box.setParent(None)
+        box.deleteLater()
+
+
 def generate_and_show_token(parent=None):
-    """Generate a new bearer token, store its hash, and show it once."""
+    """Generate a new bearer token, write the token file, and show it once."""
     from freecad.mcp_bridge import config
 
     token = config.generate_and_store_token()
@@ -228,9 +283,23 @@ class MCPBridgeCommand:
                     for entry in non_loopback
                     if not config.is_address_accepted(entry)
                 ]
-                if unaccepted and not _confirm_non_loopback_risk(
+                first_start = not config.start_warning_accepted()
+                if first_start:
+                    if not _confirm_first_start(
+                        unaccepted,
+                        require_token=True,
+                        require_tls=req_tls,
+                    ):
+                        status = f"{DISPLAY_NAME}: Offline"
+                        mw = Gui.getMainWindow()
+                        if mw:
+                            mw.statusBar().showMessage(status)
+                        show_toggle_state()
+                        App.Console.PrintNotification(status + "\n")
+                        return
+                elif unaccepted and not _confirm_non_loopback_risk(
                     unaccepted,
-                    require_token=req_token,
+                    require_token=True,
                     require_tls=req_tls,
                 ):
                     status = f"{DISPLAY_NAME}: Offline"
@@ -240,7 +309,9 @@ class MCPBridgeCommand:
                     show_toggle_state()
                     App.Console.PrintNotification(status + "\n")
                     return
-                if protected and req_token and not config.token_hash():
+                from freecad.mcp_bridge import token_file
+
+                if not token_file.read_token():
                     generate_and_show_token()
                 bridge.start(
                     addresses=entries,
@@ -250,15 +321,21 @@ class MCPBridgeCommand:
                     tls_key_file=key_file,
                     require_on_loopback=req_on_loopback,
                 )
+                if first_start:
+                    config.accept_start_warning()
                 for entry in unaccepted:
                     config.accept_address(entry)
                 endpoints = ", ".join(entries)
+                warning = (
+                    "connected agents can run code with your full "
+                    "permissions"
+                )
                 if non_loopback:
-                    status = _non_loopback_status(
-                        endpoints, req_token, req_tls
-                    )
-                else:
-                    status = f"{DISPLAY_NAME}: Listening on {endpoints}"
+                    warning += f"; beyond loopback: {', '.join(non_loopback)}"
+                status = (
+                    f"{DISPLAY_NAME}: Listening on {endpoints} "
+                    f"(warning: {warning})"
+                )
                 started = True
         except Exception as e:
             App.Console.PrintDeveloperError(

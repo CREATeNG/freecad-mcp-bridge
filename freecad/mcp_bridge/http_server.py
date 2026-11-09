@@ -15,8 +15,6 @@ import json
 import os
 import threading
 from http.server import BaseHTTPRequestHandler
-from urllib.parse import urlparse
-
 import FreeCAD
 
 from freecad.mcp_bridge import config, mcp_protocol, paging
@@ -27,7 +25,7 @@ from freecad.mcp_bridge.constants import (
 )
 from freecad.mcp_bridge.executor import Executor
 
-_LOOPBACK_HOSTS = ("localhost", "127.0.0.1")
+_LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1")
 PARSE_ERROR = -32700
 TLS_HANDSHAKE_TIMEOUT_S = 5.0
 
@@ -48,15 +46,29 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         super().handle()
 
     def _origin_ok(self) -> bool:
-        # DNS-rebinding protection: reject a present Origin that isn't loopback.
-        origin = self.headers.get("Origin")
-        if origin is None:
-            return True
-        return urlparse(origin).hostname in _LOOPBACK_HOSTS
+        # Any Origin header means a browser. Refuse it.
+        return self.headers.get("Origin") is None
+
+    def _host_name(self) -> str:
+        raw = (self.headers.get("Host") or "").strip()
+        if raw.startswith("["):
+            end = raw.find("]")
+            if end != -1:
+                return raw[1:end]
+        if ":" in raw:
+            return raw.rsplit(":", 1)[0]
+        return raw
+
+    def _host_ok(self) -> bool:
+        name = self._host_name()
+        if not name:
+            return False
+        bound = getattr(self.server, "bound_host", "") or ""
+        if config.is_loopback_address(bound):
+            return name.lower() in _LOOPBACK_HOSTS
+        return name.lower() == bound.lower()
 
     def _token_ok(self) -> bool:
-        if not getattr(self.server, "require_token", False):
-            return True
         auth = self.headers.get("Authorization", "")
         scheme, sep, token = auth.partition(" ")
         if sep != " " or scheme.lower() != "bearer":
@@ -82,6 +94,9 @@ class McpRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._origin_ok():
             self.send_error(403, "Forbidden Origin")
+            return
+        if not self._host_ok():
+            self.send_error(403, "Forbidden Host")
             return
         if not self._token_ok():
             self._send_unauthorized()
@@ -316,11 +331,11 @@ class HttpServer:
         )
         if not entries:
             entries = list(config.listen_addresses())
-        req_token = (
-            config.require_token()
-            if require_token is None
-            else bool(require_token)
-        )
+        # Every listener requires the token. The argument stays so
+        # existing callers still start, and a false value does not
+        # turn the check off.
+        del require_token
+        req_token = True
         req_tls = (
             config.require_tls()
             if require_tls is None
@@ -365,15 +380,6 @@ class HttpServer:
             except ValueError as exc:
                 FreeCAD.Console.PrintDeveloperError(f"{LOG_PREFIX} {exc}\n")
                 raise
-        if protected and req_token and not config.token_hash():
-            msg = (
-                "A bearer token is required and none has been generated. "
-                "Turn the bridge on with MCP Bridge On/Off to generate "
-                "one, or click Generate new token in Edit → Preferences "
-                "→ MCP Bridge, or untick Require bearer token there."
-            )
-            FreeCAD.Console.PrintDeveloperError(f"{LOG_PREFIX} {msg}\n")
-            raise ValueError(msg)
         # Created here so it inherits main-thread affinity (start() is called
         # from the toolbar toggle / GUI startup, both on the main thread).
         self._executor = Executor()
@@ -390,7 +396,8 @@ class HttpServer:
                 )
                 bound_servers.append(srv)
                 srv.executor = self._executor
-                srv.require_token = bool(req_token and protect_entry)
+                srv.bound_host = host
+                srv.require_token = True
                 if ssl_context is not None and protect_entry:
                     srv.socket = ssl_context.wrap_socket(
                         srv.socket,

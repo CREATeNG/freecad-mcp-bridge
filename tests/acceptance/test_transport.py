@@ -50,8 +50,8 @@ class EndpointTests(unittest.TestCase):
 
 
 class OriginTests(unittest.TestCase):
-    def test_a_request_from_a_non_loopback_origin_is_rejected_before_any_code_runs(self):
-        """A request carrying a non-loopback Origin is rejected with 403, and its code never runs."""
+    def test_a_request_carrying_an_origin_header_is_rejected_before_any_code_runs(self):
+        """A request carrying any Origin header is rejected with 403, and its code never runs."""
         with tempfile.TemporaryDirectory() as folder:
             marker = os.path.join(folder, "ran")
             message = mcp.request(
@@ -61,24 +61,24 @@ class OriginTests(unittest.TestCase):
                     "arguments": {"code": f"open({marker!r}, 'w').close()"},
                 },
             )
-            reply = mcp.post(message, headers={"Origin": "http://evil.example"})
-            self.assertEqual(reply.status, 403)
-            # Jobs run in submission order, so had the rejected job been
+            for origin in (
+                "http://evil.example",
+                f"http://localhost:{PORT}",
+                f"http://127.0.0.1:{PORT}",
+                "",
+            ):
+                with self.subTest(origin=origin):
+                    reply = mcp.post(message, headers={"Origin": origin})
+                    self.assertEqual(reply.status, 403)
+            # Jobs run in submission order, so had a rejected job been
             # queued, it would have run before this one finishes.
             self.assertEqual(mcp.run("print('after')"), "after\n")
             self.assertFalse(os.path.exists(marker))
 
-    def test_requests_with_no_origin_or_a_loopback_origin_are_accepted(self):
-        """Requests with no Origin, or an Origin of localhost or 127.0.0.1, are accepted."""
-        for origin in (
-            None,
-            f"http://localhost:{PORT}",
-            f"http://127.0.0.1:{PORT}",
-        ):
-            with self.subTest(origin=origin):
-                headers = {"Origin": origin} if origin else None
-                reply = mcp.post(mcp.request("tools/list"), headers=headers)
-                self.assertEqual(reply.status, 200)
+    def test_a_request_with_no_origin_header_is_accepted(self):
+        """A request with no Origin header is accepted."""
+        reply = mcp.post(mcp.request("tools/list"))
+        self.assertEqual(reply.status, 200)
 
 
 class LoopbackTests(unittest.TestCase):
