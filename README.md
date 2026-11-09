@@ -110,8 +110,9 @@ mode: a shield with a tick and **MCP: Ask**, or a warning triangle
 and **MCP: Unrestricted**. Clicking that marker switches modes the
 same way as **Permission mode** under **Permissions** in
 **Edit → Preferences → MCP Bridge**: it asks before going
-Unrestricted, and goes back to Ask at once. The marker shows whether
-or not the On/Off button is shown.
+Unrestricted, and goes back to Ask at once. The choice applies at
+once, without OK. The marker shows whether or not the On/Off button
+is shown.
 
 ### Example prompts
 
@@ -148,9 +149,9 @@ change a model — for example:
 - **Max response timeout** — how long the bridge waits for a page
   (default 15 s). For code or a file an agent sends, that wait
   includes the dialog, counted from the call. Keep it below the
-  client's own request
-  limit, about 60 s for Claude Code. The preference allows up to
-  600 s. The agent fetches the rest with `get_output_page`.
+  client's own request limit, about 60 s for Claude Code. The
+  preference allows up to 600 s. The agent fetches the rest with
+  `get_output_page`.
 - **Max page size** — the most one page may be, as the JSON the agent
   reads, in units of 1,024 characters (default 32, that is 32,768). A
   newline counts as two characters. Larger output is split into pages
