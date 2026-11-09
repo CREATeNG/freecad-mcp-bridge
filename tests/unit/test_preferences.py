@@ -185,7 +185,7 @@ class PreferencePageTests(unittest.TestCase):
         )
         self.assertIn(
             "<nobr>https:&#x2060;//&#x2060;&lt;ADDRESS&gt;&#x2060;:"
-            "&#x2060;&lt;PORT&gt;/mcp</nobr> with the bearer token. "
+            "&#x2060;&lt;PORT&gt;/mcp</nobr>. "
             "Every listener requires the bearer token.",
             widgets_by_name["clientNote"]["text"],
         )
@@ -228,9 +228,7 @@ class UnsetPreferenceTests(unittest.TestCase):
         button shown on the right."""
         config, params, groups = fresh_config()
         self.assertEqual(config.listen_addresses(), ["127.0.0.1:39280"])
-        self.assertIs(config.require_token(), True)
         self.assertIs(config.require_tls(), True)
-        self.assertIs(config.require_on_loopback(), False)
         self.assertEqual(config.tls_cert_file(), "")
         self.assertEqual(config.tls_key_file(), "")
         self.assertEqual(config.max_response_timeout_ms(), 15_000)
@@ -852,8 +850,6 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                     config.token_file, "token_dir", return_value=home
                 ):
                     self.assertEqual(config.token_hash(), "left-unread")
-                    self.assertTrue(config.require_token())
-                    self.assertFalse(config.require_on_loopback())
                     self.assertNotIn("RequireToken", params.read)
                     self.assertNotIn("RequireOnLoopback", params.read)
                     self.assertFalse(config.verify_token("anything"))
@@ -1124,6 +1120,14 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             self.assertEqual(tok_title, "MCP Bridge — Bearer token")
             self.assertIn("readable only by you", tok_body)
             self.assertIn(str(config.token_file.token_path()), tok_body)
+            self.assertIn(
+                "The Claude Desktop extension reads it from that file.",
+                tok_body,
+            )
+            self.assertIn(
+                "Other clients send it in the Authorization header:",
+                tok_body,
+            )
             self.assertNotIn("one-way hash", tok_body)
             self.assertIn("Authorization: Bearer tok-sample", tok_body)
             self.assertIn(
@@ -1800,6 +1804,139 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 )
                 self.assertEqual(len(handshakes), 1)
             sys.modules.pop("freecad.mcp_bridge.http_server", None)
+
+
+def _windows_ace_count(path):
+    """How many allow entries the file's DACL has, on Windows."""
+    import ctypes
+    from ctypes import wintypes
+
+    advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    se_file_object = 1
+    dacl_security_information = 0x4
+    acl_size_information = 2
+
+    class AclSizeInformation(ctypes.Structure):
+        _fields_ = [
+            ("AceCount", wintypes.DWORD),
+            ("AclBytesInUse", wintypes.DWORD),
+            ("AclBytesFree", wintypes.DWORD),
+        ]
+
+    advapi32.GetNamedSecurityInfoW.argtypes = [
+        wintypes.LPWSTR,
+        wintypes.DWORD,
+        wintypes.DWORD,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+    ]
+    advapi32.GetNamedSecurityInfoW.restype = wintypes.DWORD
+    advapi32.GetAclInformation.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        wintypes.DWORD,
+    ]
+    advapi32.GetAclInformation.restype = wintypes.BOOL
+    kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+    kernel32.LocalFree.restype = ctypes.c_void_p
+
+    owner = ctypes.c_void_p()
+    group = ctypes.c_void_p()
+    dacl = ctypes.c_void_p()
+    sacl = ctypes.c_void_p()
+    descriptor = ctypes.c_void_p()
+    result = advapi32.GetNamedSecurityInfoW(
+        str(path),
+        se_file_object,
+        dacl_security_information,
+        ctypes.byref(owner),
+        ctypes.byref(group),
+        ctypes.byref(dacl),
+        ctypes.byref(sacl),
+        ctypes.byref(descriptor),
+    )
+    if result != 0:
+        raise ctypes.WinError(result)
+    try:
+        info = AclSizeInformation()
+        if not advapi32.GetAclInformation(
+            dacl,
+            ctypes.byref(info),
+            ctypes.sizeof(info),
+            acl_size_information,
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return info.AceCount
+    finally:
+        kernel32.LocalFree(descriptor)
+
+
+class TokenFileTests(unittest.TestCase):
+    def test_freecad_mcp_token_dir_overrides_the_home_folder(self):
+        """FREECAD_MCP_TOKEN_DIR is the token folder when it is set."""
+        from freecad.mcp_bridge import token_file
+
+        with tempfile.TemporaryDirectory() as folder:
+            with mock.patch.dict(
+                os.environ, {"FREECAD_MCP_TOKEN_DIR": folder}
+            ):
+                self.assertEqual(token_file.token_dir(), Path(folder))
+                token_file.write_token("a" * 32)
+            self.assertEqual(
+                (Path(folder) / "token").read_text(encoding="utf-8").strip(),
+                "a" * 32,
+            )
+            if os.name == "nt":
+                self.assertEqual(
+                    _windows_ace_count(Path(folder) / "token"), 1
+                )
+            else:
+                mode = stat.S_IMODE((Path(folder) / "token").stat().st_mode)
+                self.assertEqual(mode, 0o600)
+
+    def test_the_acceptance_client_reads_the_same_override(self):
+        """mcp_client reads FREECAD_MCP_TOKEN_DIR, and the home folder otherwise."""
+        with tempfile.TemporaryDirectory() as folder:
+            (Path(folder) / "token").write_text(
+                "b" * 32 + "\n", encoding="utf-8"
+            )
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "BRIDGE_URL": "http://127.0.0.1:9/mcp",
+                    "FREECAD_MCP_TOKEN_DIR": folder,
+                },
+            ):
+                sys.modules.pop("tests.acceptance.mcp_client", None)
+                client = importlib.import_module("tests.acceptance.mcp_client")
+                self.assertEqual(client._token_from_file(), "b" * 32)
+                self.assertEqual(client._token_dir(), Path(folder))
+            sys.modules.pop("tests.acceptance.mcp_client", None)
+
+    def test_generate_new_token_reports_a_failed_write(self):
+        """Generate new token shows the write error and does not show a token."""
+        init_gui = _fresh_init_gui()
+        shown = []
+        init_gui._show_token_write_failure = (
+            lambda exc, parent=None: shown.append(str(exc))
+        )
+        init_gui._show_generated_token = (
+            lambda *args, **kwargs: shown.append("shown")
+        )
+        text = init_gui._token_write_failure_text(OSError("access denied"))
+        self.assertIn("Could not write the bearer token file", text)
+        self.assertIn("access denied", text)
+        with mock.patch(
+            "freecad.mcp_bridge.config.generate_and_store_token",
+            side_effect=OSError("access denied"),
+        ):
+            self.assertIsNone(init_gui.generate_and_show_token())
+        self.assertEqual(shown, ["access denied"])
 
 
 if __name__ == "__main__":

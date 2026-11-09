@@ -1,8 +1,10 @@
 """The bearer token file both FreeCAD and the extension share.
 
-The file is ``<home>/.freecad-mcp-bridge/token``. The folder is
-readable by the user only, and its one allow entry is inheritable,
-so a file created in it is user-only too.
+The folder is ``FREECAD_MCP_TOKEN_DIR`` when that variable is set,
+and ``<home>/.freecad-mcp-bridge`` otherwise. The file is ``token``.
+The folder is readable by the user only, and its one allow entry is
+inheritable, so a file created in it is user-only too. Each write of
+the token file sets that same user-only access on the file itself.
 """
 
 from __future__ import annotations
@@ -18,7 +20,13 @@ MIN_TOKEN_LENGTH = 32
 
 
 def token_dir() -> Path:
-    """Folder that holds the token file."""
+    """Folder that holds the token file.
+
+    ``FREECAD_MCP_TOKEN_DIR`` overrides the home folder when it is set.
+    """
+    override = os.environ.get("FREECAD_MCP_TOKEN_DIR", "").strip()
+    if override:
+        return Path(override)
     return Path.home() / DIR_NAME
 
 
@@ -42,8 +50,7 @@ def write_token(token: str) -> None:
     _user_only(directory, is_dir=True)
     path = token_path()
     path.write_text(token.strip() + "\n", encoding="utf-8")
-    if not sys.platform.startswith("win"):
-        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+    _user_only(path, is_dir=False)
 
 
 def _user_only(path: Path, *, is_dir: bool) -> None:

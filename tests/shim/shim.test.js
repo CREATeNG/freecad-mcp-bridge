@@ -51,14 +51,14 @@ async function closedPort() {
 // Start the shim against `port`; collect its stdout lines.
 function startShim(port, extraEnv = {}, options = {}) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "shim-home-"));
-  const tokenDir = path.join(home, ".freecad-mcp-bridge");
+  const tokenDir = options.tokenDir || path.join(home, ".freecad-mcp-bridge");
   const tokenFile = path.join(tokenDir, "token");
   const pasted = extraEnv.FREECAD_MCP_TOKEN || "";
   if (options.seedToken) {
-    fs.mkdirSync(tokenDir);
+    fs.mkdirSync(tokenDir, { recursive: true });
     fs.writeFileSync(tokenFile, `${options.seedToken}\n`, { encoding: "utf8", mode: 0o600 });
   } else if (options.prepareTokenDir !== false && pasted.length >= 32) {
-    fs.mkdirSync(tokenDir);
+    fs.mkdirSync(tokenDir, { recursive: true });
   }
   const env = {
     ...process.env,
@@ -68,7 +68,10 @@ function startShim(port, extraEnv = {}, options = {}) {
   };
   delete env.FREECAD_MCP_TOKEN;
   delete env.FREECAD_MCP_TLS_CERT_FILE;
+  delete env.FREECAD_MCP_TOKEN_DIR;
   Object.assign(env, extraEnv);
+  delete env.FREECAD_MCP_TOKEN_DIR;
+  if (options.tokenDir) env.FREECAD_MCP_TOKEN_DIR = options.tokenDir;
   const child = spawn(process.execPath, [SHIM], {
     env,
     stdio: ["pipe", "pipe", "pipe"],
@@ -447,15 +450,18 @@ test("manifest.json declares optional port, sensitive bearer token, and TLS cert
   assert.equal(cfg.token.required, false);
   assert.equal(cfg.token.title, "Bearer token");
   assert.match(cfg.token.description, /at least 32 characters/);
-  assert.match(cfg.token.description, /token file/);
+  assert.match(cfg.token.description, /only to replace that token, for every client/);
   assert.equal(cfg.tls_cert_file.type, "file");
   assert.equal(cfg.tls_cert_file.required, false);
   assert.equal(cfg.tls_cert_file.title, "TLS certificate file (PEM)");
-  assert.match(cfg.tls_cert_file.description, /127\.0\.0\.1/);
-  assert.match(cfg.tls_cert_file.description, /HTTP on loopback/);
+  assert.match(cfg.tls_cert_file.description, /Not used yet/);
+  assert.match(cfg.tls_cert_file.description, /leave this blank/);
 });
 
 const TOKEN_OK = "0123456789abcdef0123456789abcdef";
+const TOKEN_NEW = "fedcba9876543210fedcba9876543210";
+const { createHash } = require("node:crypto");
+const pasteHash = (token) => createHash("sha256").update(token, "utf8").digest("hex");
 
 test("with neither token nor certificate set, the shim sends plain HTTP with no Authorization header", async () => {
   const bridge = await startBridge(echo);
@@ -479,8 +485,12 @@ test("with FREECAD_MCP_TOKEN set, the shim writes the token file and sends it", 
   assert.equal(reply.result.echoed, "tools/call");
   assert.equal(bridge.requests[0].headers["authorization"], `Bearer ${TOKEN_OK}`);
   assert.equal(fs.readFileSync(shim.tokenFile, "utf8").trim(), TOKEN_OK);
+  const pasteRecord = path.join(shim.tokenDir, "pasted");
+  assert.equal(fs.readFileSync(pasteRecord, "utf8").trim(), pasteHash(TOKEN_OK));
+  assert.notEqual(fs.readFileSync(pasteRecord, "utf8").trim(), TOKEN_OK);
   if (process.platform !== "win32") {
     assert.equal(fs.statSync(shim.tokenFile).mode & 0o777, 0o600);
+    assert.equal(fs.statSync(pasteRecord).mode & 0o777, 0o600);
   }
   await shim.stop();
   bridge.close();
@@ -497,50 +507,99 @@ test("a tools/call sends the token already in the file when nothing was pasted",
   bridge.close();
 });
 
-test("a pasted token shorter than 32 characters is ignored and not written", async () => {
+test("a pasted token shorter than 32 characters is a note, and the call still uses the file", async () => {
   const bridge = await startBridge(echo);
-  const shim = startShim(bridge.port, { FREECAD_MCP_TOKEN: "short-token" });
-  shim.send(
-    JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "tools/call",
-      params: { name: "execute_python", arguments: { code: "print(1)" } },
-    }) + "\n"
+  const shim = startShim(
+    bridge.port,
+    { FREECAD_MCP_TOKEN: "short-token" },
+    { seedToken: TOKEN_OK }
   );
+  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call" }) + "\n");
   const [reply] = await shim.waitForLines(1);
-  assert.equal(reply.result.isError, true);
-  const error = JSON.parse(reply.result.content[0].text).error;
-  assert.match(error, /shorter than 32 characters/);
-  assert.equal(bridge.requests.length, 0);
-  assert.equal(fs.existsSync(shim.tokenFile), false);
+  assert.equal(reply.result.echoed, "tools/call");
+  assert.match(reply.result.note, /shorter than 32 characters/);
+  assert.equal(bridge.requests[0].headers["authorization"], `Bearer ${TOKEN_OK}`);
+  assert.equal(fs.readFileSync(shim.tokenFile, "utf8").trim(), TOKEN_OK);
   await shim.stop();
   bridge.close();
 });
 
-test("a pasted token is not written when the token folder does not exist yet", async () => {
+test("a missing token folder is retried on the next call and does not block the first", async () => {
   const bridge = await startBridge(echo);
   const shim = startShim(
     bridge.port,
     { FREECAD_MCP_TOKEN: TOKEN_OK },
     { prepareTokenDir: false }
   );
-  shim.send(
-    JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "tools/call",
-      params: { name: "execute_python", arguments: { code: "print(1)" } },
-    }) + "\n"
-  );
-  const [reply] = await shim.waitForLines(1);
-  assert.equal(reply.result.isError, true);
-  const error = JSON.parse(reply.result.content[0].text).error;
-  assert.match(error, /Turn the bridge on in FreeCAD once first/);
-  assert.equal(bridge.requests.length, 0);
+  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call" }) + "\n");
+  const [first] = await shim.waitForLines(1);
+  assert.equal(first.result.echoed, "tools/call");
+  assert.match(first.result.note, /The token folder doesn't exist yet/);
+  assert.equal(bridge.requests.length, 1);
   assert.equal(fs.existsSync(shim.tokenDir), false);
+  fs.mkdirSync(shim.tokenDir);
+  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call" }) + "\n");
+  const replies = await shim.waitForLines(2);
+  const second = replies.find((reply) => reply.id === 2);
+  assert.equal(second.result.echoed, "tools/call");
+  assert.equal(second.result.note, undefined);
+  assert.equal(fs.readFileSync(shim.tokenFile, "utf8").trim(), TOKEN_OK);
+  assert.equal(bridge.requests[1].headers["authorization"], `Bearer ${TOKEN_OK}`);
   await shim.stop();
   bridge.close();
+});
+
+test("a write error is a note and the call is still sent", async () => {
+  const bridge = await startBridge(echo);
+  const shim = startShim(bridge.port, { FREECAD_MCP_TOKEN: TOKEN_OK });
+  fs.rmSync(shim.tokenDir, { recursive: true, force: true });
+  fs.writeFileSync(shim.tokenDir, "not a directory");
+  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call" }) + "\n");
+  const [reply] = await shim.waitForLines(1);
+  assert.equal(reply.result.echoed, "tools/call");
+  assert.match(reply.result.note, /could not be written to the token file/);
+  assert.equal(bridge.requests.length, 1);
+  await shim.stop();
+  bridge.close();
+});
+
+test("the same paste does not replace a token FreeCAD generated afterwards", async () => {
+  const bridge = await startBridge(echo);
+  const first = startShim(bridge.port, { FREECAD_MCP_TOKEN: TOKEN_OK });
+  first.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call" }) + "\n");
+  await first.waitForLines(1);
+  await first.stop();
+  fs.writeFileSync(path.join(first.tokenDir, "token"), `${TOKEN_NEW}\n`, "utf8");
+  const second = startShim(bridge.port, { FREECAD_MCP_TOKEN: TOKEN_OK }, {
+    tokenDir: first.tokenDir,
+  });
+  second.send(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call" }) + "\n");
+  const [reply] = await second.waitForLines(1);
+  assert.equal(reply.result.echoed, "tools/call");
+  assert.equal(reply.result.note, undefined);
+  assert.equal(fs.readFileSync(second.tokenFile, "utf8").trim(), TOKEN_NEW);
+  assert.equal(bridge.requests.at(-1).headers["authorization"], `Bearer ${TOKEN_NEW}`);
+  await second.stop();
+  bridge.close();
+});
+
+test("FREECAD_MCP_TOKEN_DIR selects the folder, not the home folder", async () => {
+  const bridge = await startBridge(echo);
+  const override = fs.mkdtempSync(path.join(os.tmpdir(), "shim-token-dir-"));
+  fs.mkdirSync(path.join(override, "nested"), { recursive: true });
+  const shim = startShim(
+    bridge.port,
+    { FREECAD_MCP_TOKEN: TOKEN_OK },
+    { tokenDir: path.join(override, "nested"), prepareTokenDir: true }
+  );
+  shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call" }) + "\n");
+  const [reply] = await shim.waitForLines(1);
+  assert.equal(reply.result.echoed, "tools/call");
+  assert.equal(fs.readFileSync(shim.tokenFile, "utf8").trim(), TOKEN_OK);
+  assert.equal(fs.existsSync(path.join(shim.home, ".freecad-mcp-bridge", "token")), false);
+  await shim.stop();
+  bridge.close();
+  fs.rmSync(override, { recursive: true, force: true });
 });
 
 test("a 401 Unauthorized from the bridge fails with a clear message naming the extension's Bearer token setting", async () => {

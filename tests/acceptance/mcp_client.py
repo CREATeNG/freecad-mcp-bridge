@@ -62,9 +62,17 @@ def url_for(path):
     return urlunsplit((parts.scheme, parts.netloc, path, "", ""))
 
 
+def _token_dir():
+    """The folder FreeCAD and the extension share for the token file."""
+    override = os.environ.get("FREECAD_MCP_TOKEN_DIR", "").strip()
+    if override:
+        return Path(override)
+    return Path.home() / ".freecad-mcp-bridge"
+
+
 def _token_from_file():
     """The bearer token FreeCAD wrote, or '' when the file is absent."""
-    path = Path.home() / ".freecad-mcp-bridge" / "token"
+    path = _token_dir() / "token"
     try:
         return path.read_text(encoding="utf-8").strip()
     except OSError:

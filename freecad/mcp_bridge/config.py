@@ -26,9 +26,7 @@ from freecad.mcp_bridge.constants import (
     DEFAULT_MAX_PAGE_SIZE_KB,
     DEFAULT_MAX_RESPONSE_TIMEOUT_S,
     DEFAULT_PORT,
-    DEFAULT_REQUIRE_ON_LOOPBACK,
     DEFAULT_REQUIRE_TLS,
-    DEFAULT_REQUIRE_TOKEN,
     DEFAULT_SHOW_STATUS_BUTTON,
     DEFAULT_STATUS_BUTTON_POSITION,
     PREF_GROUP,
@@ -195,16 +193,6 @@ def accept_address(address: str) -> None:
         _params().SetString(
             "AcceptedListenAddresses", json.dumps(accepted)
         )
-
-
-def require_token() -> bool:
-    """Every listener requires a bearer token. The old preference is unread."""
-    return True
-
-
-def require_on_loopback() -> bool:
-    """The old Apply-to-loopback preference is left unread."""
-    return False
 
 
 def start_warning_accepted() -> bool:

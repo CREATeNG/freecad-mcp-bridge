@@ -5,6 +5,8 @@ as an MCP client (or another program on the machine) experiences it, against
 a real bridge in a real FreeCAD.
 """
 
+import http.client
+import json
 import os
 import socket
 import tempfile
@@ -79,6 +81,36 @@ class OriginTests(unittest.TestCase):
         """A request with no Origin header is accepted."""
         reply = mcp.post(mcp.request("tools/list"))
         self.assertEqual(reply.status, 200)
+
+
+class HostTests(unittest.TestCase):
+    def _post(self, host_header):
+        token = mcp._token_from_file()
+        message = mcp.request("tools/list")
+        body = json.dumps(message).encode("utf-8")
+        headers = {
+            "Host": host_header,
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}",
+            **mcp.standard_headers(message),
+        }
+        connection = http.client.HTTPConnection(
+            "127.0.0.1", PORT, timeout=10
+        )
+        try:
+            connection.request("POST", "/mcp", body=body, headers=headers)
+            response = connection.getresponse()
+            response.read()
+            return response.status
+        finally:
+            connection.close()
+
+    def test_the_host_header_must_name_the_bound_address(self):
+        """A Host other than the bound address is refused; loopback accepts 127.0.0.1, localhost and [::1]."""
+        self.assertEqual(self._post("evil.example"), 403)
+        self.assertEqual(self._post(f"127.0.0.1:{PORT}"), 200)
+        self.assertEqual(self._post("localhost"), 200)
+        self.assertEqual(self._post("[::1]"), 200)
 
 
 class LoopbackTests(unittest.TestCase):

@@ -115,7 +115,8 @@ def _token_dialog_text(token):
 {token}
 
 It is stored in {token_file.token_path()}, readable only by you. \
-Send it from your MCP client in the Authorization header:
+The Claude Desktop extension reads it from that file. Other clients \
+send it in the Authorization header:
 Authorization: Bearer {token}
 
 If you lose it, click Generate new token in Edit → Preferences → \
@@ -213,11 +214,55 @@ def _confirm_first_start(entries, require_token=True, require_tls=True):
         box.deleteLater()
 
 
+def _token_write_failure_text(exc):
+    """Return the dialog text when the token file cannot be written."""
+    from freecad.mcp_bridge import token_file
+
+    return (
+        "Could not write the bearer token file "
+        f"({token_file.token_path()}): {exc}"
+    )
+
+
+def _show_token_write_failure(exc, parent=None):
+    """Tell the user that Generate new token could not write the file."""
+    import FreeCADGui as Gui
+    from PySide.QtWidgets import QDialog, QMessageBox
+
+    title = f"{DISPLAY_NAME} — Bearer token"
+    body = _token_write_failure_text(exc)
+    host = parent if parent is not None else Gui.getMainWindow()
+    box = QMessageBox(
+        QMessageBox.Warning,
+        title,
+        body,
+        QMessageBox.NoButton,
+        host,
+    )
+    QDialog.setWindowTitle(box, title)
+    box.setObjectName("MCPBridgeTokenWriteFailureDialog")
+    ok_btn = box.addButton("OK", QMessageBox.AcceptRole)
+    box.setDefaultButton(ok_btn)
+    box.setEscapeButton(ok_btn)
+    try:
+        box.exec()
+    finally:
+        box.setParent(None)
+        box.deleteLater()
+
+
 def generate_and_show_token(parent=None):
-    """Generate a new bearer token, write the token file, and show it once."""
+    """Generate a new bearer token, write the token file, and show it once.
+
+    A failed write shows the reason and returns None.
+    """
     from freecad.mcp_bridge import config
 
-    token = config.generate_and_store_token()
+    try:
+        token = config.generate_and_store_token()
+    except OSError as exc:
+        _show_token_write_failure(exc, parent=parent)
+        return None
     _show_generated_token(token, parent=parent)
     return token
 
@@ -263,9 +308,7 @@ class MCPBridgeCommand:
                 stopped = True
             else:
                 entries = config.listen_addresses()
-                req_token = config.require_token()
                 req_tls = config.require_tls()
-                req_on_loopback = config.require_on_loopback()
                 cert_file = config.tls_cert_file()
                 key_file = config.tls_key_file()
                 for entry in entries:
@@ -275,8 +318,7 @@ class MCPBridgeCommand:
                     for entry in entries
                     if not config.is_loopback_address(entry)
                 ]
-                protected = entries if req_on_loopback else non_loopback
-                if protected and req_tls:
+                if non_loopback and req_tls:
                     config.build_ssl_context(cert_file, key_file)
                 unaccepted = [
                     entry
@@ -312,14 +354,22 @@ class MCPBridgeCommand:
                 from freecad.mcp_bridge import token_file
 
                 if not token_file.read_token():
-                    generate_and_show_token()
+                    if generate_and_show_token() is None:
+                        status = f"{DISPLAY_NAME}: Offline"
+                        mw = Gui.getMainWindow()
+                        if mw:
+                            mw.statusBar().showMessage(status)
+                        show_toggle_state()
+                        App.Console.PrintWarning(
+                            f"{LOG_PREFIX} Could not write the bearer "
+                            "token file.\n"
+                        )
+                        return
                 bridge.start(
                     addresses=entries,
-                    require_token=req_token,
                     require_tls=req_tls,
                     tls_cert_file=cert_file,
                     tls_key_file=key_file,
-                    require_on_loopback=req_on_loopback,
                 )
                 if first_start:
                     config.accept_start_warning()

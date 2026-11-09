@@ -508,7 +508,8 @@ Report view.
 Every request on every listener must carry
 `Authorization: Bearer <token>` or is rejected with `401 Unauthorized`
 and `WWW-Authenticate: Bearer`. The token lives in
-`<home>/.freecad-mcp-bridge/token`. The folder is readable by the
+`<home>/.freecad-mcp-bridge/token`, or in `FREECAD_MCP_TOKEN_DIR`
+when that variable is set. The folder is readable by the
 user only, and on Windows its one allow entry is inheritable, so a
 file created in it is user-only too. On Linux and macOS the folder is
 mode `0700` and the file is mode `0600`. FreeCAD creates the folder
@@ -520,13 +521,16 @@ running bridge, when a request's token does not match, reads the file
 again before refusing.
 
 The Claude Desktop extension reads that file on each `tools/call`. A
-token pasted into its Bearer token setting is written to the file at
-start when it is at least 32 characters and the folder already
-exists. A shorter token is not written, and the tool result says it
-was ignored because it is shorter than 32 characters. If the folder
-does not exist, the extension does not create it, and the tool result
-says to turn the bridge on in FreeCAD once first. A pasted token
-reaches FreeCAD only by being written to the file.
+token pasted into its Bearer token setting is written to the file
+only when it is at least 32 characters, the folder already exists,
+and its SHA-256 differs from the hash stored in `pasted` beside the
+token. That record is user-only, like the token file, and holds the
+hash rather than a second copy of the token. A shorter token is not
+written. While the folder is missing, the extension tries the write
+again on each call and does not create the folder. A problem with
+the paste, including a write error, is a note on the tool result.
+The call is still sent, with the token from the file. **Generate new
+token** tells the user when the file cannot be written.
 
 - **TLS (`RequireTls`, default `true`)** — when enabled, non-loopback
   listeners serve HTTPS using the user-configured certificate file
@@ -589,10 +593,13 @@ The shim reads the port from `FREECAD_MCP_PORT` (default 39280), an
 optional pasted bearer token from `FREECAD_MCP_TOKEN`, and an optional
 PEM certificate path from `FREECAD_MCP_TLS_CERT_FILE` (all wired from
 `user_config` in `manifest.json`). On each `tools/call` it sends
-`Authorization: Bearer` with the token in
-`<home>/.freecad-mcp-bridge/token`. A pasted token of at least 32
-characters is written to that file at start when the folder already
-exists; a shorter one is not written, and the tool result says why.
+`Authorization: Bearer` with the token in the token file. The folder
+is `FREECAD_MCP_TOKEN_DIR` when that is set, and
+`<home>/.freecad-mcp-bridge` otherwise. A pasted token of at least 32
+characters is written only when its hash differs from the `pasted`
+file beside the token and the folder already exists. A shorter paste,
+a missing folder, or a write error is a note on the tool result, and
+the call is still sent.
 When a certificate file is set, it connects to
 `https://127.0.0.1:<port>/mcp` and trusts that certificate (which
 must cover `127.0.0.1`). Loopback serves HTTP, so the certificate

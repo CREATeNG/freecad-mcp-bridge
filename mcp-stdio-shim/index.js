@@ -7,11 +7,14 @@
  * tools/call to the addon's endpoint
  * (http://127.0.0.1:<port>/mcp, or https://127.0.0.1:<port>/mcp when
  * FREECAD_MCP_TLS_CERT_FILE is set). Each tools/call sends
- * Authorization: Bearer from <home>/.freecad-mcp-bridge/token when
- * that file has a token. A Bearer token setting of at least 32
- * characters is written into that file at start, when the folder
- * already exists. The JSON reply is unwrapped and written back
- * on stdout.
+ * Authorization: Bearer from the token file. The folder is
+ * FREECAD_MCP_TOKEN_DIR when that is set, and
+ * <home>/.freecad-mcp-bridge otherwise. A pasted token of at least
+ * 32 characters is written there only when its hash differs from
+ * the hash stored beside the token, and only when the folder
+ * already exists. A problem with that paste is a note on the tool
+ * result; the call is still sent. The JSON reply is unwrapped and
+ * written back on stdout.
  *
  * The shim answers initialize and tools/list itself (tools.json is a
  * copy of the addon's tool list) and does not contact the bridge for
@@ -27,6 +30,7 @@
  * (global fetch and node:https, >=18).
  */
 
+const crypto = require("crypto");
 const fs = require("fs");
 const https = require("https");
 const os = require("os");
@@ -42,39 +46,81 @@ function envSetting(name) {
 const PORT = envSetting("FREECAD_MCP_PORT") || "39280";
 const PASTED_TOKEN = envSetting("FREECAD_MCP_TOKEN");
 const MIN_TOKEN_LENGTH = 32;
-const TOKEN_DIR = path.join(os.homedir(), ".freecad-mcp-bridge");
-const TOKEN_FILE = path.join(TOKEN_DIR, "token");
+const TOKEN_DIR_NAME = ".freecad-mcp-bridge";
+const TOKEN_FILE_NAME = "token";
+const PASTE_RECORD_NAME = "pasted";
 const SHORT_TOKEN_MESSAGE =
   "The bearer token pasted into the FreeCAD MCP Bridge extension was ignored because it's shorter than 32 characters.";
 const MISSING_FOLDER_MESSAGE =
-  "Turn the bridge on in FreeCAD once first, so it can create the token folder.";
+  "The token folder doesn't exist yet. Turn the bridge on in FreeCAD once first, so it can create it.";
+const WRITE_FAILED_MESSAGE =
+  "The bearer token pasted into the FreeCAD MCP Bridge extension could not be written to the token file.";
+
+function tokenDir() {
+  const override = envSetting("FREECAD_MCP_TOKEN_DIR");
+  if (override) return override;
+  return path.join(os.homedir(), TOKEN_DIR_NAME);
+}
+
+function tokenFilePath() {
+  return path.join(tokenDir(), TOKEN_FILE_NAME);
+}
+
+function pasteRecordPath() {
+  return path.join(tokenDir(), PASTE_RECORD_NAME);
+}
+
+function pasteHash(token) {
+  return crypto.createHash("sha256").update(token, "utf8").digest("hex");
+}
 
 function readTokenFile() {
   try {
-    return fs.readFileSync(TOKEN_FILE, "utf8").trim();
+    return fs.readFileSync(tokenFilePath(), "utf8").trim();
   } catch {
     return "";
   }
 }
 
-let pastedProblem = "";
-function installPastedToken() {
+function readPasteRecord() {
+  try {
+    return fs.readFileSync(pasteRecordPath(), "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+
+function writeUserOnly(file, text) {
+  fs.writeFileSync(file, text, { encoding: "utf8", mode: 0o600 });
+  if (process.platform !== "win32") fs.chmodSync(file, 0o600);
+}
+
+let pastedNote = "";
+function applyPastedToken() {
+  pastedNote = "";
   if (!PASTED_TOKEN) return;
   if (PASTED_TOKEN.length < MIN_TOKEN_LENGTH) {
-    pastedProblem = SHORT_TOKEN_MESSAGE;
+    pastedNote = SHORT_TOKEN_MESSAGE;
     return;
   }
-  if (!fs.existsSync(TOKEN_DIR)) {
-    pastedProblem = MISSING_FOLDER_MESSAGE;
+  const dir = tokenDir();
+  if (!fs.existsSync(dir)) {
+    pastedNote = MISSING_FOLDER_MESSAGE;
     return;
   }
-  fs.writeFileSync(TOKEN_FILE, `${PASTED_TOKEN}\n`, {
-    encoding: "utf8",
-    mode: 0o600,
-  });
-  if (process.platform !== "win32") fs.chmodSync(TOKEN_FILE, 0o600);
+  try {
+    if (readPasteRecord() === pasteHash(PASTED_TOKEN)) return;
+    writeUserOnly(tokenFilePath(), `${PASTED_TOKEN}\n`);
+    writeUserOnly(pasteRecordPath(), `${pasteHash(PASTED_TOKEN)}\n`);
+  } catch {
+    pastedNote = WRITE_FAILED_MESSAGE;
+  }
 }
-installPastedToken();
+try {
+  applyPastedToken();
+} catch {
+  pastedNote = WRITE_FAILED_MESSAGE;
+}
 const TLS_CERT_FILE = envSetting("FREECAD_MCP_TLS_CERT_FILE");
 const SCHEME = TLS_CERT_FILE ? "https" : "http";
 const ENDPOINT = `${SCHEME}://127.0.0.1:${PORT}/mcp`;
@@ -168,7 +214,7 @@ function sendErrorReply(message, errorText) {
       JSON.stringify({
         jsonrpc: "2.0",
         id: message.id,
-        result: toolErrorResult(errorText),
+        result: withPastedNote(toolErrorResult(errorText)),
       })
     );
   } else {
@@ -283,8 +329,32 @@ async function postBridge(message, rawLine) {
   };
 }
 
+function withPastedNote(result) {
+  if (!pastedNote || !result || typeof result !== "object") return result;
+  return { ...result, note: pastedNote };
+}
+
 function writeResult(id, result) {
   writeLine(JSON.stringify({ jsonrpc: "2.0", id, result }));
+}
+
+function writeBridgeLine(payload) {
+  if (!payload) return;
+  if (!pastedNote) {
+    writeLine(payload);
+    return;
+  }
+  try {
+    const message = JSON.parse(payload);
+    if (message.result && typeof message.result === "object") {
+      message.result = withPastedNote(message.result);
+      writeLine(JSON.stringify(message));
+      return;
+    }
+  } catch {
+    // The bridge line is not JSON. Leave it unchanged.
+  }
+  writeLine(payload);
 }
 
 async function forward(rawLine, message) {
@@ -315,9 +385,10 @@ async function forward(rawLine, message) {
     );
     return;
   }
-  if (pastedProblem) {
-    sendErrorReply(message, pastedProblem);
-    return;
+  try {
+    applyPastedToken();
+  } catch {
+    pastedNote = WRITE_FAILED_MESSAGE;
   }
 
   let res;
@@ -339,7 +410,7 @@ async function forward(rawLine, message) {
       sendErrorReply(message, tlsErrorMessage(err));
       return;
     }
-    writeResult(message.id, offlineResult(message, err));
+    writeResult(message.id, withPastedNote(offlineResult(message, err)));
     return;
   }
 
@@ -348,8 +419,7 @@ async function forward(rawLine, message) {
     sendErrorReply(message, UNAUTHORIZED_MESSAGE);
     return;
   }
-  const payload = bodyText.trim();
-  if (payload) writeLine(payload);
+  writeBridgeLine(bodyText.trim());
 }
 
 let buffer = "";

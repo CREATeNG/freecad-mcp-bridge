@@ -901,7 +901,11 @@ class ListenAddressTests(unittest.TestCase):
             seen.get("token1_dialog_text", ""),
         )
         self.assertIn(
-            ".freecad-mcp-bridge",
+            "The Claude Desktop extension reads it from that file.",
+            seen.get("token1_dialog_text", ""),
+        )
+        self.assertIn(
+            "Other clients send it in the Authorization header:",
             seen.get("token1_dialog_text", ""),
         )
         self.assertNotIn("one-way hash", seen.get("token1_dialog_text", ""))
@@ -1182,9 +1186,8 @@ def step_no_cert_then_start():
     # so this start shows the token once.
     params.SetString('TlsCertFile', {cert_path!r})
     params.SetString('TlsKeyFile', {key_path!r})
-    token_path = os.path.join(
-        os.path.expanduser('~'), '.freecad-mcp-bridge', 'token'
-    )
+    from freecad.mcp_bridge import token_file as token_store
+    token_path = str(token_store.token_path())
     if os.path.exists(token_path):
         os.remove(token_path)
     seen['risk_dialog_found'] = False

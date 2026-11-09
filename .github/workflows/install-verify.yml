@@ -225,7 +225,8 @@ jobs:
         run: |
           set -euo pipefail
           echo "FC_CI_HOME=${RUNNER_TEMP}/freecad-ci-home" >> "${GITHUB_ENV}"
-          mkdir -p "${RUNNER_TEMP}/freecad-ci-home"
+          echo "FREECAD_MCP_TOKEN_DIR=${RUNNER_TEMP}/freecad-ci-home/mcp-token" >> "${GITHUB_ENV}"
+          mkdir -p "${RUNNER_TEMP}/freecad-ci-home/mcp-token"
 
       - name: Set up runner Python
         id: runner_python

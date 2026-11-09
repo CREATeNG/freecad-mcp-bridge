@@ -106,8 +106,11 @@ python scripts/list_requirements.py
 
 In CI, [install-verify.yml](.github/workflows/install-verify.yml) starts
 a third FreeCAD process with
-[acceptance_serve.py](scripts/acceptance_serve.py). That process turns
-the installed bridge on through its toolbar action and writes its port
+[acceptance_serve.py](scripts/acceptance_serve.py). FreeCAD and the
+test step both use `FREECAD_MCP_TOKEN_DIR`, a folder inside the run's
+isolated profile, so the token is not written to the runner's home.
+That process turns the installed bridge on through its toolbar
+action and writes its port
 to `ACCEPTANCE_READY_FILE`. The runner's Python runs the suite, then
 creates `ACCEPTANCE_STOP_FILE` so FreeCAD exits. The helper also checks
 a serving deadline on the GUI event loop. Any outer process timeout is

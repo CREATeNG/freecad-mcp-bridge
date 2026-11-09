@@ -259,33 +259,23 @@ def _invalid_request():
 def _non_loopback_warning(
     entries: list[str],
     non_loopback: list[str],
-    require_token: bool,
     require_tls: bool,
 ) -> str:
     endpoints = ", ".join(entries)
     non_loopback_endpoints = ", ".join(non_loopback)
-    who = (
-        "Any client with the bearer token"
-        if require_token
-        else "Any machine"
-    )
-    if require_token and require_tls:
+    who = "Any client with the bearer token"
+    if require_tls:
         return (
             f"{LOG_PREFIX} WARNING: listening on {endpoints}. Bearer "
             f"token and TLS are required beyond loopback. {who} that can "
             "reach these addresses can run Python code in FreeCAD as your "
             f"user account: {non_loopback_endpoints}.\n"
         )
-    if not require_token and not require_tls:
-        missing = "no authentication or encryption"
-    elif not require_token:
-        missing = "no authentication"
-    else:
-        missing = "no encryption"
     return (
-        f"{LOG_PREFIX} WARNING: listening on {endpoints} with {missing}. "
-        f"{who} that can reach these addresses can run Python code in "
-        f"FreeCAD as your user account: {non_loopback_endpoints}.\n"
+        f"{LOG_PREFIX} WARNING: listening on {endpoints} with no "
+        f"encryption. {who} that can reach these addresses can run "
+        f"Python code in FreeCAD as your user account: "
+        f"{non_loopback_endpoints}.\n"
     )
 
 
@@ -314,7 +304,6 @@ class HttpServer:
     def start(
         self,
         addresses: list[str] | None = None,
-        require_token: bool | None = None,
         require_tls: bool | None = None,
         tls_cert_file: str | None = None,
         tls_key_file: str | None = None,
@@ -331,21 +320,14 @@ class HttpServer:
         )
         if not entries:
             entries = list(config.listen_addresses())
-        # Every listener requires the token. The argument stays so
-        # existing callers still start, and a false value does not
-        # turn the check off.
-        del require_token
-        req_token = True
         req_tls = (
             config.require_tls()
             if require_tls is None
             else bool(require_tls)
         )
-        req_on_loopback = (
-            config.require_on_loopback()
-            if require_on_loopback is None
-            else bool(require_on_loopback)
-        )
+        # None leaves loopback on HTTP. A caller that passes true still
+        # serves HTTPS there. The old preference is not read.
+        req_on_loopback = bool(require_on_loopback)
         cert_file = (
             config.tls_cert_file()
             if tls_cert_file is None
@@ -456,9 +438,7 @@ class HttpServer:
         )
         if non_loopback:
             FreeCAD.Console.PrintWarning(
-                _non_loopback_warning(
-                    entries, non_loopback, req_token, req_tls
-                )
+                _non_loopback_warning(entries, non_loopback, req_tls)
             )
 
     def stop(self) -> None:
