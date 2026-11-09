@@ -29,17 +29,41 @@ addon, and there are no user-side dependencies beyond the addon itself.
 
 The MCP server exposes three tools (schemas in `tools.py`).
 
-- **`execute_python(code)`** — initiates a job that runs Python inside the live FreeCAD
-  session, with `App`/`Gui` pre-bound and `__name__` set to `"__main__"`. Stdout and stderr
-  are captured as tagged output chunks.
-- **`execute_python_file(filepath)`** — initiates a job that
-  reads a local file (absolute path) and runs it the same way,
-  with `__file__` set to the file's path. The bridge reads the
-  file before the job is queued. If the file cannot be read,
-  the tool returns `has_more: false`, an `error` message, and
-  `page: []` — no job, no page history, and no `job_token`.
+- **`execute_python(code)`** — runs Python in the live FreeCAD
+  session, with `App`/`Gui` pre-bound and `__name__` set to
+  `"__main__"`. The permission mode is **Ask**, the default, or
+  **Unrestricted**. Unless it is Unrestricted, FreeCAD shows the
+  code first. The call waits up to **Max response timeout**,
+  dialog included. If the user has not answered, the call
+  returns a notice and a `job_token`, and `get_output_page`
+  collects the output or the decline. Stdout and stderr are
+  captured as tagged chunks.
+- **`execute_python_file(filepath)`** — reads a local file
+  (absolute path) once and shows that path and the whole text
+  in the same dialog, with the same timing and the same
+  permission mode. **Run** runs that text, with `__file__` set
+  to the path. **Don't run** is the default and comes back as
+  an error. **Unrestricted!** asks again. Only **Yes** switches
+  the mode to Unrestricted, and the shown text then runs. The
+  dialog counts against **Max response timeout**. If the file
+  cannot be read, the tool returns `has_more: false`, an `error`
+  message, and `page: []` — no job, no page history, and no
+  `job_token`.
 - **`get_output_page(job_token, page_no)`** — fetches the requested page from a job's page
   history. Both arguments are required.
+
+The On/Off button on the status bar shows the permission mode
+beside its words: a shield with a tick for Ask, or a warning
+triangle for Unrestricted. The button is the same width in both
+modes. Its menu has `Permissions: Ask` and `Permissions:
+Unrestricted`, each with its icon, above `MCP Bridge Preferences`.
+The menu does not mark the mode in force: the button's icon shows
+it. Choosing a mode there switches the same way as the
+**Permission mode** preference under **Permissions**: a
+confirmation to go Unrestricted, and back to Ask at once. A click
+on the button, its icon or its words, turns the bridge on or off.
+It does nothing else. While the mode is Unrestricted, the button is
+shown whatever **Show the On/Off button** says.
 
 **Result shape**
 
@@ -67,8 +91,9 @@ client that keeps only the start can still continue.
 
 **Non-blocking**
 
-`execute_python` and `execute_python_file` (once the file is read
-successfully) queue a job for the Qt main thread, then return a response
+`execute_python` and `execute_python_file`, once the user has
+answered or in the **Unrestricted** mode, queue a job for the Qt
+main thread, then return a response
 — even if the job is still queued or running. The response carries the
 job's first page when the job has produced output or finished; a quiet
 job's first response is empty and unnumbered (see *Page history*). The
@@ -76,10 +101,13 @@ agent polls for remaining output via `get_output_page`. FreeCAD
 operations can be long-running; this pattern gives the agent an
 acknowledgment rather than a silent wait that may look like a hang.
 
-The timeout bounds the wait for output, not the whole request: its clock
-starts when the handler begins to drain the output queue, after any
-file read, the queueing and the wait for the job's page-history lock,
-and runs while the handler drains the queue.
+For these two tools the first answer's clock starts when the call
+does and includes the dialog. It is bounded by **Max response
+timeout**. An answer in that time is the output, or the decline.
+Otherwise the answer is a notice and a `job_token`. A later page,
+including one fetched while the dialog is still open, waits up
+to that same timeout. Replaying the notice's own page returns
+at once and does not drain.
 
 **Page bounds**
 
@@ -696,6 +724,7 @@ automatically.
 | Bearer token file | `<home>/.freecad-mcp-bridge/token` | Every listener requires `Authorization: Bearer <token>`; FreeCAD writes the file at the first start and on **Generate new token**, shows the token once, and does not keep a hash; a mismatch reads the file again before refusing |
 | Require TLS (HTTPS) | `true` | Serves HTTPS on non-loopback entries using `TlsCertFile` and `TlsKeyFile`; loopback stays HTTP; fails to start on an entry beyond loopback if enabled without valid certificate and key files |
 | TLS certificate file (PEM) / TLS private key file (PEM) | `""` | PEM certificate (`TlsCertFile`) and private key (`TlsKeyFile`) paths for HTTPS |
-| Max response timeout (s) | 15 | Max wait in `execute_python` and `get_output_page` before returning with `has_more: true` |
+| Permission mode | `0` (Ask) | `PermissionMode`, `0` for Ask and `1` for Unrestricted: in Ask, FreeCAD shows an agent's code, and a file's path with it, before it runs; in Unrestricted the code runs unseen; switched in Preferences or from the On/Off button's menu, with a confirmation to go Unrestricted; each switch writes it at once, and the Preferences box has no preference entry of its own, so FreeCAD's own OK writes nothing for it |
+| Max response timeout (s) | 15 | Max wait for the first answer of `execute_python` and `execute_python_file`, dialog included, and for each later page, before returning with `has_more: true` |
 | Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |
 | Page history retention (min) | 5 | How long output stays readable after the job finishes running, or after its last valid page fetch or replay. |

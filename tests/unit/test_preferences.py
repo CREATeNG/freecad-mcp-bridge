@@ -8,6 +8,7 @@ profile does.
 """
 
 import importlib
+import json
 import os
 import re
 import stat
@@ -24,6 +25,13 @@ from freecad.mcp_bridge.constants import (
     DISPLAY_NAME,
     PREF_GROUP,
     TOOLBAR_OBJECT_NAME,
+)
+from freecad.mcp_bridge.file_prompt import (
+    MENU_ASK,
+    MENU_PREFERENCES,
+    MENU_UNRESTRICTED,
+    MODE_TOOLTIP,
+    status_button_shown,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -145,6 +153,29 @@ class PreferencePageTests(unittest.TestCase):
             "below.",
         )
         self.assertEqual(settings["RequireTls"]["checked"], "true")
+        mode_box = next(
+            widget
+            for widget in ET.parse(PAGE).iter("widget")
+            if widget.get("name") == "permissionModeComboBox"
+        )
+        mode_props = {
+            prop.get("name"): prop[0].text
+            for prop in mode_box.findall("property")
+        }
+        self.assertEqual(
+            [
+                item.find("property/string").text
+                for item in mode_box.findall("item")
+            ],
+            ["Ask (default)", "Unrestricted"],
+        )
+        self.assertEqual(mode_props["currentIndex"], "0")
+        self.assertEqual(mode_props["toolTip"], MODE_TOOLTIP)
+        self.assertEqual(
+            MODE_TOOLTIP,
+            "Ask shows you an agent's code first. Unrestricted runs "
+            "it unseen.",
+        )
         self.assertIn(settings["TlsCertFile"]["fileName"], (None, ""))
         self.assertIn(settings["TlsKeyFile"]["fileName"], (None, ""))
         pem_filter = "PEM files (*.pem *.crt *.key);;All files (*)"
@@ -168,6 +199,14 @@ class PreferencePageTests(unittest.TestCase):
         self.assertEqual(
             widgets_by_name["securityGroup"]["title"],
             "Security",
+        )
+        self.assertEqual(
+            widgets_by_name["permissionsGroup"]["title"],
+            "Permissions",
+        )
+        self.assertEqual(
+            widgets_by_name["permissionModeLabel"]["text"],
+            "Permission mode",
         )
         self.assertEqual(
             widgets_by_name["tlsCertFileLabel"]["text"],
@@ -236,10 +275,14 @@ class UnsetPreferenceTests(unittest.TestCase):
         self.assertEqual(config.max_history_retention_ms(), 5 * 60_000)
         self.assertIs(config.show_status_button(), True)
         self.assertEqual(config.status_button_position(), 0)
-        # What it read is what the preference page saves (plus Port as the
-        # upgrade fallback when ListenAddress has never been saved).
+        self.assertIs(config.unrestricted(), False)
+        # What it read is what the preference page saves, plus Port as the
+        # upgrade fallback when ListenAddress has never been saved, and
+        # PermissionMode, which only a confirmed choice writes.
         self.assertEqual(set(groups), {PREF_GROUP})
-        self.assertEqual(params.read, set(SETTINGS) | {"Port"})
+        self.assertEqual(
+            params.read, set(SETTINGS) | {"Port", "PermissionMode"}
+        )
 
 
 def _fresh_init_gui():
@@ -968,6 +1011,9 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             def showMessage(self, msg):
                 statuses.append(msg)
 
+            def currentMessage(self):
+                return ""
+
         class FakeMainWindow:
             def statusBar(self):
                 return FakeStatusBar()
@@ -1067,7 +1113,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 require_tls=False,
             )
             self.assertEqual(
-                title, "MCP Bridge — Listen beyond this machine?"
+                title, "MCP Bridge: Listen beyond this machine?"
             )
             self.assertIn("192.168.1.50:39280\n10.0.0.5:39281", body_none)
             self.assertIn("No authentication", body_none)
@@ -1117,7 +1163,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             self.assertIn("any client with the bearer token", body_both)
 
             tok_title, tok_body = init_gui._token_dialog_text("tok-sample")
-            self.assertEqual(tok_title, "MCP Bridge — Bearer token")
+            self.assertEqual(tok_title, "MCP Bridge: Bearer token")
             self.assertIn("readable only by you", tok_body)
             self.assertIn(str(config.token_file.token_path()), tok_body)
             self.assertIn(
@@ -1134,7 +1180,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 "Every other client then needs the new token.", tok_body
             )
             start_title, start_body = init_gui._first_start_dialog_text([])
-            self.assertEqual(start_title, "MCP Bridge — Start the bridge?")
+            self.assertEqual(start_title, "MCP Bridge: Start the bridge?")
             self.assertIn("full permissions", start_body)
             self.assertIn("only after you accept", start_body)
             _both_title, both_body = init_gui._first_start_dialog_text(
@@ -1976,6 +2022,226 @@ class TokenFileTests(unittest.TestCase):
                 (Path(folder) / "token").read_text(encoding="utf-8").strip(),
                 "c" * 32,
             )
+
+
+class PermissionModeTests(unittest.TestCase):
+    def test_the_acceptance_client_puts_ask_back_only_where_it_found_ask(
+        self,
+    ):
+        """The client goes Unrestricted once, before its first run. It
+        registers the return to Ask only when Ask is what it found."""
+        for found, registered in (("False", 1), ("True", 0)):
+            with mock.patch.dict(
+                os.environ, {"BRIDGE_URL": "http://127.0.0.1:9/mcp"}
+            ):
+                sys.modules.pop("tests.acceptance.mcp_client", None)
+                client = importlib.import_module(
+                    "tests.acceptance.mcp_client"
+                )
+            sys.modules.pop("tests.acceptance.mcp_client", None)
+            posted = []
+            page = [
+                {"stream": "stdout", "text": f"mode before: {found}\n"}
+            ]
+            result = {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {
+                                "has_more": False,
+                                "page_no": 0,
+                                "job_token": "t",
+                                "page": page,
+                            }
+                        ),
+                    }
+                ]
+            }
+            with (
+                mock.patch.object(
+                    client,
+                    "post",
+                    side_effect=lambda message, **_kw: posted.append(
+                        str(message)
+                    ),
+                ),
+                mock.patch.object(
+                    client, "tool_result", return_value=result
+                ),
+                mock.patch.object(client.atexit, "register") as register,
+            ):
+                client.call_tool("execute_python", {"code": "print(1)"})
+                client.call_tool("execute_python", {"code": "print(2)"})
+                self.assertEqual(len(posted), 3, found)
+                self.assertIn("set_unrestricted(True)", posted[0])
+                self.assertEqual(register.call_count, registered, found)
+                if registered:
+                    register.assert_called_once_with(client._back_to_ask)
+                    client._back_to_ask()
+                    self.assertIn("set_unrestricted(False)", posted[-1])
+
+    def test_freecad_does_not_save_the_permission_mode_box(self):
+        """The box is a plain combo box with no preference entry, so
+        Preferences' own OK writes nothing for it."""
+        box = next(
+            widget
+            for widget in ET.parse(PAGE).iter("widget")
+            if widget.get("name") == "permissionModeComboBox"
+        )
+        self.assertEqual(box.get("class"), "QComboBox")
+        names = {prop.get("name") for prop in box.findall("property")}
+        self.assertNotIn("prefEntry", names)
+        self.assertNotIn("prefPath", names)
+        self.assertNotIn("PermissionMode", page_settings())
+
+    def test_showing_the_box_sets_it_from_the_mode_and_connects_it_once(
+        self,
+    ):
+        """Each time the box shows, it shows the mode in force. Its
+        handler is connected the first time only."""
+        init_gui = _fresh_init_gui()
+
+        class Box:
+            def __init__(self):
+                self.index = 0
+                self.props = {}
+                self.connected = []
+                self.activated = types.SimpleNamespace(
+                    connect=self.connected.append
+                )
+
+            def blockSignals(self, _on):
+                pass
+
+            def setCurrentIndex(self, index):
+                self.index = index
+
+            def property(self, name):
+                return self.props.get(name)
+
+            def setProperty(self, name, value):
+                self.props[name] = value
+
+        box = Box()
+        with mock.patch(
+            "freecad.mcp_bridge.config.unrestricted", return_value=True
+        ):
+            init_gui._show_mode_in_box(box)
+        self.assertEqual(box.index, 1)
+        self.assertEqual(len(box.connected), 1)
+        with mock.patch(
+            "freecad.mcp_bridge.config.unrestricted", return_value=False
+        ):
+            init_gui._show_mode_in_box(box)
+        self.assertEqual(box.index, 0)
+        self.assertEqual(len(box.connected), 1)
+        # The connected handler is the choice handler.
+        chosen = []
+        init_gui._on_mode_chosen = lambda b, index: chosen.append((b, index))
+        box.connected[0](1)
+        self.assertEqual(chosen, [(box, 1)])
+
+    def test_choosing_the_mode_in_force_asks_nothing(self):
+        """The Preferences box acts only on a change of mode."""
+        init_gui = _fresh_init_gui()
+        applied = []
+        init_gui._apply_mode_choice = (
+            lambda want, box: applied.append((want, box))
+        )
+        with mock.patch(
+            "freecad.mcp_bridge.config.unrestricted", return_value=False
+        ):
+            init_gui._on_mode_chosen("box", 0)
+            self.assertEqual(applied, [])
+            init_gui._on_mode_chosen("box", 1)
+            self.assertEqual(applied, [(True, "box")])
+        with mock.patch(
+            "freecad.mcp_bridge.config.unrestricted", return_value=True
+        ):
+            init_gui._on_mode_chosen("box", 1)
+            self.assertEqual(applied, [(True, "box")])
+            init_gui._on_mode_chosen("box", 0)
+            self.assertEqual(applied, [(True, "box"), (False, "box")])
+
+    def test_the_menu_asks_to_go_unrestricted_and_not_to_go_back(self):
+        """Choosing Unrestricted in the button's menu asks once, and only
+        Yes switches. Choosing Ask is at once. Each choice refreshes the
+        button and an open Preferences box."""
+        init_gui = _fresh_init_gui()
+        state = {"unrestricted": False}
+        answers = ["No", "Yes"]
+        asked = []
+
+        def ask(parent=None):
+            asked.append(parent)
+            return answers.pop(0)
+
+        with (
+            mock.patch(
+                "freecad.mcp_bridge.config.unrestricted",
+                side_effect=lambda: state["unrestricted"],
+            ),
+            mock.patch(
+                "freecad.mcp_bridge.config.set_unrestricted",
+                side_effect=lambda on: state.update(unrestricted=on),
+            ),
+            mock.patch(
+                "freecad.mcp_bridge.file_prompt._ask_unrestricted",
+                side_effect=ask,
+            ),
+            mock.patch.object(init_gui, "show_toggle_state") as button,
+            mock.patch.object(init_gui, "_sync_open_mode_box") as box,
+        ):
+            init_gui._on_mode_menu(True)
+            self.assertIs(state["unrestricted"], False)
+            init_gui._on_mode_menu(True)
+            self.assertIs(state["unrestricted"], True)
+            init_gui._on_mode_menu(False)
+            self.assertIs(state["unrestricted"], False)
+            self.assertEqual(asked, [None, None])
+            self.assertEqual(button.call_count, 3)
+            self.assertEqual(box.call_count, 3)
+
+    def test_choosing_the_mode_in_force_in_the_menu_does_nothing(self):
+        """A click on the mode already in force asks nothing, writes
+        nothing and refreshes nothing."""
+        init_gui = _fresh_init_gui()
+        applied = []
+        init_gui._apply_mode_choice = (
+            lambda want, box: applied.append((want, box))
+        )
+        for in_force in (False, True):
+            with (
+                mock.patch(
+                    "freecad.mcp_bridge.config.unrestricted",
+                    return_value=in_force,
+                ),
+                mock.patch.object(init_gui, "show_toggle_state") as button,
+            ):
+                init_gui._on_mode_menu(in_force)
+                self.assertEqual(button.call_count, 0)
+        self.assertEqual(applied, [])
+
+    def test_the_menu_names_the_two_modes_and_the_preferences_page(self):
+        """The menu's three items, in order. test_verify.py checks, in
+        FreeCAD, that each has its icon and none is checkable."""
+        self.assertEqual(MENU_ASK, "Permissions: Ask")
+        self.assertEqual(MENU_UNRESTRICTED, "Permissions: Unrestricted")
+        self.assertEqual(MENU_PREFERENCES, "MCP Bridge Preferences")
+
+    def test_unrestricted_shows_the_button_whatever_the_preference(self):
+        """Show the On/Off button hides the button only in Ask mode, so
+        Unrestricted stays shown on the status bar."""
+        self.assertIs(status_button_shown(True, False), True)
+        self.assertIs(status_button_shown(False, False), False)
+        self.assertIs(status_button_shown(False, True), True)
+        self.assertIs(status_button_shown(True, True), True)
+        self.assertEqual(
+            page_settings()["ShowStatusButton"]["toolTip"],
+            "Display toggle button in the status bar. Always shown "
+            "in Unrestricted mode.",
+        )
 
 
 if __name__ == "__main__":

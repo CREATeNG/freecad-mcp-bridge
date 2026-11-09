@@ -31,6 +31,10 @@ STATUS_BUTTON_RIGHT = 0
 STATUS_BUTTON_LEFT = 1
 DEFAULT_SHOW_STATUS_BUTTON = True
 DEFAULT_STATUS_BUTTON_POSITION = STATUS_BUTTON_RIGHT
+# Permission mode: Ask shows an agent's code before it runs.
+PERMISSION_MODE_ASK = 0
+PERMISSION_MODE_UNRESTRICTED = 1
+DEFAULT_PERMISSION_MODE = PERMISSION_MODE_ASK
 
 # FreeCAD preference group backing config.py
 PREF_GROUP = "User parameter:BaseApp/Preferences/Mod/freecad-mcp-bridge"

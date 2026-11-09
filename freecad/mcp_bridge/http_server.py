@@ -14,10 +14,11 @@ is acknowledged.
 import json
 import os
 import threading
+import time
 from http.server import BaseHTTPRequestHandler
 import FreeCAD
 
-from freecad.mcp_bridge import config, mcp_protocol, paging
+from freecad.mcp_bridge import config, file_prompt, mcp_protocol, paging
 from freecad.mcp_bridge.constants import (
     ENDPOINT_PATH,
     LOG_PREFIX,
@@ -26,6 +27,14 @@ from freecad.mcp_bridge.constants import (
 from freecad.mcp_bridge.executor import Executor
 
 _LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1")
+
+
+def _remaining_ms(started, timeout_ms) -> int:
+    """Milliseconds of `timeout_ms` still left since `started`."""
+    spent = (time.monotonic() - started) * 1000.0
+    return max(0, int(timeout_ms - spent))
+
+
 PARSE_ERROR = -32700
 TLS_HANDSHAKE_TIMEOUT_S = 5.0
 
@@ -153,8 +162,16 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         )
 
         if name == "execute_python":
-            self._run_code(req_id, version, args.get("code", ""), drain_args)
+            self._ask_or_run(
+                req_id,
+                version,
+                args.get("code", ""),
+                None,
+                time.monotonic(),
+                drain_args,
+            )
         elif name == "execute_python_file":
+            started = time.monotonic()
             filepath = args.get("filepath", "")
             try:
                 with open(filepath, "r", encoding="utf-8") as handle:
@@ -170,8 +187,9 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                     },
                 )
                 return
-            self._run_code(
-                req_id, version, code, drain_args, os.path.abspath(filepath)
+            shown = os.path.abspath(filepath)
+            self._ask_or_run(
+                req_id, version, code, shown, started, drain_args
             )
         elif name == "get_output_page":
             page_no = _as_page_no(args.get("page_no"))
@@ -196,14 +214,88 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                 ),
             )
 
-    def _run_code(self, req_id, version, code, drain_args, filepath=None):
+    def _ask_or_run(
+        self, req_id, version, code, shown, started, drain_args
+    ):
+        """Ask, unless the mode is Unrestricted, then run what was shown.
+
+        `shown` is the file path, or None for inline code. The timeout
+        counts from `started`, so the dialog is inside it.
+        """
+        if config.unrestricted():
+            self._run_shown(
+                req_id, version, code, shown, started, drain_args
+            )
+            return
+        token, output_queue = paging.start_page()
+        paging.mark_awaiting_user(token)
+        retention_ms = config.max_history_retention_ms()
+        threading.Thread(
+            target=self._ask_file,
+            args=(shown, code, token, output_queue, retention_ms),
+            name="mcp-code-dialog",
+            daemon=True,
+        ).start()
+        result = paging.fetch(
+            token,
+            0,
+            _remaining_ms(started, drain_args[0]),
+            drain_args[1],
+        )
+        if result.pop("awaiting_user", False):
+            notice = (
+                paging.CODE_NOTICE if shown is None else paging.SHOWN_NOTICE
+            )
+            result = paging.remember_shown_notice(token, notice)
+        self._send_tool_result(req_id, version, result)
+
+    def _run_shown(
+        self, req_id, version, code, shown, started, drain_args
+    ):
+        """Run without asking. The timeout is what the call has left."""
         token, output_queue = paging.start_page()
         self.server.executor.submit(
-            code, output_queue, filepath, token=token
+            code, output_queue, shown, token=token
         )
-        # The initiating call returns page 0 — the first page the job produces.
-        result = paging.fetch(token, 0, *drain_args)
+        result = paging.fetch(
+            token,
+            0,
+            _remaining_ms(started, drain_args[0]),
+            drain_args[1],
+        )
         self._send_tool_result(req_id, version, result)
+
+    def _ask_file(self, shown, code, token, output_queue, retention_ms):
+        """Show the dialog, then run the shown text or record a decline.
+
+        One dialog at a time: file_turn holds the job queue until the
+        user answers.
+        """
+        with self.server.executor.file_turn() as turn:
+            decision = file_prompt.DECLINE
+            failure = None
+            try:
+                decision = self.server.executor.call_on_main(
+                    lambda: file_prompt.confirm(shown, code)
+                )
+            except Exception as exc:
+                which = "code" if shown is None else "file"
+                failure = f"The {which} dialog failed: {exc}"
+                FreeCAD.Console.PrintError(
+                    f"{LOG_PREFIX} {failure}\n"
+                )
+            finally:
+                paging.clear_awaiting_user(token)
+                if decision == file_prompt.RUN:
+                    turn.queue((code, output_queue, shown, token))
+                else:
+                    paging.decline_job(
+                        token,
+                        failure
+                        if failure is not None
+                        else file_prompt.decline_message(shown),
+                        retention_ms,
+                    )
 
     def _send_tool_result(self, req_id, version, result):
         self._send_json(

@@ -225,25 +225,50 @@ def _assert_status_button(running: bool) -> None:
             "Status-bar button text is out of step. "
             f"Expected {expected!r}, got {button.text()!r}"
         )
-    if not button.icon().isNull():
-        common.fail("Status-bar button has an icon")
+    from freecad.mcp_bridge import config, file_prompt
+
+    unrestricted = config.unrestricted()
+    shown = button.icon().pixmap(16, 16).toImage()
+    if button.icon().pixmap(16, 16).isNull() or shown != (
+        file_prompt.mode_icon(unrestricted).pixmap(16, 16).toImage()
+    ):
+        common.fail(
+            "Status-bar button icon is not the permission mode's "
+            f"(unrestricted={unrestricted})"
+        )
     if button.popupMode() != QToolButton.MenuButtonPopup:
         common.fail(
             "Status-bar button is not in MenuButtonPopup mode "
             f"(popupMode={button.popupMode()!r})"
         )
     menu = button.menu()
-    if menu is None or len(menu.actions()) != 1:
-        count = None if menu is None else len(menu.actions())
+    texts = None if menu is None else [a.text() for a in menu.actions()]
+    expected_menu = [
+        "Permissions: Ask",
+        "Permissions: Unrestricted",
+        "MCP Bridge Preferences",
+    ]
+    if texts != expected_menu:
         common.fail(
-            "Status-bar button menu is missing or does not have 1 action "
-            f"(count={count})"
+            "Status-bar button menu is missing or unexpected: "
+            f"expected {expected_menu!r}, got {texts!r}"
         )
-    if menu.actions()[0].text() != "Preferences":
-        common.fail(
-            "Status-bar button menu action text is unexpected: "
-            f"{menu.actions()[0].text()!r}"
-        )
+    # Each item is plain words with its icon. None carries a tick: the
+    # button's own icon is what shows the mode in force.
+    for item in menu.actions():
+        if item.isCheckable():
+            common.fail(
+                f"Status-bar button menu item {item.text()!r} is checkable"
+            )
+        if item.icon().pixmap(16, 16).isNull():
+            common.fail(
+                f"Status-bar button menu item {item.text()!r} has no icon"
+            )
+        if not item.isIconVisibleInMenu():
+            common.fail(
+                f"Status-bar button menu item {item.text()!r} hides "
+                "its icon"
+            )
     tip = (
         "MCP Bridge: on (click to stop)"
         if running
@@ -321,6 +346,92 @@ def _verify_status_button_hide() -> None:
     _assert_status_button(False)
     common.log_notice(
         "Status-bar button moves, hides and returns on preference change"
+    )
+
+
+def _answer_unrestricted_dialog(label: str) -> None:
+    """Click `label` on the Unrestricted confirmation when it shows."""
+    from PySide.QtCore import QTimer
+    from PySide.QtWidgets import QApplication, QMessageBox
+
+    attempts = {"left": 100}
+
+    def tick():
+        attempts["left"] -= 1
+        app = QApplication.instance()
+        widget = app.activeModalWidget() if app is not None else None
+        if (
+            isinstance(widget, QMessageBox)
+            and widget.objectName() == "MCPBridgeUnrestrictedDialog"
+        ):
+            for btn in widget.buttons():
+                if btn.text() == label:
+                    btn.click()
+                    return
+        if attempts["left"] > 0:
+            QTimer.singleShot(50, tick)
+
+    QTimer.singleShot(50, tick)
+
+
+def _verify_mode_on_status_button() -> None:
+    """The On/Off button carries the permission mode: its menu switches
+    it, its width keeps, and Unrestricted keeps the button in sight."""
+    import FreeCAD as App
+
+    from freecad.mcp_bridge import config
+    from freecad.mcp_bridge.constants import PREF_GROUP
+
+    params = App.ParamGet(PREF_GROUP)
+    if config.unrestricted():
+        common.fail("Permission mode is not Ask at the start of verify")
+    button = _status_button()
+    ask, unrestricted = button.menu().actions()[:2]
+    width = button.sizeHint().width()
+    try:
+        # Unrestricted asks first, and No keeps Ask.
+        _answer_unrestricted_dialog("No")
+        unrestricted.trigger()
+        if config.unrestricted():
+            common.fail("No on the confirmation switched to Unrestricted")
+        _assert_status_button(False)
+
+        _answer_unrestricted_dialog("Yes")
+        unrestricted.trigger()
+        if not config.unrestricted():
+            common.fail("Yes on the confirmation did not switch the mode")
+        _assert_status_button(False)
+        if _status_button().sizeHint().width() != width:
+            common.fail(
+                "Status-bar button width changed with the permission mode "
+                f"({width} in Ask, {_status_button().sizeHint().width()} "
+                "in Unrestricted)"
+            )
+
+        # Unrestricted stays shown on the status bar.
+        params.SetBool("ShowStatusButton", False)
+        try:
+            if _status_button() is None:
+                common.fail(
+                    "Status-bar button was hidden while Unrestricted"
+                )
+            # Ask is at once, and the preference applies again.
+            _status_button().menu().actions()[0].trigger()
+            if config.unrestricted():
+                common.fail("Choosing Ask did not switch the mode at once")
+            if _status_button() is not None:
+                common.fail(
+                    "Status-bar button remained present in Ask with "
+                    "ShowStatusButton=False"
+                )
+        finally:
+            params.RemBool("ShowStatusButton")
+    finally:
+        config.set_unrestricted(False)
+    _assert_status_button(False)
+    common.log_notice(
+        "Status-bar button shows the permission mode, and its menu "
+        "switches it"
     )
 
 
@@ -642,11 +753,22 @@ def _http_exec_probe(code: str, timeout_ms: int) -> dict:
 
 def _verify_http_round_trip() -> None:
     """Run Python through the HTTP endpoint (same path as send_cmd.py)."""
+    from freecad.mcp_bridge import config
+
+    # The probe is execute_python. In Unrestricted mode it meets no
+    # dialog. The mode goes back to Ask, where the probe found Ask,
+    # before any check below can end the process.
+    was_unrestricted = config.unrestricted()
+    config.set_unrestricted(True)
     probe = common.env("RELEASE_INSTALL_PROBE", 'print("test_verify_ok")')
     expected = common.env("RELEASE_INSTALL_PROBE_EXPECT", "test_verify_ok")
     timeout_ms = int(common.env("RELEASE_INSTALL_HTTP_TIMEOUT_MS", "30000"))
 
-    result = _http_exec_probe(probe, timeout_ms)
+    try:
+        result = _http_exec_probe(probe, timeout_ms)
+    finally:
+        if not was_unrestricted:
+            config.set_unrestricted(False)
 
     if "error" in result:
         common.fail(f"HTTP exec round-trip failed: {result['error']}")
@@ -680,6 +802,7 @@ def _run() -> None:
     common.check_bridge_off_at_startup()
     _assert_status_button(False)
     _verify_status_button_hide()
+    _verify_mode_on_status_button()
     _verify_toolbar_hide()
     common.start_bridge()
     _assert_status_button(True)

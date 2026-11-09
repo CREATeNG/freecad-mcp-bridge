@@ -75,17 +75,23 @@ to exit. With no bundle named, that test skips;
 `verify_bundle: true`, as release and pull-request runs
 set it, always names one.
 
-Use a disposable FreeCAD session and test profile. The suite creates
-documents and temporary files, changes preferences and toggles the
-bridge, including restarting it on another port. Tests restore
-preferences and bridge state on their normal paths; a failed test can
-leave that work unfinished.
+Use a disposable FreeCAD session and an isolated test profile: set
+`FREECAD_USER_HOME` to a new temporary folder before you start
+FreeCAD, so the run uses that folder's preferences and addons and
+never your own. The suite creates documents and temporary files,
+changes preferences and toggles the bridge, including restarting it
+on another port. It also switches the permission mode to
+Unrestricted with its first call, so its later calls meet no
+dialog. Where it finds Ask, FreeCAD shows that first call's code
+for you to run, and the mode goes back to Ask when the suite ends.
+Tests restore preferences and bridge state on their normal paths; a
+failed test can leave that work unfinished.
 
-Set `FREECAD_MCP_TOKEN_DIR` to a new temporary folder before you
-start FreeCAD, and use that same value for the test process, so a
-local run never touches the real token file. Install the addon
-version under test, open a fresh FreeCAD GUI session with that
-variable set, and turn the bridge on with its toolbar button. Keep
+Set `FREECAD_MCP_TOKEN_DIR` too, to a new temporary folder, before
+you start FreeCAD, and use that same value for the test process, so
+a local run never touches the real token file. Install the addon
+version under test, open a fresh FreeCAD GUI session with both
+variables set, and turn the bridge on with its toolbar button. Keep
 the GUI running while the suite runs. With Python 3.11 in a second
 terminal, set the URL explicitly to that session's port (`39280`
 below is the default; use your port if it differs):
@@ -342,7 +348,8 @@ FreeCAD process after restart. Does **not** call `App.MCPBridgeInjectUi()` — i
 | Preferences page | The installed `preferences.ui` contains the line telling the user how to start or stop the bridge |
 | Toolbar injection | The **MCP Bridge On/Off** toolbar action is found without manual injection |
 | Off at startup | The bridge is not running, its button is unchecked and nothing answers on its port before the first click |
-| Status-bar button | The permanent status-bar split button sits on the right by default, has no icon, has a `Preferences` menu item, and shows `MCP Off` at startup and after stop, and `MCP On` while running, with matching tooltip and toolbar state |
+| Status-bar button | The permanent status-bar split button sits on the right by default, has the permission mode's icon, has the menu items `Permissions: Ask`, `Permissions: Unrestricted` and `MCP Bridge Preferences`, each with an icon and none of them checkable, and shows `MCP Off` at startup and after stop, and `MCP On` while running, with matching tooltip and toolbar state |
+| Permission mode on the button | Choosing `Permissions: Unrestricted` in the button's menu asks for confirmation: **No** keeps Ask and **Yes** switches, and the button's icon follows the mode. The button's width is the same in both modes. While the mode is Unrestricted, setting **Show the On/Off button** (`ShowStatusButton`) to `False` leaves the button in place. Choosing `Permissions: Ask` switches at once and then removes it |
 | Move status-bar button | Setting **Position** (`StatusButtonPosition`) to `1` (**Left of FreeCAD's items**) moves the status-bar button to the left of FreeCAD's permanent status-bar items without a restart, and removing the setting, so the default applies, puts the button back on the right |
 | Hide status-bar button | Setting **Show the On/Off button** (`ShowStatusButton`) to `False` removes the status-bar button without a restart, leaving the toolbar button in place, and removing the setting, so the default applies, puts the button back |
 | Hide toolbar | Unchecking **MCP Bridge** (`toggleViewAction().trigger()`) hides the toolbar and keeps it hidden across a workbench switch, with `False` saved in FreeCAD's `MainWindow/Toolbars` parameters and the status-bar button still shown. Checking **MCP Bridge** again shows the toolbar and keeps it shown across a workbench switch, with `True` saved in `MainWindow/Toolbars` |

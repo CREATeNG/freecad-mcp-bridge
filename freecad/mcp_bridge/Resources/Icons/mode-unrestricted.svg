@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <title>Permission mode: Unrestricted</title>
+  <path d="M12 3 L21.5 20 H2.5 Z"
+        fill="#f5a623" stroke="#a86a00" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="M12 9.5 V14.5"
+        fill="none" stroke="#1f1f1f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="12" cy="17.3" r="1.2" fill="#1f1f1f"/>
+</svg>

@@ -559,7 +559,7 @@ class ListenAddressTests(unittest.TestCase):
         self.assertFalse(seen.get("decline_port_open_during_dialog"))
         self.assertEqual(
             seen.get("decline_title"),
-            "MCP Bridge — Listen beyond this machine?",
+            "MCP Bridge: Listen beyond this machine?",
         )
         self.assertIn(f"{address}:{PORT}", seen.get("decline_text", ""))
         self.assertNotIn("No authentication", seen.get("decline_text", ""))

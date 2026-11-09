@@ -32,7 +32,7 @@ def _risk_dialog_text(entries, require_token=True, require_tls=True):
     if isinstance(entries, str):
         entries = [entries]
     unaccepted_endpoints = "\n".join(entries)
-    title = f"{DISPLAY_NAME} — Listen beyond this machine?"
+    title = f"{DISPLAY_NAME}: Listen beyond this machine?"
     bullets = []
     if not require_token:
         bullets.append(
@@ -109,7 +109,7 @@ def _token_dialog_text(token):
     """Return (title, text) for the one-time bearer token dialog."""
     from freecad.mcp_bridge import token_file
 
-    title = f"{DISPLAY_NAME} — Bearer token"
+    title = f"{DISPLAY_NAME}: Bearer token"
     body = f"""Copy this bearer token now. It will not be shown again.
 
 {token}
@@ -164,7 +164,7 @@ def _show_generated_token(token, parent=None):
 
 def _first_start_dialog_text(entries, require_token=True, require_tls=True):
     """Return (title, text) for the first start, with or without addresses."""
-    title = f"{DISPLAY_NAME} — Start the bridge?"
+    title = f"{DISPLAY_NAME}: Start the bridge?"
     permissions = (
         "Connected agents can run Python code in FreeCAD with your "
         "full permissions."
@@ -230,7 +230,7 @@ def _show_token_write_failure(exc, parent=None):
     import FreeCADGui as Gui
     from PySide.QtWidgets import QDialog, QMessageBox
 
-    title = f"{DISPLAY_NAME} — Bearer token"
+    title = f"{DISPLAY_NAME}: Bearer token"
     body = _token_write_failure_text(exc)
     host = parent if parent is not None else Gui.getMainWindow()
     box = QMessageBox(
@@ -413,9 +413,12 @@ def _status_button_on_color(rgb):
 
 
 def _refresh_status_button(running, tip):
-    """Set the status-bar button's presence, position, text and colour."""
+    """Set the status-bar button's presence, position, text, colour
+    and mode icon."""
     import FreeCADGui as Gui
     from PySide.QtGui import QPalette
+
+    from freecad.mcp_bridge import config, file_prompt
 
     mw = Gui.getMainWindow()
     if mw is None:
@@ -425,6 +428,10 @@ def _refresh_status_button(running, tip):
         return
     button.setText("MCP On" if running else "MCP Off")
     button.setToolTip(tip)
+    # The shield or the triangle. Both are one size, so the mode does
+    # not change the button's width. The menu's items carry no mark of
+    # the mode in force: this icon is what shows it.
+    button.setIcon(file_prompt.mode_icon(config.unrestricted()))
     if running:
         bg = mw.statusBar().palette().color(QPalette.Window)
         color = _status_button_on_color((bg.red(), bg.green(), bg.blue()))
@@ -502,9 +509,10 @@ def _ensure_status_button(mw):
     import FreeCAD as App
     import FreeCADGui as Gui
     from PySide.QtCore import QEvent, QObject, Qt
+    from PySide.QtGui import QIcon
     from PySide.QtWidgets import QMenu, QToolButton
 
-    from freecad.mcp_bridge import config
+    from freecad.mcp_bridge import config, file_prompt
 
     class _BarThemeFilter(QObject):
         _reported = False
@@ -536,7 +544,9 @@ def _ensure_status_button(mw):
 
     bar = mw.statusBar()
     button = bar.findChild(QToolButton, STATUS_BUTTON_OBJECT_NAME)
-    if not config.show_status_button():
+    if not file_prompt.status_button_shown(
+        config.show_status_button(), config.unrestricted()
+    ):
         if button is not None:
             bar.removeWidget(button)
             button.setParent(None)
@@ -562,10 +572,24 @@ def _ensure_status_button(mw):
     button.setObjectName(STATUS_BUTTON_OBJECT_NAME)
     button.setProperty("mcp_position", position)
     button.setAutoRaise(True)
-    button.setToolButtonStyle(Qt.ToolButtonTextOnly)
+    button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
     button.setPopupMode(QToolButton.MenuButtonPopup)
     menu = QMenu(button)
-    prefs_action = menu.addAction("Preferences")
+    ask_action = menu.addAction(
+        file_prompt.mode_icon(False), file_prompt.MENU_ASK
+    )
+    ask_action.triggered.connect(lambda *_: _on_mode_menu(False))
+    unrestricted_action = menu.addAction(
+        file_prompt.mode_icon(True), file_prompt.MENU_UNRESTRICTED
+    )
+    unrestricted_action.triggered.connect(lambda *_: _on_mode_menu(True))
+    prefs_action = menu.addAction(
+        QIcon(icon_path()), file_prompt.MENU_PREFERENCES
+    )
+    # Some platforms hide a menu's icons unless each item asks for its
+    # own. The two mode items are known by theirs.
+    for action in (ask_action, unrestricted_action, prefs_action):
+        action.setIconVisibleInMenu(True)
     prefs_action.triggered.connect(
         lambda *_: Gui.showPreferences(DISPLAY_NAME, 0)
     )
@@ -589,7 +613,8 @@ def _ensure_status_button(mw):
 
 
 def show_toggle_state():
-    """Show whether the bridge is on, on the toolbar and the status bar.
+    """Show whether the bridge is on, on the toolbar and the status bar,
+    and the permission mode on the status-bar button.
 
     The toolbar button stays pressed while it runs. Both use the same
     tooltip.
@@ -677,15 +702,100 @@ class _StatusBarPrefObserver:
 
         if param in (None, "Port", "ListenAddress"):
             config.migrate_legacy_port()
-        if param in (None, "ShowStatusButton", "StatusButtonPosition"):
+        if param in (
+            None,
+            "ShowStatusButton",
+            "StatusButtonPosition",
+            "PermissionMode",
+        ):
             show_toggle_state()
+        if param in (None, "PermissionMode"):
+            _sync_open_mode_box()
+
+
+def _apply_mode_choice(want_unrestricted, box):
+    """One choice of mode, from Preferences or the On/Off button's menu."""
+    from freecad.mcp_bridge import config, file_prompt
+
+    def ask():
+        parent = box.window() if box is not None else None
+        return file_prompt._ask_unrestricted(parent)
+
+    enabled = file_prompt.commit_mode(box, want_unrestricted, ask)
+    config.set_unrestricted(enabled)
+    _sync_open_mode_box()
+    show_toggle_state()
+
+
+def _on_mode_chosen(box, index):
+    """Choosing Unrestricted in Preferences asks once. Only Yes keeps it.
+
+    Choosing the mode already in force changes nothing and asks nothing.
+    """
+    from freecad.mcp_bridge import config
+    from freecad.mcp_bridge.constants import PERMISSION_MODE_UNRESTRICTED
+
+    want_unrestricted = index == PERMISSION_MODE_UNRESTRICTED
+    if want_unrestricted == config.unrestricted():
+        return
+    _apply_mode_choice(want_unrestricted, box)
+
+
+def _on_mode_menu(want_unrestricted):
+    """A mode chosen in the On/Off button's menu.
+
+    Unrestricted asks first, and No keeps Ask. Ask is at once.
+    Choosing the mode already in force does nothing.
+    """
+    from freecad.mcp_bridge import config
+
+    if want_unrestricted == config.unrestricted():
+        return
+    _apply_mode_choice(want_unrestricted, None)
+
+
+def _sync_open_mode_box():
+    """Keep an open Preferences box in step with the preference."""
+    try:
+        from PySide.QtWidgets import QComboBox
+        import FreeCADGui as Gui
+    except Exception:
+        return
+    from freecad.mcp_bridge import config, file_prompt
+
+    mw = Gui.getMainWindow()
+    if mw is None:
+        return
+    box = mw.findChild(QComboBox, "permissionModeComboBox")
+    file_prompt.set_mode_box_quietly(box, config.unrestricted())
+
+
+def _show_mode_in_box(box):
+    """Show the mode in the Preferences box, and connect it once.
+
+    The box has no preference entry of its own, so FreeCAD's OK writes
+    nothing for it: a confirmed choice is the only writer of the mode.
+    A box this never reaches shows Ask and changes nothing.
+    """
+    from freecad.mcp_bridge import config, file_prompt
+
+    file_prompt.set_mode_box_quietly(box, config.unrestricted())
+    if box.property("mcp_mode_hooked"):
+        return
+    box.setProperty("mcp_mode_hooked", True)
+    # activated fires on the user's choice only, never when the code
+    # sets the box.
+    box.activated.connect(
+        lambda index, box=box: _on_mode_chosen(box, index)
+    )
 
 
 def _install_pref_page_filter(mw):
-    """Connect `generateTokenButton` when the Preferences page opens."""
+    """Connect `generateTokenButton` and the Permission mode box when
+    the Preferences page opens."""
     try:
         from PySide.QtCore import QEvent, QObject
-        from PySide.QtWidgets import QApplication, QPushButton
+        from PySide.QtWidgets import QApplication, QComboBox, QPushButton
     except Exception:
         return
 
@@ -705,6 +815,12 @@ def _install_pref_page_filter(mw):
                 obj.clicked.connect(
                     lambda *_: generate_and_show_token(parent=obj.window())
                 )
+            if (
+                event.type() == QEvent.Show
+                and isinstance(obj, QComboBox)
+                and obj.objectName() == "permissionModeComboBox"
+            ):
+                _show_mode_in_box(obj)
             return False
 
     flt = _PrefPageFilter(mw)

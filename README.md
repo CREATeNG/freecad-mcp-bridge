@@ -81,9 +81,41 @@ Alternatively, stdio clients can run the shim directly with node, instead of ins
 
 Once connected, the agent has these tools:
 
-- **`execute_python(code)`** — run Python in your FreeCAD session. `App`/`FreeCAD` and `Gui`/`FreeCADGui` are pre-bound, and `__name__` is `"__main__"`, so a script's `if __name__ == "__main__":` block runs. Output (stdout, stderr, exceptions) is returned to the client and mirrored to FreeCAD's **Report view**, so you can watch its output in real time.
-- **`execute_python_file(filepath)`** — read a local `.py` file (absolute path) and run it in the same context, with `__file__` set to that path.
+- **`execute_python(code)`** — run Python in your FreeCAD session.
+  `App`/`FreeCAD` and `Gui`/`FreeCADGui` are pre-bound, and
+  `__name__` is `"__main__"`, so a script's
+  `if __name__ == "__main__":` block runs. Output (stdout, stderr,
+  exceptions) is returned to the client and mirrored to FreeCAD's
+  **Report view**, so you can watch its output in real time.
+- **`execute_python_file(filepath)`** — read a local `.py` file
+  (absolute path) and run its text in the same context, with
+  `__file__` set to the path.
 - **`get_output_page(job_token, page_no)`** — fetch the next page of a long-running script's output. The agent calls it while a response says `has_more: true`, as the tool's description tells it to.
+
+For both `execute_python` and `execute_python_file`: in the **Ask**
+permission mode, the default, FreeCAD shows the code in a dialog
+before it runs, and for a file its path and whole text. The dialog
+has **Unrestricted!**, **Run** and **Don't run**. **Run** runs the
+text shown. **Don't run** is the default, and comes back to the
+agent as an error. The call waits up to **Max response timeout**,
+dialog included. A run that finishes in that time comes back in the
+same reply. If you have not answered by then, the reply carries a
+job token, and the agent collects the output, or the decline, with
+`get_output_page`.
+
+**Unrestricted!** asks if you are really sure. Only **Yes** switches
+to the **Unrestricted** mode, in which any code an agent sends runs
+with your full permissions, unseen. The On/Off button on the status
+bar shows the mode beside **MCP On** or **MCP Off**: a shield with a
+tick for Ask, or a warning triangle for Unrestricted. The menu on
+the button's arrow has **Permissions: Ask** and **Permissions:
+Unrestricted**, each with its icon, above **MCP Bridge
+Preferences**. Choosing a mode there switches the same way as
+**Permission mode** under **Permissions** in
+**Edit → Preferences → MCP Bridge**: it asks before going
+Unrestricted, and goes back to Ask at once. In Preferences too, the
+choice applies at once, without OK. A click on the button, its icon
+or its words, turns the bridge on or off.
 
 ### Example prompts
 
@@ -117,9 +149,12 @@ change a model — for example:
   covers both. Each later start keeps a line in the status bar and
   **Report view**. A later new address beyond loopback asks once on
   its own.
-- **Max response timeout** — how long the bridge waits for each page's
-  output, counted from when that page starts (default 15 s). The agent
-  fetches the rest with `get_output_page`.
+- **Max response timeout** — how long the bridge waits for a page
+  (default 15 s). For code or a file an agent sends, that wait
+  includes the dialog, counted from the call. Keep it below the
+  client's own request limit, about 60 s for Claude Code. The
+  preference allows up to 600 s. The agent fetches the rest with
+  `get_output_page`.
 - **Max page size** — the most one page may be, as the JSON the agent
   reads, in units of 1,024 characters (default 32, that is 32,768). A
   newline counts as two characters. Larger output is split into pages
@@ -141,9 +176,15 @@ change a model — for example:
   Loopback entries use HTTP. The certificate must cover the address
   clients connect to. With this on and either file not set, starting
   with an entry beyond loopback fails and leaves the bridge off.
+- **Permission mode** — **Ask** (the default) shows you an agent's
+  code before it runs. **Unrestricted** runs it unseen, with your
+  full permissions. [What the AI can do](#what-the-ai-can-do) has
+  the rest.
 - **Show the On/Off button** — shows or hides the bridge's On/Off
-  button on FreeCAD's status bar (on by default). The **MCP Bridge**
-  toolbar button stays either way.
+  button on FreeCAD's status bar (on by default). While the
+  permission mode is Unrestricted, the button is shown whatever this
+  says, so Unrestricted stays shown on the status bar. The
+  **MCP Bridge** toolbar button stays either way.
 - **Position** — where the On/Off button sits among the right-hand
   status-bar items: right of FreeCAD's items (default) or left.
 

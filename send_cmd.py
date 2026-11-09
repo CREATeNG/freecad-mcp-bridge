@@ -5,6 +5,9 @@ Usage:
   python send_cmd.py <port> -f script.py
 
 The bridge must be running (MCP Bridge toolbar toggle on) in FreeCAD.
+In the Ask permission mode FreeCAD shows the code to the user first,
+and the output comes once they choose Run. In Unrestricted mode the
+code runs at once.
 Requests are sent as MCP protocol version 2026-07-28, with the bearer
 token from FREECAD_MCP_TOKEN_DIR/token, or <home>/.freecad-mcp-bridge/token.
 Stdlib only — runs on any Python 3, no FreeCAD or pip dependencies.
@@ -141,7 +144,8 @@ if __name__ == "__main__":
     except urllib.error.URLError as exc:
         port = sys.argv[1] if len(sys.argv) > 1 else "39280"
         sys.stderr.write(
-            f"Error: cannot reach FreeCAD MCP Bridge at http://127.0.0.1:{port}/mcp ({exc}). "
+            "Error: cannot reach FreeCAD MCP Bridge at "
+            f"http://127.0.0.1:{port}/mcp ({exc}). "
             "Is the bridge running (toolbar toggle on)?\n"
         )
         sys.exit(1)
