@@ -20,7 +20,7 @@ const SHIM = path.join(SHIM_DIR, "index.js");
 const readJson = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
 
 // A stand-in bridge: records each request, answers with reply(request).
-async function startBridge(reply, tlsOptions = null) {
+async function startBridge(reply, tlsOptions = null, host = "127.0.0.1") {
   const requests = [];
   const handler = (req, res) => {
     let body = "";
@@ -35,7 +35,7 @@ async function startBridge(reply, tlsOptions = null) {
     });
   };
   const server = tlsOptions ? https.createServer(tlsOptions, handler) : http.createServer(handler);
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  await new Promise((resolve) => server.listen(0, host, resolve));
   return { port: server.address().port, requests, close: () => server.close() };
 }
 
@@ -73,7 +73,8 @@ function startShim(port, extraEnv = {}, options = {}) {
   Object.assign(env, extraEnv);
   delete env.FREECAD_MCP_TOKEN_DIR;
   if (options.tokenDir) env.FREECAD_MCP_TOKEN_DIR = options.tokenDir;
-  const child = spawn(process.execPath, [SHIM], {
+  const nodeArgs = [...(options.nodeArgs || []), SHIM];
+  const child = spawn(process.execPath, nodeArgs, {
     env,
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -454,17 +455,19 @@ test("manifest.json declares optional FreeCAD machine, port, sensitive bearer to
   assert.equal(cfg.host.default, "127.0.0.1");
   assert.equal(cfg.host.title, "FreeCAD machine");
   assert.match(cfg.host.description, /127\.0\.0\.1 by default/);
+  assert.match(cfg.host.description, /localhost, ::1, and 127\.x\.x\.x are treated as loopback/);
   assert.equal(cfg.token.type, "string");
   assert.equal(cfg.token.sensitive, true);
   assert.equal(cfg.token.required, false);
   assert.equal(cfg.token.title, "Bearer token");
+  assert.match(cfg.token.description, /Optional on loopback/);
   assert.match(cfg.token.description, /at least 32 characters/);
   assert.match(cfg.token.description, /replaces that file for every client/);
-  assert.match(cfg.token.description, /Required for another machine/);
+  assert.match(cfg.token.description, /Required beyond loopback/);
   assert.equal(cfg.tls_cert_file.type, "file");
   assert.equal(cfg.tls_cert_file.required, false);
   assert.equal(cfg.tls_cert_file.title, "TLS certificate file (PEM)");
-  assert.match(cfg.tls_cert_file.description, /Leave blank on 127\.0\.0\.1/);
+  assert.match(cfg.tls_cert_file.description, /Leave blank on loopback/);
   assert.match(cfg.tls_cert_file.description, /trusts only that certificate/);
 });
 
@@ -907,10 +910,120 @@ test("a plain HTTP reply slower than 2 s still succeeds", async () => {
   bridge.close();
 });
 
+function makeDnsPreload(dir, hostname, ip) {
+  const preload = path.join(dir, "dns-preload.js");
+  fs.writeFileSync(
+    preload,
+    `const dns = require("node:dns");
+const orig = dns.lookup;
+dns.lookup = function(name, opts, cb) {
+  if (typeof opts === "function") { cb = opts; opts = {}; }
+  if (name === ${JSON.stringify(hostname)}) {
+    if (opts && opts.all) return process.nextTick(() => cb(null, [{ address: ${JSON.stringify(ip)}, family: 4 }]));
+    return process.nextTick(() => cb(null, ${JSON.stringify(ip)}, 4));
+  }
+  return orig.call(this, name, opts, cb);
+};
+`,
+    "utf8"
+  );
+  return preload;
+}
+
+test("localhost in any letter case, ::1, and 127.x.x.x are treated as loopback: plain HTTP, token read from the file, and a pasted token written back", async () => {
+  // 1. "localhost" and "LocalHost" connect to 127.0.0.1 over plain HTTP,
+  // read the token file, and write back a pasted token.
+  const bridgeV4 = await startBridge(echo, null, "127.0.0.1");
+  for (const spelling of ["localhost", "LocalHost", "LOCALHOST"]) {
+    const readShim = startShim(bridgeV4.port, { FREECAD_MCP_HOST: spelling }, { seedToken: TOKEN_OK });
+    readShim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call" }) + "\n");
+    const [readReply] = await readShim.waitForLines(1);
+    assert.equal(readReply.result.echoed, "tools/call");
+    assert.equal(bridgeV4.requests.at(-1).headers["authorization"], `Bearer ${TOKEN_OK}`);
+    assert.equal(bridgeV4.requests.at(-1).headers["host"], `127.0.0.1:${bridgeV4.port}`);
+    await readShim.stop();
+
+    const writeShim = startShim(
+      bridgeV4.port,
+      { FREECAD_MCP_HOST: spelling, FREECAD_MCP_TOKEN: TOKEN_NEW },
+      { seedToken: TOKEN_OK }
+    );
+    writeShim.send(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call" }) + "\n");
+    const [writeReply] = await writeShim.waitForLines(1);
+    assert.equal(writeReply.result.echoed, "tools/call");
+    assert.equal(bridgeV4.requests.at(-1).headers["authorization"], `Bearer ${TOKEN_NEW}`);
+    assert.equal(fs.readFileSync(writeShim.tokenFile, "utf8").trim(), TOKEN_NEW);
+    await writeShim.stop();
+  }
+  bridgeV4.close();
+
+  // 2. "::1" and "[::1]" connect to [::1] over plain HTTP, read the token
+  // file, and write back a pasted token.
+  const bridgeV6 = await startBridge(echo, null, "::1");
+  for (const spelling of ["::1", "[::1]"]) {
+    const readShim = startShim(bridgeV6.port, { FREECAD_MCP_HOST: spelling }, { seedToken: TOKEN_OK });
+    readShim.send(JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/call" }) + "\n");
+    const [readReply] = await readShim.waitForLines(1);
+    assert.equal(readReply.result.echoed, "tools/call");
+    assert.equal(bridgeV6.requests.at(-1).headers["authorization"], `Bearer ${TOKEN_OK}`);
+    assert.equal(bridgeV6.requests.at(-1).headers["host"], `[::1]:${bridgeV6.port}`);
+    await readShim.stop();
+
+    const writeShim = startShim(
+      bridgeV6.port,
+      { FREECAD_MCP_HOST: spelling, FREECAD_MCP_TOKEN: TOKEN_NEW },
+      { seedToken: TOKEN_OK }
+    );
+    writeShim.send(JSON.stringify({ jsonrpc: "2.0", id: 4, method: "tools/call" }) + "\n");
+    const [writeReply] = await writeShim.waitForLines(1);
+    assert.equal(writeReply.result.echoed, "tools/call");
+    assert.equal(bridgeV6.requests.at(-1).headers["authorization"], `Bearer ${TOKEN_NEW}`);
+    assert.equal(fs.readFileSync(writeShim.tokenFile, "utf8").trim(), TOKEN_NEW);
+    await writeShim.stop();
+  }
+  bridgeV6.close();
+
+  // 3. Another 127.x.x.x address (127.0.0.2; falls back to 127.0.0.1 if the
+  // OS does not alias 127.0.0.2 on loopback, such as default macOS lo0).
+  let bridgeAlt = null;
+  try {
+    bridgeAlt = await startBridge(echo, null, "127.0.0.2");
+  } catch {
+    bridgeAlt = null;
+  }
+  if (bridgeAlt) {
+    const readShim = startShim(
+      bridgeAlt.port,
+      { FREECAD_MCP_HOST: "127.0.0.2" },
+      { seedToken: TOKEN_OK }
+    );
+    readShim.send(JSON.stringify({ jsonrpc: "2.0", id: 5, method: "tools/call" }) + "\n");
+    const [readReply] = await readShim.waitForLines(1);
+    assert.equal(readReply.result.echoed, "tools/call");
+    assert.equal(bridgeAlt.requests.at(-1).headers["authorization"], `Bearer ${TOKEN_OK}`);
+    assert.equal(bridgeAlt.requests.at(-1).headers["host"], `127.0.0.2:${bridgeAlt.port}`);
+    await readShim.stop();
+
+    const writeShim = startShim(
+      bridgeAlt.port,
+      { FREECAD_MCP_HOST: "127.0.0.2", FREECAD_MCP_TOKEN: TOKEN_NEW },
+      { seedToken: TOKEN_OK }
+    );
+    writeShim.send(JSON.stringify({ jsonrpc: "2.0", id: 6, method: "tools/call" }) + "\n");
+    const [writeReply] = await writeShim.waitForLines(1);
+    assert.equal(writeReply.result.echoed, "tools/call");
+    assert.equal(bridgeAlt.requests.at(-1).headers["authorization"], `Bearer ${TOKEN_NEW}`);
+    assert.equal(fs.readFileSync(writeShim.tokenFile, "utf8").trim(), TOKEN_NEW);
+    await writeShim.stop();
+    bridgeAlt.close();
+  }
+});
+
 test("for another machine, the shim connects over HTTPS trusting only the given certificate, uses the pasted token, and does not write the local token file", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shim-remote-ok-"));
   try {
-    const serverCert = makeSelfSignedCert(tmpDir, "remote", "127.0.0.1", "localhost");
+    const preload = makeDnsPreload(tmpDir, "freecad.lan", "127.0.0.1");
+    const serverCert = makeSelfSignedCert(tmpDir, "remote", "127.0.0.1", "freecad.lan");
     const bridge = await startBridge(echo, {
       cert: serverCert.cert,
       key: serverCert.key,
@@ -918,11 +1031,11 @@ test("for another machine, the shim connects over HTTPS trusting only the given 
     const shim = startShim(
       bridge.port,
       {
-        FREECAD_MCP_HOST: "localhost",
+        FREECAD_MCP_HOST: "freecad.lan",
         FREECAD_MCP_TOKEN: TOKEN_NEW,
         FREECAD_MCP_TLS_CERT_FILE: serverCert.certPath,
       },
-      { seedToken: TOKEN_OK }
+      { seedToken: TOKEN_OK, nodeArgs: ["--require", preload] }
     );
     shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call" }) + "\n");
     const [reply] = await shim.waitForLines(1);
@@ -930,7 +1043,7 @@ test("for another machine, the shim connects over HTTPS trusting only the given 
     assert.equal(pastedText(reply.result), "");
     assert.equal(bridge.requests.length, 1);
     assert.equal(bridge.requests[0].headers["authorization"], `Bearer ${TOKEN_NEW}`);
-    assert.equal(bridge.requests[0].headers["host"], `localhost:${bridge.port}`);
+    assert.equal(bridge.requests[0].headers["host"], `freecad.lan:${bridge.port}`);
     // The local token file stays untouched and no pasted record is written.
     assert.equal(fs.readFileSync(shim.tokenFile, "utf8").trim(), TOKEN_OK);
     assert.equal(fs.existsSync(path.join(shim.tokenDir, "pasted")), false);
@@ -944,7 +1057,7 @@ test("for another machine, the shim connects over HTTPS trusting only the given 
 test("for another machine, a tools/call without a certificate or without a pasted token fails clearly without contacting the bridge", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shim-remote-missing-"));
   try {
-    const serverCert = makeSelfSignedCert(tmpDir, "remote", "127.0.0.1", "localhost");
+    const serverCert = makeSelfSignedCert(tmpDir, "remote", "127.0.0.1", "freecad.lan");
     const bridge = await startBridge(echo, {
       cert: serverCert.cert,
       key: serverCert.key,
@@ -1017,8 +1130,9 @@ test("for another machine, a tools/call without a certificate or without a paste
 test("for another machine, an untrusted certificate, an uncovered host, or a 401 names the remote setting", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shim-remote-fail-"));
   try {
-    const serverCert = makeSelfSignedCert(tmpDir, "remote", "127.0.0.1", "localhost");
-    const otherCert = makeSelfSignedCert(tmpDir, "other", "127.0.0.1", "localhost");
+    const preload = makeDnsPreload(tmpDir, "freecad.lan", "127.0.0.1");
+    const serverCert = makeSelfSignedCert(tmpDir, "remote", "127.0.0.1", "freecad.lan");
+    const otherCert = makeSelfSignedCert(tmpDir, "other", "127.0.0.1", "freecad.lan");
     const uncoveredCert = makeSelfSignedCert(tmpDir, "uncovered", "192.0.2.1");
 
     // 1. Different certificate than the bridge serves.
@@ -1029,11 +1143,11 @@ test("for another machine, an untrusted certificate, an uncovered host, or a 401
     const untrusted = startShim(
       httpsBridge.port,
       {
-        FREECAD_MCP_HOST: "localhost",
+        FREECAD_MCP_HOST: "freecad.lan",
         FREECAD_MCP_TOKEN: TOKEN_OK,
         FREECAD_MCP_TLS_CERT_FILE: otherCert.certPath,
       },
-      { prepareTokenDir: false }
+      { prepareTokenDir: false, nodeArgs: ["--require", preload] }
     );
     untrusted.send(
       JSON.stringify({
@@ -1046,7 +1160,7 @@ test("for another machine, an untrusted certificate, an uncovered host, or a 401
     const [untrustedReply] = await untrusted.waitForLines(1);
     const untrustedError = JSON.parse(untrustedReply.result.content[0].text).error;
     assert.match(untrustedError, /TLS connection failed/);
-    assert.match(untrustedError, /covers localhost/);
+    assert.match(untrustedError, /covers freecad\.lan/);
     await untrusted.stop();
     httpsBridge.close();
 
@@ -1058,11 +1172,11 @@ test("for another machine, an untrusted certificate, an uncovered host, or a 401
     const uncovered = startShim(
       uncoveredBridge.port,
       {
-        FREECAD_MCP_HOST: "localhost",
+        FREECAD_MCP_HOST: "freecad.lan",
         FREECAD_MCP_TOKEN: TOKEN_OK,
         FREECAD_MCP_TLS_CERT_FILE: uncoveredCert.certPath,
       },
-      { prepareTokenDir: false }
+      { prepareTokenDir: false, nodeArgs: ["--require", preload] }
     );
     uncovered.send(
       JSON.stringify({
@@ -1075,7 +1189,7 @@ test("for another machine, an untrusted certificate, an uncovered host, or a 401
     const [uncoveredReply] = await uncovered.waitForLines(1);
     const uncoveredError = JSON.parse(uncoveredReply.result.content[0].text).error;
     assert.match(uncoveredError, /TLS connection failed/);
-    assert.match(uncoveredError, /covers localhost/);
+    assert.match(uncoveredError, /covers freecad\.lan/);
     await uncovered.stop();
     uncoveredBridge.close();
 
@@ -1087,11 +1201,11 @@ test("for another machine, an untrusted certificate, an uncovered host, or a 401
     const unauthorized = startShim(
       authBridge.port,
       {
-        FREECAD_MCP_HOST: "localhost",
+        FREECAD_MCP_HOST: "freecad.lan",
         FREECAD_MCP_TOKEN: TOKEN_OK,
         FREECAD_MCP_TLS_CERT_FILE: serverCert.certPath,
       },
-      { prepareTokenDir: false }
+      { prepareTokenDir: false, nodeArgs: ["--require", preload] }
     );
     unauthorized.send(
       JSON.stringify({
@@ -1105,7 +1219,7 @@ test("for another machine, an untrusted certificate, an uncovered host, or a 401
     const authError = JSON.parse(authReply.result.content[0].text).error;
     assert.equal(
       authError,
-      `FreeCAD at https://localhost:${authBridge.port}/mcp refused the bearer token. ` +
+      `FreeCAD at https://freecad.lan:${authBridge.port}/mcp refused the bearer token. ` +
         "Check that Bearer token in the FreeCAD MCP Bridge extension settings matches FreeCAD's token."
     );
     await unauthorized.stop();

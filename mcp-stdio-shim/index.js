@@ -5,19 +5,20 @@
  * A zero-dependency stdio <-> HTTP/HTTPS proxy. Claude Desktop speaks
  * MCP over stdio (newline-delimited JSON-RPC); this forwards each
  * tools/call to the addon's endpoint on FREECAD_MCP_HOST (127.0.0.1 by
- * default). On 127.0.0.1 it connects to http://127.0.0.1:<port>/mcp
- * (or https://127.0.0.1:<port>/mcp when FREECAD_MCP_TLS_CERT_FILE is
- * set) and sends Authorization: Bearer from the token file in
- * FREECAD_MCP_TOKEN_DIR, or <home>/.freecad-mcp-bridge otherwise. A
- * pasted token of at least 32 characters is written there only while
- * the host is 127.0.0.1, only when its hash differs from the hash
- * stored beside the token, and only when the folder already exists. A
- * problem with that paste is a note on the tool result; the call is
- * still sent. For another machine, the shim connects to
- * https://<host>:<port>/mcp, requires both FREECAD_MCP_TLS_CERT_FILE
- * and FREECAD_MCP_TOKEN, trusts only that certificate, and uses the
- * pasted token without writing to the local token file. The JSON reply
- * is unwrapped and written back on stdout.
+ * default; "localhost" in any letter case is taken as 127.0.0.1, and
+ * 127.x.x.x and ::1 are treated as loopback). On loopback it connects
+ * to http://<host>:<port>/mcp (or https://<host>:<port>/mcp when
+ * FREECAD_MCP_TLS_CERT_FILE is set) and sends Authorization: Bearer
+ * from the token file in FREECAD_MCP_TOKEN_DIR, or
+ * <home>/.freecad-mcp-bridge otherwise. A pasted token of at least 32
+ * characters is written there only on loopback, only when its hash
+ * differs from the hash stored beside the token, and only when the
+ * folder already exists. A problem with that paste is a note on the
+ * tool result; the call is still sent. Beyond loopback, the shim
+ * connects to https://<host>:<port>/mcp, requires both
+ * FREECAD_MCP_TLS_CERT_FILE and FREECAD_MCP_TOKEN, trusts only that
+ * certificate, and uses the pasted token without writing to the local
+ * token file. The JSON reply is unwrapped and written back on stdout.
  *
  * The shim answers initialize and tools/list itself (tools.json is a
  * copy of the addon's tool list) and does not contact the bridge for
@@ -25,8 +26,8 @@
  * server/discover gets a method-not-found error naming the method,
  * which tells a client that also speaks 2025-11-25 to fall back to
  * initialize. Only a tools/call is sent on. When that call finds
- * the bridge unreachable, missing a certificate or token for another
- * machine, serving HTTPS with no certificate set, returning 401, or
+ * the bridge unreachable, missing a certificate or token beyond
+ * loopback, serving HTTPS with no certificate set, returning 401, or
  * failing TLS, the tool result's error says which. A ping is answered
  * locally with an empty result. A notification is not sent and gets no
  * reply. Any other method gets a method-not-found error naming the
@@ -36,6 +37,7 @@
 const crypto = require("crypto");
 const fs = require("fs");
 const https = require("https");
+const net = require("net");
 const os = require("os");
 const path = require("path");
 const tls = require("tls");
@@ -46,13 +48,28 @@ function envSetting(name) {
   return val;
 }
 
+const loopbackAddresses = new net.BlockList();
+loopbackAddresses.addSubnet("127.0.0.0", 8, "ipv4");
+loopbackAddresses.addAddress("::1", "ipv6");
+
+function isLoopbackAddress(host) {
+  const family = net.isIP(host);
+  if (family === 4) return loopbackAddresses.check(host, "ipv4");
+  if (family === 6) return loopbackAddresses.check(host, "ipv6");
+  return false;
+}
+
 const RAW_HOST = envSetting("FREECAD_MCP_HOST") || "127.0.0.1";
-const BARE_HOST =
+const UNBRACKETED_HOST =
   RAW_HOST.startsWith("[") && RAW_HOST.endsWith("]")
     ? RAW_HOST.slice(1, -1)
     : RAW_HOST;
+const BARE_HOST =
+  UNBRACKETED_HOST.toLowerCase() === "localhost"
+    ? "127.0.0.1"
+    : UNBRACKETED_HOST;
 const URL_HOST = BARE_HOST.includes(":") ? `[${BARE_HOST}]` : BARE_HOST;
-const IS_DEFAULT_HOST = BARE_HOST === "127.0.0.1";
+const IS_DEFAULT_HOST = isLoopbackAddress(BARE_HOST);
 const PORT = envSetting("FREECAD_MCP_PORT") || "39280";
 const PASTED_TOKEN = envSetting("FREECAD_MCP_TOKEN");
 const MIN_TOKEN_LENGTH = 32;

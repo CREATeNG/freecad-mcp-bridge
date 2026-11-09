@@ -54,17 +54,18 @@ The server is off until you toggle it on, each session — click the button agai
    **Advanced settings → Install extension** to select the file.
    Accept the installation warning to continue.
 3. In the Extensions list, open **FreeCAD MCP Bridge**.
-   **FreeCAD machine** is `127.0.0.1` by default, and **port** is
+   **FreeCAD machine** is `127.0.0.1` by default (`localhost`, `::1`,
+   and `127.x.x.x` are treated as loopback too), and **port** is
    `39280`, the default; set them to match an entry in FreeCAD's
    **Listen addresses** and check that the extension is **Enabled**.
-   On `127.0.0.1`, leave **Bearer token** and
+   On loopback, leave **Bearer token** and
    **TLS certificate file (PEM)** blank: the first time the bridge
    starts, FreeCAD writes the token to a file only you can read,
    the extension sends the token from that file, and the bridge
    serves HTTP on loopback (a certificate set against plain HTTP
    makes the connection fail). Paste a token of at least 32
    characters into **Bearer token** only to replace that token file,
-   for every client; a shorter paste is ignored. For another machine,
+   for every client; a shorter paste is ignored. Beyond loopback,
    paste FreeCAD's bearer token into **Bearer token** (where it is
    used by the extension only and not written to the local token
    file) and set **TLS certificate file (PEM)** to FreeCAD's
@@ -75,10 +76,10 @@ The server is off until you toggle it on, each session — click the button agai
 Claude Desktop can't open an HTTP endpoint the way Claude Code and
 others can, so the extension runs a small stdio↔HTTP/HTTPS relay (the
 shim in [`mcp-stdio-shim/`](mcp-stdio-shim/)). The extension forwards
-to `http://127.0.0.1:<PORT>/mcp` on `127.0.0.1` (or
-`https://127.0.0.1:<PORT>/mcp` when a certificate file is set), and to
-`https://<HOST>:<PORT>/mcp` when **FreeCAD machine** is another
-machine.
+to `http://<HOST>:<PORT>/mcp` on loopback (`localhost` connects to
+`127.0.0.1`; or `https://<HOST>:<PORT>/mcp` when a certificate file is
+set), and to `https://<HOST>:<PORT>/mcp` when **FreeCAD machine** is
+beyond loopback.
 
 Alternatively, stdio clients can run the shim directly with node, instead of installing the bundle.
 
