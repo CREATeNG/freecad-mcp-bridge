@@ -191,6 +191,9 @@ def _watch_for_stop(stop_file: str, timeout_s: float) -> None:
 def _run() -> None:
     from freecad.mcp_bridge import config
 
+    # The suite drives the bridge. Trust any code stays on so the
+    # calls are not waiting on a dialog. A dialog test turns it off.
+    config.set_trust_any_code(True)
     common.log_group_start("Serve the bridge for acceptance tests")
     common.log_opengl_info()
     ready_file = common.env("ACCEPTANCE_READY_FILE", "")

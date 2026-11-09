@@ -29,26 +29,27 @@ addon, and there are no user-side dependencies beyond the addon itself.
 
 The MCP server exposes three tools (schemas in `tools.py`).
 
-- **`execute_python(code)`** — initiates a job that runs Python inside the live FreeCAD
-  session, with `App`/`Gui` pre-bound and `__name__` set to `"__main__"`. Stdout and stderr
-  are captured as tagged output chunks.
+- **`execute_python(code)`** — runs Python in the live FreeCAD
+  session, with `App`/`Gui` pre-bound and `__name__` set to
+  `"__main__"`. Unless **Trust any code** is on, FreeCAD shows
+  the code first. The call waits up to **Max response timeout**,
+  dialog included. If the user has not answered, the call
+  returns a notice and a `job_token`, and `get_output_page`
+  collects the output or the decline. Stdout and stderr are
+  captured as tagged chunks.
 - **`execute_python_file(filepath)`** — reads a local file
-  (absolute path) once. Unless **Trust any file** is on, FreeCAD
-  shows a dialog with that path and the whole text, and the
-  buttons **Run**, **Don't run** (the default), and **Trust any
-  file**. The job runs exactly that text, with `__file__` set to
-  the path. **Don't run** returns `has_more: false`, an `error`
-  saying the user declined, and `page: []`, with no job.
-  **Trust any file** opens a second dialog. Only **Yes** turns
-  the preference on, and the shown file then runs. While it is
-  on, a permanent label beside the On/Off button says
-  `MCP: trusts any file`, even when that button is hidden,
-  and **Trust any file** in Preferences turns it off. It is off
-  by default and
-  stays on until turned off. The wait for the dialog is on the
-  main thread and ends before the response timeout starts, so
-  that wait does not count against **Max response timeout**.
-  If the file cannot be read, the tool returns `has_more: false`,
+  (absolute path) once and shows that path and the whole text
+  in the same dialog, with the same timing and the same
+  **Trust any code** preference. **Run** runs that text, with
+  `__file__` set to the path. **Don't run** is the default and
+  comes back as an error. **Trust any code** asks again. Only
+  **Yes** turns it on, and the shown text then runs. The
+  status bar always shows `MCP: asks before code`, or, while
+  trust is on, the warning triangle and `MCP: trusts any code`.
+  Clicking the marker toggles trust the same way as the
+  preference under **Permissions**. It is off by default.
+  The dialog counts against **Max response timeout**. If the
+  file cannot be read, the tool returns `has_more: false`,
   an `error` message, and `page: []` — no job, no page history,
   and no `job_token`.
 - **`get_output_page(job_token, page_no)`** — fetches the requested page from a job's page
@@ -80,9 +81,9 @@ client that keeps only the start can still continue.
 
 **Non-blocking**
 
-`execute_python`, and `execute_python_file` after its dialog (or at
-once when **Trust any file** is on), queue a job for the Qt main
-thread, then return a response
+`execute_python` and `execute_python_file`, once the user has
+answered or **Trust any code** is on, queue a job for the Qt
+main thread, then return a response
 — even if the job is still queued or running. The response carries the
 job's first page when the job has produced output or finished; a quiet
 job's first response is empty and unnumbered (see *Page history*). The
@@ -90,10 +91,13 @@ agent polls for remaining output via `get_output_page`. FreeCAD
 operations can be long-running; this pattern gives the agent an
 acknowledgment rather than a silent wait that may look like a hang.
 
-The timeout bounds the wait for output, not the whole request: its clock
-starts when the handler begins to drain the output queue, after any
-file read, the queueing and the wait for the job's page-history lock,
-and runs while the handler drains the queue.
+For these two tools the first answer's clock starts when the call
+does and includes the dialog. It is bounded by **Max response
+timeout**. An answer in that time is the output, or the decline.
+Otherwise the answer is a notice and a `job_token`. A later page,
+including one fetched while the dialog is still open, waits up
+to that same timeout. Replaying the notice's own page returns
+at once and does not drain.
 
 **Page bounds**
 
@@ -710,6 +714,6 @@ automatically.
 | Bearer token file | `<home>/.freecad-mcp-bridge/token` | Every listener requires `Authorization: Bearer <token>`; FreeCAD writes the file at the first start and on **Generate new token**, shows the token once, and does not keep a hash; a mismatch reads the file again before refusing |
 | Require TLS (HTTPS) | `true` | Serves HTTPS on non-loopback entries using `TlsCertFile` and `TlsKeyFile`; loopback stays HTTP; fails to start on an entry beyond loopback if enabled without valid certificate and key files |
 | TLS certificate file (PEM) / TLS private key file (PEM) | `""` | PEM certificate (`TlsCertFile`) and private key (`TlsKeyFile`) paths for HTTPS |
-| Max response timeout (s) | 15 | Max wait in `execute_python` and `get_output_page` before returning with `has_more: true` |
+| Max response timeout (s) | 15 | Max wait for the first answer of `execute_python` and `execute_python_file`, dialog included, and for each later page, before returning with `has_more: true` |
 | Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |
 | Page history retention (min) | 5 | How long output stays readable after the job finishes running, or after its last valid page fetch or replay. |

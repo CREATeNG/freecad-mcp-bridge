@@ -407,19 +407,28 @@
         </property>
        </widget>
       </item>
-      <item row="3" column="0" colspan="2">
-       <widget class="Gui::PrefCheckBox" name="trustAnyFileCheckBox">
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QGroupBox" name="permissionsGroup">
+     <property name="title">
+      <string>Permissions</string>
+     </property>
+     <layout class="QVBoxLayout" name="permissionsLayout">
+      <item>
+       <widget class="Gui::PrefCheckBox" name="trustAnyCodeCheckBox">
         <property name="toolTip">
-         <string>Every file an agent sends runs unseen, with your full permissions.</string>
+         <string>Any code an agent sends runs unseen, with your full permissions.</string>
         </property>
         <property name="text">
-         <string>Trust any file</string>
+         <string>Trust any code</string>
         </property>
         <property name="checked">
          <bool>false</bool>
         </property>
         <property name="prefEntry" stdset="0">
-         <cstring>TrustAnyFile</cstring>
+         <cstring>TrustAnyCode</cstring>
         </property>
         <property name="prefPath" stdset="0">
          <cstring>Mod/freecad-mcp-bridge</cstring>

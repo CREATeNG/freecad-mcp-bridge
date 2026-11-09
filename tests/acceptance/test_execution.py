@@ -11,7 +11,11 @@ import threading
 import time
 import unittest
 
-from freecad.mcp_bridge.paging import NOT_ANSWERED_YET, SHOWN_NOTICE
+from freecad.mcp_bridge.paging import (
+    CODE_NOTICE,
+    NOT_ANSWERED_YET,
+    SHOWN_NOTICE,
+)
 from tests.acceptance import mcp_client as mcp
 
 # Prints a marker, then, still running, waits for FreeCAD's Report view to
@@ -173,7 +177,11 @@ class ScriptFileTests(unittest.TestCase):
                     "print(App is FreeCAD, Gui is FreeCADGui, __name__)\n"
                 )
             output = mcp.text(mcp.follow(mcp.execute_file(path)))
-        skip = {SHOWN_NOTICE.strip(), NOT_ANSWERED_YET.strip()}
+        skip = {
+            SHOWN_NOTICE.strip(),
+            CODE_NOTICE.strip(),
+            NOT_ANSWERED_YET.strip(),
+        }
         lines = [
             line for line in output.splitlines() if line not in skip
         ]

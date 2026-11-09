@@ -162,7 +162,14 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         )
 
         if name == "execute_python":
-            self._run_code(req_id, version, args.get("code", ""), drain_args)
+            self._ask_or_run(
+                req_id,
+                version,
+                args.get("code", ""),
+                None,
+                time.monotonic(),
+                drain_args,
+            )
         elif name == "execute_python_file":
             started = time.monotonic()
             filepath = args.get("filepath", "")
@@ -181,30 +188,9 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                 )
                 return
             shown = os.path.abspath(filepath)
-            if config.trust_any_file():
-                self._run_shown(
-                    req_id, version, code, shown, started, drain_args
-                )
-                return
-            token, output_queue = paging.start_page()
-            paging.mark_awaiting_user(token)
-            retention_ms = config.max_history_retention_ms()
-            threading.Thread(
-                target=self._ask_file,
-                args=(shown, code, token, output_queue, retention_ms),
-                name="mcp-file-dialog",
-                daemon=True,
-            ).start()
-            # The clock started at the call, so the dialog counts.
-            result = paging.fetch(
-                token,
-                0,
-                _remaining_ms(started, drain_args[0]),
-                drain_args[1],
+            self._ask_or_run(
+                req_id, version, code, shown, started, drain_args
             )
-            if result.pop("awaiting_user", False):
-                result = paging.remember_shown_notice(token)
-            self._send_tool_result(req_id, version, result)
         elif name == "get_output_page":
             page_no = _as_page_no(args.get("page_no"))
             if page_no is None:
@@ -227,6 +213,41 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                     f"Unknown tool: {name}",
                 ),
             )
+
+    def _ask_or_run(
+        self, req_id, version, code, shown, started, drain_args
+    ):
+        """Ask, unless Trust any code is on, then run what was shown.
+
+        `shown` is the file path, or None for inline code. The timeout
+        counts from `started`, so the dialog is inside it.
+        """
+        if config.trust_any_code():
+            self._run_shown(
+                req_id, version, code, shown, started, drain_args
+            )
+            return
+        token, output_queue = paging.start_page()
+        paging.mark_awaiting_user(token)
+        retention_ms = config.max_history_retention_ms()
+        threading.Thread(
+            target=self._ask_file,
+            args=(shown, code, token, output_queue, retention_ms),
+            name="mcp-code-dialog",
+            daemon=True,
+        ).start()
+        result = paging.fetch(
+            token,
+            0,
+            _remaining_ms(started, drain_args[0]),
+            drain_args[1],
+        )
+        if result.pop("awaiting_user", False):
+            notice = (
+                paging.CODE_NOTICE if shown is None else paging.SHOWN_NOTICE
+            )
+            result = paging.remember_shown_notice(token, notice)
+        self._send_tool_result(req_id, version, result)
 
     def _run_shown(
         self, req_id, version, code, shown, started, drain_args

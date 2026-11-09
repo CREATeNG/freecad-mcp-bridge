@@ -36,6 +36,7 @@ SENTINEL = object()
 # The first answer when the user has not answered within the timeout.
 # True whether or not this file's dialog is the one on screen.
 SHOWN_NOTICE = "This file is waiting for the user's answer in FreeCAD.\n"
+CODE_NOTICE = "This code is waiting for the user's answer in FreeCAD.\n"
 NOT_ANSWERED_YET = "The user has not answered yet.\n"
 
 _BUFFER = {}
@@ -117,9 +118,9 @@ def decline_job(token, message, retention_ms) -> None:
         entry["queue"].put(SENTINEL)
 
 
-def remember_shown_notice(token):
-    """Store the shown-file notice as the next page and return it."""
-    page = [{"stream": "stdout", "text": SHOWN_NOTICE}]
+def remember_shown_notice(token, text=None):
+    """Store the waiting notice as the next page and return it."""
+    page = [{"stream": "stdout", "text": text or SHOWN_NOTICE}]
     with _BUFFER_LOCK:
         entry = _BUFFER.get(token)
         if entry is None:

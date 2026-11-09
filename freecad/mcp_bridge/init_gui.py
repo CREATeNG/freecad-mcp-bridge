@@ -402,53 +402,55 @@ class MCPBridgeCommand:
 
 
 TRUST_LABEL_NAME = "MCPBridgeTrustLabel"
-TRUST_LABEL_TEXT = "MCP: trusts any file"
 
 
 def refresh_trust_marker():
-    """Show or clear the permanent trust label beside the On/Off button."""
+    """Show the permanent trust control beside the On/Off button."""
     import FreeCADGui as Gui
 
     try:
-        from PySide.QtWidgets import QLabel, QToolButton
+        from PySide.QtCore import Qt
+        from PySide.QtGui import QIcon
+        from PySide.QtWidgets import QStyle, QToolButton
     except Exception:
         return
 
-    from freecad.mcp_bridge import config
+    from freecad.mcp_bridge import config, file_prompt
     from freecad.mcp_bridge.constants import STATUS_BUTTON_OBJECT_NAME
-    from freecad.mcp_bridge.file_prompt import trust_label_visible
 
     mw = Gui.getMainWindow()
     if mw is None:
         return
     bar = mw.statusBar()
-    label = bar.findChild(QLabel, TRUST_LABEL_NAME)
+    marker = bar.findChild(QToolButton, TRUST_LABEL_NAME)
     button = bar.findChild(QToolButton, STATUS_BUTTON_OBJECT_NAME)
-    if not trust_label_visible(config.trust_any_file()):
-        if label is not None:
-            bar.removeWidget(label)
-            label.hide()
-            label.setParent(None)
-            label.deleteLater()
-        return
-    if label is None:
-        label = QLabel(TRUST_LABEL_TEXT, bar)
-        label.setObjectName(TRUST_LABEL_NAME)
+    if marker is None:
+        marker = QToolButton(bar)
+        marker.setObjectName(TRUST_LABEL_NAME)
+        marker.setAutoRaise(True)
+        marker.clicked.connect(_on_marker_clicked)
+    trust_on = config.trust_any_code()
+    marker.setText(file_prompt.marker_text(trust_on))
+    if file_prompt.marker_warns(trust_on):
+        icon = marker.style().standardIcon(QStyle.SP_MessageBoxWarning)
+        marker.setIcon(icon)
+        marker.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
     else:
-        label.setText(TRUST_LABEL_TEXT)
-    if button is not None and button.parent() is bar:
-        normal, permanent = _status_bar_widgets(bar)
+        marker.setIcon(QIcon())
+        marker.setToolButtonStyle(Qt.ToolButtonTextOnly)
+    if button is not None and button.parent() is bar and button is not marker:
+        _normal, permanent = _status_bar_widgets(bar)
         if permanent is not None and button in permanent:
             index = permanent.index(button) + 1
-            bar.removeWidget(label)
-            bar.insertPermanentWidget(index, label)
+            bar.removeWidget(marker)
+            bar.insertPermanentWidget(index, marker)
         else:
-            bar.removeWidget(label)
-            bar.addPermanentWidget(label)
+            bar.removeWidget(marker)
+            bar.addPermanentWidget(marker)
     else:
-        bar.removeWidget(label)
-        bar.addPermanentWidget(label)
-    label.show()
+        bar.removeWidget(marker)
+        bar.addPermanentWidget(marker)
+    marker.show()
 
 
 def _status_button_on_color(rgb):
@@ -732,32 +734,53 @@ class _StatusBarPrefObserver:
             config.migrate_legacy_port()
         if param in (None, "ShowStatusButton", "StatusButtonPosition"):
             show_toggle_state()
-        if param in (None, "TrustAnyFile"):
+        if param in (None, "TrustAnyCode"):
             refresh_trust_marker()
+            _sync_open_checkbox()
+
+
+def _apply_trust_gesture(want_on, box):
+    """One click, from the checkbox or the status-bar marker."""
+    from freecad.mcp_bridge import config, file_prompt
+
+    def ask():
+        parent = box.window() if box is not None else None
+        return file_prompt._ask_trust(parent)
+
+    enabled = file_prompt.commit_checkbox(box, want_on, ask)
+    config.set_trust_any_code(enabled)
+    _sync_open_checkbox()
+    refresh_trust_marker()
 
 
 def _on_trust_toggled(box, checked):
-    """Ticking Trust any file asks first. Only Yes leaves it ticked."""
+    """Ticking Trust any code asks once. Only Yes leaves it ticked."""
+    if box.signalsBlocked():
+        return
+    _apply_trust_gesture(checked, box)
+
+
+def _on_marker_clicked():
+    """The status-bar marker toggles trust the same way as the tick."""
+    from freecad.mcp_bridge import config
+
+    _apply_trust_gesture(not config.trust_any_code(), None)
+
+
+def _sync_open_checkbox():
+    """Keep an open Preferences tick in step with the preference."""
+    try:
+        from PySide.QtWidgets import QCheckBox
+        import FreeCADGui as Gui
+    except Exception:
+        return
     from freecad.mcp_bridge import config, file_prompt
 
-    if box.property("mcp_trust_applying"):
+    mw = Gui.getMainWindow()
+    if mw is None:
         return
-    if not checked:
-        config.set_trust_any_file(False)
-        refresh_trust_marker()
-        return
-    box.setProperty("mcp_trust_applying", True)
-    box.setChecked(False)
-    box.setProperty("mcp_trust_applying", False)
-    config.set_trust_any_file(False)
-    answer = file_prompt._ask_trust(box.window())
-    sticks = file_prompt.trust_checkbox_sticks(True, answer)
-    if sticks:
-        config.set_trust_any_file(True)
-        box.setProperty("mcp_trust_applying", True)
-        box.setChecked(True)
-        box.setProperty("mcp_trust_applying", False)
-    refresh_trust_marker()
+    box = mw.findChild(QCheckBox, "trustAnyCodeCheckBox")
+    file_prompt.set_checkbox_quietly(box, config.trust_any_code())
 
 
 def _install_pref_page_filter(mw):
@@ -787,7 +810,7 @@ def _install_pref_page_filter(mw):
             if (
                 event.type() == QEvent.Show
                 and isinstance(obj, QCheckBox)
-                and obj.objectName() == "trustAnyFileCheckBox"
+                and obj.objectName() == "trustAnyCodeCheckBox"
                 and not obj.property("mcp_trust_hooked")
             ):
                 obj.setProperty("mcp_trust_hooked", True)

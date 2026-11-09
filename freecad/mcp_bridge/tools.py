@@ -9,8 +9,13 @@ EXECUTE_PYTHON = {
     "title": "Execute Python",
     "description": (
         "Execute Python code inside the running FreeCAD GUI process. "
-        "'App'/'FreeCAD' and 'Gui'/'FreeCADGui' are pre-bound — do not import "
-        "them. Captured stdout/stderr is returned."
+        "'App'/'FreeCAD' and 'Gui'/'FreeCADGui' are pre-bound — do not "
+        "import them. Captured stdout/stderr is returned. "
+        "Unless the user trusts any code, FreeCAD shows them the "
+        "code first, and the call waits up to the response timeout "
+        "for their answer. If the answer has not come by then, the "
+        "call returns a job_token, and get_output_page returns the "
+        "output once they answer, or the decline as an error."
     ),
     "inputSchema": {
         "type": "object",
@@ -36,7 +41,7 @@ EXECUTE_PYTHON_FILE = {
     "description": (
         "Read a local Python file and execute it inside the running FreeCAD "
         "GUI process. Same execution context as execute_python. "
-        "Unless the user trusts any file, FreeCAD shows them the "
+        "Unless the user trusts any code, FreeCAD shows them the "
         "file first, and the call waits up to the response timeout "
         "for their answer. If the answer has not come by then, the "
         "call returns a job_token, and get_output_page returns the "

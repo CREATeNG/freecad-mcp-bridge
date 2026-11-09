@@ -12,8 +12,16 @@ from freecad.mcp_bridge import paging
 from freecad.mcp_bridge.file_prompt import (
     DECLINE,
     RUN,
+    ASKS_BEFORE,
+    CODE_DECLINE,
+    CODE_INTRO,
+    TRUSTS_ANY,
+    commit_checkbox,
     decide,
     decline_message,
+    marker_text,
+    marker_warns,
+    trust_after_gesture,
     trust_checkbox_sticks,
     trust_label_visible,
 )
@@ -38,7 +46,7 @@ def _load_http_server():
 
 class DecideTests(unittest.TestCase):
     def test_trust_already_on_skips_the_dialog(self):
-        """While Trust any file is on, the file runs without asking."""
+        """While Trust any code is on, the file runs without asking."""
         asked = []
         self.assertEqual(
             decide(asked.append, trusting=True, set_trust=lambda _v: None),
@@ -70,8 +78,8 @@ class DecideTests(unittest.TestCase):
         self.assertEqual(turned, [])
 
     def test_no_on_the_second_dialog_returns_to_the_first(self):
-        """No on Trust any file asks again; only Yes turns it on."""
-        answers = ["Trust any file", "No", "Run"]
+        """No on Trust any code asks again; only Yes turns it on."""
+        answers = ["Trust any code", "No", "Run"]
         turned = []
         choice = decide(
             lambda _kind: answers.pop(0),
@@ -83,7 +91,7 @@ class DecideTests(unittest.TestCase):
 
     def test_yes_on_the_second_dialog_turns_trust_on_and_runs(self):
         """Yes turns trust on, and the file that was shown then runs."""
-        answers = ["Trust any file", "Yes"]
+        answers = ["Trust any code", "Yes"]
         turned = []
         choice = decide(
             lambda _kind: answers.pop(0),
@@ -109,6 +117,8 @@ class FileRequestTests(unittest.TestCase):
         opener=None,
         gate_box=None,
         log=None,
+        tool="execute_python_file",
+        arguments=None,
     ):
         http_server = _load_http_server()
         if log is not None:
@@ -165,7 +175,7 @@ class FileRequestTests(unittest.TestCase):
                 http_server.file_prompt, "confirm", side_effect=confirm
             ),
             mock.patch.object(
-                http_server.config, "trust_any_file", return_value=trust
+                http_server.config, "trust_any_code", return_value=trust
             ),
             mock.patch.object(
                 http_server.config,
@@ -188,8 +198,10 @@ class FileRequestTests(unittest.TestCase):
                 {
                     "id": 1,
                     "params": {
-                        "name": "execute_python_file",
-                        "arguments": {"filepath": path},
+                        "name": tool,
+                        "arguments": arguments
+                        if arguments is not None
+                        else {"filepath": path},
                     },
                 },
                 "2026-07-28",
@@ -306,7 +318,7 @@ class FileRequestTests(unittest.TestCase):
         self.assertEqual(held.pop(), "during")
 
     def test_a_trusted_file_runs_without_the_dialog(self):
-        """Trust any file runs the file without asking."""
+        """Trust any code runs the file without asking."""
         asked = []
 
         def confirm(path, code):
@@ -413,17 +425,107 @@ class FileRequestTests(unittest.TestCase):
             order, ["A-start", "A-end", "B-start", "B-end"]
         )
 
+    def test_inline_code_uses_the_code_dialog_and_the_same_wait(self):
+        """execute_python asks, with no path, on the same timeout."""
+        seen = {}
+
+        def confirm(path, code):
+            seen["path"] = path
+            seen["code"] = code
+            return "decline"
+
+        result, _gate = self._call(
+            confirm,
+            2000,
+            tool="execute_python",
+            arguments={"code": "print(2)\n"},
+        )
+        self.assertIsNone(seen["path"])
+        self.assertEqual(seen["code"], "print(2)\n")
+        self.assertEqual(result["error"], CODE_DECLINE)
+        self.assertFalse(result["has_more"])
+        self.assertEqual(
+            CODE_INTRO,
+            "An agent asks to run this code in FreeCAD with your "
+            "full permissions:",
+        )
+
+    def test_a_repeat_of_the_notice_returns_at_once(self):
+        """The stored notice page does not drain. The next page does."""
+        token, _queue = paging.start_page()
+        paging.mark_awaiting_user(token)
+        notice = paging.remember_shown_notice(token, paging.CODE_NOTICE)
+        started = time.monotonic()
+        replay = paging.fetch(token, 0, 500, 8000)
+        self.assertLess(time.monotonic() - started, 0.15)
+        self.assertEqual(replay["page"], notice["page"])
+        waited = time.monotonic()
+        nxt = paging.fetch(token, 1, 200, 8000)
+        elapsed = time.monotonic() - waited
+        self.assertGreaterEqual(elapsed, 0.18)
+        self.assertLess(elapsed, 0.5)
+        self.assertEqual(
+            nxt["page"][0]["text"], paging.NOT_ANSWERED_YET
+        )
+        self.assertNotIn("page_no", nxt)
+
 class TrustAndQueueTests(unittest.TestCase):
     def test_ticking_trust_sticks_only_after_yes(self):
-        """Ticking Trust any file stays on only when the user says Yes."""
+        """Ticking Trust any code stays on only when the user says Yes."""
         self.assertIs(trust_checkbox_sticks(False, "Yes"), False)
         self.assertIs(trust_checkbox_sticks(True, "No"), False)
         self.assertIs(trust_checkbox_sticks(True, "Yes"), True)
 
-    def test_the_trust_label_shows_only_while_trust_is_on(self):
-        """The marker is on whenever trust is on."""
+    def test_the_marker_stays_up_and_names_the_trust_state(self):
+        """The marker is always shown, and warns only while trust is on."""
         self.assertIs(trust_label_visible(True), True)
-        self.assertIs(trust_label_visible(False), False)
+        self.assertIs(trust_label_visible(False), True)
+        self.assertEqual(marker_text(False), ASKS_BEFORE)
+        self.assertEqual(marker_text(True), TRUSTS_ANY)
+        self.assertIs(marker_warns(False), False)
+        self.assertIs(marker_warns(True), True)
+
+    def test_a_click_asks_once_and_only_yes_turns_trust_on(self):
+        """Turning trust on asks once. Turning it off does not ask."""
+        self.assertIs(trust_after_gesture(False, None), False)
+        self.assertIs(trust_after_gesture(True, "No"), False)
+        self.assertIs(trust_after_gesture(True, "Yes"), True)
+
+        class Box:
+            def __init__(self):
+                self.checked = True
+                self.blocked = False
+                self.reentered = 0
+
+            def blockSignals(self, on):
+                self.blocked = on
+
+            def setChecked(self, value):
+                self.checked = value
+                if not self.blocked:
+                    self.reentered += 1
+                    commit_checkbox(self, value, ask)
+
+        asks = []
+
+        def ask():
+            asks.append("ask")
+            return "Yes"
+
+        box = Box()
+        self.assertIs(commit_checkbox(box, True, ask), True)
+        self.assertEqual(asks, ["ask"])
+        self.assertEqual(box.reentered, 0)
+        self.assertIs(box.checked, True)
+
+        def refuse():
+            asks.append("no")
+            return "No"
+
+        off = Box()
+        self.assertIs(commit_checkbox(off, True, refuse), False)
+        self.assertIs(off.checked, False)
+        self.assertEqual(off.reentered, 0)
 
     def test_a_file_runs_ahead_of_jobs_submitted_while_its_dialog_is_up(self):
         """Jobs sent during the dialog run after that file."""
