@@ -458,6 +458,14 @@ test("manifest.json declares optional port, sensitive bearer token, and TLS cert
   assert.match(cfg.tls_cert_file.description, /leave this blank/);
 });
 
+function pastedText(result) {
+  const items = (result && result.content) || [];
+  return items
+    .filter((item) => item && item.type === "text")
+    .map((item) => item.text)
+    .join("\n");
+}
+
 const TOKEN_OK = "0123456789abcdef0123456789abcdef";
 const TOKEN_NEW = "fedcba9876543210fedcba9876543210";
 const { createHash } = require("node:crypto");
@@ -517,7 +525,8 @@ test("a pasted token shorter than 32 characters is a note, and the call still us
   shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call" }) + "\n");
   const [reply] = await shim.waitForLines(1);
   assert.equal(reply.result.echoed, "tools/call");
-  assert.match(reply.result.note, /shorter than 32 characters/);
+  assert.equal(reply.result.note, undefined);
+  assert.match(pastedText(reply.result), /shorter than 32 characters/);
   assert.equal(bridge.requests[0].headers["authorization"], `Bearer ${TOKEN_OK}`);
   assert.equal(fs.readFileSync(shim.tokenFile, "utf8").trim(), TOKEN_OK);
   await shim.stop();
@@ -534,7 +543,8 @@ test("a missing token folder is retried on the next call and does not block the 
   shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call" }) + "\n");
   const [first] = await shim.waitForLines(1);
   assert.equal(first.result.echoed, "tools/call");
-  assert.match(first.result.note, /The token folder doesn't exist yet/);
+  assert.equal(first.result.note, undefined);
+  assert.match(pastedText(first.result), /The token folder doesn't exist yet/);
   assert.equal(bridge.requests.length, 1);
   assert.equal(fs.existsSync(shim.tokenDir), false);
   fs.mkdirSync(shim.tokenDir);
@@ -543,6 +553,7 @@ test("a missing token folder is retried on the next call and does not block the 
   const second = replies.find((reply) => reply.id === 2);
   assert.equal(second.result.echoed, "tools/call");
   assert.equal(second.result.note, undefined);
+  assert.equal(pastedText(second.result), "");
   assert.equal(fs.readFileSync(shim.tokenFile, "utf8").trim(), TOKEN_OK);
   assert.equal(bridge.requests[1].headers["authorization"], `Bearer ${TOKEN_OK}`);
   await shim.stop();
@@ -557,7 +568,9 @@ test("a write error is a note and the call is still sent", async () => {
   shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call" }) + "\n");
   const [reply] = await shim.waitForLines(1);
   assert.equal(reply.result.echoed, "tools/call");
-  assert.match(reply.result.note, /could not be written to the token file/);
+  assert.equal(reply.result.note, undefined);
+  assert.match(pastedText(reply.result), /could not be written to the token file/);
+  assert.match(pastedText(reply.result), /then try again/);
   assert.equal(bridge.requests.length, 1);
   await shim.stop();
   bridge.close();
@@ -577,6 +590,7 @@ test("the same paste does not replace a token FreeCAD generated afterwards", asy
   const [reply] = await second.waitForLines(1);
   assert.equal(reply.result.echoed, "tools/call");
   assert.equal(reply.result.note, undefined);
+  assert.equal(pastedText(reply.result), "");
   assert.equal(fs.readFileSync(second.tokenFile, "utf8").trim(), TOKEN_NEW);
   assert.equal(bridge.requests.at(-1).headers["authorization"], `Bearer ${TOKEN_NEW}`);
   await second.stop();
@@ -602,13 +616,17 @@ test("FREECAD_MCP_TOKEN_DIR selects the folder, not the home folder", async () =
   fs.rmSync(override, { recursive: true, force: true });
 });
 
-test("a 401 Unauthorized from the bridge fails with a clear message naming the extension's Bearer token setting", async () => {
+test("a 401 says the token file and FreeCAD disagree, and a pasted-token note sits beside error", async () => {
   const bridge = await startBridge(() => ({
     status: 401,
     type: "text/plain",
     text: "Unauthorized\n",
   }));
-  const shim = startShim(bridge.port, { FREECAD_MCP_TOKEN: TOKEN_OK });
+  const shim = startShim(
+    bridge.port,
+    { FREECAD_MCP_TOKEN: "short-token" },
+    { seedToken: TOKEN_OK }
+  );
   shim.send(
     JSON.stringify({
       jsonrpc: "2.0",
@@ -622,11 +640,15 @@ test("a 401 Unauthorized from the bridge fails with a clear message naming the e
   const toolReply = replies.find((r) => r.id === 1);
   const pingReply = replies.find((r) => r.id === 2);
   assert.equal(toolReply.result.isError, true);
-  const toolError = JSON.parse(toolReply.result.content[0].text).error;
-  assert.match(toolError, /401 Unauthorized/);
-  assert.match(toolError, /Set Bearer token in the FreeCAD MCP Bridge extension settings/);
-  assert.match(toolError, /Generate new token/);
-  assert.doesNotMatch(toolError, /FREECAD_MCP_TOKEN/);
+  assert.equal(toolReply.result.note, undefined);
+  const toolBody = JSON.parse(toolReply.result.content[0].text);
+  assert.match(toolBody.error, /401 Unauthorized/);
+  assert.match(toolBody.error, /The token file and FreeCAD disagree/);
+  assert.match(toolBody.error, /Clear Bearer token/);
+  assert.match(toolBody.error, /Generate new token/);
+  assert.doesNotMatch(toolBody.error, /to the token FreeCAD showed/);
+  assert.match(toolBody.note, /shorter than 32 characters/);
+  assert.doesNotMatch(toolBody.error, /FREECAD_MCP_TOKEN/);
   assert.deepEqual(pingReply.result, {});
   assert.equal(pingReply.error, undefined);
   assert.equal(bridge.requests.length, 1);
@@ -683,8 +705,7 @@ test("an untrusted certificate or a certificate set while the bridge serves plai
     assert.equal(untrustedReply.result.isError, true);
     const untrustedError = JSON.parse(untrustedReply.result.content[0].text).error;
     assert.match(untrustedError, /TLS connection failed/);
-    assert.match(untrustedError, /TLS certificate file \(PEM\)/);
-    assert.match(untrustedError, /covers 127\.0\.0\.1/);
+    assert.doesNotMatch(untrustedError, /covers 127\.0\.0\.1/);
     assert.match(untrustedError, /HTTP on loopback/);
     await shimUntrusted.stop();
     httpsBridge.close();

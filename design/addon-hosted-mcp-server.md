@@ -511,7 +511,9 @@ and `WWW-Authenticate: Bearer`. The token lives in
 `<home>/.freecad-mcp-bridge/token`, or in `FREECAD_MCP_TOKEN_DIR`
 when that variable is set. The folder is readable by the
 user only, and on Windows its one allow entry is inheritable, so a
-file created in it is user-only too. On Linux and macOS the folder is
+file created in it is user-only too. On Windows the extension's own
+write keeps any entry an existing file already had, until FreeCAD's
+next write resets it. On Linux and macOS the folder is
 mode `0700` and the file is mode `0600`. FreeCAD creates the folder
 and the file at the first start, shows the token once, and writes the
 file. **Generate new token** replaces the file and shows the new
@@ -528,7 +530,8 @@ token. That record is user-only, like the token file, and holds the
 hash rather than a second copy of the token. A shorter token is not
 written. While the folder is missing, the extension tries the write
 again on each call and does not create the folder. A problem with
-the paste, including a write error, is a note on the tool result.
+the paste, including a write error, is a text item in the tool
+result. The shim's own error text carries that note beside `error`.
 The call is still sent, with the token from the file. **Generate new
 token** tells the user when the file cannot be written.
 

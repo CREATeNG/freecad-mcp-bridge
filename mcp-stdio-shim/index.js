@@ -54,7 +54,7 @@ const SHORT_TOKEN_MESSAGE =
 const MISSING_FOLDER_MESSAGE =
   "The token folder doesn't exist yet. Turn the bridge on in FreeCAD once first, so it can create it.";
 const WRITE_FAILED_MESSAGE =
-  "The bearer token pasted into the FreeCAD MCP Bridge extension could not be written to the token file.";
+  "The bearer token pasted into the FreeCAD MCP Bridge extension could not be written to the token file. Check that the folder is writable, then try again.";
 
 function tokenDir() {
   const override = envSetting("FREECAD_MCP_TOKEN_DIR");
@@ -136,9 +136,10 @@ const VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"),
 const UNREACHABLE_HINT =
   "FreeCAD isn't reachable. Start FreeCAD and turn the bridge on with the MCP Bridge toolbar button, then try again.";
 const UNAUTHORIZED_MESSAGE =
-  `FreeCAD MCP Bridge requires a bearer token and did not accept this request's (401 Unauthorized at ${ENDPOINT}). ` +
-  "Set Bearer token in the FreeCAD MCP Bridge extension settings in Claude Desktop to the token FreeCAD showed when it was generated, " +
-  "or click Generate new token in FreeCAD's Edit → Preferences → MCP Bridge for a new one.";
+  `FreeCAD MCP Bridge requires a bearer token and did not accept this request (401 Unauthorized at ${ENDPOINT}). ` +
+  "The token file and FreeCAD disagree, or the pasted token is stale. " +
+  "Clear Bearer token in the FreeCAD MCP Bridge extension settings, " +
+  "or click Generate new token in FreeCAD's Edit → Preferences → MCP Bridge.";
 
 function writeLine(text) {
   process.stdout.write(text + "\n");
@@ -187,7 +188,6 @@ function tlsErrorMessage(err) {
   const detail = fetchErrorMessage(err);
   return (
     `FreeCAD MCP Bridge TLS connection failed at ${ENDPOINT} (${detail}). ` +
-    "Check that TLS certificate file (PEM) in the extension settings is FreeCAD's certificate and covers 127.0.0.1. " +
     "The bridge serves HTTP on loopback, so leave the certificate setting blank for a loopback connection."
   );
 }
@@ -331,7 +331,23 @@ async function postBridge(message, rawLine) {
 
 function withPastedNote(result) {
   if (!pastedNote || !result || typeof result !== "object") return result;
-  return { ...result, note: pastedNote };
+  const content = Array.isArray(result.content)
+    ? result.content.map((item) => ({ ...item }))
+    : [];
+  if (result.isError && content[0] && content[0].type === "text") {
+    try {
+      const body = JSON.parse(content[0].text);
+      if (body && typeof body === "object" && !Array.isArray(body)) {
+        body.note = pastedNote;
+        content[0].text = JSON.stringify(body);
+        return { ...result, content };
+      }
+    } catch {
+      // The error text is not the shim's JSON. Add a text item below.
+    }
+  }
+  content.push({ type: "text", text: pastedNote });
+  return { ...result, content };
 }
 
 function writeResult(id, result) {

@@ -60,11 +60,11 @@ The server is off until you toggle it on, each session — click the button agai
    The first time the bridge starts, FreeCAD writes the token to a
    file only you can read, and the extension sends the token from
    that file. Paste a token of at least 32 characters into
-   **Bearer token** only to replace the token, for every client. A shorter paste is
-   ignored. Leave **TLS certificate file (PEM)** blank for a
-   loopback connection: the bridge serves HTTP there, and a
-   certificate set against plain HTTP makes the connection fail.
-   On the Linux beta, the extension's tools default to
+   **Bearer token** only to replace the token, for every client.
+   A shorter paste is ignored. Leave **TLS certificate file (PEM)**
+   blank for a loopback connection: the bridge serves HTTP there,
+   and a certificate set against plain HTTP makes the connection
+   fail. On the Linux beta, the extension's tools default to
    **Needs approval**.
 
 Claude Desktop can't open an HTTP endpoint the way Claude Code and

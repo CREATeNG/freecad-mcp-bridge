@@ -1566,8 +1566,9 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 self.assertEqual(
                     warnings[-1],
                     "[MCP Bridge] WARNING: listening on 127.0.0.1:39280, "
-                    "192.168.1.50:39281, [::1]:39282. Bearer token and TLS "
-                    "are required beyond loopback. Any client with the "
+                    "192.168.1.50:39281, [::1]:39282. TLS is required "
+                    "beyond loopback, and the bearer token everywhere. "
+                    "Any client with the "
                     "bearer token that can reach these addresses can run "
                     "Python code in FreeCAD as your user account: "
                     "192.168.1.50:39281.\n",
@@ -1931,6 +1932,9 @@ class TokenFileTests(unittest.TestCase):
         text = init_gui._token_write_failure_text(OSError("access denied"))
         self.assertIn("Could not write the bearer token file", text)
         self.assertIn("access denied", text)
+        self.assertIn(
+            "Check that the folder is writable, then try again.", text
+        )
         with mock.patch(
             "freecad.mcp_bridge.config.generate_and_store_token",
             side_effect=OSError("access denied"),

@@ -266,10 +266,11 @@ def _non_loopback_warning(
     who = "Any client with the bearer token"
     if require_tls:
         return (
-            f"{LOG_PREFIX} WARNING: listening on {endpoints}. Bearer "
-            f"token and TLS are required beyond loopback. {who} that can "
-            "reach these addresses can run Python code in FreeCAD as your "
-            f"user account: {non_loopback_endpoints}.\n"
+            f"{LOG_PREFIX} WARNING: listening on {endpoints}. TLS is "
+            "required beyond loopback, and the bearer token everywhere. "
+            f"{who} that can reach these addresses can run Python code "
+            "in FreeCAD as your user account: "
+            f"{non_loopback_endpoints}.\n"
         )
     return (
         f"{LOG_PREFIX} WARNING: listening on {endpoints} with no "
@@ -307,7 +308,6 @@ class HttpServer:
         require_tls: bool | None = None,
         tls_cert_file: str | None = None,
         tls_key_file: str | None = None,
-        require_on_loopback: bool | None = None,
     ) -> None:
         if self.is_running():
             return
@@ -325,9 +325,6 @@ class HttpServer:
             if require_tls is None
             else bool(require_tls)
         )
-        # None leaves loopback on HTTP. A caller that passes true still
-        # serves HTTPS there. The old preference is not read.
-        req_on_loopback = bool(require_on_loopback)
         cert_file = (
             config.tls_cert_file()
             if tls_cert_file is None
@@ -354,7 +351,7 @@ class HttpServer:
             for entry in entries
             if not config.is_loopback_address(entry)
         ]
-        protected = entries if req_on_loopback else non_loopback
+        protected = non_loopback
         ssl_context = None
         if protected and req_tls:
             try:
@@ -372,7 +369,7 @@ class HttpServer:
             for entry, host, bind_port in targets:
                 failed_entry = entry
                 is_loopback = config.is_loopback_address(entry)
-                protect_entry = req_on_loopback or not is_loopback
+                protect_entry = not is_loopback
                 srv = paging.MaintenanceHTTPServer(
                     (host, bind_port), McpRequestHandler
                 )

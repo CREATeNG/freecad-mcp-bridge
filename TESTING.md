@@ -81,13 +81,17 @@ bridge, including restarting it on another port. Tests restore
 preferences and bridge state on their normal paths; a failed test can
 leave that work unfinished.
 
-Install the addon version under test, open a fresh FreeCAD GUI session
-and turn the bridge on with its toolbar button. Keep the GUI running
-while the suite runs. With Python 3.11 in a second terminal, set the
-URL explicitly to that session's port (`39280` below is the default;
-use your port if it differs):
+Set `FREECAD_MCP_TOKEN_DIR` to a new temporary folder before you
+start FreeCAD, and use that same value for the test process, so a
+local run never touches the real token file. Install the addon
+version under test, open a fresh FreeCAD GUI session with that
+variable set, and turn the bridge on with its toolbar button. Keep
+the GUI running while the suite runs. With Python 3.11 in a second
+terminal, set the URL explicitly to that session's port (`39280`
+below is the default; use your port if it differs):
 
 ```bash
+export FREECAD_MCP_TOKEN_DIR="<the same temporary folder>"
 export BRIDGE_URL=http://127.0.0.1:39280/mcp
 python -m unittest discover -s tests/acceptance -t . -v
 ```

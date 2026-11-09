@@ -57,7 +57,7 @@
     "tls_cert_file": {
       "type": "file",
       "title": "TLS certificate file (PEM)",
-      "description": "Not used yet. The extension connects to 127.0.0.1, where the bridge serves HTTP, so leave this blank; a certificate set against plain HTTP makes the connection fail.",
+      "description": "Not used yet. The extension connects to 127.0.0.1, where the bridge serves HTTP, so leave this blank. A certificate set against plain HTTP makes the connection fail.",
       "required": false
     }
   }

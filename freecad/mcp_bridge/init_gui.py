@@ -220,7 +220,8 @@ def _token_write_failure_text(exc):
 
     return (
         "Could not write the bearer token file "
-        f"({token_file.token_path()}): {exc}"
+        f"({token_file.token_path()}): {exc}. "
+        "Check that the folder is writable, then try again."
     )
 
 
@@ -265,19 +266,6 @@ def generate_and_show_token(parent=None):
         return None
     _show_generated_token(token, parent=parent)
     return token
-
-
-def _non_loopback_status(endpoints, require_token, require_tls):
-    """Return the status-bar line for a start with a non-loopback entry."""
-    if require_token and require_tls:
-        warning = "code execution from other machines"
-    elif not require_token and not require_tls:
-        warning = "no authentication or encryption"
-    elif not require_token:
-        warning = "no authentication"
-    else:
-        warning = "no encryption"
-    return f"{DISPLAY_NAME}: Listening on {endpoints} (warning: {warning})"
 
 
 class MCPBridgeCommand:
@@ -362,7 +350,8 @@ class MCPBridgeCommand:
                         show_toggle_state()
                         App.Console.PrintWarning(
                             f"{LOG_PREFIX} Could not write the bearer "
-                            "token file.\n"
+                            "token file. Check that the folder is "
+                            "writable, then try again.\n"
                         )
                         return
                 bridge.start(

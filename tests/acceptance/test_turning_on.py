@@ -928,8 +928,9 @@ class ListenAddressTests(unittest.TestCase):
         )
         expected_warning = (
             f"[MCP Bridge] WARNING: listening on 127.0.0.1:{PORT}, "
-            f"{address}:{PORT}. Bearer token and TLS are required beyond "
-            "loopback. Any client with the bearer token that can reach "
+            f"{address}:{PORT}. TLS is required beyond loopback, and "
+            "the bearer token everywhere. Any client with the bearer "
+            "token that can reach "
             "these addresses can run Python code in FreeCAD as your user "
             f"account: {address}:{PORT}."
         )
