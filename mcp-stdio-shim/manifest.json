@@ -33,6 +33,7 @@
       "command": "node",
       "args": ["${__dirname}/index.js"],
       "env": {
+        "FREECAD_MCP_HOST": "${user_config.host}",
         "FREECAD_MCP_PORT": "${user_config.port}",
         "FREECAD_MCP_TOKEN": "${user_config.token}",
         "FREECAD_MCP_TLS_CERT_FILE": "${user_config.tls_cert_file}"
@@ -40,10 +41,17 @@
     }
   },
   "user_config": {
+    "host": {
+      "type": "string",
+      "title": "FreeCAD machine",
+      "description": "The address or hostname of the machine running FreeCAD (127.0.0.1 by default). For another machine, also set Bearer token and TLS certificate file (PEM) below.",
+      "default": "127.0.0.1",
+      "required": false
+    },
     "port": {
       "type": "number",
       "title": "FreeCAD MCP Bridge port",
-      "description": "Requires the MCP Bridge addon installed and switched on in FreeCAD. Must match the port of a 127.0.0.1 entry in FreeCAD's Edit → Preferences → MCP Bridge → Listen addresses. Extension 0.1.27.",
+      "description": "Requires the MCP Bridge addon installed and switched on in FreeCAD. Must match the port of the FreeCAD machine's entry in FreeCAD's Edit → Preferences → MCP Bridge → Listen addresses. Extension 0.1.27.",
       "default": 39280,
       "required": false
     },
@@ -51,13 +59,13 @@
       "type": "string",
       "sensitive": true,
       "title": "Bearer token",
-      "description": "Optional. The extension sends the token from the file FreeCAD writes at the first start. Paste a token of at least 32 characters only to replace that token, for every client. A shorter token is ignored.",
+      "description": "Optional on 127.0.0.1, where the extension reads the token file FreeCAD writes at the first start, and a paste of at least 32 characters replaces that file for every client (a shorter token is ignored). Required for another machine, where the pasted token is used by the extension only.",
       "required": false
     },
     "tls_cert_file": {
       "type": "file",
       "title": "TLS certificate file (PEM)",
-      "description": "Not used yet. The extension connects to 127.0.0.1, where the bridge serves HTTP, so leave this blank. A certificate set against plain HTTP makes the connection fail.",
+      "description": "Leave blank on 127.0.0.1, where the bridge serves HTTP. Required for another machine: set this to FreeCAD's certificate file so the extension connects over HTTPS and trusts only that certificate.",
       "required": false
     }
   }

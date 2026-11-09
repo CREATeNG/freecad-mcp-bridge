@@ -4,17 +4,20 @@
  *
  * A zero-dependency stdio <-> HTTP/HTTPS proxy. Claude Desktop speaks
  * MCP over stdio (newline-delimited JSON-RPC); this forwards each
- * tools/call to the addon's endpoint
- * (http://127.0.0.1:<port>/mcp, or https://127.0.0.1:<port>/mcp when
- * FREECAD_MCP_TLS_CERT_FILE is set). Each tools/call sends
- * Authorization: Bearer from the token file. The folder is
- * FREECAD_MCP_TOKEN_DIR when that is set, and
- * <home>/.freecad-mcp-bridge otherwise. A pasted token of at least
- * 32 characters is written there only when its hash differs from
- * the hash stored beside the token, and only when the folder
- * already exists. A problem with that paste is a note on the tool
- * result; the call is still sent. The JSON reply is unwrapped and
- * written back on stdout.
+ * tools/call to the addon's endpoint on FREECAD_MCP_HOST (127.0.0.1 by
+ * default). On 127.0.0.1 it connects to http://127.0.0.1:<port>/mcp
+ * (or https://127.0.0.1:<port>/mcp when FREECAD_MCP_TLS_CERT_FILE is
+ * set) and sends Authorization: Bearer from the token file in
+ * FREECAD_MCP_TOKEN_DIR, or <home>/.freecad-mcp-bridge otherwise. A
+ * pasted token of at least 32 characters is written there only while
+ * the host is 127.0.0.1, only when its hash differs from the hash
+ * stored beside the token, and only when the folder already exists. A
+ * problem with that paste is a note on the tool result; the call is
+ * still sent. For another machine, the shim connects to
+ * https://<host>:<port>/mcp, requires both FREECAD_MCP_TLS_CERT_FILE
+ * and FREECAD_MCP_TOKEN, trusts only that certificate, and uses the
+ * pasted token without writing to the local token file. The JSON reply
+ * is unwrapped and written back on stdout.
  *
  * The shim answers initialize and tools/list itself (tools.json is a
  * copy of the addon's tool list) and does not contact the bridge for
@@ -22,12 +25,12 @@
  * server/discover gets a method-not-found error naming the method,
  * which tells a client that also speaks 2025-11-25 to fall back to
  * initialize. Only a tools/call is sent on. When that call finds
- * the bridge unreachable, serving HTTPS with no certificate
- * set, returning 401, or failing TLS, the tool result's error says
- * which. A ping is answered locally with an empty result. A
- * notification is not sent and gets no reply. Any other method gets
- * a method-not-found error naming the method. Node stdlib only
- * (global fetch and node:https, >=18).
+ * the bridge unreachable, missing a certificate or token for another
+ * machine, serving HTTPS with no certificate set, returning 401, or
+ * failing TLS, the tool result's error says which. A ping is answered
+ * locally with an empty result. A notification is not sent and gets no
+ * reply. Any other method gets a method-not-found error naming the
+ * method. Node stdlib only (global fetch and node:https, >=18).
  */
 
 const crypto = require("crypto");
@@ -43,6 +46,13 @@ function envSetting(name) {
   return val;
 }
 
+const RAW_HOST = envSetting("FREECAD_MCP_HOST") || "127.0.0.1";
+const BARE_HOST =
+  RAW_HOST.startsWith("[") && RAW_HOST.endsWith("]")
+    ? RAW_HOST.slice(1, -1)
+    : RAW_HOST;
+const URL_HOST = BARE_HOST.includes(":") ? `[${BARE_HOST}]` : BARE_HOST;
+const IS_DEFAULT_HOST = BARE_HOST === "127.0.0.1";
 const PORT = envSetting("FREECAD_MCP_PORT") || "39280";
 const PASTED_TOKEN = envSetting("FREECAD_MCP_TOKEN");
 const MIN_TOKEN_LENGTH = 32;
@@ -133,6 +143,7 @@ function writeUserOnly(file, text) {
 let pastedNote = "";
 function applyPastedToken() {
   pastedNote = "";
+  if (!IS_DEFAULT_HOST) return;
   if (!PASTED_TOKEN) return;
   if (PASTED_TOKEN.length < MIN_TOKEN_LENGTH) {
     pastedNote = SHORT_TOKEN_MESSAGE;
@@ -157,12 +168,18 @@ try {
   pastedNote = WRITE_FAILED_MESSAGE;
 }
 const TLS_CERT_FILE = envSetting("FREECAD_MCP_TLS_CERT_FILE");
-const SCHEME = TLS_CERT_FILE ? "https" : "http";
-const ENDPOINT = `${SCHEME}://127.0.0.1:${PORT}/mcp`;
-const HTTPS_ENDPOINT = `https://127.0.0.1:${PORT}/mcp`;
+const SCHEME = !IS_DEFAULT_HOST || TLS_CERT_FILE ? "https" : "http";
+const ENDPOINT = `${SCHEME}://${URL_HOST}:${PORT}/mcp`;
+const HTTPS_ENDPOINT = `https://${URL_HOST}:${PORT}/mcp`;
 const PLAIN_HTTP_TO_HTTPS_MESSAGE =
   `FreeCAD MCP Bridge serves HTTPS at ${HTTPS_ENDPOINT}, and this connection was plain HTTP. ` +
   "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to FreeCAD's certificate.";
+const MISSING_REMOTE_CERT_MESSAGE =
+  `FreeCAD machine is set to ${BARE_HOST}, which requires HTTPS. ` +
+  "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to FreeCAD's certificate.";
+const MISSING_REMOTE_TOKEN_MESSAGE =
+  `FreeCAD machine is set to ${BARE_HOST}. ` +
+  "Paste FreeCAD's bearer token into Bearer token in the FreeCAD MCP Bridge extension settings.";
 const LEGACY_PROTOCOL_VERSION = "2025-11-25";
 const MODERN_PROTOCOL_VERSION = "2026-07-28";
 const META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion";
@@ -171,6 +188,12 @@ const VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"),
 const UNREACHABLE_HINT =
   "FreeCAD isn't reachable. Start FreeCAD and turn the bridge on with the MCP Bridge toolbar button, then try again.";
 function unauthorizedMessage() {
+  if (!IS_DEFAULT_HOST) {
+    return (
+      `FreeCAD at ${ENDPOINT} refused the bearer token. ` +
+      "Check that Bearer token in the FreeCAD MCP Bridge extension settings matches FreeCAD's token."
+    );
+  }
   const file = tokenFilePath();
   let token = "";
   let error = null;
@@ -229,7 +252,7 @@ function portServesHttps(port) {
     try {
       socket = tls.connect(
         {
-          host: "127.0.0.1",
+          host: BARE_HOST,
           port: Number(port),
           rejectUnauthorized: false,
         },
@@ -244,6 +267,12 @@ function portServesHttps(port) {
 
 function tlsErrorMessage(err) {
   const detail = fetchErrorMessage(err);
+  if (!IS_DEFAULT_HOST) {
+    return (
+      `FreeCAD MCP Bridge TLS connection failed at ${ENDPOINT} (${detail}). ` +
+      `Check that TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings is FreeCAD's certificate and covers ${BARE_HOST}.`
+    );
+  }
   return (
     `FreeCAD MCP Bridge TLS connection failed at ${ENDPOINT} (${detail}). ` +
     "The bridge serves HTTP on loopback, so leave the certificate setting blank for a loopback connection."
@@ -311,7 +340,7 @@ function bridgeHeaders(message) {
   // Stdio has no headers. The version the body already declares is the
   // one the bridge checks; a body with none is the legacy handshake.
   const headers = { "Content-Type": "application/json" };
-  const token = readTokenFile();
+  const token = IS_DEFAULT_HOST ? readTokenFile() : PASTED_TOKEN;
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
@@ -345,6 +374,8 @@ function postHttps(headers, body) {
         method: "POST",
         headers: { ...headers, "Content-Length": String(payload.length) },
         ca,
+        rejectUnauthorized: true,
+        agent: false,
       },
       (res) => {
         if (res.statusCode >= 300 && res.statusCode < 400) {
@@ -372,7 +403,7 @@ function postHttps(headers, body) {
 
 async function postBridge(message, rawLine) {
   const headers = bridgeHeaders(message);
-  if (TLS_CERT_FILE) {
+  if (!IS_DEFAULT_HOST || TLS_CERT_FILE) {
     return postHttps(headers, rawLine);
   }
   const res = await fetch(ENDPOINT, {
@@ -458,6 +489,16 @@ async function forward(rawLine, message) {
       })
     );
     return;
+  }
+  if (!IS_DEFAULT_HOST) {
+    if (!TLS_CERT_FILE) {
+      sendErrorReply(message, MISSING_REMOTE_CERT_MESSAGE);
+      return;
+    }
+    if (!PASTED_TOKEN) {
+      sendErrorReply(message, MISSING_REMOTE_TOKEN_MESSAGE);
+      return;
+    }
   }
   try {
     applyPastedToken();

@@ -622,28 +622,36 @@ version is `2026-07-28` it also sets `Mcp-Method` from the message's
 method and, for `tools/call`, `Mcp-Name` from `params.name`. Node
 stdlib only (global `fetch` and `node:https`, Node ≥ 18); Claude
 Desktop bundles Node.js, so no user-side runtime install is needed.
-The shim reads the port from `FREECAD_MCP_PORT` (default 39280), an
-optional pasted bearer token from `FREECAD_MCP_TOKEN`, and an optional
-PEM certificate path from `FREECAD_MCP_TLS_CERT_FILE` (all wired from
-`user_config` in `manifest.json`). On each `tools/call` it sends
+The shim reads the host from `FREECAD_MCP_HOST` (default `127.0.0.1`),
+the port from `FREECAD_MCP_PORT` (default 39280), an optional pasted
+bearer token from `FREECAD_MCP_TOKEN`, and an optional PEM certificate
+path from `FREECAD_MCP_TLS_CERT_FILE` (all wired from `user_config` in
+`manifest.json`). On `127.0.0.1`, each `tools/call` sends
 `Authorization: Bearer` with the token in the token file. The folder
 is `FREECAD_MCP_TOKEN_DIR` when that is set, and
 `<home>/.freecad-mcp-bridge` otherwise. A pasted token of at least 32
-characters is written only when its hash differs from the `pasted`
-file beside the token and the folder already exists. A shorter paste,
-a missing folder, or a write error is a note on the tool result, and
-the call is still sent.
-When a certificate file is set, it connects to
-`https://127.0.0.1:<port>/mcp` and trusts that certificate (which
-must cover `127.0.0.1`). Loopback serves HTTP, so the certificate
-setting stays blank for a loopback connection. Notifications (no `id`)
+characters is written there only while `FREECAD_MCP_HOST` is
+`127.0.0.1`, and only when its hash differs from the `pasted` file
+beside the token and the folder already exists. A shorter paste, a
+missing folder, or a write error is a note on the tool result, and
+the call is still sent. On `127.0.0.1`, the shim connects to
+`http://127.0.0.1:<port>/mcp` by default (or
+`https://127.0.0.1:<port>/mcp` when a certificate file is set,
+trusting only that certificate). Loopback serves HTTP, so the
+certificate setting stays blank for a loopback connection.
+When `FREECAD_MCP_HOST` names another machine, the shim connects to
+`https://<host>:<port>/mcp`, requires both `FREECAD_MCP_TLS_CERT_FILE`
+and `FREECAD_MCP_TOKEN`, trusts only that certificate (not the
+system's certificate authorities), and sends the pasted token without
+writing it back to the local token file. Notifications (no `id`)
 get no reply and are not sent on. The shim answers `initialize`
 itself with `protocolVersion` `2025-11-25` and a tools capability
 only, and `tools/list` from `tools.json`, a copy of the addon's tool
 list that release preparation checks against `tools.py`. It does not
 contact the bridge for either, whether or not FreeCAD is up. Only a
 `tools/call` is sent on. When that call finds the bridge
-unreachable, serving HTTPS with no certificate set, returning 401,
+unreachable, missing a certificate or token for another machine,
+serving HTTPS with no certificate set, returning 401,
 or failing TLS, the tool result's `error` names that case and what
 to change, the bridge's toggle in FreeCAD or the extension's
 settings. A `ping` is answered locally with an empty result and is

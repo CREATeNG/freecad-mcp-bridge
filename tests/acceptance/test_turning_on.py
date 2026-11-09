@@ -897,6 +897,28 @@ class ListenAddressTests(unittest.TestCase):
                     node_bin, PORT, "print('desktop shim unchanged')"
                 )
                 self.assertEqual(shim_out, "desktop shim unchanged\n")
+                remote_tok_dir = os.path.join(folder, "remote_shim_tok")
+                os.makedirs(remote_tok_dir, exist_ok=True)
+                local_tok_file = os.path.join(remote_tok_dir, "token")
+                with open(local_tok_file, "w", encoding="utf-8") as handle:
+                    handle.write("keep-local-token\n")
+                remote_shim_out = _run_via_stdio_shim(
+                    node_bin,
+                    PORT,
+                    "print('desktop shim remote https')",
+                    token=token1,
+                    tls_cert_file=cert_path,
+                    host=address,
+                    token_dir=remote_tok_dir,
+                )
+                self.assertEqual(
+                    remote_shim_out, "desktop shim remote https\n"
+                )
+                with open(local_tok_file, encoding="utf-8") as handle:
+                    self.assertEqual(handle.read().strip(), "keep-local-token")
+                self.assertFalse(
+                    os.path.exists(os.path.join(remote_tok_dir, "pasted"))
+                )
 
             # Trigger phase 2: regenerate the token via Preferences UI and
             # restart to verify the token dialog is not shown again on start.
@@ -1122,10 +1144,16 @@ def _post_mcp(url, code, ssl_context=None, token=None, host_header=None):
 
 
 def _run_via_stdio_shim(
-    node_bin, port, code, token=None, tls_cert_file=None
+    node_bin,
+    port,
+    code,
+    token=None,
+    tls_cert_file=None,
+    host=None,
+    token_dir=None,
 ):
     """Run `code` through `mcp-stdio-shim/index.js` over stdio against
-    `127.0.0.1:port` and return stdout text."""
+    `host:port` (`127.0.0.1` by default) and return stdout text."""
     shim_js = os.path.abspath(
         os.path.join(
             os.path.dirname(__file__),
@@ -1137,6 +1165,12 @@ def _run_via_stdio_shim(
     )
     env = os.environ.copy()
     env["FREECAD_MCP_PORT"] = str(port)
+    if host is not None:
+        env["FREECAD_MCP_HOST"] = host
+    else:
+        env.pop("FREECAD_MCP_HOST", None)
+    if token_dir is not None:
+        env["FREECAD_MCP_TOKEN_DIR"] = token_dir
     if token is not None:
         env["FREECAD_MCP_TOKEN"] = token
     else:
