@@ -215,10 +215,9 @@ class PreferencePageTests(unittest.TestCase):
         )
         self.assertEqual(
             widgets_by_name["listenAddressNote"]["text"],
-            "Beyond loopback, the bridge serves HTTPS only. An MCP "
-            "client connecting to an address beyond loopback must "
-            "trust the certificate in TLS certificate file (PEM) "
-            "below.",
+            "Beyond loopback, the bridge serves HTTPS only, and an MCP "
+            "client must trust the certificate in TLS certificate file "
+            "(PEM) below.",
         )
         self.assertIn(
             "Beyond loopback, use <br/><nobr>https:&#x2060;//&#x2060;"
@@ -1947,7 +1946,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 warnings,
                 [
                     "[MCP Bridge] WARNING: could not inspect the TLS "
-                    "certificate for expiry or address coverage; continuing "
+                    "certificate for expiry or address coverage. Continuing "
                     "without those checks.\n"
                 ],
             )

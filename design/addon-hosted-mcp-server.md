@@ -660,9 +660,9 @@ itself with `protocolVersion` `2025-11-25` and a tools capability
 only, and `tools/list` from `tools.json`, a copy of the addon's tool
 list that release preparation checks against `tools.py`. It does not
 contact the bridge for either, whether or not FreeCAD is up. Only a
-`tools/call` is sent on. When that call finds the bridge
-unreachable, missing a certificate or token for another machine,
-serving HTTPS with no certificate set, returning 401,
+`tools/call` is sent on. When the extension lacks a certificate or
+token for another machine, or when that call finds the bridge
+unreachable, serving HTTPS with no certificate set, returning 401,
 or failing TLS, the tool result's `error` names that case and what
 to change, the bridge's toggle in FreeCAD or the extension's
 settings. A `ping` is answered locally with an empty result and is

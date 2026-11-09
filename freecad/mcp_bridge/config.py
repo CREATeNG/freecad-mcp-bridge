@@ -429,7 +429,7 @@ def build_ssl_context(
         if decoded is None:
             FreeCAD.Console.PrintWarning(
                 f"[{DISPLAY_NAME}] WARNING: could not inspect the TLS "
-                "certificate for expiry or address coverage; continuing "
+                "certificate for expiry or address coverage. Continuing "
                 "without those checks.\n"
             )
             return context

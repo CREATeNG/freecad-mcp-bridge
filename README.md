@@ -55,31 +55,31 @@ The server is off until you toggle it on, each session — click the button agai
    Accept the installation warning to continue.
 3. In the Extensions list, open **FreeCAD MCP Bridge**.
    **FreeCAD machine** is `127.0.0.1` by default (`localhost`, `::1`,
-   and `127.x.x.x` are treated as loopback too), and **port** is
-   `39280`, the default; set them to match an entry in FreeCAD's
-   **Listen addresses** and check that the extension is **Enabled**.
-   On loopback, leave **Bearer token** and
-   **TLS certificate file (PEM)** blank: the first time the bridge
-   starts, FreeCAD writes the token to a file only you can read,
-   the extension sends the token from that file, and the bridge
-   serves HTTP on loopback (a certificate set against plain HTTP
-   makes the connection fail). Paste a token of at least 32
-   characters into **Bearer token** only to replace that token file,
-   for every client; a shorter paste is ignored. Beyond loopback,
-   paste FreeCAD's bearer token into **Bearer token** (where it is
-   used by the extension only and not written to the local token
-   file) and set **TLS certificate file (PEM)** to FreeCAD's
-   certificate file, so the extension connects over HTTPS and trusts
-   only that certificate. On the Linux beta, the extension's tools
-   default to **Needs approval**.
+   and `127.x.x.x` count as loopback too), and **port** is `39280` by
+   default. Set them to match the entry you connect to in FreeCAD's
+   **Listen addresses**, and check that the extension is **Enabled**.
+   On the Linux beta, the extension's tools default to **Needs
+   approval**.
+   - **On loopback:** Leave **Bearer token** and **TLS certificate
+     file (PEM)** blank. FreeCAD writes the token at the first start
+     to a file only you can read, the extension reads that file, and
+     the bridge serves HTTP (a certificate set against plain HTTP
+     makes the connection fail). Paste a token of at least 32
+     characters into **Bearer token** only to replace that token file
+     for every client, and a shorter one is ignored.
+   - **Beyond loopback:** Paste FreeCAD's bearer token into **Bearer
+     token**. That pasted token is used by the extension only and is
+     not written to the local token file. Set **TLS certificate file
+     (PEM)** to a copy of FreeCAD's certificate file (`tls-cert.pem`,
+     not the private key), so the extension connects over HTTPS and
+     trusts only that certificate.
 
 Claude Desktop can't open an HTTP endpoint the way Claude Code and
 others can, so the extension runs a small stdio↔HTTP/HTTPS relay (the
-shim in [`mcp-stdio-shim/`](mcp-stdio-shim/)). The extension forwards
-to `http://<HOST>:<PORT>/mcp` on loopback (`localhost` connects to
-`127.0.0.1`; or `https://<HOST>:<PORT>/mcp` when a certificate file is
-set), and to `https://<HOST>:<PORT>/mcp` when **FreeCAD machine** is
-beyond loopback.
+shim in [`mcp-stdio-shim/`](mcp-stdio-shim/)). On loopback the
+extension forwards to `http://<HOST>:<PORT>/mcp`, with `localhost`
+taken as `127.0.0.1`. Beyond loopback it forwards to
+`https://<HOST>:<PORT>/mcp`.
 
 Alternatively, stdio clients can run the shim directly with node, instead of installing the bundle.
 

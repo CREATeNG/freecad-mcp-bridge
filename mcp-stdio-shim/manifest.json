@@ -44,14 +44,14 @@
     "host": {
       "type": "string",
       "title": "FreeCAD machine",
-      "description": "The address or hostname of the machine running FreeCAD (127.0.0.1 by default; localhost, ::1, and 127.x.x.x are treated as loopback). Beyond loopback, also set Bearer token and TLS certificate file (PEM) below.",
+      "description": "The address or hostname of the machine running FreeCAD (127.0.0.1 by default). Loopback includes localhost, ::1, and 127.x.x.x. Beyond loopback, also set Bearer token and TLS certificate file (PEM) below.",
       "default": "127.0.0.1",
       "required": false
     },
     "port": {
       "type": "number",
       "title": "FreeCAD MCP Bridge port",
-      "description": "Requires the MCP Bridge addon installed and switched on in FreeCAD. Must match the port of the FreeCAD machine's entry in FreeCAD's Edit → Preferences → MCP Bridge → Listen addresses. Extension 0.1.27.",
+      "description": "Requires the MCP Bridge addon installed and switched on in FreeCAD. Must match the port of the entry you connect to in FreeCAD's Edit → Preferences → MCP Bridge → Listen addresses. Extension 0.1.27.",
       "default": 39280,
       "required": false
     },
@@ -59,13 +59,13 @@
       "type": "string",
       "sensitive": true,
       "title": "Bearer token",
-      "description": "Optional on loopback, where the extension reads the token file FreeCAD writes at the first start, and a paste of at least 32 characters replaces that file for every client (a shorter token is ignored). Required beyond loopback, where the pasted token is used by the extension only.",
+      "description": "On loopback, optional: the extension sends the token from the file FreeCAD writes at the first start. A paste of at least 32 characters replaces that token for every client, and a shorter one is ignored. Beyond loopback, required: the pasted token is used by the extension only.",
       "required": false
     },
     "tls_cert_file": {
       "type": "file",
       "title": "TLS certificate file (PEM)",
-      "description": "Leave blank on loopback, where the bridge serves HTTP. Required beyond loopback: set this to FreeCAD's certificate file so the extension connects over HTTPS and trusts only that certificate.",
+      "description": "Leave blank on loopback, where the bridge serves HTTP. Required beyond loopback: set this to a copy of FreeCAD's certificate file (tls-cert.pem, not the private key) so the extension connects over HTTPS and trusts only that certificate.",
       "required": false
     }
   }

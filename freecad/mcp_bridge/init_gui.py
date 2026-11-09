@@ -28,9 +28,8 @@ if os.path.isdir(_icons_dir):
 
 
 LISTEN_ADDRESS_NOTE = (
-    "Beyond loopback, the bridge serves HTTPS only. An MCP client "
-    "connecting to an address beyond loopback must trust the "
-    "certificate in TLS certificate file (PEM) below."
+    "Beyond loopback, the bridge serves HTTPS only, and an MCP client "
+    "must trust the certificate in TLS certificate file (PEM) below."
 )
 
 
@@ -40,9 +39,9 @@ def _listen_address_note_text(cert_file=""):
     if not cert:
         return LISTEN_ADDRESS_NOTE
     return (
-        "Beyond loopback, the bridge serves HTTPS only. An MCP client "
-        "connecting to an address beyond loopback must trust the "
-        f"certificate in TLS certificate file (PEM) below ({cert})."
+        "Beyond loopback, the bridge serves HTTPS only, and an MCP client "
+        "must trust the certificate in TLS certificate file (PEM) below "
+        f"({cert})."
     )
 
 

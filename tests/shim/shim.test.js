@@ -455,19 +455,20 @@ test("manifest.json declares optional FreeCAD machine, port, sensitive bearer to
   assert.equal(cfg.host.default, "127.0.0.1");
   assert.equal(cfg.host.title, "FreeCAD machine");
   assert.match(cfg.host.description, /127\.0\.0\.1 by default/);
-  assert.match(cfg.host.description, /localhost, ::1, and 127\.x\.x\.x are treated as loopback/);
+  assert.match(cfg.host.description, /Loopback includes localhost, ::1, and 127\.x\.x\.x/);
   assert.equal(cfg.token.type, "string");
   assert.equal(cfg.token.sensitive, true);
   assert.equal(cfg.token.required, false);
   assert.equal(cfg.token.title, "Bearer token");
-  assert.match(cfg.token.description, /Optional on loopback/);
+  assert.match(cfg.token.description, /On loopback, optional/);
   assert.match(cfg.token.description, /at least 32 characters/);
-  assert.match(cfg.token.description, /replaces that file for every client/);
-  assert.match(cfg.token.description, /Required beyond loopback/);
+  assert.match(cfg.token.description, /replaces that token for every client/);
+  assert.match(cfg.token.description, /Beyond loopback, required/);
   assert.equal(cfg.tls_cert_file.type, "file");
   assert.equal(cfg.tls_cert_file.required, false);
   assert.equal(cfg.tls_cert_file.title, "TLS certificate file (PEM)");
   assert.match(cfg.tls_cert_file.description, /Leave blank on loopback/);
+  assert.match(cfg.tls_cert_file.description, /copy of FreeCAD's certificate file \(tls-cert\.pem, not the private key\)/);
   assert.match(cfg.tls_cert_file.description, /trusts only that certificate/);
 });
 
@@ -821,7 +822,7 @@ test("plain HTTP against a loopback port that speaks HTTPS names the TLS setting
     assert.equal(
       error,
       `FreeCAD MCP Bridge serves HTTPS at ${endpoint}, and this connection was plain HTTP. ` +
-        "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to FreeCAD's certificate."
+        "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to a copy of FreeCAD's certificate file (tls-cert.pem, not the private key)."
     );
     assert.doesNotMatch(error, /isn't reachable/);
     await shim.stop();
@@ -880,7 +881,7 @@ test("with no certificate set, an HTTPS port answers initialize and tools/list, 
     assert.equal(
       error,
       `FreeCAD MCP Bridge serves HTTPS at ${endpoint}, and this connection was plain HTTP. ` +
-        "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to FreeCAD's certificate."
+        "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to a copy of FreeCAD's certificate file (tls-cert.pem, not the private key)."
     );
     await shim.stop();
     httpsBridge.close();
@@ -1089,7 +1090,7 @@ test("for another machine, a tools/call without a certificate or without a paste
     assert.equal(
       JSON.parse(noCertCall.result.content[0].text).error,
       "FreeCAD machine is set to freecad.lan, which requires HTTPS. " +
-        "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to FreeCAD's certificate."
+        "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to a copy of FreeCAD's certificate file (tls-cert.pem, not the private key)."
     );
     assert.equal(fs.existsSync(noCert.tokenDir), false);
     await noCert.stop();
@@ -1116,7 +1117,7 @@ test("for another machine, a tools/call without a certificate or without a paste
     assert.equal(noTokenCall.result.isError, true);
     assert.equal(
       JSON.parse(noTokenCall.result.content[0].text).error,
-      "FreeCAD machine is set to freecad.lan. " +
+      "FreeCAD machine is set to freecad.lan, another machine, so the extension cannot read its token file. " +
         "Paste FreeCAD's bearer token into Bearer token in the FreeCAD MCP Bridge extension settings."
     );
     assert.equal(bridge.requests.length, 0);

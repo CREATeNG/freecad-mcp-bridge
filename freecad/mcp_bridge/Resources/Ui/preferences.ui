@@ -297,7 +297,7 @@
          </sizepolicy>
         </property>
         <property name="text">
-         <string>Beyond loopback, the bridge serves HTTPS only. An MCP client connecting to an address beyond loopback must trust the certificate in TLS certificate file (PEM) below.</string>
+         <string>Beyond loopback, the bridge serves HTTPS only, and an MCP client must trust the certificate in TLS certificate file (PEM) below.</string>
         </property>
         <property name="wordWrap">
          <bool>true</bool>
