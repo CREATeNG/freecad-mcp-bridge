@@ -9,7 +9,7 @@ EXECUTE_PYTHON = {
     "title": "Execute Python",
     "description": (
         "Execute Python code inside the running FreeCAD GUI process. "
-        "'App'/'FreeCAD' and 'Gui'/'FreeCADGui' are pre-bound — do not "
+        "'App'/'FreeCAD' and 'Gui'/'FreeCADGui' are pre-bound. Do not "
         "import them. Captured stdout/stderr is returned. "
         "Unless the bridge's permission mode is Unrestricted, "
         "FreeCAD shows the user the code first, and the call "

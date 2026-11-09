@@ -1113,7 +1113,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 require_tls=False,
             )
             self.assertEqual(
-                title, "MCP Bridge — Listen beyond this machine?"
+                title, "MCP Bridge: Listen beyond this machine?"
             )
             self.assertIn("192.168.1.50:39280\n10.0.0.5:39281", body_none)
             self.assertIn("No authentication", body_none)
@@ -1163,7 +1163,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             self.assertIn("any client with the bearer token", body_both)
 
             tok_title, tok_body = init_gui._token_dialog_text("tok-sample")
-            self.assertEqual(tok_title, "MCP Bridge — Bearer token")
+            self.assertEqual(tok_title, "MCP Bridge: Bearer token")
             self.assertIn("readable only by you", tok_body)
             self.assertIn(str(config.token_file.token_path()), tok_body)
             self.assertIn(
@@ -1180,7 +1180,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 "Every other client then needs the new token.", tok_body
             )
             start_title, start_body = init_gui._first_start_dialog_text([])
-            self.assertEqual(start_title, "MCP Bridge — Start the bridge?")
+            self.assertEqual(start_title, "MCP Bridge: Start the bridge?")
             self.assertIn("full permissions", start_body)
             self.assertIn("only after you accept", start_body)
             _both_title, both_body = init_gui._first_start_dialog_text(

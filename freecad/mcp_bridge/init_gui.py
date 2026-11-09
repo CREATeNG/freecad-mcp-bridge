@@ -32,7 +32,7 @@ def _risk_dialog_text(entries, require_token=True, require_tls=True):
     if isinstance(entries, str):
         entries = [entries]
     unaccepted_endpoints = "\n".join(entries)
-    title = f"{DISPLAY_NAME} — Listen beyond this machine?"
+    title = f"{DISPLAY_NAME}: Listen beyond this machine?"
     bullets = []
     if not require_token:
         bullets.append(
@@ -109,7 +109,7 @@ def _token_dialog_text(token):
     """Return (title, text) for the one-time bearer token dialog."""
     from freecad.mcp_bridge import token_file
 
-    title = f"{DISPLAY_NAME} — Bearer token"
+    title = f"{DISPLAY_NAME}: Bearer token"
     body = f"""Copy this bearer token now. It will not be shown again.
 
 {token}
@@ -164,7 +164,7 @@ def _show_generated_token(token, parent=None):
 
 def _first_start_dialog_text(entries, require_token=True, require_tls=True):
     """Return (title, text) for the first start, with or without addresses."""
-    title = f"{DISPLAY_NAME} — Start the bridge?"
+    title = f"{DISPLAY_NAME}: Start the bridge?"
     permissions = (
         "Connected agents can run Python code in FreeCAD with your "
         "full permissions."
@@ -230,7 +230,7 @@ def _show_token_write_failure(exc, parent=None):
     import FreeCADGui as Gui
     from PySide.QtWidgets import QDialog, QMessageBox
 
-    title = f"{DISPLAY_NAME} — Bearer token"
+    title = f"{DISPLAY_NAME}: Bearer token"
     body = _token_write_failure_text(exc)
     host = parent if parent is not None else Gui.getMainWindow()
     box = QMessageBox(

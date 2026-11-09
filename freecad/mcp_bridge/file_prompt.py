@@ -160,11 +160,11 @@ def _ask_run(path, code: str) -> str:
     dialog = QDialog(Gui.getMainWindow())
     if path:
         dialog.setObjectName(FILE_DIALOG)
-        dialog.setWindowTitle(f"{DISPLAY_NAME} — Run this file?")
+        dialog.setWindowTitle(f"{DISPLAY_NAME}: Run this file?")
         intro = FILE_INTRO
     else:
         dialog.setObjectName(CODE_DIALOG)
-        dialog.setWindowTitle(f"{DISPLAY_NAME} — Run this code?")
+        dialog.setWindowTitle(f"{DISPLAY_NAME}: Run this code?")
         intro = CODE_INTRO
     layout = QVBoxLayout(dialog)
     layout.addWidget(QLabel(intro))
@@ -215,7 +215,7 @@ def _ask_unrestricted(parent=None) -> str:
 
     if parent is None:
         parent = Gui.getMainWindow()
-    title = f"{DISPLAY_NAME} — Unrestricted?"
+    title = f"{DISPLAY_NAME}: Unrestricted?"
     box = QMessageBox(
         QMessageBox.Warning,
         title,
