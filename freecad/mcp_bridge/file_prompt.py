@@ -138,7 +138,7 @@ def confirm(path, code: str) -> str:
 
 
 def _refresh_button():
-    """Show the new mode on the On/Off button and in its menu."""
+    """Show the new mode on the On/Off button."""
     try:
         from freecad.mcp_bridge.init_gui import show_toggle_state
     except Exception:
