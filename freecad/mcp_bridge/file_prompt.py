@@ -13,6 +13,31 @@ FILE_DIALOG = "MCPBridgeRunFileDialog"
 TRUST_DIALOG = "MCPBridgeTrustAnyFileDialog"
 
 
+FILE_INTRO = (
+    "An agent asks to run this file in FreeCAD with your full "
+    "permissions:"
+)
+TRUST_TOOLTIP = (
+    "Every file an agent sends runs unseen, with your full permissions."
+)
+
+
+def trust_checkbox_sticks(checked: bool, answer: str) -> bool:
+    """Whether Trust any file stays ticked.
+
+    Turning it off needs no dialog. Turning it on sticks only on Yes.
+    """
+    if not checked:
+        return False
+    return answer == "Yes"
+
+
+def trust_label_visible(trust_on: bool, button_shown: bool) -> bool:
+    """The marker shows whenever trust is on, button or not."""
+    del button_shown
+    return bool(trust_on)
+
+
 def decline_message(path: str) -> str:
     """What the agent is told when the user chooses Don't run."""
     return f"The user declined to run '{path}'."
@@ -79,6 +104,7 @@ def _ask_file(path: str, code: str) -> str:
     dialog.setObjectName(FILE_DIALOG)
     dialog.setWindowTitle(f"{DISPLAY_NAME} — Run this file?")
     layout = QVBoxLayout(dialog)
+    layout.addWidget(QLabel(FILE_INTRO))
     layout.addWidget(QLabel(path))
     text = QPlainTextEdit()
     text.setReadOnly(True)

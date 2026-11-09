@@ -88,8 +88,9 @@ Once connected, the agent has these tools:
   **Don't run** is the default, and the agent is told you
   declined. **Trust any file** asks if you are really sure. Only
   **Yes** turns it on. Every file an agent sends then runs unseen,
-  with your full permissions. The status bar shows
-  **trusts any file** while that is on. Turn it off with
+  with your full permissions. A label beside the On/Off button
+  says **trusts any file** while that is on, even when the button
+  is hidden. Turn it off with
   **Trust any file** in **Edit → Preferences → MCP Bridge**.
   It is off until you turn it on.
 - **`get_output_page(job_token, page_no)`** — fetch the next page of a long-running script's output. The agent calls it while a response says `has_more: true`, as the tool's description tells it to.

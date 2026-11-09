@@ -401,28 +401,57 @@ class MCPBridgeCommand:
             App.Console.PrintWarning(warning + "\n")
 
 
-TRUST_MARKER = " (trusts any file)"
+TRUST_LABEL_NAME = "MCPBridgeTrustLabel"
+TRUST_LABEL_TEXT = "trusts any file"
 
 
 def refresh_trust_marker():
-    """Show or clear the status-bar marker for Trust any file."""
+    """Show or clear the permanent trust label beside the On/Off button."""
     import FreeCADGui as Gui
 
+    try:
+        from PySide.QtWidgets import QLabel, QToolButton
+    except Exception:
+        return
+
     from freecad.mcp_bridge import config
+    from freecad.mcp_bridge.constants import STATUS_BUTTON_OBJECT_NAME
+    from freecad.mcp_bridge.file_prompt import trust_label_visible
 
     mw = Gui.getMainWindow()
     if mw is None:
         return
     bar = mw.statusBar()
-    message = bar.currentMessage() or ""
-    base = message.replace(TRUST_MARKER, "")
-    listening = base.startswith(f"{DISPLAY_NAME}: Listening")
-    if config.trust_any_file() and listening:
-        shown = base + TRUST_MARKER
+    label = bar.findChild(QLabel, TRUST_LABEL_NAME)
+    button = bar.findChild(QToolButton, STATUS_BUTTON_OBJECT_NAME)
+    button_shown = (
+        button is not None and not button.isHidden()
+    )
+    if not trust_label_visible(config.trust_any_file(), button_shown):
+        if label is not None:
+            bar.removeWidget(label)
+            label.hide()
+            label.setParent(None)
+            label.deleteLater()
+        return
+    if label is None:
+        label = QLabel(TRUST_LABEL_TEXT, bar)
+        label.setObjectName(TRUST_LABEL_NAME)
     else:
-        shown = base
-    if shown != message:
-        bar.showMessage(shown)
+        label.setText(TRUST_LABEL_TEXT)
+    if button is not None and button.parent() is bar:
+        normal, permanent = _status_bar_widgets(bar)
+        if permanent is not None and button in permanent:
+            index = permanent.index(button) + 1
+            bar.removeWidget(label)
+            bar.insertPermanentWidget(index, label)
+        else:
+            bar.removeWidget(label)
+            bar.addPermanentWidget(label)
+    else:
+        bar.removeWidget(label)
+        bar.addPermanentWidget(label)
+    label.show()
 
 
 def _status_button_on_color(rgb):
@@ -566,6 +595,7 @@ def _ensure_status_button(mw):
             bar.removeWidget(button)
             button.setParent(None)
             button.deleteLater()
+        refresh_trust_marker()
         return None
     position = config.status_button_position()
     if button is not None:
@@ -610,6 +640,7 @@ def _ensure_status_button(mw):
     else:
         bar.addPermanentWidget(button)
     button.show()
+    refresh_trust_marker()
     return button
 
 
@@ -708,11 +739,35 @@ class _StatusBarPrefObserver:
             refresh_trust_marker()
 
 
+def _on_trust_toggled(box, checked):
+    """Ticking Trust any file asks first. Only Yes leaves it ticked."""
+    from freecad.mcp_bridge import config, file_prompt
+
+    if box.property("mcp_trust_applying"):
+        return
+    if not checked:
+        config.set_trust_any_file(False)
+        refresh_trust_marker()
+        return
+    box.setProperty("mcp_trust_applying", True)
+    box.setChecked(False)
+    box.setProperty("mcp_trust_applying", False)
+    config.set_trust_any_file(False)
+    answer = file_prompt._ask_trust()
+    sticks = file_prompt.trust_checkbox_sticks(True, answer)
+    if sticks:
+        config.set_trust_any_file(True)
+        box.setProperty("mcp_trust_applying", True)
+        box.setChecked(True)
+        box.setProperty("mcp_trust_applying", False)
+    refresh_trust_marker()
+
+
 def _install_pref_page_filter(mw):
     """Connect `generateTokenButton` when the Preferences page opens."""
     try:
         from PySide.QtCore import QEvent, QObject
-        from PySide.QtWidgets import QApplication, QPushButton
+        from PySide.QtWidgets import QApplication, QCheckBox, QPushButton
     except Exception:
         return
 
@@ -731,6 +786,16 @@ def _install_pref_page_filter(mw):
                 obj.setProperty("mcp_token_hooked", True)
                 obj.clicked.connect(
                     lambda *_: generate_and_show_token(parent=obj.window())
+                )
+            if (
+                event.type() == QEvent.Show
+                and isinstance(obj, QCheckBox)
+                and obj.objectName() == "trustAnyFileCheckBox"
+                and not obj.property("mcp_trust_hooked")
+            ):
+                obj.setProperty("mcp_trust_hooked", True)
+                obj.toggled.connect(
+                    lambda checked, box=obj: _on_trust_toggled(box, checked)
                 )
             return False
 

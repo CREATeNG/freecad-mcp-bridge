@@ -410,7 +410,7 @@
       <item row="3" column="0" colspan="2">
        <widget class="Gui::PrefCheckBox" name="trustAnyFileCheckBox">
         <property name="toolTip">
-         <string>While this is on, every file an agent sends runs without being shown, with your full permissions.</string>
+         <string>Every file an agent sends runs unseen, with your full permissions.</string>
         </property>
         <property name="text">
          <string>Trust any file</string>

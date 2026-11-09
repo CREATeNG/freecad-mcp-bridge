@@ -35,7 +35,10 @@ EXECUTE_PYTHON_FILE = {
     "title": "Execute Python file",
     "description": (
         "Read a local Python file and execute it inside the running FreeCAD "
-        "GUI process. Same execution context as execute_python."
+        "GUI process. Same execution context as execute_python. "
+        "FreeCAD shows the file to the user first unless they trust any "
+        "file, the call waits for their answer, and a decline comes back "
+        "as an error."
     ),
     "inputSchema": {
         "type": "object",

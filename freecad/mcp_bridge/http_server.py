@@ -13,6 +13,7 @@ is acknowledged.
 
 import json
 import os
+import socket
 import threading
 from http.server import BaseHTTPRequestHandler
 import FreeCAD
@@ -26,6 +27,35 @@ from freecad.mcp_bridge.constants import (
 from freecad.mcp_bridge.executor import Executor
 
 _LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1")
+
+
+def client_is_open(sock) -> bool:
+    """True when the request socket still has the other end connected.
+
+    A peek does not consume bytes. No data yet means the client is
+    still there. An empty peek or a socket error means it has gone.
+    """
+    if sock is None:
+        return False
+    blocking = True
+    try:
+        blocking = sock.getblocking()
+    except OSError:
+        return False
+    try:
+        sock.setblocking(False)
+        try:
+            peeked = sock.recv(1, socket.MSG_PEEK)
+        except (BlockingIOError, InterruptedError):
+            return True
+        except OSError:
+            return False
+        return peeked != b""
+    finally:
+        try:
+            sock.setblocking(blocking)
+        except OSError:
+            return False
 PARSE_ERROR = -32700
 TLS_HANDSHAKE_TIMEOUT_S = 5.0
 
@@ -171,22 +201,36 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                 )
                 return
             shown = os.path.abspath(filepath)
-            decision = self.server.executor.call_on_main(
-                lambda: file_prompt.confirm(shown, code)
-            )
-            if decision != file_prompt.RUN:
-                self._send_tool_result(
-                    req_id,
-                    version,
-                    {
-                        "has_more": False,
-                        "error": file_prompt.decline_message(shown),
-                        "page": [],
-                    },
+            with self.server.executor.file_turn() as turn:
+                decision = self.server.executor.call_on_main(
+                    lambda: file_prompt.confirm(shown, code)
                 )
+                # The dialog is closed. A departed client does not run.
+                still_open = client_is_open(
+                    getattr(self, "connection", None)
+                )
+                if decision == file_prompt.RUN and still_open:
+                    token, output_queue = paging.start_page()
+                    turn.queue((code, output_queue, shown, token))
+                else:
+                    token = None
+            if token is None:
+                if decision != file_prompt.RUN and client_is_open(
+                    getattr(self, "connection", None)
+                ):
+                    self._send_tool_result(
+                        req_id,
+                        version,
+                        {
+                            "has_more": False,
+                            "error": file_prompt.decline_message(shown),
+                            "page": [],
+                        },
+                    )
                 return
-            # The dialog has closed. The timeout clock starts in fetch.
-            self._run_code(req_id, version, code, drain_args, shown)
+            # The dialog wait is over. The timeout clock starts in fetch.
+            result = paging.fetch(token, 0, *drain_args)
+            self._send_tool_result(req_id, version, result)
         elif name == "get_output_page":
             page_no = _as_page_no(args.get("page_no"))
             if page_no is None:

@@ -41,7 +41,8 @@ The MCP server exposes three tools (schemas in `tools.py`).
   saying the user declined, and `page: []`, with no job.
   **Trust any file** opens a second dialog. Only **Yes** turns
   the preference on, and the shown file then runs. While it is
-  on, the status bar shows `trusts any file`, and **Trust any
+  on, a permanent label beside the On/Off button says
+  `trusts any file`, even when that button is hidden, and **Trust any
   file** in Preferences turns it off. It is off by default and
   stays on until turned off. The wait for the dialog is on the
   main thread and ends before the response timeout starts, so

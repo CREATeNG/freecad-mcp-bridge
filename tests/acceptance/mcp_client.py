@@ -210,7 +210,7 @@ def _arm_run_file_dialog():
     run(
         "from PySide.QtCore import QTimer\n"
         "from PySide.QtWidgets import QApplication, QPushButton\n"
-        "tries = {'n': 40}\n"
+        "tries = {'n': 200}\n"
         "def click():\n"
         "    tries['n'] -= 1\n"
         "    app = QApplication.instance()\n"
