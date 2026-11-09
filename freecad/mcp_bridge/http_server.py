@@ -252,9 +252,15 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         """
         with self.server.executor.file_turn() as turn:
             decision = file_prompt.DECLINE
+            failure = None
             try:
                 decision = self.server.executor.call_on_main(
                     lambda: file_prompt.confirm(shown, code)
+                )
+            except Exception as exc:
+                failure = f"The file dialog failed: {exc}"
+                FreeCAD.Console.PrintError(
+                    f"{LOG_PREFIX} {failure}\n"
                 )
             finally:
                 paging.clear_awaiting_user(token)
@@ -263,7 +269,9 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                 else:
                     paging.decline_job(
                         token,
-                        file_prompt.decline_message(shown),
+                        failure
+                        if failure is not None
+                        else file_prompt.decline_message(shown),
                         retention_ms,
                     )
 

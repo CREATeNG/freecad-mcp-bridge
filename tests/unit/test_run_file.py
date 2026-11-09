@@ -108,8 +108,13 @@ class FileRequestTests(unittest.TestCase):
         path="C:/work/a.py",
         opener=None,
         gate_box=None,
+        log=None,
     ):
         http_server = _load_http_server()
+        if log is not None:
+            http_server.FreeCAD.Console = types.SimpleNamespace(
+                PrintError=log.append
+            )
         gate = JobGate()
         if gate_box is not None:
             gate_box.append(gate)
@@ -320,6 +325,28 @@ class FileRequestTests(unittest.TestCase):
             result["page"], [{"stream": "stdout", "text": "trusted\n"}]
         )
         self.assertFalse(result["has_more"])
+
+    def test_the_notice_is_true_before_the_dialog_is_shown(self):
+        """The notice does not say a waiting file has been shown."""
+        self.assertEqual(
+            paging.SHOWN_NOTICE,
+            "This file is waiting for the user's answer in FreeCAD.\n",
+        )
+
+    def test_a_dialog_that_fails_reports_its_own_error(self):
+        """A dialog that fails is logged, and is not a user decline."""
+        log = []
+
+        def confirm(path, code):
+            raise RuntimeError("boom")
+
+        result, _gate = self._call(confirm, 2000, log=log)
+        self.assertEqual(result["error"], "The file dialog failed: boom")
+        self.assertFalse(result["has_more"])
+        self.assertEqual(result["page"], [])
+        self.assertEqual(
+            log, ["[MCP Bridge] The file dialog failed: boom\n"]
+        )
 
     def test_two_file_dialogs_ask_one_at_a_time(self):
         """A second file asks only after the first dialog ends."""

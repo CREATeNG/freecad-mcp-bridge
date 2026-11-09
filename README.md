@@ -134,9 +134,8 @@ change a model — for example:
 - **Max response timeout** — how long the bridge waits for a page
   (default 15 s). A file an agent sends counts the dialog in that
   wait, from the call. Keep it below the client's own request
-  limit, about a minute for some clients. Claude Code's is about
-  60 s, and the preference allows up to 600 s. The agent fetches
-  the rest with `get_output_page`.
+  limit, about 60 s for Claude Code. The preference allows up to
+  600 s. The agent fetches the rest with `get_output_page`.
 - **Max page size** — the most one page may be, as the JSON the agent
   reads, in units of 1,024 characters (default 32, that is 32,768). A
   newline counts as two characters. Larger output is split into pages

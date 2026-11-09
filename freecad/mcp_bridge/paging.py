@@ -33,12 +33,9 @@ from freecad.mcp_bridge.mcp_protocol import serialized_page_length
 # End-of-output marker placed on a job's queue by the executor.
 SENTINEL = object()
 
-# What the agent reads when the file dialog outlasts the first answer,
-# and on each later page while that dialog is still open.
-SHOWN_NOTICE = (
-    "This file has been shown to the user in FreeCAD and is "
-    "waiting for their answer.\n"
-)
+# The first answer when the user has not answered within the timeout.
+# True whether or not this file's dialog is the one on screen.
+SHOWN_NOTICE = "This file is waiting for the user's answer in FreeCAD.\n"
 NOT_ANSWERED_YET = "The user has not answered yet.\n"
 
 _BUFFER = {}
