@@ -27,7 +27,6 @@ from freecad.mcp_bridge.constants import (
     DEFAULT_MAX_RESPONSE_TIMEOUT_S,
     DEFAULT_PERMISSION_MODE,
     DEFAULT_PORT,
-    DEFAULT_REQUIRE_TLS,
     DEFAULT_SHOW_STATUS_BUTTON,
     DEFAULT_STATUS_BUTTON_POSITION,
     PERMISSION_MODE_ASK,
@@ -266,14 +265,6 @@ def set_unrestricted(enabled: bool) -> None:
     _params().SetInt("PermissionMode", mode)
 
 
-def require_tls() -> bool:
-    """Whether non-loopback entries serve HTTPS.
-
-    The old Apply-to-loopback preference is unread, so loopback stays HTTP.
-    """
-    return _params().GetBool("RequireTls", DEFAULT_REQUIRE_TLS)
-
-
 def tls_cert_file() -> str:
     """Path to the TLS certificate file for HTTPS."""
     return _params().GetString("TlsCertFile", "").strip()
@@ -284,15 +275,102 @@ def tls_key_file() -> str:
     return _params().GetString("TlsKeyFile", "").strip()
 
 
-def build_ssl_context(cert_file: str, key_file: str) -> ssl.SSLContext:
-    """Build a server SSLContext from `cert_file` and `key_file`."""
+def _entry_host(address: str) -> str:
+    """Extract the host part from `address` (host or address:port)."""
+    raw = (address or "").strip()
+    if not raw:
+        return ""
+    try:
+        host, _ = parse_listen_entry(raw)
+        return host
+    except ValueError:
+        return (
+            raw[1:-1]
+            if raw.startswith("[") and raw.endswith("]")
+            else raw
+        )
+
+
+def _normalize_host(raw: str) -> str:
+    """Canonical lowercase host or IP string for certificate matching."""
+    host = _entry_host(raw)
+    if not host:
+        return ""
+    try:
+        return str(ipaddress.ip_address(host))
+    except ValueError:
+        return host.lower()
+
+
+def certificate_hosts(cert_file: str) -> set[str]:
+    """Names and IP addresses covered by the PEM certificate `cert_file`."""
+    cert = (cert_file or "").strip()
+    if not cert:
+        return set()
+    decode = getattr(getattr(ssl, "_ssl", None), "_test_decode_cert", None)
+    if decode is None:
+        return set()
+    try:
+        decoded = decode(cert)
+    except (OSError, ValueError, ssl.SSLError):
+        return set()
+    hosts = set()
+    for kind, value in decoded.get("subjectAltName", ()):
+        if kind in ("DNS", "IP Address") and value:
+            norm = _normalize_host(value)
+            if norm:
+                hosts.add(norm)
+    if not hosts:
+        for rdn in decoded.get("subject", ()):
+            for key, value in rdn:
+                if key == "commonName" and value:
+                    norm = _normalize_host(value)
+                    if norm:
+                        hosts.add(norm)
+    return hosts
+
+
+def certificate_covers_host(
+    cert_hosts: set[str] | list[str] | tuple[str, ...], host: str
+) -> bool:
+    """True when `host` (or `address:port`) is covered by `cert_hosts`."""
+    norm = _normalize_host(host)
+    if not norm or not cert_hosts:
+        return False
+    normalized = {_normalize_host(item) for item in cert_hosts if item}
+    if norm in normalized:
+        return True
+    try:
+        ipaddress.ip_address(norm)
+        return False
+    except ValueError:
+        pass
+    for pattern in normalized:
+        if pattern.startswith("*.") and "." in norm:
+            suffix = pattern[1:]
+            prefix = norm[: -len(suffix)]
+            if norm.endswith(suffix) and prefix and "." not in prefix:
+                return True
+    return False
+
+
+def build_ssl_context(
+    cert_file: str,
+    key_file: str,
+    addresses: list[str] | None = None,
+) -> ssl.SSLContext:
+    """Build a server SSLContext from `cert_file` and `key_file`.
+
+    When `addresses` is given, every non-loopback address in it must be
+    covered by `cert_file`.
+    """
     cert = (cert_file or "").strip()
     key = (key_file or "").strip()
     if not cert or not key:
         raise ValueError(
             "TLS is required and needs a certificate file and a private "
-            "key file. Select both in Edit → Preferences → MCP Bridge, "
-            "or untick Require TLS there."
+            "key file. Generate or select both in Edit → Preferences → "
+            "MCP Bridge."
         )
     try:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -302,9 +380,21 @@ def build_ssl_context(cert_file: str, key_file: str) -> ssl.SSLContext:
     except (OSError, ssl.SSLError) as exc:
         raise ValueError(
             f"Could not load TLS certificate or private key ({exc}). "
-            "Check the TLS files or untick Require TLS in Edit → "
-            "Preferences → MCP Bridge."
+            "Check or generate the TLS files in Edit → Preferences → "
+            "MCP Bridge."
         ) from exc
+    if addresses:
+        covered = certificate_hosts(cert)
+        for entry in addresses:
+            if is_loopback_address(entry):
+                continue
+            host = _entry_host(entry)
+            if not certificate_covers_host(covered, host):
+                raise ValueError(
+                    f"The TLS certificate does not cover {host}. "
+                    "Generate the certificate again in Edit → "
+                    "Preferences → MCP Bridge."
+                )
     return context
 
 

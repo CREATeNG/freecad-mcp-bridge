@@ -27,61 +27,48 @@ if os.path.isdir(_icons_dir):
     Gui.addIconPath(_icons_dir.replace("\\", "/"))
 
 
-def _risk_dialog_text(entries, require_token=True, require_tls=True):
+LISTEN_ADDRESS_NOTE = (
+    "Beyond loopback, the bridge serves HTTPS only. An MCP client "
+    "connecting to an address beyond loopback must trust the "
+    "certificate in TLS certificate file (PEM) below."
+)
+
+
+def _listen_address_note_text(cert_file=""):
+    """Return the note beside Listen addresses, naming `cert_file` when set."""
+    cert = (cert_file or "").strip()
+    if not cert:
+        return LISTEN_ADDRESS_NOTE
+    return (
+        "Beyond loopback, the bridge serves HTTPS only. An MCP client "
+        "connecting to an address beyond loopback must trust the "
+        f"certificate in TLS certificate file (PEM) below ({cert})."
+    )
+
+
+def _risk_dialog_text(entries):
     """Return (title, text) for the first-time non-loopback risk dialog."""
     if isinstance(entries, str):
         entries = [entries]
     unaccepted_endpoints = "\n".join(entries)
     title = f"{DISPLAY_NAME}: Listen beyond this machine?"
-    bullets = []
-    if not require_token:
-        bullets.append(
-            "• No authentication: any machine that can reach these "
-            "addresses can call the bridge."
-        )
-    if not require_tls:
-        if require_token:
-            bullets.append(
-                "• No encryption: requests, output and the bearer token "
-                "travel over plain HTTP."
-            )
-        else:
-            bullets.append(
-                "• No encryption: requests and output travel over plain "
-                "HTTP."
-            )
-    if require_token:
-        bullets.append(
-            "• Code execution: any client with the bearer token that can "
-            "reach these addresses can run Python code in FreeCAD as your "
-            "user account."
-        )
-    else:
-        bullets.append(
-            "• Code execution: any machine that can reach these addresses "
-            "can run Python code in FreeCAD as your user account."
-        )
-    bullet_block = "\n".join(bullets)
     body = f"""Listening on these addresses makes this FreeCAD session \
 reachable from other machines:
 {unaccepted_endpoints}
 
-{bullet_block}
+• Code execution: any client with the bearer token that can reach these \
+addresses can run Python code in FreeCAD as your user account.
 
 Accept these risks and start the bridge?"""
     return title, body
 
 
-def _confirm_non_loopback_risk(
-    entries, require_token=True, require_tls=True
-):
+def _confirm_non_loopback_risk(entries):
     """Ask the user to accept the risks of listening on `entries`."""
     import FreeCADGui as Gui
     from PySide.QtWidgets import QDialog, QMessageBox
 
-    title, body = _risk_dialog_text(
-        entries, require_token=require_token, require_tls=require_tls
-    )
+    title, body = _risk_dialog_text(entries)
     box = QMessageBox(
         QMessageBox.Warning,
         title,
@@ -162,7 +149,7 @@ def _show_generated_token(token, parent=None):
         box.deleteLater()
 
 
-def _first_start_dialog_text(entries, require_token=True, require_tls=True):
+def _first_start_dialog_text(entries):
     """Return (title, text) for the first start, with or without addresses."""
     title = f"{DISPLAY_NAME}: Start the bridge?"
     permissions = (
@@ -176,23 +163,19 @@ The bridge listens only after you accept.
 
 Accept and start the bridge?"""
         return title, body
-    _risk_title, risk_body = _risk_dialog_text(
-        entries, require_token=require_token, require_tls=require_tls
-    )
+    _risk_title, risk_body = _risk_dialog_text(entries)
     body = f"""{permissions}
 
 {risk_body}"""
     return title, body
 
 
-def _confirm_first_start(entries, require_token=True, require_tls=True):
+def _confirm_first_start(entries):
     """Ask the user to accept the first start. Return True if they do."""
     import FreeCADGui as Gui
     from PySide.QtWidgets import QDialog, QMessageBox
 
-    title, body = _first_start_dialog_text(
-        entries, require_token=require_token, require_tls=require_tls
-    )
+    title, body = _first_start_dialog_text(entries)
     box = QMessageBox(
         QMessageBox.Warning,
         title,
@@ -296,7 +279,6 @@ class MCPBridgeCommand:
                 stopped = True
             else:
                 entries = config.listen_addresses()
-                req_tls = config.require_tls()
                 cert_file = config.tls_cert_file()
                 key_file = config.tls_key_file()
                 for entry in entries:
@@ -306,8 +288,10 @@ class MCPBridgeCommand:
                     for entry in entries
                     if not config.is_loopback_address(entry)
                 ]
-                if non_loopback and req_tls:
-                    config.build_ssl_context(cert_file, key_file)
+                if non_loopback:
+                    config.build_ssl_context(
+                        cert_file, key_file, non_loopback
+                    )
                 unaccepted = [
                     entry
                     for entry in non_loopback
@@ -315,11 +299,7 @@ class MCPBridgeCommand:
                 ]
                 first_start = not config.start_warning_accepted()
                 if first_start:
-                    if not _confirm_first_start(
-                        unaccepted,
-                        require_token=True,
-                        require_tls=req_tls,
-                    ):
+                    if not _confirm_first_start(unaccepted):
                         status = f"{DISPLAY_NAME}: Offline"
                         mw = Gui.getMainWindow()
                         if mw:
@@ -328,9 +308,7 @@ class MCPBridgeCommand:
                         App.Console.PrintNotification(status + "\n")
                         return
                 elif unaccepted and not _confirm_non_loopback_risk(
-                    unaccepted,
-                    require_token=True,
-                    require_tls=req_tls,
+                    unaccepted
                 ):
                     status = f"{DISPLAY_NAME}: Offline"
                     mw = Gui.getMainWindow()
@@ -356,7 +334,6 @@ class MCPBridgeCommand:
                         return
                 bridge.start(
                     addresses=entries,
-                    require_tls=req_tls,
                     tls_cert_file=cert_file,
                     tls_key_file=key_file,
                 )
@@ -711,6 +688,8 @@ class _StatusBarPrefObserver:
             show_toggle_state()
         if param in (None, "PermissionMode"):
             _sync_open_mode_box()
+        if param in (None, "TlsCertFile"):
+            _sync_open_listen_note()
 
 
 def _apply_mode_choice(want_unrestricted, box):
@@ -790,12 +769,34 @@ def _show_mode_in_box(box):
     )
 
 
+def _sync_open_listen_note():
+    """Keep the Listen addresses TLS note in step with TlsCertFile."""
+    try:
+        from PySide.QtWidgets import QLabel
+        import FreeCADGui as Gui
+    except Exception:
+        return
+    from freecad.mcp_bridge import config
+
+    mw = Gui.getMainWindow()
+    if mw is None:
+        return
+    label = mw.findChild(QLabel, "listenAddressNote")
+    if label is not None:
+        label.setText(_listen_address_note_text(config.tls_cert_file()))
+
+
 def _install_pref_page_filter(mw):
     """Connect `generateTokenButton` and the Permission mode box when
     the Preferences page opens."""
     try:
         from PySide.QtCore import QEvent, QObject
-        from PySide.QtWidgets import QApplication, QComboBox, QPushButton
+        from PySide.QtWidgets import (
+            QApplication,
+            QComboBox,
+            QLabel,
+            QPushButton,
+        )
     except Exception:
         return
 
@@ -821,6 +822,16 @@ def _install_pref_page_filter(mw):
                 and obj.objectName() == "permissionModeComboBox"
             ):
                 _show_mode_in_box(obj)
+            if (
+                event.type() == QEvent.Show
+                and isinstance(obj, QLabel)
+                and obj.objectName() == "listenAddressNote"
+            ):
+                from freecad.mcp_bridge import config
+
+                obj.setText(
+                    _listen_address_note_text(config.tls_cert_file())
+                )
             return False
 
     flt = _PrefPageFilter(mw)

@@ -299,7 +299,9 @@ class PortTests(unittest.TestCase):
         self.assertIn("Preferences", seen["report"])
 
 
-def non_loopback_flow(address, seen_file, continue_file):
+def non_loopback_flow(
+    address, cert_path, key_path, seen_file, continue_file
+):
     """Code that exercises declining, accepting, and restarting at `address`,
     waiting for `continue_file` while the bridge is up on `address` so the
     test runner can talk to both `address` and `127.0.0.1`, then restores
@@ -325,7 +327,6 @@ was_visible = dock is not None and dock.isVisible()
 orig_addr = params.GetString('ListenAddress', '')
 orig_accepted = params.GetString('AcceptedListenAddresses', '')
 orig_req_token = params.GetBool('RequireToken', True)
-orig_req_tls = params.GetBool('RequireTls', True)
 orig_req_on_loopback = params.GetBool('RequireOnLoopback', False)
 orig_token_hash = params.GetString('TokenHash', '')
 orig_cert = params.GetString('TlsCertFile', '')
@@ -418,6 +419,8 @@ def step_decline():
     )
     params.SetBool('RequireToken', False)
     params.SetBool('RequireTls', False)
+    params.SetString('TlsCertFile', {cert_path!r})
+    params.SetString('TlsKeyFile', {key_path!r})
     params.RemString('AcceptedListenAddresses')
     QTimer.singleShot(
         150, lambda: click_dialog_button('Cancel', 'decline')
@@ -443,6 +446,8 @@ def step_accept():
     seen['accepted_status'] = mw.statusBar().currentMessage()
     seen['accepted_report'] = report_view_text()[before:]
     seen['accepted_saved'] = params.GetString('AcceptedListenAddresses', '')
+    from freecad.mcp_bridge import token_file as token_store
+    seen['token'] = token_store.read_token()
     with open({seen_file!r} + '.ready', 'w', encoding='utf-8') as handle:
         json.dump(seen, handle)
     QTimer.singleShot(200, wait_for_runner)
@@ -485,7 +490,7 @@ def wait_for_runner():
     else:
         params.RemString('AcceptedListenAddresses')
     params.SetBool('RequireToken', orig_req_token)
-    params.SetBool('RequireTls', orig_req_tls)
+    params.RemBool('RequireTls')
     params.SetBool('RequireOnLoopback', orig_req_on_loopback)
     if orig_token_hash:
         params.SetString('TokenHash', orig_token_hash)
@@ -518,23 +523,72 @@ class ListenAddressTests(unittest.TestCase):
         address = non_loopback_address()
         if address is None:
             self.skipTest("this machine has no non-loopback IPv4 address")
+        openssl_bin = shutil.which("openssl") or (
+            r"C:\Program Files\Git\usr\bin\openssl.exe"
+            if os.path.exists(r"C:\Program Files\Git\usr\bin\openssl.exe")
+            else None
+        )
+        if openssl_bin is None:
+            self.skipTest("openssl is not available to make a throwaway cert")
         with tempfile.TemporaryDirectory() as folder:
+            cert_path = os.path.join(folder, "cert.pem")
+            key_path = os.path.join(folder, "key.pem")
+            cnf_path = os.path.join(folder, "openssl.cnf")
+            with open(cnf_path, "w", encoding="utf-8") as handle:
+                handle.write(
+                    "[req]\n"
+                    "distinguished_name = dn\n"
+                    "x509_extensions = v3\n"
+                    "prompt = no\n"
+                    "[dn]\n"
+                    f"CN = {address}\n"
+                    "[v3]\n"
+                    f"subjectAltName = IP:{address},IP:127.0.0.1\n"
+                )
+            subprocess.run(
+                [
+                    openssl_bin,
+                    "req",
+                    "-x509",
+                    "-newkey",
+                    "rsa:2048",
+                    "-keyout",
+                    key_path,
+                    "-out",
+                    cert_path,
+                    "-days",
+                    "1",
+                    "-nodes",
+                    "-config",
+                    cnf_path,
+                    "-extensions",
+                    "v3",
+                ],
+                check=True,
+                capture_output=True,
+            )
             seen_file = os.path.join(folder, "seen.json")
             ready_file = seen_file + ".ready"
             continue_file = os.path.join(folder, "continue")
-            mcp.run(non_loopback_flow(address, seen_file, continue_file))
+            mcp.run(
+                non_loopback_flow(
+                    address, cert_path, key_path, seen_file, continue_file
+                )
+            )
             self.assertTrue(
                 wait_for_file(ready_file),
                 "the bridge did not reach the accepted state",
             )
-            with mock.patch.object(
-                mcp, "BRIDGE_URL", f"http://{address}:{PORT}/mcp"
-            ):
-                self.assertTrue(
-                    mcp.wait_until_reachable(15),
-                    f"nothing answered on {address}:{PORT}",
-                )
-                lan_out = mcp.run("print('from lan address')")
+            with open(ready_file, encoding="utf-8") as handle:
+                ready = json.load(handle)
+            client_ctx = ssl.create_default_context(cafile=cert_path)
+            lan_status, lan_out = _post_mcp(
+                f"https://{address}:{PORT}/mcp",
+                "print('from lan address')",
+                ssl_context=client_ctx,
+                token=ready.get("token"),
+            )
+            self.assertEqual(lan_status, 200)
             loopback_out = mcp.run("print('from loopback alongside')")
             open(continue_file, "w", encoding="utf-8").close()
             self.assertTrue(
@@ -563,7 +617,7 @@ class ListenAddressTests(unittest.TestCase):
         )
         self.assertIn(f"{address}:{PORT}", seen.get("decline_text", ""))
         self.assertNotIn("No authentication", seen.get("decline_text", ""))
-        self.assertIn("No encryption", seen.get("decline_text", ""))
+        self.assertNotIn("No encryption", seen.get("decline_text", ""))
         self.assertIn("bearer token", seen.get("decline_text", ""))
         self.assertIn("Code execution", seen.get("decline_text", ""))
         self.assertFalse(seen.get("declined_running"))
@@ -586,7 +640,8 @@ class ListenAddressTests(unittest.TestCase):
         )
         expected_warning = (
             f"[MCP Bridge] WARNING: listening on 127.0.0.1:{PORT}, "
-            f"{address}:{PORT} with no encryption. Any client with the "
+            f"{address}:{PORT}. TLS is required beyond loopback, and "
+            "the bearer token everywhere. Any client with the "
             "bearer token that can reach these addresses can run "
             "Python code in FreeCAD as your user account: "
             f"{address}:{PORT}."
@@ -619,9 +674,12 @@ class ListenAddressTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             cert_path = os.path.join(folder, "cert.pem")
             key_path = os.path.join(folder, "key.pem")
+            uncovered_cert_path = os.path.join(folder, "uncovered_cert.pem")
+            uncovered_key_path = os.path.join(folder, "uncovered_key.pem")
             enc_cert_path = os.path.join(folder, "enc_cert.pem")
             enc_key_path = os.path.join(folder, "enc_key.pem")
             cnf_path = os.path.join(folder, "openssl.cnf")
+            uncovered_cnf_path = os.path.join(folder, "uncovered_openssl.cnf")
             with open(cnf_path, "w", encoding="utf-8") as handle:
                 handle.write(
                     "[req]\n"
@@ -631,7 +689,19 @@ class ListenAddressTests(unittest.TestCase):
                     "[dn]\n"
                     f"CN = {address}\n"
                     "[v3]\n"
-                    f"subjectAltName = IP:{address},IP:127.0.0.1\n"
+                    f"subjectAltName = IP:{address},IP:127.0.0.1,"
+                    "DNS:freecad.lan\n"
+                )
+            with open(uncovered_cnf_path, "w", encoding="utf-8") as handle:
+                handle.write(
+                    "[req]\n"
+                    "distinguished_name = dn\n"
+                    "x509_extensions = v3\n"
+                    "prompt = no\n"
+                    "[dn]\n"
+                    "CN = 10.255.255.1\n"
+                    "[v3]\n"
+                    "subjectAltName = IP:10.255.255.1\n"
                 )
             subprocess.run(
                 [
@@ -649,6 +719,28 @@ class ListenAddressTests(unittest.TestCase):
                     "-nodes",
                     "-config",
                     cnf_path,
+                    "-extensions",
+                    "v3",
+                ],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                [
+                    openssl_bin,
+                    "req",
+                    "-x509",
+                    "-newkey",
+                    "rsa:2048",
+                    "-keyout",
+                    uncovered_key_path,
+                    "-out",
+                    uncovered_cert_path,
+                    "-days",
+                    "1",
+                    "-nodes",
+                    "-config",
+                    uncovered_cnf_path,
                     "-extensions",
                     "v3",
                 ],
@@ -691,6 +783,8 @@ class ListenAddressTests(unittest.TestCase):
                     address,
                     cert_path,
                     key_path,
+                    uncovered_cert_path,
+                    uncovered_key_path,
                     enc_key_path,
                     seen_file,
                     phase1_file,
@@ -748,6 +842,26 @@ class ListenAddressTests(unittest.TestCase):
             )
             self.assertEqual(status_ok1, 200)
             self.assertEqual(out1, "https with token1\n")
+
+            # A Host header naming a DNS name covered by the certificate is
+            # accepted, and an uncovered Host header is refused with 403.
+            status_dns_host, out_dns_host = _post_mcp(
+                https_url,
+                "print('https with cert dns host')",
+                ssl_context=client_ctx,
+                token=token1,
+                host_header=f"freecad.lan:{PORT}",
+            )
+            self.assertEqual(status_dns_host, 200)
+            self.assertEqual(out_dns_host, "https with cert dns host\n")
+            status_bad_host, _ = _post_mcp(
+                https_url,
+                "print('https with uncovered host')",
+                ssl_context=client_ctx,
+                token=token1,
+                host_header=f"wrong.lan:{PORT}",
+            )
+            self.assertEqual(status_bad_host, 403)
 
             # A client that connects to the TLS entry and sends nothing does
             # not stop a second client from being served.
@@ -863,8 +977,8 @@ class ListenAddressTests(unittest.TestCase):
             with open(seen_file, encoding="utf-8") as handle:
                 seen = json.load(handle)
 
-        # 1. With TLS on and no certificate or an encrypted key, start failed
-        # and left the bridge off.
+        # 1. With no certificate, an encrypted key, or a certificate that
+        # does not cover the address, start failed and left the bridge off.
         self.assertFalse(seen.get("no_cert_running"))
         self.assertIn(
             "TLS is required and needs a certificate file and a private "
@@ -872,7 +986,8 @@ class ListenAddressTests(unittest.TestCase):
             seen.get("no_cert_status", ""),
         )
         self.assertIn(
-            "untick Require TLS there.", seen.get("no_cert_report", "")
+            "Generate or select both in Edit → Preferences → MCP Bridge.",
+            seen.get("no_cert_report", ""),
         )
         self.assertFalse(seen.get("enc_key_running"))
         self.assertIn(
@@ -880,7 +995,19 @@ class ListenAddressTests(unittest.TestCase):
             seen.get("enc_key_status", ""),
         )
         self.assertIn(
-            "untick Require TLS in Edit", seen.get("enc_key_report", "")
+            "Check or generate the TLS files in Edit → Preferences → "
+            "MCP Bridge.",
+            seen.get("enc_key_report", ""),
+        )
+        self.assertFalse(seen.get("uncovered_cert_running"))
+        self.assertIn(
+            f"The TLS certificate does not cover {address}.",
+            seen.get("uncovered_cert_status", ""),
+        )
+        self.assertIn(
+            "Generate the certificate again in Edit → Preferences → "
+            "MCP Bridge.",
+            seen.get("uncovered_cert_report", ""),
         )
 
         # 2. Risk dialog listed only the remaining risk (code execution with
@@ -953,7 +1080,7 @@ class ListenAddressTests(unittest.TestCase):
         )
 
 
-def _post_mcp(url, code, ssl_context=None, token=None):
+def _post_mcp(url, code, ssl_context=None, token=None, host_header=None):
     """Send an MCP 2025-11-25 tools/call execute_python POST and return
     `(http_status, stdout_text)`."""
     payload = json.dumps(
@@ -973,6 +1100,8 @@ def _post_mcp(url, code, ssl_context=None, token=None):
     }
     if token is not None:
         headers["Authorization"] = f"Bearer {token}"
+    if host_header is not None:
+        headers["Host"] = host_header
     req = urllib.request.Request(
         url, data=payload, headers=headers, method="POST"
     )
@@ -1059,6 +1188,8 @@ def _token_and_tls_flow(
     address,
     cert_path,
     key_path,
+    uncovered_cert_path,
+    uncovered_key_path,
     enc_key_path,
     seen_file,
     phase1_file,
@@ -1091,7 +1222,6 @@ was_visible = dock is not None and dock.isVisible()
 orig_addr = params.GetString('ListenAddress', '')
 orig_accepted = params.GetString('AcceptedListenAddresses', '')
 orig_req_token = params.GetBool('RequireToken', True)
-orig_req_tls = params.GetBool('RequireTls', True)
 orig_req_on_loopback = params.GetBool('RequireOnLoopback', False)
 orig_token_hash = params.GetString('TokenHash', '')
 orig_cert = params.GetString('TlsCertFile', '')
@@ -1181,6 +1311,16 @@ def step_no_cert_then_start():
     seen['enc_key_running'] = bridge.is_running()
     seen['enc_key_status'] = mw.statusBar().currentMessage()
     seen['enc_key_report'] = report_view_text()[before_enc_key:]
+
+    # A certificate that does not cover the configured non-loopback
+    # address fails naming the address and leaves the bridge off.
+    params.SetString('TlsCertFile', {uncovered_cert_path!r})
+    params.SetString('TlsKeyFile', {uncovered_key_path!r})
+    before_uncovered = len(report_view_text())
+    action.trigger()
+    seen['uncovered_cert_running'] = bridge.is_running()
+    seen['uncovered_cert_status'] = mw.statusBar().currentMessage()
+    seen['uncovered_cert_report'] = report_view_text()[before_uncovered:]
 
     # Now set the throwaway cert and key and start with defaults.
     # The old RequireToken preference is unread. Clear the token file
@@ -1332,7 +1472,7 @@ def wait_for_finish():
     else:
         params.RemString('AcceptedListenAddresses')
     params.SetBool('RequireToken', orig_req_token)
-    params.SetBool('RequireTls', orig_req_tls)
+    params.RemBool('RequireTls')
     params.SetBool('RequireOnLoopback', orig_req_on_loopback)
     if orig_token_hash:
         params.SetString('TokenHash', orig_token_hash)

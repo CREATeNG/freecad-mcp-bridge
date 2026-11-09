@@ -40,7 +40,6 @@ PAGE = ROOT / "freecad" / "mcp_bridge" / "Resources" / "Ui" / "preferences.ui"
 PREF_ROOT = "User parameter:BaseApp/Preferences"
 SETTINGS = (
     "ListenAddress",
-    "RequireTls",
     "TlsCertFile",
     "TlsKeyFile",
     "MaxResponseTimeoutSeconds",
@@ -129,6 +128,7 @@ class PreferencePageTests(unittest.TestCase):
             settings["ListenAddress"]["placeholderText"], "127.0.0.1:39280"
         )
         self.assertNotIn("RequireToken", settings)
+        self.assertNotIn("RequireTls", settings)
         self.assertNotIn("RequireOnLoopback", settings)
         gen_btn = next(
             w
@@ -144,15 +144,6 @@ class PreferencePageTests(unittest.TestCase):
             gen_props["toolTip"],
             "Generate a new bearer token and show it once.",
         )
-        self.assertEqual(
-            settings["RequireTls"]["text"], "Require TLS (HTTPS)"
-        )
-        self.assertEqual(
-            settings["RequireTls"]["toolTip"],
-            "Serve HTTPS on non-loopback listen addresses with the files "
-            "below.",
-        )
-        self.assertEqual(settings["RequireTls"]["checked"], "true")
         mode_box = next(
             widget
             for widget in ET.parse(PAGE).iter("widget")
@@ -222,9 +213,16 @@ class PreferencePageTests(unittest.TestCase):
             "in the status bar. While active, it listens "
             "on the addresses below.",
         )
+        self.assertEqual(
+            widgets_by_name["listenAddressNote"]["text"],
+            "Beyond loopback, the bridge serves HTTPS only. An MCP "
+            "client connecting to an address beyond loopback must "
+            "trust the certificate in TLS certificate file (PEM) "
+            "below.",
+        )
         self.assertIn(
-            "<nobr>https:&#x2060;//&#x2060;&lt;ADDRESS&gt;&#x2060;:"
-            "&#x2060;&lt;PORT&gt;/mcp</nobr>. "
+            "Beyond loopback, use <br/><nobr>https:&#x2060;//&#x2060;"
+            "&lt;ADDRESS&gt;&#x2060;:&#x2060;&lt;PORT&gt;/mcp</nobr>. "
             "Every listener requires the bearer token.",
             widgets_by_name["clientNote"]["text"],
         )
@@ -267,7 +265,6 @@ class UnsetPreferenceTests(unittest.TestCase):
         button shown on the right."""
         config, params, groups = fresh_config()
         self.assertEqual(config.listen_addresses(), ["127.0.0.1:39280"])
-        self.assertIs(config.require_tls(), True)
         self.assertEqual(config.tls_cert_file(), "")
         self.assertEqual(config.tls_key_file(), "")
         self.assertEqual(config.max_response_timeout_ms(), 15_000)
@@ -970,14 +967,14 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
 
     def test_non_loopback_start_prompts_once_and_warns_each_start(self):
         """Turning on with unaccepted non-loopback entries shows only the
-        remaining risks, fails when TLS is on with no certificate, shows a
-        generated token once when RequireToken is on, uses a single preference
-        snapshot, records acceptance only after bridge.start succeeds, and
-        warns on every start."""
+        remaining risk, fails when TLS files are missing or the certificate
+        does not cover the address, shows a generated token once, uses a
+        single preference snapshot, records acceptance only after bridge.start
+        succeeds, and warns on every start."""
         store = {
             "ListenAddress": "127.0.0.1:39280\n192.168.1.50:39280",
-            "RequireToken": False,
-            "RequireTls": False,
+            "TlsCertFile": "cert.pem",
+            "TlsKeyFile": "key.pem",
         }
         running = False
         start_calls = []
@@ -1081,22 +1078,14 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             token_patch.start()
             self.addCleanup(token_patch.stop)
 
-            def fake_confirm(
-                entries, require_token=True, require_tls=True
-            ):
-                prompts.append(
-                    (list(entries), bool(require_token), bool(require_tls))
-                )
+            def fake_confirm(entries):
+                prompts.append(list(entries))
                 if mutate_during_dialog is not None:
                     mutate_during_dialog()
                 return decision
 
-            def fake_first(
-                entries, require_token=True, require_tls=True
-            ):
-                first_prompts.append(
-                    (list(entries), bool(require_token), bool(require_tls))
-                )
+            def fake_first(entries):
+                first_prompts.append(list(entries))
                 return decision
 
             init_gui._confirm_non_loopback_risk = fake_confirm
@@ -1105,62 +1094,21 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 lambda tok, parent=None: shown_tokens.append(tok)
             )
 
-            # Check risk dialog text across all four (require_token,
-            # require_tls) combinations.
-            title, body_none = init_gui._risk_dialog_text(
-                ["192.168.1.50:39280", "10.0.0.5:39281"],
-                require_token=False,
-                require_tls=False,
+            # Check risk dialog text: token and TLS are always required
+            # beyond loopback, so only the code-execution risk remains.
+            title, body_both = init_gui._risk_dialog_text(
+                ["192.168.1.50:39280", "10.0.0.5:39281"]
             )
             self.assertEqual(
                 title, "MCP Bridge: Listen beyond this machine?"
             )
-            self.assertIn("192.168.1.50:39280\n10.0.0.5:39281", body_none)
-            self.assertIn("No authentication", body_none)
-            self.assertIn(
-                "No encryption: requests and output travel over plain HTTP.",
-                body_none,
-            )
-            self.assertIn(
-                "Code execution: any machine that can reach these addresses",
-                body_none,
-            )
-            self.assertIn(
-                "Accept these risks and start the bridge?", body_none
-            )
-
-            _, body_tok_only = init_gui._risk_dialog_text(
-                ["192.168.1.50:39280"],
-                require_token=True,
-                require_tls=False,
-            )
-            self.assertNotIn("No authentication", body_tok_only)
-            self.assertIn(
-                "No encryption: requests, output and the bearer token "
-                "travel over plain HTTP.",
-                body_tok_only,
-            )
-            self.assertIn(
-                "any client with the bearer token", body_tok_only
-            )
-
-            _, body_tls_only = init_gui._risk_dialog_text(
-                ["192.168.1.50:39280"],
-                require_token=False,
-                require_tls=True,
-            )
-            self.assertIn("No authentication", body_tls_only)
-            self.assertNotIn("No encryption", body_tls_only)
-            self.assertIn("any machine that can reach", body_tls_only)
-
-            _, body_both = init_gui._risk_dialog_text(
-                ["192.168.1.50:39280"],
-                require_token=True,
-                require_tls=True,
-            )
+            self.assertIn("192.168.1.50:39280\n10.0.0.5:39281", body_both)
             self.assertNotIn("No authentication", body_both)
             self.assertNotIn("No encryption", body_both)
             self.assertIn("any client with the bearer token", body_both)
+            self.assertIn(
+                "Accept these risks and start the bridge?", body_both
+            )
 
             tok_title, tok_body = init_gui._token_dialog_text("tok-sample")
             self.assertEqual(tok_title, "MCP Bridge: Bearer token")
@@ -1184,9 +1132,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             self.assertIn("full permissions", start_body)
             self.assertIn("only after you accept", start_body)
             _both_title, both_body = init_gui._first_start_dialog_text(
-                ["192.168.1.50:39280"],
-                require_token=True,
-                require_tls=True,
+                ["192.168.1.50:39280"]
             )
             self.assertIn("full permissions", both_body)
             self.assertIn("192.168.1.50:39280", both_body)
@@ -1205,10 +1151,13 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             self.assertIn("192.168.1.50", statuses[-1])
             self.assertIn("Change the listen addresses in Edit", warnings[-1])
 
-            # 0b. With RequireTls=True and no certificate/key set, a
-            # non-loopback start fails before any dialog and stays off.
+            # 0b. With no certificate/key set, a non-loopback start fails
+            # before any dialog and stays off, even when the legacy
+            # RequireTls preference is False.
             store["ListenAddress"] = "127.0.0.1:39280\n192.168.1.50:39280"
-            store["RequireTls"] = True
+            store["RequireTls"] = False
+            store["TlsCertFile"] = ""
+            store["TlsKeyFile"] = ""
             cmd.Activated()
             self.assertFalse(running)
             self.assertEqual(prompts, [])
@@ -1218,34 +1167,44 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 "key file.",
                 statuses[-1],
             )
-            self.assertIn("untick Require TLS there.", warnings[-1])
+            self.assertIn(
+                "Generate or select both in Edit → Preferences → MCP Bridge.",
+                warnings[-1],
+            )
+            self.assertNotIn("untick Require TLS", warnings[-1])
             self.assertNotIn(
                 "Change the listen addresses in Edit", warnings[-1]
             )
-            store["RequireTls"] = False
+            store["TlsCertFile"] = "cert.pem"
+            store["TlsKeyFile"] = "key.pem"
+            ssl_patch = mock.patch.object(
+                config,
+                "build_ssl_context",
+                return_value=object(),
+            )
+            ssl_patch.start()
+            self.addCleanup(ssl_patch.stop)
 
             # 0c. A first start that also has an unaccepted address
             # beyond loopback uses one dialog, and declining saves neither
             # acceptance. The old Apply-to-loopback preference does not
             # make a loopback-only start demand a certificate.
             store["ListenAddress"] = "127.0.0.1:39280\n192.168.1.50:39280"
-            store["RequireTls"] = False
             decision = False
             cmd.Activated()
             self.assertFalse(running)
             self.assertEqual(prompts, [])
-            self.assertEqual(
-                first_prompts, [(["192.168.1.50:39280"], True, False)]
-            )
+            self.assertEqual(first_prompts, [["192.168.1.50:39280"]])
             self.assertEqual(config.accepted_listen_addresses(), [])
             self.assertFalse(config.start_warning_accepted())
             store["ListenAddress"] = "127.0.0.1:39280"
             store["RequireOnLoopback"] = True
-            store["RequireTls"] = True
+            store["TlsCertFile"] = ""
+            store["TlsKeyFile"] = ""
             cmd.Activated()
             self.assertFalse(running)
             self.assertEqual(prompts, [])
-            self.assertEqual(first_prompts[-1], ([], True, True))
+            self.assertEqual(first_prompts[-1], [])
             self.assertEqual(shown_tokens, [])
             self.assertEqual(statuses[-1], "MCP Bridge: Offline")
             self.assertFalse(config.start_warning_accepted())
@@ -1274,8 +1233,9 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             self.assertIn("full permissions", statuses[-1])
 
             # 1. Decline a new non-loopback entry: bridge stays off.
-            store["RequireTls"] = False
             store["RequireOnLoopback"] = False
+            store["TlsCertFile"] = "cert.pem"
+            store["TlsKeyFile"] = "key.pem"
             store["ListenAddress"] = "127.0.0.1:39280\n192.168.1.50:39280"
             decision = False
             cmd.Activated()
@@ -1283,7 +1243,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             cmd.Activated()
             self.assertFalse(running)
             self.assertEqual(
-                prompts, [(["192.168.1.50:39280"], True, False)]
+                prompts, [["192.168.1.50:39280"]]
             )
             self.assertEqual(statuses[-1], "MCP Bridge: Offline")
             self.assertEqual(config.accepted_listen_addresses(), [])
@@ -1350,7 +1310,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             self.assertTrue(running)
             self.assertEqual(
                 prompts[-1],
-                (["10.0.0.5:39281", "10.0.0.9:39282"], True, False),
+                ["10.0.0.5:39281", "10.0.0.9:39282"],
             )
             self.assertEqual(
                 config.accepted_listen_addresses(),
@@ -1509,14 +1469,59 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 )
                 srv.stop()
 
-                # 2. List with loopback, LAN, and IPv6 on distinct ports.
+                # 2. List with loopback, LAN, and IPv6 on distinct ports:
+                # missing cert raises ValueError and stays off; a token
+                # file is not required to bind; failed wrap_socket closes
+                # the bound socket; a valid cert wraps only the
+                # non-loopback socket with do_handshake_on_connect=False.
+                # Every listener requires the token, and non-loopback
+                # entries always serve HTTPS, even if the legacy
+                # RequireTls preference is False.
                 bound.clear()
                 shut_down.clear()
                 closed.clear()
+                warnings.clear()
+                errors.clear()
                 store["ListenAddress"] = (
                     "127.0.0.1:39280\n192.168.1.50:39281\n[::1]:39282"
                 )
-                srv.start()
+                store["RequireTls"] = False
+                with self.assertRaises(ValueError):
+                    srv.start()
+                self.assertFalse(srv.is_running())
+                self.assertEqual(bound, [])
+                self.assertIn(
+                    "TLS is required and needs a certificate file and a "
+                    "private key file.",
+                    errors[-1],
+                )
+                ssl_ctx_patch = mock.patch.object(
+                    config,
+                    "build_ssl_context",
+                    return_value=FakeSSLContext(),
+                )
+                ssl_ctx_patch.start()
+                self.addCleanup(ssl_ctx_patch.stop)
+                store["TlsCertFile"] = "cert.pem"
+                store["TlsKeyFile"] = "key.pem"
+                fail_wrap_on = True
+                with self.assertRaises(OSError):
+                    srv.start(
+                        tls_cert_file="cert.pem", tls_key_file="key.pem"
+                    )
+                fail_wrap_on = False
+                self.assertFalse(srv.is_running())
+                self.assertEqual(
+                    closed,
+                    [("127.0.0.1", 39280), ("192.168.1.50", 39281)],
+                )
+                bound.clear()
+                closed.clear()
+
+                srv.start(
+                    tls_cert_file="cert.pem", tls_key_file="key.pem"
+                )
+                self.assertTrue(srv.is_running())
                 self.assertEqual(
                     bound,
                     [
@@ -1525,18 +1530,27 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                         ("::1", 39282),
                     ],
                 )
-                self.assertEqual(len(warnings), 1)
-                self.assertEqual(
-                    warnings[0],
-                    "[MCP Bridge] WARNING: listening on 127.0.0.1:39280, "
-                    "192.168.1.50:39281, [::1]:39282 with no encryption. "
-                    "Any client with the bearer token that can reach "
-                    "these addresses can run Python code in FreeCAD as "
-                    "your user account: 192.168.1.50:39281.\n",
-                )
                 self.assertTrue(srv._servers[0][0].require_token)
                 self.assertTrue(srv._servers[1][0].require_token)
                 self.assertTrue(srv._servers[2][0].require_token)
+                self.assertEqual(
+                    wrapped_sockets,
+                    [
+                        "tls(raw-sock-192.168.1.50:39281, "
+                        "server_side=True, do_handshake_on_connect=False)"
+                    ],
+                )
+                self.assertEqual(len(warnings), 1)
+                self.assertEqual(
+                    warnings[-1],
+                    "[MCP Bridge] WARNING: listening on 127.0.0.1:39280, "
+                    "192.168.1.50:39281, [::1]:39282. TLS is required "
+                    "beyond loopback, and the bearer token everywhere. "
+                    "Any client with the "
+                    "bearer token that can reach these addresses can run "
+                    "Python code in FreeCAD as your user account: "
+                    "192.168.1.50:39281.\n",
+                )
                 srv.stop()
                 self.assertEqual(
                     shut_down,
@@ -1555,72 +1569,6 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                     ],
                 )
 
-                # 2b. With RequireTls=True: missing cert raises ValueError and
-                # stays off; a token file is not required to bind; failed
-                # wrap_socket closes the bound socket; a valid cert wraps
-                # only the non-loopback socket with
-                # do_handshake_on_connect=False. Every listener requires
-                # the token.
-                bound.clear()
-                closed.clear()
-                warnings.clear()
-                errors.clear()
-                store["RequireToken"] = True
-                store["RequireTls"] = True
-                with self.assertRaises(ValueError):
-                    srv.start()
-                self.assertFalse(srv.is_running())
-                self.assertEqual(bound, [])
-                self.assertIn(
-                    "TLS is required and needs a certificate file and a "
-                    "private key file.",
-                    errors[-1],
-                )
-                with mock.patch.object(
-                    config,
-                    "build_ssl_context",
-                    return_value=FakeSSLContext(),
-                ):
-                    fail_wrap_on = True
-                    with self.assertRaises(OSError):
-                        srv.start(
-                            tls_cert_file="cert.pem", tls_key_file="key.pem"
-                        )
-                    fail_wrap_on = False
-                    self.assertFalse(srv.is_running())
-                    self.assertEqual(
-                        closed,
-                        [("127.0.0.1", 39280), ("192.168.1.50", 39281)],
-                    )
-                    bound.clear()
-                    closed.clear()
-
-                    srv.start(
-                        tls_cert_file="cert.pem", tls_key_file="key.pem"
-                    )
-                self.assertTrue(srv.is_running())
-                self.assertTrue(srv._servers[0][0].require_token)
-                self.assertTrue(srv._servers[1][0].require_token)
-                self.assertTrue(srv._servers[2][0].require_token)
-                self.assertEqual(
-                    wrapped_sockets,
-                    [
-                        "tls(raw-sock-192.168.1.50:39281, "
-                        "server_side=True, do_handshake_on_connect=False)"
-                    ],
-                )
-                self.assertEqual(
-                    warnings[-1],
-                    "[MCP Bridge] WARNING: listening on 127.0.0.1:39280, "
-                    "192.168.1.50:39281, [::1]:39282. TLS is required "
-                    "beyond loopback, and the bearer token everywhere. "
-                    "Any client with the "
-                    "bearer token that can reach these addresses can run "
-                    "Python code in FreeCAD as your user account: "
-                    "192.168.1.50:39281.\n",
-                )
-                srv.stop()
-
                 # 2c. The old Apply-to-loopback preference does not wrap
                 # loopback in TLS, and there is no non-loopback warning.
                 bound.clear()
@@ -1630,7 +1578,8 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 wrapped_sockets.clear()
                 store["ListenAddress"] = "127.0.0.1:39280"
                 store["RequireOnLoopback"] = True
-                store["RequireTls"] = True
+                store["TlsCertFile"] = ""
+                store["TlsKeyFile"] = ""
                 srv.start()
                 self.assertTrue(srv.is_running())
                 self.assertTrue(srv._servers[0][0].require_token)
@@ -1638,8 +1587,8 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 self.assertEqual(warnings, [])
                 srv.stop()
                 store["RequireOnLoopback"] = False
-                store["RequireToken"] = False
-                store["RequireTls"] = False
+                store["TlsCertFile"] = "cert.pem"
+                store["TlsKeyFile"] = "key.pem"
 
                 # 2d. An unspecified address is refused before any bind.
                 bound.clear()
@@ -1779,8 +1728,17 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 handler.headers = {"Host": "192.168.1.50"}
                 self.assertFalse(handler._host_ok())
                 handler.server.bound_host = "192.168.1.50"
+                handler.server.cert_hosts = {"freecad.lan", "2001:db8::9"}
                 handler.headers = {"Host": "192.168.1.50:39281"}
                 self.assertTrue(handler._host_ok())
+                handler.headers = {"Host": "freecad.lan:39281"}
+                self.assertTrue(handler._host_ok())
+                handler.headers = {"Host": "FREECAD.LAN"}
+                self.assertTrue(handler._host_ok())
+                handler.headers = {"Host": "[2001:DB8::9]:39281"}
+                self.assertTrue(handler._host_ok())
+                handler.headers = {"Host": "other.lan:39281"}
+                self.assertFalse(handler._host_ok())
                 handler.headers = {"Host": "localhost"}
                 self.assertFalse(handler._host_ok())
                 handler.headers = {"Host": "[2001:db8::5]:443"}
@@ -1851,6 +1809,97 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 )
                 self.assertEqual(len(handshakes), 1)
             sys.modules.pop("freecad.mcp_bridge.http_server", None)
+
+    def test_non_loopback_start_fails_when_certificate_does_not_cover_address(
+        self,
+    ):
+        """A start with an entry beyond loopback fails naming the address when
+        the certificate does not cover it, and succeeds when every
+        non-loopback address in the list is covered."""
+        config, _, _ = fresh_config()
+        fake_decoded = {
+            "subjectAltName": (
+                ("IP Address", "192.168.1.50"),
+                ("IP Address", "2001:DB8:0:0:0:0:0:5"),
+                ("DNS", "freecad.local"),
+                ("DNS", "*.cad.example"),
+            ),
+            "subject": ((("commonName", "192.168.1.50"),),),
+        }
+
+        class FakeCtx:
+            def load_cert_chain(
+                self, certfile=None, keyfile=None, password=None
+            ):
+                pass
+
+        with (
+            mock.patch.object(
+                config.ssl, "SSLContext", return_value=FakeCtx()
+            ),
+            mock.patch.object(
+                config.ssl._ssl,
+                "_test_decode_cert",
+                return_value=fake_decoded,
+            ),
+        ):
+            covered = config.certificate_hosts("cert.pem")
+            self.assertEqual(
+                covered,
+                {
+                    "192.168.1.50",
+                    "2001:db8::5",
+                    "freecad.local",
+                    "*.cad.example",
+                },
+            )
+            self.assertTrue(
+                config.certificate_covers_host(covered, "192.168.1.50:39280")
+            )
+            self.assertTrue(
+                config.certificate_covers_host(covered, "[2001:db8::5]:39280")
+            )
+            self.assertTrue(
+                config.certificate_covers_host(covered, "FREECAD.LOCAL:39280")
+            )
+            self.assertTrue(
+                config.certificate_covers_host(
+                    covered, "box.cad.example:39280"
+                )
+            )
+            self.assertFalse(
+                config.certificate_covers_host(
+                    covered, "a.b.cad.example:39280"
+                )
+            )
+            self.assertFalse(
+                config.certificate_covers_host(covered, "10.0.0.9:39280")
+            )
+            config.build_ssl_context(
+                "cert.pem",
+                "key.pem",
+                [
+                    "127.0.0.1:39280",
+                    "192.168.1.50:39280",
+                    "[2001:db8::5]:39281",
+                    "freecad.local:39282",
+                ],
+            )
+            with self.assertRaises(ValueError) as uncovered:
+                config.build_ssl_context(
+                    "cert.pem",
+                    "key.pem",
+                    [
+                        "127.0.0.1:39280",
+                        "192.168.1.50:39280",
+                        "10.0.0.9:39280",
+                    ],
+                )
+            self.assertEqual(
+                str(uncovered.exception),
+                "The TLS certificate does not cover 10.0.0.9. Generate "
+                "the certificate again in Edit → Preferences → MCP Bridge.",
+            )
 
 
 def _windows_ace_count(path):

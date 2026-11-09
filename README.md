@@ -170,12 +170,14 @@ change a model — for example:
   Preferences do not keep a copy. Generating a new token replaces
   the file. A bridge that is already running reads the file again
   before it refuses a token that does not match.
-- **Require TLS (HTTPS)** (on by default) — serves HTTPS on
-  non-loopback entries in **Listen addresses**, using **TLS
-  certificate file (PEM)** and **TLS private key file (PEM)**.
-  Loopback entries use HTTP. The certificate must cover the address
-  clients connect to. With this on and either file not set, starting
-  with an entry beyond loopback fails and leaves the bridge off.
+- **TLS certificate file (PEM)** and **TLS private key file (PEM)** —
+  entries beyond loopback in **Listen addresses** serve HTTPS only,
+  using these files. Loopback entries use HTTP. The certificate must
+  cover every address beyond loopback in the list, and an MCP client
+  connecting to an address beyond loopback must trust the bridge's
+  certificate. Starting with an entry beyond loopback fails and leaves
+  the bridge off when either file is not set or the certificate does
+  not cover the address.
 - **Permission mode** — **Ask** (the default) shows you an agent's
   code before it runs. **Unrestricted** runs it unseen, with your
   full permissions. [What the AI can do](#what-the-ai-can-do) has
@@ -216,21 +218,20 @@ MCP Bridge is designed for **local** control of FreeCAD.
   can reach the open loopback port, not only your MCP client. The
   bridge listens on every entry in **Listen addresses**. Every
   listener requires the bearer token. Non-loopback entries serve
-  HTTPS when **Require TLS (HTTPS)** is on. Loopback entries use
-  HTTP. The first start asks you to accept that connected agents
-  can run code with your full permissions. Once you accept a
-  non-loopback entry, the bridge listens on it too. Any client that
-  can reach one, with the bearer token, can run Python code in
-  FreeCAD as your user account.
+  HTTPS only. Loopback entries use HTTP. The first start asks you to
+  accept that connected agents can run code with your full
+  permissions. Once you accept a non-loopback entry, the bridge
+  listens on it too. Any client that can reach one, with the bearer
+  token, can run Python code in FreeCAD as your user account.
 - Your agent can run code in your live FreeCAD session — macro-level
   access, with no sandbox on the bridge side. That makes your MCP
   client the guardrail. Use a client you trust, and set it to ask
   before running the agent's tool calls.
 - The bridge rejects any request that carries an `Origin` header,
   so a browser page cannot reach it. It also rejects a request
-  whose `Host` header, port aside, is not the address that listener
-  is bound to. A loopback listener accepts `127.0.0.1`, `localhost`
-  and `[::1]`.
+  whose `Host` header, port aside, names neither the address that
+  listener is bound to nor a name its certificate covers. A loopback
+  listener accepts `127.0.0.1`, `localhost` and `[::1]`.
 
 For privacy questions or security reports, contact chris@createng.com
 or see [SECURITY.md](SECURITY.md).

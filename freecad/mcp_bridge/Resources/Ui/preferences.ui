@@ -288,6 +288,22 @@
         </item>
        </layout>
       </item>
+      <item>
+       <widget class="QLabel" name="listenAddressNote">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="text">
+         <string>Beyond loopback, the bridge serves HTTPS only. An MCP client connecting to an address beyond loopback must trust the certificate in TLS certificate file (PEM) below.</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>
@@ -305,25 +321,6 @@
      <layout class="QFormLayout" name="securityLayout">
       <item row="0" column="0" colspan="2">
        <layout class="QHBoxLayout" name="tlsTokenRow">
-        <item>
-         <widget class="Gui::PrefCheckBox" name="requireTlsCheckBox">
-          <property name="toolTip">
-           <string>Serve HTTPS on non-loopback listen addresses with the files below.</string>
-          </property>
-          <property name="text">
-           <string>Require TLS (HTTPS)</string>
-          </property>
-          <property name="checked">
-           <bool>true</bool>
-          </property>
-          <property name="prefEntry" stdset="0">
-           <cstring>RequireTls</cstring>
-          </property>
-          <property name="prefPath" stdset="0">
-           <cstring>Mod/freecad-mcp-bridge</cstring>
-          </property>
-         </widget>
-        </item>
         <item>
          <widget class="QPushButton" name="generateTokenButton">
           <property name="sizePolicy">
@@ -579,7 +576,7 @@
          <enum>Qt::RichText</enum>
         </property>
         <property name="text">
-         <string>A loopback entry uses &lt;br/&gt;&lt;nobr&gt;http:&amp;#x2060;//&amp;#x2060;127.0.0.1&amp;#x2060;:&amp;#x2060;&amp;lt;PORT&amp;gt;/mcp&lt;/nobr&gt;. By default, beyond loopback, use &lt;br/&gt;&lt;nobr&gt;https:&amp;#x2060;//&amp;#x2060;&amp;lt;ADDRESS&amp;gt;&amp;#x2060;:&amp;#x2060;&amp;lt;PORT&amp;gt;/mcp&lt;/nobr&gt;. Every listener requires the bearer token.&lt;br/&gt;Claude Desktop speaks stdio only and needs this connector: &lt;a href="https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest/download/freecad-mcp-bridge.mcpb"&gt;Download the bundle&lt;/a&gt;.</string>
+         <string>A loopback entry uses &lt;br/&gt;&lt;nobr&gt;http:&amp;#x2060;//&amp;#x2060;127.0.0.1&amp;#x2060;:&amp;#x2060;&amp;lt;PORT&amp;gt;/mcp&lt;/nobr&gt;. Beyond loopback, use &lt;br/&gt;&lt;nobr&gt;https:&amp;#x2060;//&amp;#x2060;&amp;lt;ADDRESS&amp;gt;&amp;#x2060;:&amp;#x2060;&amp;lt;PORT&amp;gt;/mcp&lt;/nobr&gt;. Every listener requires the bearer token.&lt;br/&gt;Claude Desktop speaks stdio only and needs this connector: &lt;a href="https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest/download/freecad-mcp-bridge.mcpb"&gt;Download the bundle&lt;/a&gt;.</string>
         </property>
         <property name="wordWrap">
          <bool>true</bool>

@@ -75,7 +75,10 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         bound = getattr(self.server, "bound_host", "") or ""
         if config.is_loopback_address(bound):
             return name.lower() in _LOOPBACK_HOSTS
-        return name.lower() == bound.lower()
+        if name.lower() == bound.lower():
+            return True
+        cert_hosts = getattr(self.server, "cert_hosts", ())
+        return config.certificate_covers_host(cert_hosts, name)
 
     def _token_ok(self) -> bool:
         auth = self.headers.get("Authorization", "")
@@ -351,23 +354,15 @@ def _invalid_request():
 def _non_loopback_warning(
     entries: list[str],
     non_loopback: list[str],
-    require_tls: bool,
 ) -> str:
     endpoints = ", ".join(entries)
     non_loopback_endpoints = ", ".join(non_loopback)
     who = "Any client with the bearer token"
-    if require_tls:
-        return (
-            f"{LOG_PREFIX} WARNING: listening on {endpoints}. TLS is "
-            "required beyond loopback, and the bearer token everywhere. "
-            f"{who} that can reach these addresses can run Python code "
-            "in FreeCAD as your user account: "
-            f"{non_loopback_endpoints}.\n"
-        )
     return (
-        f"{LOG_PREFIX} WARNING: listening on {endpoints} with no "
-        f"encryption. {who} that can reach these addresses can run "
-        f"Python code in FreeCAD as your user account: "
+        f"{LOG_PREFIX} WARNING: listening on {endpoints}. TLS is "
+        "required beyond loopback, and the bearer token everywhere. "
+        f"{who} that can reach these addresses can run Python code "
+        "in FreeCAD as your user account: "
         f"{non_loopback_endpoints}.\n"
     )
 
@@ -397,7 +392,6 @@ class HttpServer:
     def start(
         self,
         addresses: list[str] | None = None,
-        require_tls: bool | None = None,
         tls_cert_file: str | None = None,
         tls_key_file: str | None = None,
     ) -> None:
@@ -412,11 +406,6 @@ class HttpServer:
         )
         if not entries:
             entries = list(config.listen_addresses())
-        req_tls = (
-            config.require_tls()
-            if require_tls is None
-            else bool(require_tls)
-        )
         cert_file = (
             config.tls_cert_file()
             if tls_cert_file is None
@@ -443,14 +432,17 @@ class HttpServer:
             for entry in entries
             if not config.is_loopback_address(entry)
         ]
-        protected = non_loopback
         ssl_context = None
-        if protected and req_tls:
+        cert_hosts = set()
+        if non_loopback:
             try:
-                ssl_context = config.build_ssl_context(cert_file, key_file)
+                ssl_context = config.build_ssl_context(
+                    cert_file, key_file, non_loopback
+                )
             except ValueError as exc:
                 FreeCAD.Console.PrintDeveloperError(f"{LOG_PREFIX} {exc}\n")
                 raise
+            cert_hosts = config.certificate_hosts(cert_file)
         # Created here so it inherits main-thread affinity (start() is called
         # from the toolbar toggle / GUI startup, both on the main thread).
         self._executor = Executor()
@@ -468,6 +460,7 @@ class HttpServer:
                 bound_servers.append(srv)
                 srv.executor = self._executor
                 srv.bound_host = host
+                srv.cert_hosts = cert_hosts if protect_entry else set()
                 srv.require_token = True
                 if ssl_context is not None and protect_entry:
                     srv.socket = ssl_context.wrap_socket(
@@ -527,7 +520,7 @@ class HttpServer:
         )
         if non_loopback:
             FreeCAD.Console.PrintWarning(
-                _non_loopback_warning(entries, non_loopback, req_tls)
+                _non_loopback_warning(entries, non_loopback)
             )
 
     def stop(self) -> None:

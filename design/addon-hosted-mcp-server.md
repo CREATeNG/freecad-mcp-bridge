@@ -519,11 +519,9 @@ accepts, and that acceptance is remembered
 (`StartWarningAccepted`). When that first start also has unaccepted
 addresses beyond loopback, the same dialog lists those addresses and
 the risks that remain. A later new address beyond loopback asks once
-on its own. That dialog states the remaining risks:
-
-- lack of encryption when **Require TLS (HTTPS)** is off;
-- remote Python code execution in FreeCAD as the user, by any client
-  with the bearer token that can reach the addresses.
+on its own. That dialog states the remaining risk: remote Python
+code execution in FreeCAD as the user, by any client with the
+bearer token that can reach the addresses.
 
 The bridge stays off unless the user accepts. Acceptance of each
 address is stored in FreeCAD's preferences
@@ -546,9 +544,9 @@ file. The write goes to a temporary file in that folder and then
 replaces the token file, so a reader never sees it empty.
 **Generate new token** replaces the file and shows the new
 token once. Preferences do not keep a hash. The old `TokenHash`,
-`RequireToken` and `RequireOnLoopback` values are left unread. A
-running bridge, when a request's token does not match, reads the file
-again before refusing.
+`RequireToken`, `RequireTls` and `RequireOnLoopback` values are left
+unread. A running bridge, when a request's token does not match,
+reads the file again before refusing.
 
 The Claude Desktop extension reads that file on each `tools/call`. A
 token pasted into its Bearer token setting is written to the file
@@ -563,15 +561,18 @@ result. The shim's own error text carries that note beside `error`.
 The call is still sent, with the token from the file. **Generate new
 token** tells the user when the file cannot be written.
 
-- **TLS (`RequireTls`, default `true`)** — when enabled, non-loopback
-  listeners serve HTTPS using the user-configured certificate file
+- **TLS beyond loopback (`TlsCertFile`, `TlsKeyFile`)** — non-loopback
+  listeners serve HTTPS only, using the certificate file
   (`TlsCertFile`) and private key file (`TlsKeyFile`) with Python's
-  standard-library `ssl` module. Loopback listeners serve HTTP. The
-  addon does not generate certificates. If `RequireTls` is enabled and
-  an entry beyond loopback is configured without readable, valid
-  certificate and key files, startup fails with an error directing
-  the user to Edit → Preferences → MCP Bridge and the bridge stays
-  off.
+  standard-library `ssl` module. Loopback listeners serve HTTP. Beside
+  **Listen addresses**, the Preferences page states that an MCP client
+  connecting to an address beyond loopback must trust the bridge's
+  certificate and names the certificate file. If an entry beyond
+  loopback is configured without readable, valid certificate and key
+  files, or if the certificate does not cover a non-loopback address
+  in the list, startup fails with an error naming the problem and
+  directing the user to Edit → Preferences → MCP Bridge, and the
+  bridge stays off.
 
 **Security posture — noted trade-offs**
 
@@ -592,8 +593,9 @@ only after the user has accepted it once.
 **Origin and Host — required**
 
 Any request that carries an `Origin` header is refused with `403`.
-A request is also refused when its `Host` header, port aside, is not
-the address that listener is bound to. A missing `Host` is refused.
+A request is also refused when its `Host` header, port aside, names
+neither the address that listener is bound to nor a name its
+certificate covers. A missing `Host` is refused.
 A loopback listener accepts `127.0.0.1`, `localhost` and `[::1]`.
 
 ---
@@ -722,8 +724,7 @@ automatically.
 |-----------|---------|-------|
 | Listen addresses | `127.0.0.1:39280` | List of `address:port` entries (`[ipv6]:port` for IPv6) to bind; unspecified addresses such as `0.0.0.0` and `[::]` are refused; if unset, inherits a previously saved `Port` value; missing port or bind conflict at startup logs an error and leaves the bridge off; the first start asks once (`StartWarningAccepted`), including loopback; each later non-loopback entry requires acceptance once (`AcceptedListenAddresses`); every later start keeps a line in the status bar and Report view |
 | Bearer token file | `<home>/.freecad-mcp-bridge/token` | Every listener requires `Authorization: Bearer <token>`; FreeCAD writes the file at the first start and on **Generate new token**, shows the token once, and does not keep a hash; a mismatch reads the file again before refusing |
-| Require TLS (HTTPS) | `true` | Serves HTTPS on non-loopback entries using `TlsCertFile` and `TlsKeyFile`; loopback stays HTTP; fails to start on an entry beyond loopback if enabled without valid certificate and key files |
-| TLS certificate file (PEM) / TLS private key file (PEM) | `""` | PEM certificate (`TlsCertFile`) and private key (`TlsKeyFile`) paths for HTTPS |
+| TLS certificate file (PEM) / TLS private key file (PEM) | `""` | PEM certificate (`TlsCertFile`) and private key (`TlsKeyFile`) paths for HTTPS on non-loopback entries; loopback stays HTTP; startup fails on an entry beyond loopback without valid certificate and key files or when the certificate does not cover the address |
 | Permission mode | `0` (Ask) | `PermissionMode`, `0` for Ask and `1` for Unrestricted: in Ask, FreeCAD shows an agent's code, and a file's path with it, before it runs; in Unrestricted the code runs unseen; switched in Preferences or from the On/Off button's menu, with a confirmation to go Unrestricted; each switch writes it at once, and the Preferences box has no preference entry of its own, so FreeCAD's own OK writes nothing for it |
 | Max response timeout (s) | 15 | Max wait for the first answer of `execute_python` and `execute_python_file`, dialog included, and for each later page, before returning with `has_more: true` |
 | Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |
