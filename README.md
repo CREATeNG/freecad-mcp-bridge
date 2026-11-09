@@ -70,9 +70,9 @@ The server is off until you toggle it on, each session — click the button agai
    - **Beyond loopback:** Paste FreeCAD's bearer token into **Bearer
      token**. That pasted token is used by the extension only and is
      not written to the local token file. Set **TLS certificate file
-     (PEM)** to a copy of FreeCAD's certificate file (`tls-cert.pem`,
-     not the private key), so the extension connects over HTTPS and
-     trusts only that certificate.
+     (PEM)** to a copy of FreeCAD's certificate file, not the private
+     key, so the extension connects over HTTPS and trusts only that
+     certificate.
 
 Claude Desktop can't open an HTTP endpoint the way Claude Code and
 others can, so the extension runs a small stdio↔HTTP/HTTPS relay (the

@@ -191,10 +191,10 @@ const ENDPOINT = `${SCHEME}://${URL_HOST}:${PORT}/mcp`;
 const HTTPS_ENDPOINT = `https://${URL_HOST}:${PORT}/mcp`;
 const PLAIN_HTTP_TO_HTTPS_MESSAGE =
   `FreeCAD MCP Bridge serves HTTPS at ${HTTPS_ENDPOINT}, and this connection was plain HTTP. ` +
-  "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to a copy of FreeCAD's certificate file (tls-cert.pem, not the private key).";
+  "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to a copy of FreeCAD's certificate file, not the private key.";
 const MISSING_REMOTE_CERT_MESSAGE =
   `FreeCAD machine is set to ${BARE_HOST}, which requires HTTPS. ` +
-  "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to a copy of FreeCAD's certificate file (tls-cert.pem, not the private key).";
+  "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to a copy of FreeCAD's certificate file, not the private key.";
 const MISSING_REMOTE_TOKEN_MESSAGE =
   `FreeCAD machine is set to ${BARE_HOST}, another machine, so the extension cannot read its token file. ` +
   "Paste FreeCAD's bearer token into Bearer token in the FreeCAD MCP Bridge extension settings.";
@@ -288,7 +288,7 @@ function tlsErrorMessage(err) {
   if (!IS_DEFAULT_HOST) {
     return (
       `FreeCAD MCP Bridge TLS connection failed at ${ENDPOINT} (${detail}). ` +
-      `Check that TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings is a copy of FreeCAD's certificate file (tls-cert.pem, not the private key) and covers ${BARE_HOST}.`
+      `Check that TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings is a copy of FreeCAD's certificate file, not the private key, and covers ${BARE_HOST}.`
     );
   }
   return (

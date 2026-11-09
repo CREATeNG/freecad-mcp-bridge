@@ -468,7 +468,7 @@ test("manifest.json declares optional FreeCAD machine, port, sensitive bearer to
   assert.equal(cfg.tls_cert_file.required, false);
   assert.equal(cfg.tls_cert_file.title, "TLS certificate file (PEM)");
   assert.match(cfg.tls_cert_file.description, /Leave blank on loopback/);
-  assert.match(cfg.tls_cert_file.description, /copy of FreeCAD's certificate file \(tls-cert\.pem, not the private key\)/);
+  assert.match(cfg.tls_cert_file.description, /copy of FreeCAD's certificate file, not the private key/);
   assert.match(cfg.tls_cert_file.description, /trusts only that certificate/);
 });
 
@@ -822,7 +822,7 @@ test("plain HTTP against a loopback port that speaks HTTPS names the TLS setting
     assert.equal(
       error,
       `FreeCAD MCP Bridge serves HTTPS at ${endpoint}, and this connection was plain HTTP. ` +
-        "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to a copy of FreeCAD's certificate file (tls-cert.pem, not the private key)."
+        "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to a copy of FreeCAD's certificate file, not the private key."
     );
     assert.doesNotMatch(error, /isn't reachable/);
     await shim.stop();
@@ -881,7 +881,7 @@ test("with no certificate set, an HTTPS port answers initialize and tools/list, 
     assert.equal(
       error,
       `FreeCAD MCP Bridge serves HTTPS at ${endpoint}, and this connection was plain HTTP. ` +
-        "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to a copy of FreeCAD's certificate file (tls-cert.pem, not the private key)."
+        "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to a copy of FreeCAD's certificate file, not the private key."
     );
     await shim.stop();
     httpsBridge.close();
@@ -1090,7 +1090,7 @@ test("for another machine, a tools/call without a certificate or without a paste
     assert.equal(
       JSON.parse(noCertCall.result.content[0].text).error,
       "FreeCAD machine is set to freecad.lan, which requires HTTPS. " +
-        "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to a copy of FreeCAD's certificate file (tls-cert.pem, not the private key)."
+        "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to a copy of FreeCAD's certificate file, not the private key."
     );
     assert.equal(fs.existsSync(noCert.tokenDir), false);
     await noCert.stop();

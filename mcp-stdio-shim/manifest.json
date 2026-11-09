@@ -65,7 +65,7 @@
     "tls_cert_file": {
       "type": "file",
       "title": "TLS certificate file (PEM)",
-      "description": "Leave blank on loopback, where the bridge serves HTTP. Required beyond loopback: set this to a copy of FreeCAD's certificate file (tls-cert.pem, not the private key) so the extension connects over HTTPS and trusts only that certificate.",
+      "description": "Leave blank on loopback, where the bridge serves HTTP. Required beyond loopback: set this to a copy of FreeCAD's certificate file, not the private key, so the extension connects over HTTPS and trusts only that certificate.",
       "required": false
     }
   }
