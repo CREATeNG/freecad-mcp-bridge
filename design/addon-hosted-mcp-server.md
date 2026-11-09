@@ -45,11 +45,16 @@ The MCP server exposes three tools (schemas in `tools.py`).
   to the path. **Don't run** is the default and comes back as
   an error. **Unrestricted!** asks again. Only **Yes** switches
   the mode to Unrestricted, and the shown text then runs. The
-  status bar always shows the mode: a shield with a tick and
-  `MCP: Ask`, or a warning triangle and `MCP: Unrestricted`.
-  Clicking the marker switches modes the same way as the
-  **Permission mode** preference under **Permissions**: a
-  confirmation to go Unrestricted, and back to Ask at once.
+  On/Off button on the status bar shows the mode beside its
+  words: a shield with a tick for Ask, or a warning triangle for
+  Unrestricted, at one width. Its menu has `Permissions: Ask`
+  and `Permissions: Unrestricted` above `Preferences`, with the
+  mode in force ticked. Choosing one switches modes the same way
+  as the **Permission mode** preference under **Permissions**: a
+  confirmation to go Unrestricted, and back to Ask at once. A
+  click on the button's words turns the bridge on or off, and
+  only that. While the mode is Unrestricted, the button is shown
+  whatever **Show the On/Off button** says.
   The dialog counts against **Max response timeout**. If the
   file cannot be read, the tool returns `has_more: false`,
   an `error` message, and `page: []` — no job, no page history,
@@ -716,7 +721,7 @@ automatically.
 | Bearer token file | `<home>/.freecad-mcp-bridge/token` | Every listener requires `Authorization: Bearer <token>`; FreeCAD writes the file at the first start and on **Generate new token**, shows the token once, and does not keep a hash; a mismatch reads the file again before refusing |
 | Require TLS (HTTPS) | `true` | Serves HTTPS on non-loopback entries using `TlsCertFile` and `TlsKeyFile`; loopback stays HTTP; fails to start on an entry beyond loopback if enabled without valid certificate and key files |
 | TLS certificate file (PEM) / TLS private key file (PEM) | `""` | PEM certificate (`TlsCertFile`) and private key (`TlsKeyFile`) paths for HTTPS |
-| Permission mode | `0` (Ask) | `PermissionMode`, `0` for Ask and `1` for Unrestricted: in Ask, FreeCAD shows an agent's code, and a file's path with it, before it runs; in Unrestricted the code runs unseen; switched in Preferences or by the status-bar marker, with a confirmation to go Unrestricted; each switch writes it at once, and the Preferences box has no preference entry of its own, so FreeCAD's own OK writes nothing for it |
+| Permission mode | `0` (Ask) | `PermissionMode`, `0` for Ask and `1` for Unrestricted: in Ask, FreeCAD shows an agent's code, and a file's path with it, before it runs; in Unrestricted the code runs unseen; switched in Preferences or from the On/Off button's menu, with a confirmation to go Unrestricted; each switch writes it at once, and the Preferences box has no preference entry of its own, so FreeCAD's own OK writes nothing for it |
 | Max response timeout (s) | 15 | Max wait for the first answer of `execute_python` and `execute_python_file`, dialog included, and for each later page, before returning with `has_more: true` |
 | Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |
 | Page history retention (min) | 5 | How long output stays readable after the job finishes running, or after its last valid page fetch or replay. |

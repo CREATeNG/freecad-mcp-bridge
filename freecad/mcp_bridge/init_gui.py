@@ -387,7 +387,6 @@ class MCPBridgeCommand:
         mw = Gui.getMainWindow()
         if mw:
             mw.statusBar().showMessage(status)
-            refresh_mode_marker()
         show_toggle_state()
         if started or stopped:
             App.Console.PrintNotification(status + "\n")
@@ -401,54 +400,21 @@ class MCPBridgeCommand:
             App.Console.PrintWarning(warning + "\n")
 
 
-MODE_MARKER_NAME = "MCPBridgeModeMarker"
+MODE_ASK_ACTION = "MCPBridgeModeAsk"
+MODE_UNRESTRICTED_ACTION = "MCPBridgeModeUnrestricted"
 
 
-def refresh_mode_marker():
-    """Show the permission mode beside the On/Off button, always.
-
-    The shield with a tick and "MCP: Ask", or the warning triangle
-    and "MCP: Unrestricted". A click switches modes.
-    """
-    import FreeCADGui as Gui
-
-    try:
-        from PySide.QtCore import Qt
-        from PySide.QtWidgets import QToolButton
-    except Exception:
+def _tick_mode_actions(button, unrestricted):
+    """Tick the menu item of the mode in force, and only that one."""
+    menu = button.menu()
+    if menu is None:
         return
-
-    from freecad.mcp_bridge import config, file_prompt
-    from freecad.mcp_bridge.constants import STATUS_BUTTON_OBJECT_NAME
-
-    mw = Gui.getMainWindow()
-    if mw is None:
-        return
-    bar = mw.statusBar()
-    marker = bar.findChild(QToolButton, MODE_MARKER_NAME)
-    button = bar.findChild(QToolButton, STATUS_BUTTON_OBJECT_NAME)
-    if marker is None:
-        marker = QToolButton(bar)
-        marker.setObjectName(MODE_MARKER_NAME)
-        marker.setAutoRaise(True)
-        marker.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-        marker.clicked.connect(_on_marker_clicked)
-    unrestricted = config.unrestricted()
-    marker.setText(file_prompt.marker_text(unrestricted))
-    marker.setIcon(file_prompt.mode_icon(unrestricted))
-    if button is not None and button.parent() is bar and button is not marker:
-        _normal, permanent = _status_bar_widgets(bar)
-        if permanent is not None and button in permanent:
-            index = permanent.index(button) + 1
-            bar.removeWidget(marker)
-            bar.insertPermanentWidget(index, marker)
-        else:
-            bar.removeWidget(marker)
-            bar.addPermanentWidget(marker)
-    else:
-        bar.removeWidget(marker)
-        bar.addPermanentWidget(marker)
-    marker.show()
+    for action in menu.actions():
+        name = action.objectName()
+        if name == MODE_ASK_ACTION:
+            action.setChecked(not unrestricted)
+        elif name == MODE_UNRESTRICTED_ACTION:
+            action.setChecked(bool(unrestricted))
 
 
 def _status_button_on_color(rgb):
@@ -464,9 +430,12 @@ def _status_button_on_color(rgb):
 
 
 def _refresh_status_button(running, tip):
-    """Set the status-bar button's presence, position, text and colour."""
+    """Set the status-bar button's presence, position, text, colour,
+    mode icon and menu ticks."""
     import FreeCADGui as Gui
     from PySide.QtGui import QPalette
+
+    from freecad.mcp_bridge import config, file_prompt
 
     mw = Gui.getMainWindow()
     if mw is None:
@@ -476,6 +445,11 @@ def _refresh_status_button(running, tip):
         return
     button.setText("MCP On" if running else "MCP Off")
     button.setToolTip(tip)
+    # The shield or the triangle. Both are one size, so the mode does
+    # not change the button's width.
+    unrestricted = config.unrestricted()
+    button.setIcon(file_prompt.mode_icon(unrestricted))
+    _tick_mode_actions(button, unrestricted)
     if running:
         bg = mw.statusBar().palette().color(QPalette.Window)
         color = _status_button_on_color((bg.red(), bg.green(), bg.blue()))
@@ -555,7 +529,7 @@ def _ensure_status_button(mw):
     from PySide.QtCore import QEvent, QObject, Qt
     from PySide.QtWidgets import QMenu, QToolButton
 
-    from freecad.mcp_bridge import config
+    from freecad.mcp_bridge import config, file_prompt
 
     class _BarThemeFilter(QObject):
         _reported = False
@@ -587,12 +561,13 @@ def _ensure_status_button(mw):
 
     bar = mw.statusBar()
     button = bar.findChild(QToolButton, STATUS_BUTTON_OBJECT_NAME)
-    if not config.show_status_button():
+    if not file_prompt.status_button_shown(
+        config.show_status_button(), config.unrestricted()
+    ):
         if button is not None:
             bar.removeWidget(button)
             button.setParent(None)
             button.deleteLater()
-        refresh_mode_marker()
         return None
     position = config.status_button_position()
     if button is not None:
@@ -614,9 +589,19 @@ def _ensure_status_button(mw):
     button.setObjectName(STATUS_BUTTON_OBJECT_NAME)
     button.setProperty("mcp_position", position)
     button.setAutoRaise(True)
-    button.setToolButtonStyle(Qt.ToolButtonTextOnly)
+    button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
     button.setPopupMode(QToolButton.MenuButtonPopup)
     menu = QMenu(button)
+    # triggered fires on the user's choice only, never when the code
+    # sets a tick.
+    ask_action = menu.addAction(file_prompt.MENU_ASK)
+    ask_action.setObjectName(MODE_ASK_ACTION)
+    ask_action.setCheckable(True)
+    ask_action.triggered.connect(lambda *_: _on_mode_menu(False))
+    unrestricted_action = menu.addAction(file_prompt.MENU_UNRESTRICTED)
+    unrestricted_action.setObjectName(MODE_UNRESTRICTED_ACTION)
+    unrestricted_action.setCheckable(True)
+    unrestricted_action.triggered.connect(lambda *_: _on_mode_menu(True))
     prefs_action = menu.addAction("Preferences")
     prefs_action.triggered.connect(
         lambda *_: Gui.showPreferences(DISPLAY_NAME, 0)
@@ -637,12 +622,12 @@ def _ensure_status_button(mw):
     else:
         bar.addPermanentWidget(button)
     button.show()
-    refresh_mode_marker()
     return button
 
 
 def show_toggle_state():
-    """Show whether the bridge is on, on the toolbar and the status bar.
+    """Show whether the bridge is on, on the toolbar and the status bar,
+    and the permission mode on the status-bar button.
 
     The toolbar button stays pressed while it runs. Both use the same
     tooltip.
@@ -730,15 +715,19 @@ class _StatusBarPrefObserver:
 
         if param in (None, "Port", "ListenAddress"):
             config.migrate_legacy_port()
-        if param in (None, "ShowStatusButton", "StatusButtonPosition"):
+        if param in (
+            None,
+            "ShowStatusButton",
+            "StatusButtonPosition",
+            "PermissionMode",
+        ):
             show_toggle_state()
         if param in (None, "PermissionMode"):
-            refresh_mode_marker()
             _sync_open_mode_box()
 
 
 def _apply_mode_choice(want_unrestricted, box):
-    """One choice of mode, from Preferences or the status-bar marker."""
+    """One choice of mode, from Preferences or the On/Off button's menu."""
     from freecad.mcp_bridge import config, file_prompt
 
     def ask():
@@ -748,7 +737,7 @@ def _apply_mode_choice(want_unrestricted, box):
     enabled = file_prompt.commit_mode(box, want_unrestricted, ask)
     config.set_unrestricted(enabled)
     _sync_open_mode_box()
-    refresh_mode_marker()
+    show_toggle_state()
 
 
 def _on_mode_chosen(box, index):
@@ -765,11 +754,18 @@ def _on_mode_chosen(box, index):
     _apply_mode_choice(want_unrestricted, box)
 
 
-def _on_marker_clicked():
-    """The status-bar marker switches modes as the Preferences box does."""
+def _on_mode_menu(want_unrestricted):
+    """A mode chosen in the On/Off button's menu.
+
+    Unrestricted asks first, and No leaves Ask ticked. Ask is at once.
+    Choosing the mode already in force only puts its tick back.
+    """
     from freecad.mcp_bridge import config
 
-    _apply_mode_choice(not config.unrestricted(), None)
+    if want_unrestricted == config.unrestricted():
+        show_toggle_state()
+        return
+    _apply_mode_choice(want_unrestricted, None)
 
 
 def _sync_open_mode_box():

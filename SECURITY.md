@@ -37,14 +37,14 @@ in the status bar and **Report view**. In the **Ask** permission
 mode, the default, FreeCAD shows code an agent sends in a dialog
 before it runs. A file also shows its path. **Don't run** is the
 default. The **Unrestricted** mode, in which that code runs unseen,
-stays off until you confirm a second dialog. The status bar always
-shows the mode: a shield with a tick and **MCP: Ask**, or a warning
-triangle and **MCP: Unrestricted**. Clicking that marker switches
-modes the same way as **Permission mode** under **Permissions** in
-**Edit → Preferences → MCP Bridge**, and it shows whether or not
-the On/Off button is shown. A request that carries an `Origin`
-header is refused, as is a `Host` header that does not name the
-address that listener is bound to.
+stays off until you confirm a second dialog. The On/Off button on
+the status bar shows the mode: a shield with a tick for Ask, or a
+warning triangle for Unrestricted. Its menu switches modes the same
+way as **Permission mode** under **Permissions** in
+**Edit → Preferences → MCP Bridge**. While the mode is Unrestricted,
+the button is shown whatever **Show the On/Off button** says. A
+request that carries an `Origin` header is refused, as is a `Host`
+header that does not name the address that listener is bound to.
 
 See [README § Privacy Policy](README.md#privacy-policy) for how the
 bridge (the MCP server inside FreeCAD) and your MCP client interact,

@@ -15,15 +15,12 @@ from freecad.mcp_bridge.file_prompt import (
     CODE_DECLINE,
     CODE_INTRO,
     DECLINE,
-    MARKER_ASK,
-    MARKER_UNRESTRICTED,
     MODE_BODY,
     RUN,
     UNRESTRICTED_BUTTON,
     commit_mode,
     decide,
     decline_message,
-    marker_text,
 )
 from freecad.mcp_bridge.resources import mode_icon_path
 from freecad.mcp_bridge.job_gate import JobGate, JobLine
@@ -506,13 +503,6 @@ class FileRequestTests(unittest.TestCase):
         self.assertNotIn("page_no", nxt)
 
 class ModeAndQueueTests(unittest.TestCase):
-    def test_the_marker_names_the_mode(self):
-        """The marker reads MCP: Ask, or MCP: Unrestricted."""
-        self.assertEqual(MARKER_ASK, "MCP: Ask")
-        self.assertEqual(MARKER_UNRESTRICTED, "MCP: Unrestricted")
-        self.assertEqual(marker_text(False), MARKER_ASK)
-        self.assertEqual(marker_text(True), MARKER_UNRESTRICTED)
-
     def test_the_confirm_says_what_unrestricted_means(self):
         """The second dialog names the mode and what it allows."""
         self.assertEqual(
@@ -581,7 +571,7 @@ class ModeAndQueueTests(unittest.TestCase):
         self.assertIs(commit_mode(back, False, ask), False)
         self.assertEqual(back.index, 0)
         self.assertEqual(asks, ["ask", "no"])
-        # The status-bar marker has no box.
+        # The On/Off button's menu has no box.
         self.assertIs(commit_mode(None, True, ask), True)
 
     def test_a_file_runs_ahead_of_jobs_submitted_while_its_dialog_is_up(self):

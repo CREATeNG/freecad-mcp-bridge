@@ -25,8 +25,9 @@ CODE_INTRO = (
     "permissions:"
 )
 CODE_DECLINE = "The user declined to run this code."
-MARKER_ASK = "MCP: Ask"
-MARKER_UNRESTRICTED = "MCP: Unrestricted"
+# The two mode items in the On/Off button's menu.
+MENU_ASK = "Permissions: Ask"
+MENU_UNRESTRICTED = "Permissions: Unrestricted"
 MODE_TOOLTIP = (
     "Ask shows you an agent's code first. Unrestricted runs it unseen."
 )
@@ -36,9 +37,13 @@ MODE_BODY = (
 )
 
 
-def marker_text(unrestricted: bool) -> str:
-    """Status-bar wording. The marker is shown in either mode."""
-    return MARKER_UNRESTRICTED if unrestricted else MARKER_ASK
+def status_button_shown(show_preference: bool, unrestricted: bool) -> bool:
+    """Whether the On/Off button is on the status bar.
+
+    The button carries the mode's icon, so Unrestricted shows it
+    whatever the Show the On/Off button preference says.
+    """
+    return bool(show_preference) or bool(unrestricted)
 
 
 def mode_icon(unrestricted: bool):
@@ -121,7 +126,7 @@ def confirm(path, code: str) -> str:
 
     def go_unrestricted():
         config.set_unrestricted(True)
-        _refresh_marker()
+        _refresh_button()
 
     return decide(
         ask,
@@ -130,12 +135,13 @@ def confirm(path, code: str) -> str:
     )
 
 
-def _refresh_marker():
+def _refresh_button():
+    """Show the new mode on the On/Off button and in its menu."""
     try:
-        from freecad.mcp_bridge.init_gui import refresh_mode_marker
+        from freecad.mcp_bridge.init_gui import show_toggle_state
     except Exception:
         return
-    refresh_mode_marker()
+    show_toggle_state()
 
 
 def _ask_run(path, code: str) -> str:

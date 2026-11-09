@@ -105,14 +105,16 @@ job token, and the agent collects the output, or the decline, with
 
 **Unrestricted!** asks if you are really sure. Only **Yes** switches
 to the **Unrestricted** mode, in which any code an agent sends runs
-with your full permissions, unseen. The status bar always shows the
-mode: a shield with a tick and **MCP: Ask**, or a warning triangle
-and **MCP: Unrestricted**. Clicking that marker switches modes the
-same way as **Permission mode** under **Permissions** in
-**Edit → Preferences → MCP Bridge**: it asks before going
-Unrestricted, and goes back to Ask at once. The choice applies at
-once, without OK. The marker shows whether or not the On/Off button
-is shown.
+with your full permissions, unseen. The On/Off button on the status
+bar shows the mode beside **MCP On** or **MCP Off**: a shield with a
+tick for Ask, or a warning triangle for Unrestricted. The menu on
+the button's arrow has **Permissions: Ask** and **Permissions:
+Unrestricted**, with the mode in force ticked. Choosing one there
+switches modes the same way as **Permission mode** under
+**Permissions** in **Edit → Preferences → MCP Bridge**: it asks
+before going Unrestricted, and goes back to Ask at once. The choice
+applies at once, without OK. A click on the button's words still
+turns the bridge on or off.
 
 ### Example prompts
 
@@ -174,7 +176,9 @@ change a model — for example:
   clients connect to. With this on and either file not set, starting
   with an entry beyond loopback fails and leaves the bridge off.
 - **Show the On/Off button** — shows or hides the bridge's On/Off
-  button on FreeCAD's status bar (on by default). The **MCP Bridge**
+  button on FreeCAD's status bar (on by default). While the
+  permission mode is Unrestricted, the button is shown whatever this
+  says, so Unrestricted is never out of sight. The **MCP Bridge**
   toolbar button stays either way.
 - **Position** — where the On/Off button sits among the right-hand
   status-bar items: right of FreeCAD's items (default) or left.
