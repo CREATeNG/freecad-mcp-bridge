@@ -251,6 +251,242 @@ def generate_and_show_token(parent=None):
     return token
 
 
+def _cert_no_address_dialog_text():
+    """Return `(title, body)` when `Listen addresses` has no address beyond
+    loopback."""
+    return (
+        f"{DISPLAY_NAME}: TLS certificate",
+        "Add an address beyond loopback in Listen addresses first, then "
+        "click Generate certificate.",
+    )
+
+
+def _cert_replace_dialog_text():
+    """Return `(title, body)` asking whether to replace an existing TLS
+    certificate and private key."""
+    return (
+        f"{DISPLAY_NAME}: Replace TLS certificate?",
+        "Replace the TLS certificate and private key?\n\n"
+        "Any MCP client that trusts the present certificate will need the "
+        "new certificate file.",
+    )
+
+
+def _cert_generated_dialog_text(cert_file, hosts):
+    """Return `(title, body)` after generating a TLS certificate and private
+    key."""
+    addr_lines = "\n".join(f"  {host}" for host in hosts)
+    return (
+        f"{DISPLAY_NAME}: TLS certificate",
+        "Generated a new TLS certificate and private key.\n\n"
+        f"Certificate file:\n  {cert_file}\n\n"
+        f"Addresses beyond loopback covered:\n{addr_lines}\n\n"
+        "Configure each MCP client connecting beyond loopback to trust this "
+        "certificate file.",
+    )
+
+
+def _cert_error_dialog_text(reason):
+    """Return `(title, body)` when certificate generation or writing fails."""
+    return (
+        f"{DISPLAY_NAME}: TLS certificate",
+        f"Could not generate the TLS certificate ({reason}).",
+    )
+
+
+def _chooser_file_name(host, object_name):
+    """Read `fileName` from a `Gui::PrefFileChooser` on `host`, if present."""
+    if host is None:
+        return ""
+    try:
+        from PySide.QtWidgets import QLineEdit, QWidget
+    except Exception:
+        return ""
+    chooser = host.findChild(QWidget, object_name)
+    if chooser is None:
+        return ""
+    prop = chooser.property("fileName")
+    if isinstance(prop, str) and prop.strip():
+        return prop.strip()
+    if hasattr(chooser, "fileName") and callable(chooser.fileName):
+        val = chooser.fileName()
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    line = chooser.findChild(QLineEdit)
+    if line is not None:
+        return (line.text() or "").strip()
+    return ""
+
+
+def _set_chooser_file_name(host, object_name, path):
+    """Set `fileName` on a `Gui::PrefFileChooser` on `host`, if present."""
+    if host is None:
+        return
+    try:
+        from PySide.QtWidgets import QLineEdit, QWidget
+    except Exception:
+        return
+    chooser = host.findChild(QWidget, object_name)
+    if chooser is None:
+        return
+    chooser.setProperty("fileName", path)
+    if hasattr(chooser, "setFileName") and callable(chooser.setFileName):
+        try:
+            chooser.setFileName(path)
+        except Exception:
+            pass
+    line = chooser.findChild(QLineEdit)
+    if line is not None:
+        line.setText(path)
+
+
+def _cert_would_replace(host=None):
+    """True when either TLS field is already filled or `tls-cert.pem` /
+    `tls-key.pem` already exists on disk."""
+    from freecad.mcp_bridge import config, tls_cert
+
+    if _chooser_file_name(host, "tlsCertFileChooser") or _chooser_file_name(
+        host, "tlsKeyFileChooser"
+    ):
+        return True
+    if config.tls_cert_file() or config.tls_key_file():
+        return True
+    return tls_cert.cert_path().exists() or tls_cert.key_path().exists()
+
+
+def _confirm_replace_certificate(parent=None):
+    """Ask the user before replacing an existing certificate or key."""
+    import FreeCADGui as Gui
+    from PySide.QtWidgets import QDialog, QMessageBox
+
+    title, body = _cert_replace_dialog_text()
+    host = parent if parent is not None else Gui.getMainWindow()
+    box = QMessageBox(
+        QMessageBox.Question,
+        title,
+        body,
+        QMessageBox.Yes | QMessageBox.No,
+        host,
+    )
+    QDialog.setWindowTitle(box, title)
+    box.setObjectName("MCPBridgeConfirmReplaceCertDialog")
+    box.setDefaultButton(QMessageBox.No)
+    try:
+        return box.exec() == QMessageBox.Yes
+    finally:
+        box.setParent(None)
+        box.deleteLater()
+
+
+def _show_cert_message(title, body, warning, object_name, parent=None):
+    """Show a modal information or warning dialog for certificate actions."""
+    import FreeCADGui as Gui
+    from PySide.QtWidgets import QDialog, QMessageBox
+
+    host = parent if parent is not None else Gui.getMainWindow()
+    icon = QMessageBox.Warning if warning else QMessageBox.Information
+    box = QMessageBox(icon, title, body, QMessageBox.NoButton, host)
+    QDialog.setWindowTitle(box, title)
+    box.setObjectName(object_name)
+    ok_btn = box.addButton("OK", QMessageBox.AcceptRole)
+    box.setDefaultButton(ok_btn)
+    box.setEscapeButton(ok_btn)
+    try:
+        box.exec()
+    finally:
+        box.setParent(None)
+        box.deleteLater()
+
+
+def generate_and_show_certificate(parent=None):
+    """Generate a self-signed TLS certificate and private key for the
+    addresses beyond loopback in `Listen addresses`, fill and save both TLS
+    file settings, and show the certificate path and covered addresses."""
+    from freecad.mcp_bridge import config, tls_cert
+
+    host = parent
+    if host is None:
+        try:
+            import FreeCADGui as Gui
+
+            host = Gui.getMainWindow()
+        except Exception:
+            host = None
+
+    raw_entries = None
+    if host is not None:
+        try:
+            from PySide.QtWidgets import QTextEdit
+
+            edit = host.findChild(QTextEdit, "listenAddressTextEdit")
+            if edit is not None:
+                raw_entries = edit.toPlainText()
+        except Exception:
+            raw_entries = None
+
+    try:
+        entries = (
+            config.parse_listen_addresses(raw_entries)
+            if raw_entries is not None
+            else config.listen_addresses()
+        )
+        hosts = tls_cert.beyond_loopback_hosts(entries)
+    except ValueError as exc:
+        _show_cert_message(
+            f"{DISPLAY_NAME}: TLS certificate",
+            str(exc),
+            warning=True,
+            object_name="MCPBridgeCertInvalidAddressDialog",
+            parent=host,
+        )
+        return None
+
+    if not hosts:
+        title, body = _cert_no_address_dialog_text()
+        _show_cert_message(
+            title,
+            body,
+            warning=True,
+            object_name="MCPBridgeCertNoAddressDialog",
+            parent=host,
+        )
+        return None
+
+    if _cert_would_replace(host) and not _confirm_replace_certificate(
+        parent=host
+    ):
+        return None
+
+    try:
+        c_path, k_path = tls_cert.generate_and_store_certificate(hosts)
+    except Exception as exc:
+        title, body = _cert_error_dialog_text(exc)
+        _show_cert_message(
+            title,
+            body,
+            warning=True,
+            object_name="MCPBridgeCertWriteFailureDialog",
+            parent=host,
+        )
+        return None
+
+    c_str, k_str = str(c_path), str(k_path)
+    config._params().SetString("TlsCertFile", c_str)
+    config._params().SetString("TlsKeyFile", k_str)
+    _set_chooser_file_name(host, "tlsCertFileChooser", c_str)
+    _set_chooser_file_name(host, "tlsKeyFileChooser", k_str)
+    _sync_open_listen_note()
+    title, body = _cert_generated_dialog_text(c_str, hosts)
+    _show_cert_message(
+        title,
+        body,
+        warning=False,
+        object_name="MCPBridgeCertGeneratedDialog",
+        parent=host,
+    )
+    return c_str, k_str
+
+
 class MCPBridgeCommand:
     def GetResources(self):
         import FreeCAD as App
@@ -815,6 +1051,18 @@ def _install_pref_page_filter(mw):
                 obj.setProperty("mcp_token_hooked", True)
                 obj.clicked.connect(
                     lambda *_: generate_and_show_token(parent=obj.window())
+                )
+            if (
+                event.type() == QEvent.Show
+                and isinstance(obj, QPushButton)
+                and obj.objectName() == "generateCertButton"
+                and not obj.property("mcp_cert_hooked")
+            ):
+                obj.setProperty("mcp_cert_hooked", True)
+                obj.clicked.connect(
+                    lambda *_: generate_and_show_certificate(
+                        parent=obj.window()
+                    )
                 )
             if (
                 event.type() == QEvent.Show

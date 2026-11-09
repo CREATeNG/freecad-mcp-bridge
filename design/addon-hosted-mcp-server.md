@@ -567,12 +567,20 @@ token** tells the user when the file cannot be written.
   standard-library `ssl` module. Loopback listeners serve HTTP. Beside
   **Listen addresses**, the Preferences page states that an MCP client
   connecting to an address beyond loopback must trust the bridge's
-  certificate and names the certificate file. If an entry beyond
-  loopback is configured without readable, valid certificate and key
-  files, or if the certificate does not cover a non-loopback address
-  in the list, startup fails with an error naming the problem and
-  directing the user to Edit → Preferences → MCP Bridge, and the
-  bridge stays off.
+  certificate and names the certificate file. **Generate certificate**
+  creates a self-signed 2048-bit RSA X.509 v3 certificate (825-day
+  validity, `CA:FALSE`, `digitalSignature` and `keyEncipherment`,
+  `serverAuth`) covering the addresses beyond loopback in **Listen
+  addresses**, writes `tls-cert.pem` and `tls-key.pem` (`tls-key.pem`
+  readable by the user only) in `<home>/.freecad-mcp-bridge` (or
+  `FREECAD_MCP_TOKEN_DIR`), and fills and saves `TlsCertFile` and
+  `TlsKeyFile`, asking first when either field is already set or
+  either file already exists. If an entry beyond loopback is
+  configured without readable, valid certificate and key files, if the
+  certificate has expired, or if the certificate does not cover a
+  non-loopback address in the list, startup fails with an error naming
+  the problem and directing the user to Edit → Preferences → MCP
+  Bridge, and the bridge stays off.
 
 **Security posture — noted trade-offs**
 
@@ -735,7 +743,7 @@ automatically.
 |-----------|---------|-------|
 | Listen addresses | `127.0.0.1:39280` | List of `address:port` entries (`[ipv6]:port` for IPv6) to bind; unspecified addresses such as `0.0.0.0` and `[::]` are refused; if unset, inherits a previously saved `Port` value; missing port or bind conflict at startup logs an error and leaves the bridge off; the first start asks once (`StartWarningAccepted`), including loopback; each later non-loopback entry requires acceptance once (`AcceptedListenAddresses`); every later start keeps a line in the status bar and Report view |
 | Bearer token file | `<home>/.freecad-mcp-bridge/token` | Every listener requires `Authorization: Bearer <token>`; FreeCAD writes the file at the first start and on **Generate new token**, shows the token once, and does not keep a hash; a mismatch reads the file again before refusing |
-| TLS certificate file (PEM) / TLS private key file (PEM) | `""` | PEM certificate (`TlsCertFile`) and private key (`TlsKeyFile`) paths for HTTPS on non-loopback entries; loopback stays HTTP; startup fails on an entry beyond loopback without valid certificate and key files, when the certificate has expired, or when the certificate does not cover the address |
+| TLS certificate file (PEM) / TLS private key file (PEM) | `""` | PEM certificate (`TlsCertFile`) and private key (`TlsKeyFile`) paths for HTTPS on non-loopback entries; loopback stays HTTP; **Generate certificate** writes `tls-cert.pem` and `tls-key.pem` (`tls-key.pem` readable by the user only) in `<home>/.freecad-mcp-bridge` covering the addresses beyond loopback in **Listen addresses** and fills both fields; startup fails on an entry beyond loopback without valid certificate and key files, when the certificate has expired, or when the certificate does not cover the address |
 | Permission mode | `0` (Ask) | `PermissionMode`, `0` for Ask and `1` for Unrestricted: in Ask, FreeCAD shows an agent's code, and a file's path with it, before it runs; in Unrestricted the code runs unseen; switched in Preferences or from the On/Off button's menu, with a confirmation to go Unrestricted; each switch writes it at once, and the Preferences box has no preference entry of its own, so FreeCAD's own OK writes nothing for it |
 | Max response timeout (s) | 15 | Max wait for the first answer of `execute_python` and `execute_python_file`, dialog included, and for each later page, before returning with `has_more: true` |
 | Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |

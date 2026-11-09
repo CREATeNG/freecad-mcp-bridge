@@ -1031,6 +1031,13 @@ class ListenAddressTests(unittest.TestCase):
             "MCP Bridge.",
             seen.get("uncovered_cert_report", ""),
         )
+        self.assertTrue(seen.get("gen_cert_replace_dialog_found"))
+        self.assertTrue(seen.get("gen_cert_dialog_found"))
+        self.assertIn(
+            address,
+            seen.get("gen_cert_dialog_text", ""),
+        )
+        self.assertTrue(seen.get("gen_cert_covers_address"))
 
         # 2. Risk dialog listed only the remaining risk (code execution with
         # the bearer token), not No authentication or No encryption.
@@ -1355,6 +1362,39 @@ def step_no_cert_then_start():
     seen['uncovered_cert_running'] = bridge.is_running()
     seen['uncovered_cert_status'] = mw.statusBar().currentMessage()
     seen['uncovered_cert_report'] = report_view_text()[before_uncovered:]
+
+    # Generate certificate asks before replacing the existing setting,
+    # writes tls-cert.pem and tls-key.pem covering the address, and saves
+    # both preference fields.
+    from freecad.mcp_bridge import config as bridge_cfg, init_gui
+    seen['gen_cert_replace_dialog_found'] = False
+    seen['gen_cert_dialog_found'] = False
+
+    def handle_cert_dialogs():
+        for box in mw.findChildren(QMessageBox):
+            if not box.isVisible():
+                continue
+            if box.objectName() == 'MCPBridgeConfirmReplaceCertDialog':
+                seen['gen_cert_replace_dialog_found'] = True
+                QTimer.singleShot(150, handle_cert_dialogs)
+                box.button(QMessageBox.Yes).click()
+                return
+            if box.objectName() == 'MCPBridgeCertGeneratedDialog':
+                seen['gen_cert_dialog_found'] = True
+                seen['gen_cert_dialog_text'] = box.text()
+                for b in box.buttons():
+                    if b.text() == 'OK':
+                        b.click()
+                        return
+
+    QTimer.singleShot(150, handle_cert_dialogs)
+    gen_pair = init_gui.generate_and_show_certificate()
+    seen['gen_cert_covers_address'] = bool(
+        gen_pair
+        and bridge_cfg.certificate_covers_host(
+            bridge_cfg.certificate_hosts(gen_pair[0]), {address!r}
+        )
+    )
 
     # Now set the throwaway cert and key and start with defaults.
     # The old RequireToken preference is unread. Clear the token file

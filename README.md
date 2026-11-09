@@ -181,12 +181,20 @@ change a model — for example:
   before it refuses a token that does not match.
 - **TLS certificate file (PEM)** and **TLS private key file (PEM)** —
   entries beyond loopback in **Listen addresses** serve HTTPS only,
-  using these files. Loopback entries use HTTP. The certificate must
-  cover every address beyond loopback in the list, and an MCP client
-  connecting to an address beyond loopback must trust the bridge's
-  certificate. Starting with an entry beyond loopback fails and leaves
-  the bridge off when either file is not set, when the certificate has
-  expired, or when the certificate does not cover the address.
+  using these files. Loopback entries use HTTP. Click **Generate
+  certificate** to create a self-signed RSA-2048 certificate
+  (`<home>/.freecad-mcp-bridge/tls-cert.pem`) and private key
+  (`<home>/.freecad-mcp-bridge/tls-key.pem`, readable by you only)
+  covering the addresses beyond loopback in **Listen addresses**, and
+  fill in both fields; if a certificate or private key is already set
+  or exists there, FreeCAD asks before replacing it because MCP
+  clients that trust the present certificate will need the new one.
+  The certificate must cover every address beyond loopback in the
+  list, and an MCP client connecting to an address beyond loopback
+  must trust the bridge's certificate. Starting with an entry beyond
+  loopback fails and leaves the bridge off when either file is not
+  set, when the certificate has expired, or when the certificate does
+  not cover the address.
 - **Permission mode** — **Ask** (the default) shows you an agent's
   code before it runs. **Unrestricted** runs it unseen, with your
   full permissions. [What the AI can do](#what-the-ai-can-do) has

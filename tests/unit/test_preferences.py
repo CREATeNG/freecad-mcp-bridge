@@ -2356,5 +2356,417 @@ class PermissionModeTests(unittest.TestCase):
         )
 
 
+class TlsCertificateGeneratorTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        import datetime
+
+        _, _, _ = fresh_config()
+        from freecad.mcp_bridge import tls_cert
+
+        cls.tls_cert = tls_cert
+        cls.now = datetime.datetime(
+            2026, 11, 10, 0, 0, 0, tzinfo=datetime.timezone.utc
+        )
+        cls.hosts = ["192.168.1.50", "2001:db8::5", "freecad.local"]
+        cls.cert_pem, cls.key_pem, cls.meta = (
+            tls_cert.generate_self_signed_cert(cls.hosts, now=cls.now)
+        )
+        cls.other_cert_pem, cls.other_key_pem, _ = (
+            tls_cert.generate_self_signed_cert(
+                ["192.168.1.99", "other.local"], now=cls.now
+            )
+        )
+
+    def test_generated_rsa_key_arithmetic_permissions_and_openssl_check(
+        self,
+    ):
+        """The generator produces a 2048-bit RSA keypair with valid arithmetic
+        and writes tls-key.pem readable by the user only."""
+        import math
+        import shutil
+        import subprocess
+
+        key = self.meta["key"]
+        self.assertEqual(key["e"], 65537)
+        self.assertNotEqual(key["p"], key["q"])
+        self.assertEqual(key["p"].bit_length(), 1024)
+        self.assertEqual(key["q"].bit_length(), 1024)
+        self.assertEqual(key["p"] >> 1022, 3)
+        self.assertEqual(key["q"] >> 1022, 3)
+        self.assertEqual(math.gcd(key["p"] - 1, key["e"]), 1)
+        self.assertEqual(math.gcd(key["q"] - 1, key["e"]), 1)
+        self.assertEqual(key["n"], key["p"] * key["q"])
+        self.assertEqual(key["n"].bit_length(), 2048)
+        lam = math.lcm(key["p"] - 1, key["q"] - 1)
+        self.assertEqual((key["d"] * key["e"]) % lam, 1)
+
+        with tempfile.TemporaryDirectory() as folder:
+            with mock.patch.object(
+                self.tls_cert,
+                "generate_self_signed_cert",
+                return_value=(self.cert_pem, self.key_pem, self.meta),
+            ):
+                c_path, k_path = (
+                    self.tls_cert.generate_and_store_certificate(
+                        self.hosts, directory=Path(folder)
+                    )
+                )
+            self.assertEqual(c_path, Path(folder) / "tls-cert.pem")
+            self.assertEqual(k_path, Path(folder) / "tls-key.pem")
+            if os.name == "nt":
+                self.assertEqual(_windows_ace_count(k_path), 1)
+            else:
+                mode = stat.S_IMODE(k_path.stat().st_mode)
+                self.assertEqual(mode, 0o600)
+            openssl_bin = shutil.which("openssl")
+            if openssl_bin is not None:
+                res = subprocess.run(
+                    [
+                        openssl_bin,
+                        "rsa",
+                        "-in",
+                        str(k_path),
+                        "-check",
+                        "-noout",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(res.returncode, 0, res.stderr)
+                self.assertIn("RSA key ok", res.stdout + res.stderr)
+
+    def test_certificate_signature_validity_and_openssl_verify(self):
+        """The certificate is signed with PKCS#1 v1.5 SHA-256 over the TBS
+        bytes, valid for 825 days from one day back, and covers each address
+        beyond loopback."""
+        import datetime
+        import hashlib
+        import shutil
+        import subprocess
+
+        config, _, _ = fresh_config()
+        key = self.meta["key"]
+        tbs_der = self.meta["tbs_der"]
+        sig_bytes = self.meta["signature"]
+        self.assertEqual(len(sig_bytes), 256)
+        recovered = pow(
+            int.from_bytes(sig_bytes, "big"), key["e"], key["n"]
+        ).to_bytes(256, "big")
+        self.assertEqual(recovered[:2], b"\x00\x01")
+        sep = recovered.index(b"\x00", 2)
+        self.assertGreaterEqual(sep - 2, 8)
+        self.assertEqual(recovered[2:sep], b"\xff" * (sep - 2))
+        digest_info = recovered[sep + 1 :]
+        expected_prefix = bytes.fromhex(
+            "3031300d060960864801650304020105000420"
+        )
+        self.assertEqual(
+            digest_info,
+            expected_prefix + hashlib.sha256(tbs_der).digest(),
+        )
+        self.assertEqual(
+            self.meta["not_before"],
+            self.now - datetime.timedelta(days=1),
+        )
+        self.assertEqual(
+            self.meta["not_after"] - self.meta["not_before"],
+            datetime.timedelta(days=825),
+        )
+        with tempfile.TemporaryDirectory() as folder:
+            c_path = Path(folder) / "tls-cert.pem"
+            c_path.write_text(self.cert_pem, encoding="utf-8")
+            self.assertEqual(
+                config.certificate_hosts(str(c_path)),
+                {"192.168.1.50", "2001:db8::5", "freecad.local"},
+            )
+            openssl_bin = shutil.which("openssl")
+            if openssl_bin is not None:
+                res = subprocess.run(
+                    [
+                        openssl_bin,
+                        "verify",
+                        "-check_ss_sig",
+                        "-CAfile",
+                        str(c_path),
+                        str(c_path),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(res.returncode, 0, res.stderr)
+
+    def test_python_ssl_loads_pair_verifies_https_and_refuses_other_cert(
+        self,
+    ):
+        """Python's ssl loads the generated pair, verifies an HTTPS connection
+        against the certificate, and refuses a different certificate."""
+        import http.server
+        import socket
+        import ssl
+        import threading
+
+        config, _, _ = fresh_config()
+        with tempfile.TemporaryDirectory() as folder:
+            c_path = Path(folder) / "tls-cert.pem"
+            k_path = Path(folder) / "tls-key.pem"
+            other_c_path = Path(folder) / "other-cert.pem"
+            c_path.write_text(self.cert_pem, encoding="utf-8")
+            k_path.write_text(self.key_pem, encoding="utf-8")
+            other_c_path.write_text(self.other_cert_pem, encoding="utf-8")
+
+            server_ctx = config.build_ssl_context(
+                str(c_path),
+                str(k_path),
+                [
+                    "192.168.1.50:39280",
+                    "[2001:db8::5]:39281",
+                    "freecad.local:39282",
+                ],
+            )
+
+            class QuietHandler(http.server.BaseHTTPRequestHandler):
+                def do_GET(self):
+                    self.send_response(200)
+                    self.end_headers()
+                    self.wfile.write(b"ok")
+
+                def log_message(self, *_args):
+                    pass
+
+            httpd = http.server.HTTPServer(("127.0.0.1", 0), QuietHandler)
+            httpd.socket = server_ctx.wrap_socket(
+                httpd.socket, server_side=True
+            )
+            port = httpd.server_address[1]
+            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread.start()
+            try:
+                good_ctx = ssl.create_default_context(cafile=str(c_path))
+                with socket.create_connection(
+                    ("127.0.0.1", port), timeout=5
+                ) as raw:
+                    with good_ctx.wrap_socket(
+                        raw, server_hostname="freecad.local"
+                    ) as tls_sock:
+                        tls_sock.sendall(
+                            b"GET / HTTP/1.1\r\nHost: freecad.local\r\n"
+                            b"Connection: close\r\n\r\n"
+                        )
+                        reply = tls_sock.recv(1024)
+                self.assertIn(b"200 OK", reply)
+
+                bad_ctx = ssl.create_default_context(cafile=str(other_c_path))
+                with self.assertRaises(ssl.SSLCertVerificationError):
+                    with socket.create_connection(
+                        ("127.0.0.1", port), timeout=5
+                    ) as raw:
+                        with bad_ctx.wrap_socket(
+                            raw, server_hostname="freecad.local"
+                        ):
+                            pass
+            finally:
+                httpd.shutdown()
+                httpd.server_close()
+                thread.join(timeout=2)
+
+    def test_node_https_verifies_generated_certificate(self):
+        """Node's https client verifies a server using the generated pair when
+        ca is set to the generated certificate."""
+        import http.server
+        import shutil
+        import subprocess
+        import threading
+
+        node_bin = shutil.which("node")
+        if node_bin is None:
+            self.skipTest("node is not on PATH")
+        config, _, _ = fresh_config()
+        with tempfile.TemporaryDirectory() as folder:
+            c_path = Path(folder) / "tls-cert.pem"
+            k_path = Path(folder) / "tls-key.pem"
+            c_path.write_text(self.cert_pem, encoding="utf-8")
+            k_path.write_text(self.key_pem, encoding="utf-8")
+            server_ctx = config.build_ssl_context(
+                str(c_path), str(k_path), ["freecad.local:39280"]
+            )
+
+            class QuietHandler(http.server.BaseHTTPRequestHandler):
+                def do_GET(self):
+                    self.send_response(200)
+                    self.end_headers()
+                    self.wfile.write(b"node-ok")
+
+                def log_message(self, *_args):
+                    pass
+
+            httpd = http.server.HTTPServer(("127.0.0.1", 0), QuietHandler)
+            httpd.socket = server_ctx.wrap_socket(
+                httpd.socket, server_side=True
+            )
+            port = httpd.server_address[1]
+            thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+            thread.start()
+            try:
+                script = (
+                    "const fs = require('node:fs');"
+                    "const https = require('node:https');"
+                    "const ca = fs.readFileSync(process.argv[1]);"
+                    "const port = Number(process.argv[2]);"
+                    "https.get({host:'127.0.0.1', port, "
+                    "servername:'freecad.local', ca}, (res) => {"
+                    "  let body = '';"
+                    "  res.on('data', (c) => body += c);"
+                    "  res.on('end', () => {"
+                    "    console.log(res.statusCode + ':' + body);"
+                    "    process.exit(res.statusCode === 200 ? 0 : 1);"
+                    "  });"
+                    "}).on('error', (e) => {"
+                    "  console.error(e); process.exit(2);"
+                    "});"
+                )
+                res = subprocess.run(
+                    [node_bin, "-e", script, str(c_path), str(port)],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(res.returncode, 0, res.stderr)
+                self.assertEqual(res.stdout.strip(), "200:node-ok")
+            finally:
+                httpd.shutdown()
+                httpd.server_close()
+                thread.join(timeout=2)
+
+    def test_generate_certificate_button_flow_and_replace_confirmation(self):
+        """Generate certificate refuses when there is no address beyond
+        loopback, asks before replacing an existing certificate or setting,
+        and fills and saves both TLS file settings."""
+        btn = next(
+            widget
+            for widget in ET.parse(PAGE).iter("widget")
+            if widget.get("name") == "generateCertButton"
+        )
+        props = {
+            prop.get("name"): prop[0].text
+            for prop in btn.findall("property")
+        }
+        self.assertEqual(props["text"], "Generate certificate")
+        self.assertEqual(
+            props["toolTip"],
+            "Generate a certificate for addresses beyond loopback.",
+        )
+        self.assertLess(len(props["toolTip"]), 60)
+
+        init_gui = _fresh_init_gui()
+        config, _, _ = fresh_config()
+        store = {}
+
+        class DictParams:
+            def GetString(self, name, default=""):
+                return store.get(name, default)
+
+            def SetString(self, name, val):
+                store[name] = val
+
+        messages = []
+        replace_answers = []
+        init_gui._show_cert_message = (
+            lambda title, body, warning, object_name, parent=None: (
+                messages.append((title, body, warning, object_name))
+            )
+        )
+        init_gui._confirm_replace_certificate = (
+            lambda parent=None: replace_answers.pop(0)
+        )
+        with tempfile.TemporaryDirectory() as folder:
+            with (
+                mock.patch.dict(
+                    os.environ, {"FREECAD_MCP_TOKEN_DIR": folder}
+                ),
+                mock.patch.object(
+                    config, "_params", return_value=DictParams()
+                ),
+                mock.patch.object(
+                    self.tls_cert,
+                    "generate_self_signed_cert",
+                    return_value=(self.cert_pem, self.key_pem, self.meta),
+                ),
+            ):
+                # 1. Loopback only -> warning dialog, nothing written.
+                store["ListenAddress"] = "127.0.0.1:39280\n[::1]:39281"
+                self.assertIsNone(init_gui.generate_and_show_certificate())
+                self.assertEqual(len(messages), 1)
+                self.assertEqual(
+                    messages[-1],
+                    (
+                        "MCP Bridge: TLS certificate",
+                        "Add an address beyond loopback in Listen addresses "
+                        "first, then click Generate certificate.",
+                        True,
+                        "MCPBridgeCertNoAddressDialog",
+                    ),
+                )
+                self.assertFalse((Path(folder) / "tls-cert.pem").exists())
+
+                # 2. Address beyond loopback, nothing existing -> writes both
+                # files without asking to replace, saves preferences, shows
+                # path and covered addresses.
+                messages.clear()
+                store["ListenAddress"] = (
+                    "127.0.0.1:39280\n192.168.1.50:39280\nfreecad.local:39281"
+                )
+                result = init_gui.generate_and_show_certificate()
+                expected_cert = str(Path(folder) / "tls-cert.pem")
+                expected_key = str(Path(folder) / "tls-key.pem")
+                self.assertEqual(result, (expected_cert, expected_key))
+                self.assertEqual(store["TlsCertFile"], expected_cert)
+                self.assertEqual(store["TlsKeyFile"], expected_key)
+                self.assertEqual(len(messages), 1)
+                self.assertEqual(
+                    messages[-1][0], "MCP Bridge: TLS certificate"
+                )
+                self.assertFalse(messages[-1][2])
+                self.assertIn(expected_cert, messages[-1][1])
+                self.assertIn("192.168.1.50", messages[-1][1])
+                self.assertIn("freecad.local", messages[-1][1])
+
+                # 3. Existing files/settings -> asks before replacing; No
+                # leaves existing files untouched; Yes replaces them.
+                rep_title, rep_body = init_gui._cert_replace_dialog_text()
+                self.assertEqual(
+                    rep_title, "MCP Bridge: Replace TLS certificate?"
+                )
+                self.assertIn(
+                    "Any MCP client that trusts the present certificate "
+                    "will need the new certificate file.",
+                    rep_body,
+                )
+                (Path(folder) / "tls-cert.pem").write_text(
+                    "keep-existing", encoding="utf-8"
+                )
+                messages.clear()
+                replace_answers.append(False)
+                self.assertIsNone(init_gui.generate_and_show_certificate())
+                self.assertEqual(messages, [])
+                self.assertEqual(
+                    (Path(folder) / "tls-cert.pem").read_text(
+                        encoding="utf-8"
+                    ),
+                    "keep-existing",
+                )
+                replace_answers.append(True)
+                result2 = init_gui.generate_and_show_certificate()
+                self.assertEqual(result2, (expected_cert, expected_key))
+                self.assertEqual(
+                    (Path(folder) / "tls-cert.pem").read_text(
+                        encoding="utf-8"
+                    ),
+                    self.cert_pem,
+                )
+
+
 if __name__ == "__main__":
     unittest.main()
