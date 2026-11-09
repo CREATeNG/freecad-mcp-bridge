@@ -225,8 +225,17 @@ def _assert_status_button(running: bool) -> None:
             "Status-bar button text is out of step. "
             f"Expected {expected!r}, got {button.text()!r}"
         )
-    if button.icon().pixmap(16, 16).isNull():
-        common.fail("Status-bar button has no permission mode icon")
+    from freecad.mcp_bridge import config, file_prompt
+
+    unrestricted = config.unrestricted()
+    shown = button.icon().pixmap(16, 16).toImage()
+    if button.icon().pixmap(16, 16).isNull() or shown != (
+        file_prompt.mode_icon(unrestricted).pixmap(16, 16).toImage()
+    ):
+        common.fail(
+            "Status-bar button icon is not the permission mode's "
+            f"(unrestricted={unrestricted})"
+        )
     if button.popupMode() != QToolButton.MenuButtonPopup:
         common.fail(
             "Status-bar button is not in MenuButtonPopup mode "
@@ -237,22 +246,29 @@ def _assert_status_button(running: bool) -> None:
     expected_menu = [
         "Permissions: Ask",
         "Permissions: Unrestricted",
-        "Preferences",
+        "MCP Bridge Preferences",
     ]
     if texts != expected_menu:
         common.fail(
             "Status-bar button menu is missing or unexpected: "
             f"expected {expected_menu!r}, got {texts!r}"
         )
-    from freecad.mcp_bridge import config
-
-    unrestricted = config.unrestricted()
-    ticks = [a.isChecked() for a in menu.actions()]
-    if ticks != [not unrestricted, unrestricted, False]:
-        common.fail(
-            "Status-bar button menu ticks are out of step with the "
-            f"permission mode (unrestricted={unrestricted}, ticks={ticks})"
-        )
+    # Each item is plain words with its icon. None carries a tick: the
+    # button's own icon is what shows the mode in force.
+    for item in menu.actions():
+        if item.isCheckable():
+            common.fail(
+                f"Status-bar button menu item {item.text()!r} is checkable"
+            )
+        if item.icon().pixmap(16, 16).isNull():
+            common.fail(
+                f"Status-bar button menu item {item.text()!r} has no icon"
+            )
+        if not item.isIconVisibleInMenu():
+            common.fail(
+                f"Status-bar button menu item {item.text()!r} hides "
+                "its icon"
+            )
     tip = (
         "MCP Bridge: on (click to stop)"
         if running
@@ -373,7 +389,7 @@ def _verify_mode_on_status_button() -> None:
     ask, unrestricted = button.menu().actions()[:2]
     width = button.sizeHint().width()
     try:
-        # Unrestricted asks first, and No leaves Ask ticked.
+        # Unrestricted asks first, and No keeps Ask.
         _answer_unrestricted_dialog("No")
         unrestricted.trigger()
         if config.unrestricted():
@@ -392,7 +408,7 @@ def _verify_mode_on_status_button() -> None:
                 "in Unrestricted)"
             )
 
-        # Unrestricted is never out of sight.
+        # Unrestricted stays shown on the status bar.
         params.SetBool("ShowStatusButton", False)
         try:
             if _status_button() is None:

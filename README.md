@@ -109,12 +109,12 @@ with your full permissions, unseen. The On/Off button on the status
 bar shows the mode beside **MCP On** or **MCP Off**: a shield with a
 tick for Ask, or a warning triangle for Unrestricted. The menu on
 the button's arrow has **Permissions: Ask** and **Permissions:
-Unrestricted**, with the mode in force ticked. Choosing one there
-switches modes the same way as **Permission mode** under
-**Permissions** in **Edit → Preferences → MCP Bridge**: it asks
-before going Unrestricted, and goes back to Ask at once. The choice
-applies at once, without OK. A click on the button's words still
-turns the bridge on or off.
+Unrestricted**, each with its icon. Choosing one there switches
+modes the same way as **Permission mode** under **Permissions** in
+**Edit → Preferences → MCP Bridge**: it asks before going
+Unrestricted, and goes back to Ask at once. In Preferences too, the
+choice applies at once, without OK. A click on the button, its icon
+or its words, turns the bridge on or off.
 
 ### Example prompts
 
@@ -175,11 +175,15 @@ change a model — for example:
   Loopback entries use HTTP. The certificate must cover the address
   clients connect to. With this on and either file not set, starting
   with an entry beyond loopback fails and leaves the bridge off.
+- **Permission mode** — **Ask** (the default) shows you an agent's
+  code before it runs. **Unrestricted** runs it unseen, with your
+  full permissions. [What the AI can do](#what-the-ai-can-do) has
+  the rest.
 - **Show the On/Off button** — shows or hides the bridge's On/Off
   button on FreeCAD's status bar (on by default). While the
   permission mode is Unrestricted, the button is shown whatever this
-  says, so Unrestricted is never out of sight. The **MCP Bridge**
-  toolbar button stays either way.
+  says, so Unrestricted stays shown on the status bar. The
+  **MCP Bridge** toolbar button stays either way.
 - **Position** — where the On/Off button sits among the right-hand
   status-bar items: right of FreeCAD's items (default) or left.
 

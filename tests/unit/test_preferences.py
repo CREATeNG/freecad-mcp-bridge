@@ -28,6 +28,7 @@ from freecad.mcp_bridge.constants import (
 )
 from freecad.mcp_bridge.file_prompt import (
     MENU_ASK,
+    MENU_PREFERENCES,
     MENU_UNRESTRICTED,
     MODE_TOOLTIP,
     status_button_shown,
@@ -2202,9 +2203,9 @@ class PermissionModeTests(unittest.TestCase):
             self.assertEqual(button.call_count, 3)
             self.assertEqual(box.call_count, 3)
 
-    def test_choosing_the_ticked_menu_item_only_puts_its_tick_back(self):
-        """A click on the mode already in force asks nothing and writes
-        nothing. It refreshes the button, which ticks the item again."""
+    def test_choosing_the_mode_in_force_in_the_menu_does_nothing(self):
+        """A click on the mode already in force asks nothing, writes
+        nothing and refreshes nothing."""
         init_gui = _fresh_init_gui()
         applied = []
         init_gui._apply_mode_choice = (
@@ -2219,43 +2220,19 @@ class PermissionModeTests(unittest.TestCase):
                 mock.patch.object(init_gui, "show_toggle_state") as button,
             ):
                 init_gui._on_mode_menu(in_force)
-                self.assertEqual(button.call_count, 1)
+                self.assertEqual(button.call_count, 0)
         self.assertEqual(applied, [])
 
-    def test_the_menu_ticks_the_mode_in_force_and_only_that(self):
-        """The two mode items are exclusive, and Preferences is left
-        alone."""
-        init_gui = _fresh_init_gui()
-
-        class Action:
-            def __init__(self, name):
-                self.name = name
-                self.checked = None
-
-            def objectName(self):
-                return self.name
-
-            def setChecked(self, checked):
-                self.checked = checked
-
-        ask = Action(init_gui.MODE_ASK_ACTION)
-        unrestricted = Action(init_gui.MODE_UNRESTRICTED_ACTION)
-        preferences = Action("")
-        menu = types.SimpleNamespace(
-            actions=lambda: [ask, unrestricted, preferences]
-        )
-        button = types.SimpleNamespace(menu=lambda: menu)
-        init_gui._tick_mode_actions(button, False)
-        self.assertEqual((ask.checked, unrestricted.checked), (True, False))
-        init_gui._tick_mode_actions(button, True)
-        self.assertEqual((ask.checked, unrestricted.checked), (False, True))
-        self.assertIsNone(preferences.checked)
+    def test_the_menu_names_the_two_modes_and_the_preferences_page(self):
+        """The menu's three items, in order. test_verify.py checks, in
+        FreeCAD, that each has its icon and none is checkable."""
         self.assertEqual(MENU_ASK, "Permissions: Ask")
         self.assertEqual(MENU_UNRESTRICTED, "Permissions: Unrestricted")
+        self.assertEqual(MENU_PREFERENCES, "MCP Bridge Preferences")
 
     def test_unrestricted_shows_the_button_whatever_the_preference(self):
         """Show the On/Off button hides the button only in Ask mode, so
-        Unrestricted is never out of sight."""
+        Unrestricted stays shown on the status bar."""
         self.assertIs(status_button_shown(True, False), True)
         self.assertIs(status_button_shown(False, False), False)
         self.assertIs(status_button_shown(False, True), True)
@@ -2263,7 +2240,7 @@ class PermissionModeTests(unittest.TestCase):
         self.assertEqual(
             page_settings()["ShowStatusButton"]["toolTip"],
             "Display toggle button in the status bar. Always shown "
-            "while Unrestricted.",
+            "in Unrestricted mode.",
         )
 
 

@@ -400,23 +400,6 @@ class MCPBridgeCommand:
             App.Console.PrintWarning(warning + "\n")
 
 
-MODE_ASK_ACTION = "MCPBridgeModeAsk"
-MODE_UNRESTRICTED_ACTION = "MCPBridgeModeUnrestricted"
-
-
-def _tick_mode_actions(button, unrestricted):
-    """Tick the menu item of the mode in force, and only that one."""
-    menu = button.menu()
-    if menu is None:
-        return
-    for action in menu.actions():
-        name = action.objectName()
-        if name == MODE_ASK_ACTION:
-            action.setChecked(not unrestricted)
-        elif name == MODE_UNRESTRICTED_ACTION:
-            action.setChecked(bool(unrestricted))
-
-
 def _status_button_on_color(rgb):
     """Return the 'On' green hex for a status-bar background (r, g, b)."""
     lin = [
@@ -430,8 +413,8 @@ def _status_button_on_color(rgb):
 
 
 def _refresh_status_button(running, tip):
-    """Set the status-bar button's presence, position, text, colour,
-    mode icon and menu ticks."""
+    """Set the status-bar button's presence, position, text, colour
+    and mode icon."""
     import FreeCADGui as Gui
     from PySide.QtGui import QPalette
 
@@ -446,10 +429,9 @@ def _refresh_status_button(running, tip):
     button.setText("MCP On" if running else "MCP Off")
     button.setToolTip(tip)
     # The shield or the triangle. Both are one size, so the mode does
-    # not change the button's width.
-    unrestricted = config.unrestricted()
-    button.setIcon(file_prompt.mode_icon(unrestricted))
-    _tick_mode_actions(button, unrestricted)
+    # not change the button's width. The menu's items carry no mark of
+    # the mode in force: this icon is what shows it.
+    button.setIcon(file_prompt.mode_icon(config.unrestricted()))
     if running:
         bg = mw.statusBar().palette().color(QPalette.Window)
         color = _status_button_on_color((bg.red(), bg.green(), bg.blue()))
@@ -527,6 +509,7 @@ def _ensure_status_button(mw):
     import FreeCAD as App
     import FreeCADGui as Gui
     from PySide.QtCore import QEvent, QObject, Qt
+    from PySide.QtGui import QIcon
     from PySide.QtWidgets import QMenu, QToolButton
 
     from freecad.mcp_bridge import config, file_prompt
@@ -592,17 +575,21 @@ def _ensure_status_button(mw):
     button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
     button.setPopupMode(QToolButton.MenuButtonPopup)
     menu = QMenu(button)
-    # triggered fires on the user's choice only, never when the code
-    # sets a tick.
-    ask_action = menu.addAction(file_prompt.MENU_ASK)
-    ask_action.setObjectName(MODE_ASK_ACTION)
-    ask_action.setCheckable(True)
+    ask_action = menu.addAction(
+        file_prompt.mode_icon(False), file_prompt.MENU_ASK
+    )
     ask_action.triggered.connect(lambda *_: _on_mode_menu(False))
-    unrestricted_action = menu.addAction(file_prompt.MENU_UNRESTRICTED)
-    unrestricted_action.setObjectName(MODE_UNRESTRICTED_ACTION)
-    unrestricted_action.setCheckable(True)
+    unrestricted_action = menu.addAction(
+        file_prompt.mode_icon(True), file_prompt.MENU_UNRESTRICTED
+    )
     unrestricted_action.triggered.connect(lambda *_: _on_mode_menu(True))
-    prefs_action = menu.addAction("Preferences")
+    prefs_action = menu.addAction(
+        QIcon(icon_path()), file_prompt.MENU_PREFERENCES
+    )
+    # Some platforms hide a menu's icons unless each item asks for its
+    # own. The two mode items are known by theirs.
+    for action in (ask_action, unrestricted_action, prefs_action):
+        action.setIconVisibleInMenu(True)
     prefs_action.triggered.connect(
         lambda *_: Gui.showPreferences(DISPLAY_NAME, 0)
     )
@@ -757,13 +744,12 @@ def _on_mode_chosen(box, index):
 def _on_mode_menu(want_unrestricted):
     """A mode chosen in the On/Off button's menu.
 
-    Unrestricted asks first, and No leaves Ask ticked. Ask is at once.
-    Choosing the mode already in force only puts its tick back.
+    Unrestricted asks first, and No keeps Ask. Ask is at once.
+    Choosing the mode already in force does nothing.
     """
     from freecad.mcp_bridge import config
 
     if want_unrestricted == config.unrestricted():
-        show_toggle_state()
         return
     _apply_mode_choice(want_unrestricted, None)
 

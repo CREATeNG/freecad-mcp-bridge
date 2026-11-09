@@ -45,22 +45,25 @@ The MCP server exposes three tools (schemas in `tools.py`).
   to the path. **Don't run** is the default and comes back as
   an error. **Unrestricted!** asks again. Only **Yes** switches
   the mode to Unrestricted, and the shown text then runs. The
-  On/Off button on the status bar shows the mode beside its
-  words: a shield with a tick for Ask, or a warning triangle for
-  Unrestricted, at one width. Its menu has `Permissions: Ask`
-  and `Permissions: Unrestricted` above `Preferences`, with the
-  mode in force ticked. Choosing one switches modes the same way
-  as the **Permission mode** preference under **Permissions**: a
-  confirmation to go Unrestricted, and back to Ask at once. A
-  click on the button's words turns the bridge on or off, and
-  only that. While the mode is Unrestricted, the button is shown
-  whatever **Show the On/Off button** says.
-  The dialog counts against **Max response timeout**. If the
-  file cannot be read, the tool returns `has_more: false`,
-  an `error` message, and `page: []` — no job, no page history,
-  and no `job_token`.
+  dialog counts against **Max response timeout**. If the file
+  cannot be read, the tool returns `has_more: false`, an `error`
+  message, and `page: []` — no job, no page history, and no
+  `job_token`.
 - **`get_output_page(job_token, page_no)`** — fetches the requested page from a job's page
   history. Both arguments are required.
+
+The On/Off button on the status bar shows the permission mode
+beside its words: a shield with a tick for Ask, or a warning
+triangle for Unrestricted. The button is the same width in both
+modes. Its menu has `Permissions: Ask` and `Permissions:
+Unrestricted`, each with its icon, above `MCP Bridge Preferences`.
+The menu does not mark the mode in force: the button's icon shows
+it. Choosing a mode there switches the same way as the
+**Permission mode** preference under **Permissions**: a
+confirmation to go Unrestricted, and back to Ask at once. A click
+on the button, its icon or its words, turns the bridge on or off.
+It does nothing else. While the mode is Unrestricted, the button is
+shown whatever **Show the On/Off button** says.
 
 **Result shape**
 
