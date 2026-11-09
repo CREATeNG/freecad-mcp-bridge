@@ -52,7 +52,7 @@ const PASTE_RECORD_NAME = "pasted";
 const SHORT_TOKEN_MESSAGE =
   "The bearer token pasted into the FreeCAD MCP Bridge extension was ignored because it's shorter than 32 characters.";
 const MISSING_FOLDER_MESSAGE =
-  "The token folder doesn't exist yet. Turn the bridge on in FreeCAD once first, so it can create it.";
+  "The token folder doesn't exist yet. Turn the bridge on in FreeCAD once, so it can create it.";
 const WRITE_FAILED_MESSAGE =
   "The bearer token pasted into the FreeCAD MCP Bridge extension could not be written to the token file. Check that the folder is writable, then try again.";
 
@@ -183,11 +183,15 @@ function unauthorizedMessage() {
     return (
       `FreeCAD refused the token from ${file}. ` +
       "FreeCAD and the extension must use the same token file. " +
-      "Check that FREECAD_MCP_TOKEN_DIR, if set, is the same for both."
+      "Check that FreeCAD runs as the same user, and that " +
+      "FREECAD_MCP_TOKEN_DIR, if set, is the same for both."
     );
   }
   if (error && error.code !== "ENOENT") {
-    return `Could not read the token file at ${file} (${error.message}).`;
+    return (
+      `Could not read the token file at ${file} (${error.message}). ` +
+      "Check that the file is readable by you, then try again."
+    );
   }
   return (
     `No token file at ${file}. ` +

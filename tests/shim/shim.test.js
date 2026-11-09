@@ -544,7 +544,10 @@ test("a missing token folder is retried on the next call and does not block the 
   const [first] = await shim.waitForLines(1);
   assert.equal(first.result.echoed, "tools/call");
   assert.equal(first.result.note, undefined);
-  assert.match(pastedText(first.result), /The token folder doesn't exist yet/);
+  assert.match(
+    pastedText(first.result),
+    /The token folder doesn't exist yet\. Turn the bridge on in FreeCAD once, so it can create it\./
+  );
   assert.equal(bridge.requests.length, 1);
   assert.equal(fs.existsSync(shim.tokenDir), false);
   fs.mkdirSync(shim.tokenDir);
@@ -646,7 +649,8 @@ test("a 401 names the token file the extension used, with and without a token", 
     toolBody.error,
     `FreeCAD refused the token from ${shim.tokenFile}. ` +
       "FreeCAD and the extension must use the same token file. " +
-      "Check that FREECAD_MCP_TOKEN_DIR, if set, is the same for both."
+      "Check that FreeCAD runs as the same user, and that " +
+      "FREECAD_MCP_TOKEN_DIR, if set, is the same for both."
   );
   assert.match(toolBody.note, /shorter than 32 characters/);
   assert.deepEqual(pingReply.result, {});
@@ -695,7 +699,8 @@ test("a 401 names the token file the extension used, with and without a token", 
   const blockedBody = JSON.parse(blockedReply.result.content[0].text);
   assert.equal(
     blockedBody.error,
-    `Could not read the token file at ${blocked.tokenFile} (${readError}).`
+    `Could not read the token file at ${blocked.tokenFile} (${readError}). ` +
+      "Check that the file is readable by you, then try again."
   );
   await blocked.stop();
   bridge.close();
