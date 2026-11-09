@@ -14,6 +14,7 @@ is acknowledged.
 import json
 import os
 import socket
+import ssl
 import threading
 from http.server import BaseHTTPRequestHandler
 import FreeCAD
@@ -29,11 +30,20 @@ from freecad.mcp_bridge.executor import Executor
 _LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1")
 
 
+def _peek_one(sock):
+    """Peek one byte. SSLSocket.recv rejects MSG_PEEK with ValueError."""
+    if isinstance(sock, ssl.SSLSocket):
+        return socket.socket.recv(sock, 1, socket.MSG_PEEK)
+    return sock.recv(1, socket.MSG_PEEK)
+
+
 def client_is_open(sock) -> bool:
     """True when the request socket still has the other end connected.
 
     A peek does not consume bytes. No data yet means the client is
     still there. An empty peek or a socket error means it has gone.
+    A TLS socket is peeked on the underlying socket. ValueError,
+    which MSG_PEEK raises on SSLSocket.recv, leaves the client open.
     """
     if sock is None:
         return False
@@ -45,8 +55,8 @@ def client_is_open(sock) -> bool:
     try:
         sock.setblocking(False)
         try:
-            peeked = sock.recv(1, socket.MSG_PEEK)
-        except (BlockingIOError, InterruptedError):
+            peeked = _peek_one(sock)
+        except (BlockingIOError, InterruptedError, ValueError):
             return True
         except OSError:
             return False

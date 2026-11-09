@@ -402,7 +402,7 @@ class MCPBridgeCommand:
 
 
 TRUST_LABEL_NAME = "MCPBridgeTrustLabel"
-TRUST_LABEL_TEXT = "trusts any file"
+TRUST_LABEL_TEXT = "MCP: trusts any file"
 
 
 def refresh_trust_marker():
@@ -424,10 +424,7 @@ def refresh_trust_marker():
     bar = mw.statusBar()
     label = bar.findChild(QLabel, TRUST_LABEL_NAME)
     button = bar.findChild(QToolButton, STATUS_BUTTON_OBJECT_NAME)
-    button_shown = (
-        button is not None and not button.isHidden()
-    )
-    if not trust_label_visible(config.trust_any_file(), button_shown):
+    if not trust_label_visible(config.trust_any_file()):
         if label is not None:
             bar.removeWidget(label)
             label.hide()
@@ -753,7 +750,7 @@ def _on_trust_toggled(box, checked):
     box.setChecked(False)
     box.setProperty("mcp_trust_applying", False)
     config.set_trust_any_file(False)
-    answer = file_prompt._ask_trust()
+    answer = file_prompt._ask_trust(box.window())
     sticks = file_prompt.trust_checkbox_sticks(True, answer)
     if sticks:
         config.set_trust_any_file(True)

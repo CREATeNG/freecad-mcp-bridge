@@ -89,7 +89,7 @@ Once connected, the agent has these tools:
   declined. **Trust any file** asks if you are really sure. Only
   **Yes** turns it on. Every file an agent sends then runs unseen,
   with your full permissions. A label beside the On/Off button
-  says **trusts any file** while that is on, even when the button
+  says **MCP: trusts any file** while that is on, even when the button
   is hidden. Turn it off with
   **Trust any file** in **Edit → Preferences → MCP Bridge**.
   It is off until you turn it on.

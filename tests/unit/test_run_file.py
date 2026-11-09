@@ -17,6 +17,22 @@ from freecad.mcp_bridge.file_prompt import (
 from freecad.mcp_bridge.job_gate import JobGate, JobLine
 
 
+def _load_http_server():
+    """Import the server with FreeCAD and the executor stubbed out."""
+    fake_executor = types.ModuleType("freecad.mcp_bridge.executor")
+    fake_executor.Executor = object
+    with mock.patch.dict(
+        sys.modules,
+        {
+            "FreeCAD": types.SimpleNamespace(),
+            "freecad.mcp_bridge.executor": fake_executor,
+        },
+    ):
+        sys.modules.pop("freecad.mcp_bridge.config", None)
+        sys.modules.pop("freecad.mcp_bridge.http_server", None)
+        return importlib.import_module("freecad.mcp_bridge.http_server")
+
+
 class DecideTests(unittest.TestCase):
     def test_trust_already_on_skips_the_dialog(self):
         """While Trust any file is on, the file runs without asking."""
@@ -259,12 +275,10 @@ class TrustAndQueueTests(unittest.TestCase):
         self.assertIs(trust_checkbox_sticks(True, "No"), False)
         self.assertIs(trust_checkbox_sticks(True, "Yes"), True)
 
-    def test_the_trust_label_shows_whether_or_not_the_button_is_shown(self):
-        """The marker is on whenever trust is on, and ignores the button."""
-        self.assertIs(trust_label_visible(True, True), True)
-        self.assertIs(trust_label_visible(True, False), True)
-        self.assertIs(trust_label_visible(False, True), False)
-        self.assertIs(trust_label_visible(False, False), False)
+    def test_the_trust_label_shows_only_while_trust_is_on(self):
+        """The marker is on whenever trust is on."""
+        self.assertIs(trust_label_visible(True), True)
+        self.assertIs(trust_label_visible(False), False)
 
     def test_a_file_runs_ahead_of_jobs_submitted_while_its_dialog_is_up(self):
         """Jobs sent during the dialog run after that file."""
@@ -332,21 +346,7 @@ class TrustAndQueueTests(unittest.TestCase):
         """A departed client is detected on the request socket."""
         import socket
 
-        fake_executor = types.ModuleType("freecad.mcp_bridge.executor")
-        fake_executor.Executor = object
-        with mock.patch.dict(
-            sys.modules,
-            {
-                "FreeCAD": types.SimpleNamespace(),
-                "freecad.mcp_bridge.executor": fake_executor,
-            },
-        ):
-            sys.modules.pop("freecad.mcp_bridge.config", None)
-            sys.modules.pop("freecad.mcp_bridge.http_server", None)
-            http_server = importlib.import_module(
-                "freecad.mcp_bridge.http_server"
-            )
-        client_is_open = http_server.client_is_open
+        client_is_open = _load_http_server().client_is_open
 
         server = socket.socket()
         server.bind(("127.0.0.1", 0))
@@ -359,6 +359,35 @@ class TrustAndQueueTests(unittest.TestCase):
             self.assertIs(client_is_open(accepted), False)
         finally:
             accepted.close()
+            server.close()
+
+    def test_a_tls_socket_is_open_until_its_peer_closes(self):
+        """An SSLSocket stays open for a present client, then closes."""
+        import socket
+        import ssl
+
+        client_is_open = _load_http_server().client_is_open
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        server = socket.socket()
+        server.bind(("127.0.0.1", 0))
+        server.listen(1)
+        plain = socket.create_connection(server.getsockname())
+        accepted, _addr = server.accept()
+        tls = ctx.wrap_socket(
+            plain,
+            server_hostname="localhost",
+            do_handshake_on_connect=False,
+        )
+        try:
+            with self.assertRaises(ValueError):
+                tls.recv(1, socket.MSG_PEEK)
+            self.assertIs(client_is_open(tls), True)
+            accepted.close()
+            self.assertIs(client_is_open(tls), False)
+        finally:
+            tls.close()
             server.close()
 
 

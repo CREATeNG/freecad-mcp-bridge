@@ -42,8 +42,9 @@ The MCP server exposes three tools (schemas in `tools.py`).
   **Trust any file** opens a second dialog. Only **Yes** turns
   the preference on, and the shown file then runs. While it is
   on, a permanent label beside the On/Off button says
-  `trusts any file`, even when that button is hidden, and **Trust any
-  file** in Preferences turns it off. It is off by default and
+  `MCP: trusts any file`, even when that button is hidden,
+  and **Trust any file** in Preferences turns it off. It is off
+  by default and
   stays on until turned off. The wait for the dialog is on the
   main thread and ends before the response timeout starts, so
   that wait does not count against **Max response timeout**.

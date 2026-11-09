@@ -32,9 +32,8 @@ def trust_checkbox_sticks(checked: bool, answer: str) -> bool:
     return answer == "Yes"
 
 
-def trust_label_visible(trust_on: bool, button_shown: bool) -> bool:
-    """The marker shows whenever trust is on, button or not."""
-    del button_shown
+def trust_label_visible(trust_on: bool) -> bool:
+    """The marker shows whenever trust is on."""
     return bool(trust_on)
 
 
@@ -137,10 +136,13 @@ def _ask_file(path: str, code: str) -> str:
     return choice["value"]
 
 
-def _ask_trust() -> str:
+def _ask_trust(parent=None) -> str:
+    """Ask the second question. `parent` is the Preferences window."""
     import FreeCADGui as Gui
     from PySide.QtWidgets import QDialog, QMessageBox
 
+    if parent is None:
+        parent = Gui.getMainWindow()
     title = f"{DISPLAY_NAME} — Trust any file?"
     body = (
         "Every file an agent sends will then run with your full "
@@ -151,7 +153,7 @@ def _ask_trust() -> str:
         title,
         body,
         QMessageBox.NoButton,
-        Gui.getMainWindow(),
+        parent,
     )
     QDialog.setWindowTitle(box, title)
     box.setObjectName(TRUST_DIALOG)

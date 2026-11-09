@@ -38,7 +38,7 @@ EXECUTE_PYTHON_FILE = {
         "GUI process. Same execution context as execute_python. "
         "FreeCAD shows the file to the user first unless they trust any "
         "file, the call waits for their answer, and a decline comes back "
-        "as an error."
+        "in the result's error."
     ),
     "inputSchema": {
         "type": "object",
