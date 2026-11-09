@@ -15,8 +15,6 @@ import json
 import os
 import threading
 from http.server import BaseHTTPRequestHandler
-from urllib.parse import urlparse
-
 import FreeCAD
 
 from freecad.mcp_bridge import config, mcp_protocol, paging
@@ -27,7 +25,7 @@ from freecad.mcp_bridge.constants import (
 )
 from freecad.mcp_bridge.executor import Executor
 
-_LOOPBACK_HOSTS = ("localhost", "127.0.0.1")
+_LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1")
 PARSE_ERROR = -32700
 TLS_HANDSHAKE_TIMEOUT_S = 5.0
 
@@ -48,15 +46,29 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         super().handle()
 
     def _origin_ok(self) -> bool:
-        # DNS-rebinding protection: reject a present Origin that isn't loopback.
-        origin = self.headers.get("Origin")
-        if origin is None:
-            return True
-        return urlparse(origin).hostname in _LOOPBACK_HOSTS
+        # Any Origin header means a browser. Refuse it.
+        return self.headers.get("Origin") is None
+
+    def _host_name(self) -> str:
+        raw = (self.headers.get("Host") or "").strip()
+        if raw.startswith("["):
+            end = raw.find("]")
+            if end != -1:
+                return raw[1:end]
+        if ":" in raw:
+            return raw.rsplit(":", 1)[0]
+        return raw
+
+    def _host_ok(self) -> bool:
+        name = self._host_name()
+        if not name:
+            return False
+        bound = getattr(self.server, "bound_host", "") or ""
+        if config.is_loopback_address(bound):
+            return name.lower() in _LOOPBACK_HOSTS
+        return name.lower() == bound.lower()
 
     def _token_ok(self) -> bool:
-        if not getattr(self.server, "require_token", False):
-            return True
         auth = self.headers.get("Authorization", "")
         scheme, sep, token = auth.partition(" ")
         if sep != " " or scheme.lower() != "bearer":
@@ -82,6 +94,9 @@ class McpRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._origin_ok():
             self.send_error(403, "Forbidden Origin")
+            return
+        if not self._host_ok():
+            self.send_error(403, "Forbidden Host")
             return
         if not self._token_ok():
             self._send_unauthorized()
@@ -244,33 +259,24 @@ def _invalid_request():
 def _non_loopback_warning(
     entries: list[str],
     non_loopback: list[str],
-    require_token: bool,
     require_tls: bool,
 ) -> str:
     endpoints = ", ".join(entries)
     non_loopback_endpoints = ", ".join(non_loopback)
-    who = (
-        "Any client with the bearer token"
-        if require_token
-        else "Any machine"
-    )
-    if require_token and require_tls:
+    who = "Any client with the bearer token"
+    if require_tls:
         return (
-            f"{LOG_PREFIX} WARNING: listening on {endpoints}. Bearer "
-            f"token and TLS are required beyond loopback. {who} that can "
-            "reach these addresses can run Python code in FreeCAD as your "
-            f"user account: {non_loopback_endpoints}.\n"
+            f"{LOG_PREFIX} WARNING: listening on {endpoints}. TLS is "
+            "required beyond loopback, and the bearer token everywhere. "
+            f"{who} that can reach these addresses can run Python code "
+            "in FreeCAD as your user account: "
+            f"{non_loopback_endpoints}.\n"
         )
-    if not require_token and not require_tls:
-        missing = "no authentication or encryption"
-    elif not require_token:
-        missing = "no authentication"
-    else:
-        missing = "no encryption"
     return (
-        f"{LOG_PREFIX} WARNING: listening on {endpoints} with {missing}. "
-        f"{who} that can reach these addresses can run Python code in "
-        f"FreeCAD as your user account: {non_loopback_endpoints}.\n"
+        f"{LOG_PREFIX} WARNING: listening on {endpoints} with no "
+        f"encryption. {who} that can reach these addresses can run "
+        f"Python code in FreeCAD as your user account: "
+        f"{non_loopback_endpoints}.\n"
     )
 
 
@@ -299,11 +305,9 @@ class HttpServer:
     def start(
         self,
         addresses: list[str] | None = None,
-        require_token: bool | None = None,
         require_tls: bool | None = None,
         tls_cert_file: str | None = None,
         tls_key_file: str | None = None,
-        require_on_loopback: bool | None = None,
     ) -> None:
         if self.is_running():
             return
@@ -316,20 +320,10 @@ class HttpServer:
         )
         if not entries:
             entries = list(config.listen_addresses())
-        req_token = (
-            config.require_token()
-            if require_token is None
-            else bool(require_token)
-        )
         req_tls = (
             config.require_tls()
             if require_tls is None
             else bool(require_tls)
-        )
-        req_on_loopback = (
-            config.require_on_loopback()
-            if require_on_loopback is None
-            else bool(require_on_loopback)
         )
         cert_file = (
             config.tls_cert_file()
@@ -357,7 +351,7 @@ class HttpServer:
             for entry in entries
             if not config.is_loopback_address(entry)
         ]
-        protected = entries if req_on_loopback else non_loopback
+        protected = non_loopback
         ssl_context = None
         if protected and req_tls:
             try:
@@ -365,15 +359,6 @@ class HttpServer:
             except ValueError as exc:
                 FreeCAD.Console.PrintDeveloperError(f"{LOG_PREFIX} {exc}\n")
                 raise
-        if protected and req_token and not config.token_hash():
-            msg = (
-                "A bearer token is required and none has been generated. "
-                "Turn the bridge on with MCP Bridge On/Off to generate "
-                "one, or click Generate new token in Edit → Preferences "
-                "→ MCP Bridge, or untick Require bearer token there."
-            )
-            FreeCAD.Console.PrintDeveloperError(f"{LOG_PREFIX} {msg}\n")
-            raise ValueError(msg)
         # Created here so it inherits main-thread affinity (start() is called
         # from the toolbar toggle / GUI startup, both on the main thread).
         self._executor = Executor()
@@ -384,13 +369,14 @@ class HttpServer:
             for entry, host, bind_port in targets:
                 failed_entry = entry
                 is_loopback = config.is_loopback_address(entry)
-                protect_entry = req_on_loopback or not is_loopback
+                protect_entry = not is_loopback
                 srv = paging.MaintenanceHTTPServer(
                     (host, bind_port), McpRequestHandler
                 )
                 bound_servers.append(srv)
                 srv.executor = self._executor
-                srv.require_token = bool(req_token and protect_entry)
+                srv.bound_host = host
+                srv.require_token = True
                 if ssl_context is not None and protect_entry:
                     srv.socket = ssl_context.wrap_socket(
                         srv.socket,
@@ -449,9 +435,7 @@ class HttpServer:
         )
         if non_loopback:
             FreeCAD.Console.PrintWarning(
-                _non_loopback_warning(
-                    entries, non_loopback, req_token, req_tls
-                )
+                _non_loopback_warning(entries, non_loopback, req_tls)
             )
 
     def stop(self) -> None:

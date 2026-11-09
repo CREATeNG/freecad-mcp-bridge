@@ -11,20 +11,16 @@ _server = HttpServer()
 
 def start(
     addresses: list[str] | None = None,
-    require_token: bool | None = None,
     require_tls: bool | None = None,
     tls_cert_file: str | None = None,
     tls_key_file: str | None = None,
-    require_on_loopback: bool | None = None,
 ) -> None:
     """Start the HTTP MCP server on `addresses` (idempotent)."""
     _server.start(
         addresses=addresses,
-        require_token=require_token,
         require_tls=require_tls,
         tls_cert_file=tls_cert_file,
         tls_key_file=tls_key_file,
-        require_on_loopback=require_on_loopback,
     )
 
 

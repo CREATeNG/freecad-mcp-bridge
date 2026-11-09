@@ -1,9 +1,9 @@
 """Runtime configuration for the MCP Bridge, read from FreeCAD preferences.
 
 Values live under PREF_GROUP and are read fresh on each access. The listen
-addresses and security settings are read at server start (and token
-verification reads the stored token hash per request). Timeout and page size
-are read per request. Retention is read when a job finishes running.
+addresses and security settings are read at server start. Token checks read
+the token file, and a mismatch reads it again. Timeout and page size are
+read per request. Retention is read when a job finishes running.
 Status-bar button settings are read when the status-bar button is created or
 refreshed.
 """
@@ -18,6 +18,7 @@ import ssl
 
 import FreeCAD
 
+from freecad.mcp_bridge import token_file
 from freecad.mcp_bridge.constants import (
     DEFAULT_LISTEN_ADDRESS,
     DEFAULT_LISTEN_HOST,
@@ -25,9 +26,7 @@ from freecad.mcp_bridge.constants import (
     DEFAULT_MAX_PAGE_SIZE_KB,
     DEFAULT_MAX_RESPONSE_TIMEOUT_S,
     DEFAULT_PORT,
-    DEFAULT_REQUIRE_ON_LOOPBACK,
     DEFAULT_REQUIRE_TLS,
-    DEFAULT_REQUIRE_TOKEN,
     DEFAULT_SHOW_STATUS_BUTTON,
     DEFAULT_STATUS_BUTTON_POSITION,
     PREF_GROUP,
@@ -80,7 +79,25 @@ def parse_listen_entry(entry: str) -> tuple[str, int]:
         raise ValueError(
             f"Invalid port in listen address '{item}'. Use a port in 1-65535."
         )
+    try:
+        unspecified = ipaddress.ip_address(host).is_unspecified
+    except ValueError:
+        unspecified = False
+    if unspecified:
+        raise ValueError(
+            f"Listen address '{item}' is not a specific address of "
+            "this machine. Enter a specific address, such as "
+            "127.0.0.1 or this machine's own address."
+        )
     return host, int(port_part)
+
+
+def is_unspecified_address(host: str) -> bool:
+    """True when `host` is 0.0.0.0, ::, or another any-address form."""
+    try:
+        return ipaddress.ip_address(host).is_unspecified
+    except ValueError:
+        return False
 
 
 def is_loopback_address(address: str) -> bool:
@@ -178,21 +195,18 @@ def accept_address(address: str) -> None:
         )
 
 
-def require_token() -> bool:
-    """Whether non-loopback entries (and loopback when RequireOnLoopback is on)
-    require a bearer token."""
-    return _params().GetBool("RequireToken", DEFAULT_REQUIRE_TOKEN)
+def start_warning_accepted() -> bool:
+    """True after the user has accepted the first-start dialog."""
+    return _params().GetBool("StartWarningAccepted", False)
 
 
-def require_on_loopback() -> bool:
-    """Whether RequireToken and RequireTls also apply on loopback."""
-    return _params().GetBool(
-        "RequireOnLoopback", DEFAULT_REQUIRE_ON_LOOPBACK
-    )
+def accept_start_warning() -> None:
+    """Remember that the user accepted the first-start dialog."""
+    _params().SetBool("StartWarningAccepted", True)
 
 
 def token_hash() -> str:
-    """Stored SHA-256 hex digest of the bearer token, or '' if unset."""
+    """Legacy preference. The bridge leaves it unread."""
     return _params().GetString("TokenHash", "").strip()
 
 
@@ -202,30 +216,42 @@ def hash_token(token: str) -> str:
 
 
 def generate_and_store_token() -> str:
-    """Generate a new bearer token, store only its SHA-256 hash, and
-    return the token once."""
+    """Generate a new bearer token, write it to the token file, and
+    return it once."""
     token = secrets.token_urlsafe(32)
-    _params().SetString("TokenHash", hash_token(token))
+    token_file.write_token(token)
     return token
+
+
+def _tokens_match(candidate: str, expected: str) -> bool:
+    if not candidate or not expected:
+        return False
+    try:
+        return hmac.compare_digest(candidate, expected)
+    except ValueError:
+        return False
 
 
 def verify_token(
     candidate: str, expected_hash: str | None = None
 ) -> bool:
-    """True when `candidate` hashes in constant time to the stored hash."""
-    expected = (
-        expected_hash.strip()
-        if expected_hash is not None
-        else token_hash()
-    )
-    if not expected or not candidate:
-        return False
-    return hmac.compare_digest(hash_token(candidate), expected)
+    """True when `candidate` matches the token file.
+
+    A mismatch reads the file again before refusing, so a token
+    written while the bridge is running is taken up.
+    `expected_hash` is accepted for older callers and ignored.
+    """
+    del expected_hash
+    if _tokens_match(candidate, token_file.read_token()):
+        return True
+    return _tokens_match(candidate, token_file.read_token())
 
 
 def require_tls() -> bool:
-    """Whether non-loopback entries (and loopback when RequireOnLoopback is on)
-    serve HTTPS."""
+    """Whether non-loopback entries serve HTTPS.
+
+    The old Apply-to-loopback preference is unread, so loopback stays HTTP.
+    """
     return _params().GetBool("RequireTls", DEFAULT_REQUIRE_TLS)
 
 

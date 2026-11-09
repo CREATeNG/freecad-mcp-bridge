@@ -6,9 +6,15 @@
  * MCP over stdio (newline-delimited JSON-RPC); this forwards each
  * tools/call to the addon's endpoint
  * (http://127.0.0.1:<port>/mcp, or https://127.0.0.1:<port>/mcp when
- * FREECAD_MCP_TLS_CERT_FILE is set, with Authorization: Bearer <token>
- * when FREECAD_MCP_TOKEN is set), unwraps the JSON reply, and writes
- * it back on stdout.
+ * FREECAD_MCP_TLS_CERT_FILE is set). Each tools/call sends
+ * Authorization: Bearer from the token file. The folder is
+ * FREECAD_MCP_TOKEN_DIR when that is set, and
+ * <home>/.freecad-mcp-bridge otherwise. A pasted token of at least
+ * 32 characters is written there only when its hash differs from
+ * the hash stored beside the token, and only when the folder
+ * already exists. A problem with that paste is a note on the tool
+ * result; the call is still sent. The JSON reply is unwrapped and
+ * written back on stdout.
  *
  * The shim answers initialize and tools/list itself (tools.json is a
  * copy of the addon's tool list) and does not contact the bridge for
@@ -24,8 +30,10 @@
  * (global fetch and node:https, >=18).
  */
 
+const crypto = require("crypto");
 const fs = require("fs");
 const https = require("https");
+const os = require("os");
 const path = require("path");
 const tls = require("tls");
 
@@ -36,15 +44,125 @@ function envSetting(name) {
 }
 
 const PORT = envSetting("FREECAD_MCP_PORT") || "39280";
-const TOKEN = envSetting("FREECAD_MCP_TOKEN");
+const PASTED_TOKEN = envSetting("FREECAD_MCP_TOKEN");
+const MIN_TOKEN_LENGTH = 32;
+const TOKEN_DIR_NAME = ".freecad-mcp-bridge";
+const TOKEN_FILE_NAME = "token";
+const PASTE_RECORD_NAME = "pasted";
+const SHORT_TOKEN_MESSAGE =
+  "The bearer token pasted into the FreeCAD MCP Bridge extension was ignored because it's shorter than 32 characters.";
+const MISSING_FOLDER_MESSAGE =
+  "The token folder doesn't exist yet. Turn the bridge on in FreeCAD once, so it can create it.";
+const WRITE_FAILED_MESSAGE =
+  "The bearer token pasted into the FreeCAD MCP Bridge extension could not be written to the token file. Check that the folder is writable, then try again.";
+
+function tokenDir() {
+  const override = envSetting("FREECAD_MCP_TOKEN_DIR");
+  if (override) return override;
+  return path.join(os.homedir(), TOKEN_DIR_NAME);
+}
+
+function tokenFilePath() {
+  return path.join(tokenDir(), TOKEN_FILE_NAME);
+}
+
+function pasteRecordPath() {
+  return path.join(tokenDir(), PASTE_RECORD_NAME);
+}
+
+function pasteHash(token) {
+  return crypto.createHash("sha256").update(token, "utf8").digest("hex");
+}
+
+function readTokenFile() {
+  try {
+    return fs.readFileSync(tokenFilePath(), "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+
+function readPasteRecord() {
+  try {
+    return fs.readFileSync(pasteRecordPath(), "utf8").trim();
+  } catch {
+    return "";
+  }
+}
+
+const retrySleep = new Int32Array(new SharedArrayBuffer(4));
+
+function sleepMs(ms) {
+  Atomics.wait(retrySleep, 0, 0, ms);
+}
+
+function replaceFile(source, dest) {
+  const attempts = 5;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      fs.renameSync(source, dest);
+      return;
+    } catch (err) {
+      const sharing = process.platform === "win32"
+        && (err.code === "EPERM" || err.code === "EBUSY" || err.code === "EACCES");
+      if (!sharing || attempt === attempts - 1) throw err;
+      sleepMs(50 * (attempt + 1));
+    }
+  }
+}
+
+function writeUserOnly(file, text) {
+  const temporary = path.join(
+    path.dirname(file),
+    `.${path.basename(file)}.${process.pid}.${Date.now()}.tmp`
+  );
+  try {
+    fs.writeFileSync(temporary, text, { encoding: "utf8", mode: 0o600 });
+    if (process.platform !== "win32") fs.chmodSync(temporary, 0o600);
+    replaceFile(temporary, file);
+  } catch (err) {
+    try {
+      fs.unlinkSync(temporary);
+    } catch {
+      // The temporary file is already gone, or was never created.
+    }
+    throw err;
+  }
+}
+
+let pastedNote = "";
+function applyPastedToken() {
+  pastedNote = "";
+  if (!PASTED_TOKEN) return;
+  if (PASTED_TOKEN.length < MIN_TOKEN_LENGTH) {
+    pastedNote = SHORT_TOKEN_MESSAGE;
+    return;
+  }
+  const dir = tokenDir();
+  if (!fs.existsSync(dir)) {
+    pastedNote = MISSING_FOLDER_MESSAGE;
+    return;
+  }
+  try {
+    if (readPasteRecord() === pasteHash(PASTED_TOKEN)) return;
+    writeUserOnly(tokenFilePath(), `${PASTED_TOKEN}\n`);
+    writeUserOnly(pasteRecordPath(), `${pasteHash(PASTED_TOKEN)}\n`);
+  } catch {
+    pastedNote = WRITE_FAILED_MESSAGE;
+  }
+}
+try {
+  applyPastedToken();
+} catch {
+  pastedNote = WRITE_FAILED_MESSAGE;
+}
 const TLS_CERT_FILE = envSetting("FREECAD_MCP_TLS_CERT_FILE");
 const SCHEME = TLS_CERT_FILE ? "https" : "http";
 const ENDPOINT = `${SCHEME}://127.0.0.1:${PORT}/mcp`;
 const HTTPS_ENDPOINT = `https://127.0.0.1:${PORT}/mcp`;
 const PLAIN_HTTP_TO_HTTPS_MESSAGE =
   `FreeCAD MCP Bridge serves HTTPS at ${HTTPS_ENDPOINT}, and this connection was plain HTTP. ` +
-  "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to FreeCAD's certificate, " +
-  "or untick Apply to loopback in FreeCAD's Edit → Preferences → MCP Bridge.";
+  "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to FreeCAD's certificate.";
 const LEGACY_PROTOCOL_VERSION = "2025-11-25";
 const MODERN_PROTOCOL_VERSION = "2026-07-28";
 const META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion";
@@ -52,10 +170,34 @@ const TOOLS = JSON.parse(fs.readFileSync(path.join(__dirname, "tools.json"), "ut
 const VERSION = JSON.parse(fs.readFileSync(path.join(__dirname, "package.json"), "utf8")).version;
 const UNREACHABLE_HINT =
   "FreeCAD isn't reachable. Start FreeCAD and turn the bridge on with the MCP Bridge toolbar button, then try again.";
-const UNAUTHORIZED_MESSAGE =
-  `FreeCAD MCP Bridge requires a bearer token and did not accept this request's (401 Unauthorized at ${ENDPOINT}). ` +
-  "Set Bearer token in the FreeCAD MCP Bridge extension settings in Claude Desktop to the token FreeCAD showed when it was generated, " +
-  "or click Generate new token in FreeCAD's Edit → Preferences → MCP Bridge for a new one.";
+function unauthorizedMessage() {
+  const file = tokenFilePath();
+  let token = "";
+  let error = null;
+  try {
+    token = fs.readFileSync(file, "utf8").trim();
+  } catch (err) {
+    error = err;
+  }
+  if (token) {
+    return (
+      `FreeCAD refused the token from ${file}. ` +
+      "FreeCAD and the extension must use the same token file. " +
+      "Check that FreeCAD runs as the same user, and that " +
+      "FREECAD_MCP_TOKEN_DIR, if set, is the same for both."
+    );
+  }
+  if (error && error.code !== "ENOENT") {
+    return (
+      `Could not read the token file at ${file} (${error.message}). ` +
+      "Check that the file is readable by you, then try again."
+    );
+  }
+  return (
+    `No token file at ${file}. ` +
+    "Turn the bridge on in FreeCAD once, or check FREECAD_MCP_TOKEN_DIR."
+  );
+}
 
 function writeLine(text) {
   process.stdout.write(text + "\n");
@@ -104,9 +246,7 @@ function tlsErrorMessage(err) {
   const detail = fetchErrorMessage(err);
   return (
     `FreeCAD MCP Bridge TLS connection failed at ${ENDPOINT} (${detail}). ` +
-    "Check that TLS certificate file (PEM) in the extension settings is FreeCAD's certificate and covers 127.0.0.1. " +
-    "Check that the Apply to loopback and Require TLS (HTTPS) settings are on in FreeCAD's Edit → Preferences → MCP Bridge. " +
-    "While Apply to loopback is off, leave the certificate setting blank."
+    "The bridge serves HTTP on loopback, so leave the certificate setting blank for a loopback connection."
   );
 }
 
@@ -132,7 +272,7 @@ function sendErrorReply(message, errorText) {
       JSON.stringify({
         jsonrpc: "2.0",
         id: message.id,
-        result: toolErrorResult(errorText),
+        result: withPastedNote(toolErrorResult(errorText)),
       })
     );
   } else {
@@ -171,8 +311,9 @@ function bridgeHeaders(message) {
   // Stdio has no headers. The version the body already declares is the
   // one the bridge checks; a body with none is the legacy handshake.
   const headers = { "Content-Type": "application/json" };
-  if (TOKEN) {
-    headers["Authorization"] = `Bearer ${TOKEN}`;
+  const token = readTokenFile();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
   }
   const meta = message.params && message.params._meta;
   const declared = meta && meta[META_PROTOCOL_VERSION];
@@ -246,8 +387,48 @@ async function postBridge(message, rawLine) {
   };
 }
 
+function withPastedNote(result) {
+  if (!pastedNote || !result || typeof result !== "object") return result;
+  const content = Array.isArray(result.content)
+    ? result.content.map((item) => ({ ...item }))
+    : [];
+  if (result.isError && content[0] && content[0].type === "text") {
+    try {
+      const body = JSON.parse(content[0].text);
+      if (body && typeof body === "object" && !Array.isArray(body)) {
+        body.note = pastedNote;
+        content[0].text = JSON.stringify(body);
+        return { ...result, content };
+      }
+    } catch {
+      // The error text is not the shim's JSON. Add a text item below.
+    }
+  }
+  content.push({ type: "text", text: pastedNote });
+  return { ...result, content };
+}
+
 function writeResult(id, result) {
   writeLine(JSON.stringify({ jsonrpc: "2.0", id, result }));
+}
+
+function writeBridgeLine(payload) {
+  if (!payload) return;
+  if (!pastedNote) {
+    writeLine(payload);
+    return;
+  }
+  try {
+    const message = JSON.parse(payload);
+    if (message.result && typeof message.result === "object") {
+      message.result = withPastedNote(message.result);
+      writeLine(JSON.stringify(message));
+      return;
+    }
+  } catch {
+    // The bridge line is not JSON. Leave it unchanged.
+  }
+  writeLine(payload);
 }
 
 async function forward(rawLine, message) {
@@ -278,6 +459,11 @@ async function forward(rawLine, message) {
     );
     return;
   }
+  try {
+    applyPastedToken();
+  } catch {
+    pastedNote = WRITE_FAILED_MESSAGE;
+  }
 
   let res;
   try {
@@ -298,17 +484,16 @@ async function forward(rawLine, message) {
       sendErrorReply(message, tlsErrorMessage(err));
       return;
     }
-    writeResult(message.id, offlineResult(message, err));
+    writeResult(message.id, withPastedNote(offlineResult(message, err)));
     return;
   }
 
   const bodyText = await res.text();
   if (res.status === 401) {
-    sendErrorReply(message, UNAUTHORIZED_MESSAGE);
+    sendErrorReply(message, unauthorizedMessage());
     return;
   }
-  const payload = bodyText.trim();
-  if (payload) writeLine(payload);
+  writeBridgeLine(bodyText.trim());
 }
 
 let buffer = "";

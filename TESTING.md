@@ -64,10 +64,10 @@ process against the bridge in a running FreeCAD GUI. Among the
 behaviors it checks are execution and file execution, stdout/stderr and
 tracebacks, output paging and replay, retention preferences, execution
 order, GUI event handling, the two supported MCP protocol versions,
-HTTP and Origin validation, loopback and non-loopback listen-address
-binding, bearer token authentication and TLS encryption on
-non-loopback and loopback entries, per-entry risk acceptance and
-start warnings, port changes and stopping the bridge with running or
+HTTP, Origin and Host validation, loopback and non-loopback
+listen-address binding, the bearer token on every listener and TLS
+on non-loopback entries, the first-start dialog and per-entry risk
+acceptance, port changes and stopping the bridge with running or
 queued jobs. When `BUNDLE_MCPB`
 names a packed `.mcpb`, `test_bundle_mcp.py` calls that shim
 over stdio, in both protocol versions, and then expects it
@@ -81,13 +81,17 @@ bridge, including restarting it on another port. Tests restore
 preferences and bridge state on their normal paths; a failed test can
 leave that work unfinished.
 
-Install the addon version under test, open a fresh FreeCAD GUI session
-and turn the bridge on with its toolbar button. Keep the GUI running
-while the suite runs. With Python 3.11 in a second terminal, set the
-URL explicitly to that session's port (`39280` below is the default;
-use your port if it differs):
+Set `FREECAD_MCP_TOKEN_DIR` to a new temporary folder before you
+start FreeCAD, and use that same value for the test process, so a
+local run never touches the real token file. Install the addon
+version under test, open a fresh FreeCAD GUI session with that
+variable set, and turn the bridge on with its toolbar button. Keep
+the GUI running while the suite runs. With Python 3.11 in a second
+terminal, set the URL explicitly to that session's port (`39280`
+below is the default; use your port if it differs):
 
 ```bash
+export FREECAD_MCP_TOKEN_DIR="<the same temporary folder>"
 export BRIDGE_URL=http://127.0.0.1:39280/mcp
 python -m unittest discover -s tests/acceptance -t . -v
 ```
@@ -106,8 +110,11 @@ python scripts/list_requirements.py
 
 In CI, [install-verify.yml](.github/workflows/install-verify.yml) starts
 a third FreeCAD process with
-[acceptance_serve.py](scripts/acceptance_serve.py). That process turns
-the installed bridge on through its toolbar action and writes its port
+[acceptance_serve.py](scripts/acceptance_serve.py). FreeCAD and the
+test step both use `FREECAD_MCP_TOKEN_DIR`, a folder inside the run's
+isolated profile, so the token is not written to the runner's home.
+That process turns the installed bridge on through its toolbar
+action and writes its port
 to `ACCEPTANCE_READY_FILE`. The runner's Python runs the suite, then
 creates `ACCEPTANCE_STOP_FILE` so FreeCAD exits. The helper also checks
 a serving deadline on the GUI event loop. Any outer process timeout is

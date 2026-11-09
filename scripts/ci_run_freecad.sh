@@ -115,6 +115,12 @@ setup_profile() {
   if [[ "${RUNNER_OS:-}" == "Windows" ]]; then
     mkdir -p "${FC_CI_HOME}/AppData/Roaming"
   fi
+  if [[ -z "${FREECAD_MCP_TOKEN_DIR:-}" && -n "${FC_CI_HOME:-}" ]]; then
+    export FREECAD_MCP_TOKEN_DIR="${FC_CI_HOME}/mcp-token"
+  fi
+  if [[ -n "${FREECAD_MCP_TOKEN_DIR:-}" ]]; then
+    mkdir -p "${FREECAD_MCP_TOKEN_DIR}"
+  fi
 }
 
 run_with_timeout() {

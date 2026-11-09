@@ -593,6 +593,45 @@ def find_toolbar_action():
     return None
 
 
+def _click_bridge_dialog() -> bool:
+    """Accept a start dialog, or dismiss the one-time token dialog."""
+    from PySide.QtWidgets import QApplication, QMessageBox
+
+    app = QApplication.instance()
+    if app is None:
+        return False
+    widget = app.activeModalWidget()
+    if not isinstance(widget, QMessageBox):
+        return False
+    name = widget.objectName()
+    if name in ("MCPBridgeFirstStartDialog", "MCPBridgeRiskDialog"):
+        labels = ("Accept and Start", "Accept Risks and Start")
+    elif name == "MCPBridgeTokenDialog":
+        labels = ("OK",)
+    else:
+        return False
+    for btn in widget.buttons():
+        if btn.text() in labels:
+            btn.click()
+            return True
+    return False
+
+
+def _arm_bridge_dialogs() -> None:
+    """Click start and token dialogs while a modal loop is running."""
+    from PySide.QtCore import QTimer
+
+    attempts = {"left": 40}
+
+    def tick():
+        _click_bridge_dialog()
+        attempts["left"] -= 1
+        if attempts["left"] > 0:
+            QTimer.singleShot(50, tick)
+
+    QTimer.singleShot(50, tick)
+
+
 def trigger_toolbar_toggle(log_message: str) -> None:
     """Click the real "MCP Bridge On/Off" toolbar action, as a user would."""
     from PySide.QtCore import QCoreApplication
@@ -605,6 +644,7 @@ def trigger_toolbar_toggle(log_message: str) -> None:
         )
 
     log(log_message)
+    _arm_bridge_dialogs()
     action.trigger()
     QCoreApplication.processEvents()
 
