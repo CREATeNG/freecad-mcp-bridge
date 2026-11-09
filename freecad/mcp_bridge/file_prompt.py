@@ -11,8 +11,10 @@ RUN = "run"
 DECLINE = "decline"
 FILE_DIALOG = "MCPBridgeRunFileDialog"
 CODE_DIALOG = "MCPBridgeRunCodeDialog"
-TRUST_DIALOG = "MCPBridgeTrustAnyCodeDialog"
-TRUST_BUTTON = "Trust any code"
+MODE_DIALOG = "MCPBridgeUnrestrictedDialog"
+UNRESTRICTED_BUTTON = "Unrestricted!"
+# The warning colour of the Unrestricted! button's text.
+WARNING_COLOR = "#c96a00"
 
 FILE_INTRO = (
     "An agent asks to run this file in FreeCAD with your full "
@@ -23,68 +25,63 @@ CODE_INTRO = (
     "permissions:"
 )
 CODE_DECLINE = "The user declined to run this code."
-ASKS_BEFORE = "MCP: asks before code"
-TRUSTS_ANY = "MCP: trusts any code"
-TRUST_TOOLTIP = (
-    "Any code an agent sends runs unseen, with your full permissions."
+MARKER_ASK = "MCP: Ask"
+MARKER_UNRESTRICTED = "MCP: Unrestricted"
+MODE_TOOLTIP = (
+    "Ask: FreeCAD shows you an agent's code before it runs. "
+    "Unrestricted: any code an agent sends runs with your full "
+    "permissions, unseen."
 )
-TRUST_BODY = (
-    "Any code an agent sends will then run with your full "
-    "permissions, unseen. Are you really sure?"
+MODE_BODY = (
+    "In Unrestricted mode, any code an agent sends runs with your "
+    "full permissions, unseen. Are you really sure?"
 )
 
 
-def trust_checkbox_sticks(checked: bool, answer: str) -> bool:
-    """Whether Trust any code stays ticked.
-
-    Turning it off needs no dialog. Turning it on sticks only on Yes.
-    """
-    if not checked:
-        return False
-    return answer == "Yes"
+def marker_text(unrestricted: bool) -> str:
+    """Status-bar wording. The marker is shown in either mode."""
+    return MARKER_UNRESTRICTED if unrestricted else MARKER_ASK
 
 
-def trust_after_gesture(turning_on: bool, answer: str) -> bool:
-    """The preference after one click. Turning off does not ask."""
-    if not turning_on:
-        return False
-    return answer == "Yes"
+def mode_icon(unrestricted: bool):
+    """The mode's icon: the shield with a tick, or the warning triangle."""
+    from PySide.QtGui import QIcon
+
+    from freecad.mcp_bridge.resources import mode_icon_path
+
+    return QIcon(mode_icon_path(unrestricted))
 
 
-def marker_text(trust_on: bool) -> str:
-    """Status-bar wording. The marker is shown in either state."""
-    return TRUSTS_ANY if trust_on else ASKS_BEFORE
-
-
-def marker_warns(trust_on: bool) -> bool:
-    """The warning triangle is shown only while trust is on."""
-    return bool(trust_on)
-
-
-def trust_label_visible(trust_on: bool) -> bool:
-    """The marker stays up whether or not trust is on."""
-    del trust_on
-    return True
-
-
-def set_checkbox_quietly(box, checked: bool) -> None:
-    """Set a checkbox without its toggled handler running again."""
+def set_mode_box_quietly(box, unrestricted: bool) -> None:
+    """Show a mode in the Preferences box without its handler running."""
     if box is None:
         return
+    from freecad.mcp_bridge.constants import (
+        PERMISSION_MODE_ASK,
+        PERMISSION_MODE_UNRESTRICTED,
+    )
+
+    index = (
+        PERMISSION_MODE_UNRESTRICTED if unrestricted else PERMISSION_MODE_ASK
+    )
     box.blockSignals(True)
     try:
-        box.setChecked(checked)
+        box.setCurrentIndex(index)
     finally:
         box.blockSignals(False)
 
 
-def commit_checkbox(box, want_on: bool, ask) -> bool:
-    """One user tick. `ask` runs once, and only to turn trust on."""
-    if not want_on:
-        set_checkbox_quietly(box, False)
+def commit_mode(box, want_unrestricted: bool, ask) -> bool:
+    """One user choice of mode. Return whether Unrestricted is now on.
+
+    `ask` runs once, and only to go Unrestricted. Going back to Ask
+    does not ask. `box` is the Preferences box, or None.
+    """
+    if not want_unrestricted:
+        set_mode_box_quietly(box, False)
         return False
     enabled = ask() == "Yes"
-    set_checkbox_quietly(box, enabled)
+    set_mode_box_quietly(box, enabled)
     return enabled
 
 
@@ -95,53 +92,55 @@ def decline_message(path) -> str:
     return f"The user declined to run '{path}'."
 
 
-def decide(ask, *, trusting: bool, set_trust) -> str:
+def decide(ask, *, unrestricted: bool, go_unrestricted) -> str:
     """Return ``run`` or ``decline``.
 
-    `ask` is called with ``"file"`` or ``"trust"`` and returns the
+    `ask` is called with ``"run"`` or ``"mode"`` and returns the
     button the user pressed. A no on the second dialog returns to the
-    first. Only Yes turns trust on, and this file then runs.
+    first. Only Yes switches to Unrestricted, and this code then runs.
     """
-    if trusting:
+    if unrestricted:
         return RUN
     while True:
-        choice = ask("file")
+        choice = ask("run")
         if choice == "Run":
             return RUN
-        if choice != TRUST_BUTTON:
+        if choice != UNRESTRICTED_BUTTON:
             return DECLINE
-        if ask("trust") == "Yes":
-            set_trust(True)
+        if ask("mode") == "Yes":
+            go_unrestricted()
             return RUN
 
 
-def confirm(path: str, code: str) -> str:
+def confirm(path, code: str) -> str:
     """Show the dialogs on the main thread. Return ``run`` or ``decline``."""
     from freecad.mcp_bridge import config
 
     def ask(kind):
-        if kind == "trust":
-            return _ask_trust()
-        return _ask_file(path, code)
+        if kind == "mode":
+            return _ask_unrestricted()
+        return _ask_run(path, code)
 
-    def set_trust(enabled):
-        config.set_trust_any_code(enabled)
+    def go_unrestricted():
+        config.set_unrestricted(True)
         _refresh_marker()
 
     return decide(
-        ask, trusting=config.trust_any_code(), set_trust=set_trust
+        ask,
+        unrestricted=config.unrestricted(),
+        go_unrestricted=go_unrestricted,
     )
 
 
 def _refresh_marker():
     try:
-        from freecad.mcp_bridge.init_gui import refresh_trust_marker
+        from freecad.mcp_bridge.init_gui import refresh_mode_marker
     except Exception:
         return
-    refresh_trust_marker()
+    refresh_mode_marker()
 
 
-def _ask_file(path: str, code: str) -> str:
+def _ask_run(path, code: str) -> str:
     import FreeCADGui as Gui
     from PySide.QtWidgets import (
         QDialog,
@@ -172,9 +171,14 @@ def _ask_file(path: str, code: str) -> str:
     layout.addWidget(text)
     run = QPushButton("Run")
     decline = QPushButton("Don't run")
-    trust = QPushButton(TRUST_BUTTON)
+    unrestricted = QPushButton(UNRESTRICTED_BUTTON)
+    unrestricted.setIcon(mode_icon(True))
+    # A text colour alone leaves the platform's own button frame.
+    unrestricted.setStyleSheet(
+        f"QPushButton {{ color: {WARNING_COLOR}; font-weight: bold; }}"
+    )
     row = QHBoxLayout()
-    row.addWidget(trust)
+    row.addWidget(unrestricted)
     row.addStretch(1)
     row.addWidget(run)
     row.addWidget(decline)
@@ -186,7 +190,9 @@ def _ask_file(path: str, code: str) -> str:
         dialog.accept()
 
     run.clicked.connect(lambda: finish("Run"))
-    trust.clicked.connect(lambda: finish(TRUST_BUTTON))
+    unrestricted.clicked.connect(
+        lambda: finish(UNRESTRICTED_BUTTON)
+    )
     decline.clicked.connect(lambda: finish("Don't run"))
     decline.setDefault(True)
     decline.setAutoDefault(True)
@@ -196,24 +202,23 @@ def _ask_file(path: str, code: str) -> str:
     return choice["value"]
 
 
-def _ask_trust(parent=None) -> str:
+def _ask_unrestricted(parent=None) -> str:
     """Ask the second question. `parent` is the Preferences window."""
     import FreeCADGui as Gui
     from PySide.QtWidgets import QDialog, QMessageBox
 
     if parent is None:
         parent = Gui.getMainWindow()
-    title = f"{DISPLAY_NAME} — Trust any code?"
-    body = TRUST_BODY
+    title = f"{DISPLAY_NAME} — Unrestricted?"
     box = QMessageBox(
         QMessageBox.Warning,
         title,
-        body,
+        MODE_BODY,
         QMessageBox.NoButton,
         parent,
     )
     QDialog.setWindowTitle(box, title)
-    box.setObjectName(TRUST_DIALOG)
+    box.setObjectName(MODE_DIALOG)
     yes = box.addButton("Yes", QMessageBox.AcceptRole)
     no = box.addButton("No", QMessageBox.RejectRole)
     box.setDefaultButton(no)

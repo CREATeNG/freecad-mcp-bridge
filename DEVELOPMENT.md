@@ -20,6 +20,8 @@ This is a small addon. Start with `http_server.py` and `executor.py` to see the 
 A zero-dependency command-line utility is provided at `send_cmd.py` to test the bridge HTTP endpoint directly without launching an MCP client. It uses Python's standard library to execute code strings or script files in the running FreeCAD session.
 
 *Requires FreeCAD running with the MCP Bridge toolbar toggled on.*
+In the **Ask** permission mode FreeCAD shows the code first, and the
+output comes once you choose **Run**.
 
 Both commands take the port as their first argument. `39280` is the
 default; use your port if it differs.

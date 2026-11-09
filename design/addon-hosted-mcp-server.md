@@ -31,8 +31,9 @@ The MCP server exposes three tools (schemas in `tools.py`).
 
 - **`execute_python(code)`** — runs Python in the live FreeCAD
   session, with `App`/`Gui` pre-bound and `__name__` set to
-  `"__main__"`. Unless **Trust any code** is on, FreeCAD shows
-  the code first. The call waits up to **Max response timeout**,
+  `"__main__"`. The permission mode is **Ask**, the default, or
+  **Unrestricted**. Unless it is Unrestricted, FreeCAD shows the
+  code first. The call waits up to **Max response timeout**,
   dialog included. If the user has not answered, the call
   returns a notice and a `job_token`, and `get_output_page`
   collects the output or the decline. Stdout and stderr are
@@ -40,14 +41,15 @@ The MCP server exposes three tools (schemas in `tools.py`).
 - **`execute_python_file(filepath)`** — reads a local file
   (absolute path) once and shows that path and the whole text
   in the same dialog, with the same timing and the same
-  **Trust any code** preference. **Run** runs that text, with
-  `__file__` set to the path. **Don't run** is the default and
-  comes back as an error. **Trust any code** asks again. Only
-  **Yes** turns it on, and the shown text then runs. The
-  status bar always shows `MCP: asks before code`, or, while
-  trust is on, the warning triangle and `MCP: trusts any code`.
-  Clicking the marker toggles trust the same way as the
-  preference under **Permissions**. It is off by default.
+  permission mode. **Run** runs that text, with `__file__` set
+  to the path. **Don't run** is the default and comes back as
+  an error. **Unrestricted!** asks again. Only **Yes** switches
+  the mode to Unrestricted, and the shown text then runs. The
+  status bar always shows the mode: a shield with a tick and
+  `MCP: Ask`, or a warning triangle and `MCP: Unrestricted`.
+  Clicking the marker switches modes the same way as the
+  **Permission mode** preference under **Permissions**: a
+  confirm to go Unrestricted, and back to Ask at once.
   The dialog counts against **Max response timeout**. If the
   file cannot be read, the tool returns `has_more: false`,
   an `error` message, and `page: []` — no job, no page history,
@@ -82,7 +84,7 @@ client that keeps only the start can still continue.
 **Non-blocking**
 
 `execute_python` and `execute_python_file`, once the user has
-answered or **Trust any code** is on, queue a job for the Qt
+answered or in the **Unrestricted** mode, queue a job for the Qt
 main thread, then return a response
 — even if the job is still queued or running. The response carries the
 job's first page when the job has produced output or finished; a quiet
@@ -714,6 +716,7 @@ automatically.
 | Bearer token file | `<home>/.freecad-mcp-bridge/token` | Every listener requires `Authorization: Bearer <token>`; FreeCAD writes the file at the first start and on **Generate new token**, shows the token once, and does not keep a hash; a mismatch reads the file again before refusing |
 | Require TLS (HTTPS) | `true` | Serves HTTPS on non-loopback entries using `TlsCertFile` and `TlsKeyFile`; loopback stays HTTP; fails to start on an entry beyond loopback if enabled without valid certificate and key files |
 | TLS certificate file (PEM) / TLS private key file (PEM) | `""` | PEM certificate (`TlsCertFile`) and private key (`TlsKeyFile`) paths for HTTPS |
+| Permission mode | Ask | `PermissionMode`: in Ask, FreeCAD shows an agent's code, and a file's path with it, before it runs; in Unrestricted the code runs unseen; switched in Preferences or by the status-bar marker, with a confirm to go Unrestricted |
 | Max response timeout (s) | 15 | Max wait for the first answer of `execute_python` and `execute_python_file`, dialog included, and for each later page, before returning with `has_more: true` |
 | Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |
 | Page history retention (min) | 5 | How long output stays readable after the job finishes running, or after its last valid page fetch or replay. |

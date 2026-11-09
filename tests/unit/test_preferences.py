@@ -8,6 +8,7 @@ profile does.
 """
 
 import importlib
+import json
 import os
 import re
 import stat
@@ -25,6 +26,7 @@ from freecad.mcp_bridge.constants import (
     PREF_GROUP,
     TOOLBAR_OBJECT_NAME,
 )
+from freecad.mcp_bridge.file_prompt import MODE_TOOLTIP
 
 ROOT = Path(__file__).resolve().parents[2]
 PAGE = ROOT / "freecad" / "mcp_bridge" / "Resources" / "Ui" / "preferences.ui"
@@ -40,7 +42,7 @@ SETTINGS = (
     "MaxHistoryRetentionMinutes",
     "ShowStatusButton",
     "StatusButtonPosition",
-    "TrustAnyCode",
+    "PermissionMode",
 )
 
 
@@ -146,12 +148,19 @@ class PreferencePageTests(unittest.TestCase):
             "below.",
         )
         self.assertEqual(settings["RequireTls"]["checked"], "true")
-        self.assertEqual(settings["TrustAnyCode"]["text"], "Trust any code")
-        self.assertEqual(settings["TrustAnyCode"]["checked"], "false")
         self.assertEqual(
-            settings["TrustAnyCode"]["toolTip"],
-            "Any code an agent sends runs unseen, with your full "
-            "permissions.",
+            settings["PermissionMode"]["items"],
+            ["Ask (default)", "Unrestricted"],
+        )
+        self.assertEqual(settings["PermissionMode"]["currentIndex"], "0")
+        self.assertEqual(
+            settings["PermissionMode"]["toolTip"], MODE_TOOLTIP
+        )
+        self.assertEqual(
+            MODE_TOOLTIP,
+            "Ask: FreeCAD shows you an agent's code before it runs. "
+            "Unrestricted: any code an agent sends runs with your full "
+            "permissions, unseen.",
         )
         self.assertIn(settings["TlsCertFile"]["fileName"], (None, ""))
         self.assertIn(settings["TlsKeyFile"]["fileName"], (None, ""))
@@ -180,6 +189,10 @@ class PreferencePageTests(unittest.TestCase):
         self.assertEqual(
             widgets_by_name["permissionsGroup"]["title"],
             "Permissions",
+        )
+        self.assertEqual(
+            widgets_by_name["permissionModeLabel"]["text"],
+            "Permission mode",
         )
         self.assertEqual(
             widgets_by_name["tlsCertFileLabel"]["text"],
@@ -248,7 +261,7 @@ class UnsetPreferenceTests(unittest.TestCase):
         self.assertEqual(config.max_history_retention_ms(), 5 * 60_000)
         self.assertIs(config.show_status_button(), True)
         self.assertEqual(config.status_button_position(), 0)
-        self.assertIs(config.trust_any_code(), False)
+        self.assertIs(config.unrestricted(), False)
         # What it read is what the preference page saves (plus Port as the
         # upgrade fallback when ListenAddress has never been saved).
         self.assertEqual(set(groups), {PREF_GROUP})
@@ -1992,6 +2005,125 @@ class TokenFileTests(unittest.TestCase):
                 (Path(folder) / "token").read_text(encoding="utf-8").strip(),
                 "c" * 32,
             )
+
+
+class PermissionModeTests(unittest.TestCase):
+    def test_the_acceptance_client_puts_ask_back_only_where_it_found_ask(
+        self,
+    ):
+        """The client goes Unrestricted once, before its first run. It
+        registers the return to Ask only when Ask is what it found."""
+        for found, registered in (("False", 1), ("True", 0)):
+            with mock.patch.dict(
+                os.environ, {"BRIDGE_URL": "http://127.0.0.1:9/mcp"}
+            ):
+                sys.modules.pop("tests.acceptance.mcp_client", None)
+                client = importlib.import_module(
+                    "tests.acceptance.mcp_client"
+                )
+            sys.modules.pop("tests.acceptance.mcp_client", None)
+            posted = []
+            page = [
+                {"stream": "stdout", "text": f"mode before: {found}\n"}
+            ]
+            result = {
+                "content": [
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {
+                                "has_more": False,
+                                "page_no": 0,
+                                "job_token": "t",
+                                "page": page,
+                            }
+                        ),
+                    }
+                ]
+            }
+            with (
+                mock.patch.object(
+                    client,
+                    "post",
+                    side_effect=lambda message, **_kw: posted.append(
+                        str(message)
+                    ),
+                ),
+                mock.patch.object(
+                    client, "tool_result", return_value=result
+                ),
+                mock.patch.object(client.atexit, "register") as register,
+            ):
+                client.call_tool("execute_python", {"code": "print(1)"})
+                client.call_tool("execute_python", {"code": "print(2)"})
+                self.assertEqual(len(posted), 3, found)
+                self.assertIn("set_unrestricted(True)", posted[0])
+                self.assertEqual(register.call_count, registered, found)
+                if registered:
+                    register.assert_called_once_with(client._back_to_ask)
+                    client._back_to_ask()
+                    self.assertIn("set_unrestricted(False)", posted[-1])
+
+    def test_choosing_the_mode_in_force_asks_nothing(self):
+        """The Preferences box acts only on a change of mode."""
+        init_gui = _fresh_init_gui()
+        applied = []
+        init_gui._apply_mode_choice = (
+            lambda want, box: applied.append((want, box))
+        )
+        with mock.patch(
+            "freecad.mcp_bridge.config.unrestricted", return_value=False
+        ):
+            init_gui._on_mode_chosen("box", 0)
+            self.assertEqual(applied, [])
+            init_gui._on_mode_chosen("box", 1)
+            self.assertEqual(applied, [(True, "box")])
+        with mock.patch(
+            "freecad.mcp_bridge.config.unrestricted", return_value=True
+        ):
+            init_gui._on_mode_chosen("box", 1)
+            self.assertEqual(applied, [(True, "box")])
+            init_gui._on_mode_chosen("box", 0)
+            self.assertEqual(applied, [(True, "box"), (False, "box")])
+
+    def test_the_marker_asks_to_go_unrestricted_and_not_to_go_back(self):
+        """A click on the marker asks once to go Unrestricted, and only
+        Yes switches. A click back to Ask is at once. Each click
+        refreshes the marker and an open Preferences box."""
+        init_gui = _fresh_init_gui()
+        state = {"unrestricted": False}
+        answers = ["No", "Yes"]
+        asked = []
+
+        def ask(parent=None):
+            asked.append(parent)
+            return answers.pop(0)
+
+        with (
+            mock.patch(
+                "freecad.mcp_bridge.config.unrestricted",
+                side_effect=lambda: state["unrestricted"],
+            ),
+            mock.patch(
+                "freecad.mcp_bridge.config.set_unrestricted",
+                side_effect=lambda on: state.update(unrestricted=on),
+            ),
+            mock.patch(
+                "freecad.mcp_bridge.file_prompt._ask_unrestricted",
+                side_effect=ask,
+            ),
+            mock.patch.object(init_gui, "refresh_mode_marker") as marker,
+            mock.patch.object(init_gui, "_sync_open_mode_box") as box,
+        ):
+            init_gui._on_marker_clicked()
+            self.assertIs(state["unrestricted"], False)
+            init_gui._on_marker_clicked()
+            self.assertIs(state["unrestricted"], True)
+            init_gui._on_marker_clicked()
+            self.assertIs(state["unrestricted"], False)
+            self.assertEqual(asked, [None, None])
+            self.assertEqual(marker.call_count, 3)
+            self.assertEqual(box.call_count, 3)
 
 
 if __name__ == "__main__":

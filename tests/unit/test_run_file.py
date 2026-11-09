@@ -1,4 +1,4 @@
-"""Requirements on asking before execute_python_file runs a file."""
+"""Requirements on asking before an agent's code or file runs."""
 
 import importlib
 import sys
@@ -6,25 +6,26 @@ import threading
 import time
 import types
 import unittest
+import xml.etree.ElementTree as ET
+from pathlib import Path
 from unittest import mock
 
 from freecad.mcp_bridge import paging
 from freecad.mcp_bridge.file_prompt import (
-    DECLINE,
-    RUN,
-    ASKS_BEFORE,
     CODE_DECLINE,
     CODE_INTRO,
-    TRUSTS_ANY,
-    commit_checkbox,
+    DECLINE,
+    MARKER_ASK,
+    MARKER_UNRESTRICTED,
+    MODE_BODY,
+    RUN,
+    UNRESTRICTED_BUTTON,
+    commit_mode,
     decide,
     decline_message,
     marker_text,
-    marker_warns,
-    trust_after_gesture,
-    trust_checkbox_sticks,
-    trust_label_visible,
 )
+from freecad.mcp_bridge.resources import mode_icon_path
 from freecad.mcp_bridge.job_gate import JobGate, JobLine
 
 
@@ -45,61 +46,73 @@ def _load_http_server():
 
 
 class DecideTests(unittest.TestCase):
-    def test_trust_already_on_skips_the_dialog(self):
-        """While Trust any code is on, the file runs without asking."""
+    def test_unrestricted_mode_skips_the_dialog(self):
+        """In Unrestricted mode the code runs without asking."""
         asked = []
         self.assertEqual(
-            decide(asked.append, trusting=True, set_trust=lambda _v: None),
+            decide(
+                asked.append,
+                unrestricted=True,
+                go_unrestricted=lambda: None,
+            ),
             RUN,
         )
         self.assertEqual(asked, [])
 
-    def test_dont_run_is_a_decline_and_does_not_turn_trust_on(self):
-        """Don't run tells the caller to decline and leaves trust off."""
-        turned = []
+    def test_dont_run_is_a_decline_and_leaves_the_mode_at_ask(self):
+        """Don't run tells the caller to decline and keeps Ask."""
+        switched = []
         choice = decide(
             lambda _kind: "Don't run",
-            trusting=False,
-            set_trust=turned.append,
+            unrestricted=False,
+            go_unrestricted=lambda: switched.append(True),
         )
         self.assertEqual(choice, DECLINE)
-        self.assertEqual(turned, [])
+        self.assertEqual(switched, [])
         self.assertIn("declined", decline_message("/tmp/a.py"))
 
-    def test_run_returns_run_without_turning_trust_on(self):
-        """Run runs the file and does not turn trust on."""
-        turned = []
+    def test_run_returns_run_and_leaves_the_mode_at_ask(self):
+        """Run runs the code and keeps Ask."""
+        switched = []
         choice = decide(
             lambda _kind: "Run",
-            trusting=False,
-            set_trust=turned.append,
+            unrestricted=False,
+            go_unrestricted=lambda: switched.append(True),
         )
         self.assertEqual(choice, RUN)
-        self.assertEqual(turned, [])
+        self.assertEqual(switched, [])
 
     def test_no_on_the_second_dialog_returns_to_the_first(self):
-        """No on Trust any code asks again; only Yes turns it on."""
-        answers = ["Trust any code", "No", "Run"]
-        turned = []
-        choice = decide(
-            lambda _kind: answers.pop(0),
-            trusting=False,
-            set_trust=turned.append,
-        )
-        self.assertEqual(choice, RUN)
-        self.assertEqual(turned, [])
+        """No on the Unrestricted confirm asks again and keeps Ask."""
+        self.assertEqual(UNRESTRICTED_BUTTON, "Unrestricted!")
+        answers = [UNRESTRICTED_BUTTON, "No", "Run"]
+        asked = []
+        switched = []
 
-    def test_yes_on_the_second_dialog_turns_trust_on_and_runs(self):
-        """Yes turns trust on, and the file that was shown then runs."""
-        answers = ["Trust any code", "Yes"]
-        turned = []
+        def ask(kind):
+            asked.append(kind)
+            return answers.pop(0)
+
         choice = decide(
-            lambda _kind: answers.pop(0),
-            trusting=False,
-            set_trust=turned.append,
+            ask,
+            unrestricted=False,
+            go_unrestricted=lambda: switched.append(True),
         )
         self.assertEqual(choice, RUN)
-        self.assertEqual(turned, [True])
+        self.assertEqual(asked, ["run", "mode", "run"])
+        self.assertEqual(switched, [])
+
+    def test_yes_on_the_second_dialog_goes_unrestricted_and_runs(self):
+        """Yes switches to Unrestricted, and the code shown then runs."""
+        answers = [UNRESTRICTED_BUTTON, "Yes"]
+        switched = []
+        choice = decide(
+            lambda _kind: answers.pop(0),
+            unrestricted=False,
+            go_unrestricted=lambda: switched.append(True),
+        )
+        self.assertEqual(choice, RUN)
+        self.assertEqual(switched, [True])
 
 
 class FileRequestTests(unittest.TestCase):
@@ -110,7 +123,7 @@ class FileRequestTests(unittest.TestCase):
         self,
         confirm,
         timeout_ms,
-        trust=False,
+        unrestricted=False,
         read="print(1)\n",
         on_queue=None,
         path="C:/work/a.py",
@@ -175,7 +188,9 @@ class FileRequestTests(unittest.TestCase):
                 http_server.file_prompt, "confirm", side_effect=confirm
             ),
             mock.patch.object(
-                http_server.config, "trust_any_code", return_value=trust
+                http_server.config,
+                "unrestricted",
+                return_value=unrestricted,
             ),
             mock.patch.object(
                 http_server.config,
@@ -317,8 +332,8 @@ class FileRequestTests(unittest.TestCase):
         self.assertIn("declined", result["error"])
         self.assertEqual(held.pop(), "during")
 
-    def test_a_trusted_file_runs_without_the_dialog(self):
-        """Trust any code runs the file without asking."""
+    def test_unrestricted_mode_runs_a_file_without_the_dialog(self):
+        """In Unrestricted mode a file runs without asking."""
         asked = []
 
         def confirm(path, code):
@@ -326,15 +341,16 @@ class FileRequestTests(unittest.TestCase):
             return "run"
 
         def finish(job):
-            job[1].put(("stdout", "trusted\n"))
+            job[1].put(("stdout", "ran unasked\n"))
             paging.note_execution_finished(job[3], job[1], 60000)
 
         result, _gate = self._call(
-            confirm, 2000, trust=True, on_queue=finish
+            confirm, 2000, unrestricted=True, on_queue=finish
         )
         self.assertEqual(asked, [])
         self.assertEqual(
-            result["page"], [{"stream": "stdout", "text": "trusted\n"}]
+            result["page"],
+            [{"stream": "stdout", "text": "ran unasked\n"}],
         )
         self.assertFalse(result["has_more"])
 
@@ -358,6 +374,26 @@ class FileRequestTests(unittest.TestCase):
         self.assertEqual(result["page"], [])
         self.assertEqual(
             log, ["[MCP Bridge] The file dialog failed: boom\n"]
+        )
+
+    def test_a_code_dialog_that_fails_says_the_code_dialog_failed(self):
+        """For inline code the failure names the code dialog."""
+        log = []
+
+        def confirm(path, code):
+            raise RuntimeError("boom")
+
+        result, _gate = self._call(
+            confirm,
+            2000,
+            log=log,
+            tool="execute_python",
+            arguments={"code": "print(2)\n"},
+        )
+        self.assertEqual(result["error"], "The code dialog failed: boom")
+        self.assertFalse(result["has_more"])
+        self.assertEqual(
+            log, ["[MCP Bridge] The code dialog failed: boom\n"]
         )
 
     def test_two_file_dialogs_ask_one_at_a_time(self):
@@ -469,42 +505,56 @@ class FileRequestTests(unittest.TestCase):
         )
         self.assertNotIn("page_no", nxt)
 
-class TrustAndQueueTests(unittest.TestCase):
-    def test_ticking_trust_sticks_only_after_yes(self):
-        """Ticking Trust any code stays on only when the user says Yes."""
-        self.assertIs(trust_checkbox_sticks(False, "Yes"), False)
-        self.assertIs(trust_checkbox_sticks(True, "No"), False)
-        self.assertIs(trust_checkbox_sticks(True, "Yes"), True)
+class ModeAndQueueTests(unittest.TestCase):
+    def test_the_marker_names_the_mode(self):
+        """The marker reads MCP: Ask, or MCP: Unrestricted."""
+        self.assertEqual(MARKER_ASK, "MCP: Ask")
+        self.assertEqual(MARKER_UNRESTRICTED, "MCP: Unrestricted")
+        self.assertEqual(marker_text(False), MARKER_ASK)
+        self.assertEqual(marker_text(True), MARKER_UNRESTRICTED)
 
-    def test_the_marker_stays_up_and_names_the_trust_state(self):
-        """The marker is always shown, and warns only while trust is on."""
-        self.assertIs(trust_label_visible(True), True)
-        self.assertIs(trust_label_visible(False), True)
-        self.assertEqual(marker_text(False), ASKS_BEFORE)
-        self.assertEqual(marker_text(True), TRUSTS_ANY)
-        self.assertIs(marker_warns(False), False)
-        self.assertIs(marker_warns(True), True)
+    def test_the_confirm_says_what_unrestricted_means(self):
+        """The second dialog names the mode and what it allows."""
+        self.assertEqual(
+            MODE_BODY,
+            "In Unrestricted mode, any code an agent sends runs with "
+            "your full permissions, unseen. Are you really sure?",
+        )
 
-    def test_a_click_asks_once_and_only_yes_turns_trust_on(self):
-        """Turning trust on asks once. Turning it off does not ask."""
-        self.assertIs(trust_after_gesture(False, None), False)
-        self.assertIs(trust_after_gesture(True, "No"), False)
-        self.assertIs(trust_after_gesture(True, "Yes"), True)
+    def test_the_two_mode_icons_are_drawn_as_one_set(self):
+        """The shield and the triangle ship, on the same 24-unit grid
+        with the same outline width."""
+        ask = Path(mode_icon_path(False))
+        unrestricted = Path(mode_icon_path(True))
+        self.assertEqual(ask.name, "mode-ask.svg")
+        self.assertEqual(unrestricted.name, "mode-unrestricted.svg")
+        svg = "{http://www.w3.org/2000/svg}"
+        outlines = []
+        for icon in (ask, unrestricted):
+            root = ET.parse(icon).getroot()
+            self.assertEqual(root.tag, f"{svg}svg")
+            self.assertEqual(root.get("viewBox"), "0 0 24 24")
+            outlines.append(root.find(f"{svg}path").get("stroke-width"))
+        self.assertEqual(outlines, ["1.5", "1.5"])
+
+    def test_choosing_a_mode_asks_once_and_only_yes_goes_unrestricted(self):
+        """Going Unrestricted asks once. Going back to Ask does not ask.
+        Setting the box never runs its handler again."""
 
         class Box:
             def __init__(self):
-                self.checked = True
+                self.index = 1
                 self.blocked = False
                 self.reentered = 0
 
             def blockSignals(self, on):
                 self.blocked = on
 
-            def setChecked(self, value):
-                self.checked = value
+            def setCurrentIndex(self, value):
+                self.index = value
                 if not self.blocked:
                     self.reentered += 1
-                    commit_checkbox(self, value, ask)
+                    commit_mode(self, bool(value), ask)
 
         asks = []
 
@@ -513,19 +563,26 @@ class TrustAndQueueTests(unittest.TestCase):
             return "Yes"
 
         box = Box()
-        self.assertIs(commit_checkbox(box, True, ask), True)
+        self.assertIs(commit_mode(box, True, ask), True)
         self.assertEqual(asks, ["ask"])
         self.assertEqual(box.reentered, 0)
-        self.assertIs(box.checked, True)
+        self.assertEqual(box.index, 1)
 
         def refuse():
             asks.append("no")
             return "No"
 
         off = Box()
-        self.assertIs(commit_checkbox(off, True, refuse), False)
-        self.assertIs(off.checked, False)
+        self.assertIs(commit_mode(off, True, refuse), False)
+        self.assertEqual(off.index, 0)
         self.assertEqual(off.reentered, 0)
+
+        back = Box()
+        self.assertIs(commit_mode(back, False, ask), False)
+        self.assertEqual(back.index, 0)
+        self.assertEqual(asks, ["ask", "no"])
+        # The status-bar marker has no box.
+        self.assertIs(commit_mode(None, True, ask), True)
 
     def test_a_file_runs_ahead_of_jobs_submitted_while_its_dialog_is_up(self):
         """Jobs sent during the dialog run after that file."""

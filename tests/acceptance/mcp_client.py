@@ -10,6 +10,7 @@ initialize, carries only the MCP-Protocol-Version header. Replies are plain
 JSON, except subscriptions/listen's SSE stream.
 """
 
+import atexit
 import json
 import os
 import time
@@ -192,34 +193,55 @@ def payload(result):
     return json.loads(result["content"][0]["text"])
 
 
-_trusted = False
+_mode_checked = False
 
 
 def allow_any_code():
-    """Turn Trust any code on so later calls are not waiting on a dialog.
+    """Switch to Unrestricted so later calls are not waiting on a dialog.
 
-    The FreeCAD host sets the same preference before the suite starts.
-    A test of the dialog itself turns it off after this.
+    The FreeCAD host sets the same mode before the suite starts. Where
+    this call finds Ask instead, FreeCAD shows its code first, and the
+    mode goes back to Ask when the suite's process exits.
     """
-    global _trusted
-    if _trusted:
+    global _mode_checked
+    if _mode_checked:
         return
-    _trusted = True
-    call_tool(
+    _mode_checked = True
+    first = call_tool(
         "execute_python",
         {
             "code": (
                 "from freecad.mcp_bridge import config\n"
-                "config.set_trust_any_code(True)\n"
+                "print('mode before:', config.unrestricted())\n"
+                "config.set_unrestricted(True)\n"
             )
         },
     )
+    if "mode before: False" in text(follow(first)):
+        atexit.register(_back_to_ask)
+
+
+def _back_to_ask():
+    """Put the Ask mode back, where allow_any_code found it."""
+    try:
+        call_tool(
+            "execute_python",
+            {
+                "code": (
+                    "from freecad.mcp_bridge import config\n"
+                    "config.set_unrestricted(False)\n"
+                )
+            },
+        )
+    except Exception:
+        # The bridge has gone. There is no mode left to restore.
+        pass
 
 
 def call_tool(name, arguments, headers=None, version=PROTOCOL_VERSION):
     """Call a tool in `version`; return the tool result payload
     ({page, has_more, ...})."""
-    if name in ("execute_python", "execute_python_file") and not _trusted:
+    if name in ("execute_python", "execute_python_file"):
         allow_any_code()
     reply = post(
         request(
@@ -238,7 +260,7 @@ def execute(code, version=PROTOCOL_VERSION):
 
 
 def _arm_run_file_dialog():
-    """Click Run if the file dialog appears. Trust-any skips the dialog."""
+    """Click Run if the dialog appears. Unrestricted mode shows none."""
     run(
         "from PySide.QtCore import QTimer\n"
         "from PySide.QtWidgets import QApplication, QPushButton\n"
@@ -248,7 +270,8 @@ def _arm_run_file_dialog():
         "    app = QApplication.instance()\n"
         "    widget = app.activeModalWidget() if app else None\n"
         "    name = widget.objectName() if widget is not None else ''\n"
-        "    if name in ('MCPBridgeRunFileDialog', 'MCPBridgeRunCodeDialog'):\n"
+        "    dialogs = ('MCPBridgeRunFileDialog', 'MCPBridgeRunCodeDialog')\n"
+        "    if name in dialogs:\n"
         "        for btn in widget.findChildren(QPushButton):\n"
         "            if btn.text() == 'Run':\n"
         "                btn.click()\n"
@@ -310,7 +333,9 @@ def follow(first, version=PROTOCOL_VERSION):
 
 def text(results):
     """The flat transcript of a run of results."""
-    return "".join(chunk["text"] for result in results for chunk in result["page"])
+    return "".join(
+        chunk["text"] for result in results for chunk in result["page"]
+    )
 
 
 def run(code):
@@ -322,7 +347,10 @@ def run(code):
 def preference(name, value):
     """Set one of the bridge's integer preferences for the duration, through
     the bridge itself, and restore it after."""
-    group = "from freecad.mcp_bridge.constants import PREF_GROUP\np = App.ParamGet(PREF_GROUP)\n"
+    group = (
+        "from freecad.mcp_bridge.constants import PREF_GROUP\n"
+        "p = App.ParamGet(PREF_GROUP)\n"
+    )
     before = int(run(group + f"print(p.GetInt({name!r}, -1))").strip())
     run(group + f"p.SetInt({name!r}, {int(value)})")
     try:

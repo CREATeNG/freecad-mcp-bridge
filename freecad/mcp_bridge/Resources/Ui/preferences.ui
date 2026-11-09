@@ -417,23 +417,60 @@
      </property>
      <layout class="QVBoxLayout" name="permissionsLayout">
       <item>
-       <widget class="Gui::PrefCheckBox" name="trustAnyCodeCheckBox">
-        <property name="toolTip">
-         <string>Any code an agent sends runs unseen, with your full permissions.</string>
-        </property>
-        <property name="text">
-         <string>Trust any code</string>
-        </property>
-        <property name="checked">
-         <bool>false</bool>
-        </property>
-        <property name="prefEntry" stdset="0">
-         <cstring>TrustAnyCode</cstring>
-        </property>
-        <property name="prefPath" stdset="0">
-         <cstring>Mod/freecad-mcp-bridge</cstring>
-        </property>
-       </widget>
+       <layout class="QHBoxLayout" name="permissionModeRow">
+        <item>
+         <widget class="QLabel" name="permissionModeLabel">
+          <property name="text">
+           <string>Permission mode</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="Gui::PrefComboBox" name="permissionModeComboBox">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="toolTip">
+           <string>Ask: FreeCAD shows you an agent's code before it runs. Unrestricted: any code an agent sends runs with your full permissions, unseen.</string>
+          </property>
+          <property name="currentIndex">
+           <number>0</number>
+          </property>
+          <property name="prefEntry" stdset="0">
+           <cstring>PermissionMode</cstring>
+          </property>
+          <property name="prefPath" stdset="0">
+           <cstring>Mod/freecad-mcp-bridge</cstring>
+          </property>
+          <item>
+           <property name="text">
+            <string>Ask (default)</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>Unrestricted</string>
+           </property>
+          </item>
+         </widget>
+        </item>
+        <item>
+         <spacer name="permissionModeRowSpacer">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>10</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
       </item>
      </layout>
     </widget>

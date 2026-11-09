@@ -642,11 +642,11 @@ def _http_exec_probe(code: str, timeout_ms: int) -> dict:
 
 def _verify_http_round_trip() -> None:
     """Run Python through the HTTP endpoint (same path as send_cmd.py)."""
-    import FreeCAD as App
-    from freecad.mcp_bridge.constants import PREF_GROUP
+    from freecad.mcp_bridge import config
 
-    # The probe is execute_python. Trust any code so it meets no dialog.
-    App.ParamGet(PREF_GROUP).SetBool("TrustAnyCode", True)
+    # The probe is execute_python. In Unrestricted mode it meets no
+    # dialog.
+    config.set_unrestricted(True)
     probe = common.env("RELEASE_INSTALL_PROBE", 'print("test_verify_ok")')
     expected = common.env("RELEASE_INSTALL_PROBE_EXPECT", "test_verify_ok")
     timeout_ms = int(common.env("RELEASE_INSTALL_HTTP_TIMEOUT_MS", "30000"))

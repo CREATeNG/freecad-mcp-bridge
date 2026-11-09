@@ -25,10 +25,13 @@ from freecad.mcp_bridge.constants import (
     DEFAULT_MAX_HISTORY_RETENTION_MIN,
     DEFAULT_MAX_PAGE_SIZE_KB,
     DEFAULT_MAX_RESPONSE_TIMEOUT_S,
+    DEFAULT_PERMISSION_MODE,
     DEFAULT_PORT,
     DEFAULT_REQUIRE_TLS,
     DEFAULT_SHOW_STATUS_BUTTON,
     DEFAULT_STATUS_BUTTON_POSITION,
+    PERMISSION_MODE_ASK,
+    PERMISSION_MODE_UNRESTRICTED,
     PREF_GROUP,
 )
 
@@ -247,14 +250,20 @@ def verify_token(
     return _tokens_match(candidate, token_file.read_token())
 
 
-def trust_any_code() -> bool:
-    """Whether an agent's code runs without being shown. Off by default."""
-    return _params().GetBool("TrustAnyCode", False)
+def unrestricted() -> bool:
+    """Whether the permission mode is Unrestricted. Ask is the default.
+
+    In Ask mode FreeCAD shows an agent's code before it runs. In
+    Unrestricted mode the code runs without being shown.
+    """
+    mode = _params().GetInt("PermissionMode", DEFAULT_PERMISSION_MODE)
+    return mode == PERMISSION_MODE_UNRESTRICTED
 
 
-def set_trust_any_code(enabled: bool) -> None:
-    """Remember that code an agent sends may run unseen."""
-    _params().SetBool("TrustAnyCode", bool(enabled))
+def set_unrestricted(enabled: bool) -> None:
+    """Set the permission mode: Unrestricted when true, Ask when false."""
+    mode = PERMISSION_MODE_UNRESTRICTED if enabled else PERMISSION_MODE_ASK
+    _params().SetInt("PermissionMode", mode)
 
 
 def require_tls() -> bool:

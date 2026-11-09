@@ -84,29 +84,32 @@ Once connected, the agent has these tools:
 - **`execute_python(code)`** — run Python in your FreeCAD session.
   `App`/`FreeCAD` and `Gui`/`FreeCADGui` are pre-bound, and
   `__name__` is `"__main__"`, so a script's
-  `if __name__ == "__main__":` block runs. Output is returned to
-  the client and mirrored to FreeCAD's **Report view**. Unless
-  **Trust any code** is on, FreeCAD shows the code first. The
-  call waits up to **Max response timeout**, dialog included.
+  `if __name__ == "__main__":` block runs. Output (stdout, stderr,
+  exceptions) is returned to the client and mirrored to FreeCAD's
+  **Report view**, so you can watch its output in real time.
 - **`execute_python_file(filepath)`** — read a local `.py` file
-  (absolute path) and show its path and whole text in the same
-  dialog. **Run** runs that text, with `__file__` set to the
-  path. The call waits up to **Max response timeout**, dialog
-  included. A run that finishes in that time comes back in the
-  same answer. **Don't run** in that time comes back as an
-  error. Otherwise the answer carries a job token and the agent
-  uses `get_output_page`. **Don't run** is the default.
-  **Trust any code** asks if you are really sure. Only **Yes**
-  turns it on. Any code an agent sends then runs unseen, with
-  your full permissions. The status bar always shows
-  **MCP: asks before code**, or, while trust is on, a warning
-  triangle and **MCP: trusts any code**. Clicking that marker
-  toggles trust the same way as the preference. It shows whether
-  or not the On/Off button is shown. Turn trust off with
-  **Trust any code** under **Permissions** in
-  **Edit → Preferences → MCP Bridge**. It is off until you
-  turn it on.
+  (absolute path) and run its text in the same context, with
+  `__file__` set to the path.
 - **`get_output_page(job_token, page_no)`** — fetch the next page of a long-running script's output. The agent calls it while a response says `has_more: true`, as the tool's description tells it to.
+
+For both `execute_python` and `execute_python_file`: in the **Ask**
+permission mode, the default, FreeCAD shows the code before it runs,
+and for a file its path and whole text, in a dialog with
+**Unrestricted!**, **Run** and **Don't run**. **Run** runs the text
+shown. **Don't run** is the default, and comes back to the agent as
+an error. The call waits up to **Max response timeout**, dialog
+included. A run that finishes in that time comes back in the same
+answer. If you have not answered by then, the answer carries a job
+token, and the agent collects the output, or the decline, with
+`get_output_page`. **Unrestricted!** asks if you are really sure.
+Only **Yes** switches to the **Unrestricted** mode, in which any
+code an agent sends runs with your full permissions, unseen. The
+status bar always shows the mode: a shield with a tick and
+**MCP: Ask**, or a warning triangle and **MCP: Unrestricted**.
+Clicking that marker switches modes the same way as **Permission
+mode** under **Permissions** in **Edit → Preferences → MCP Bridge**:
+it asks before going Unrestricted, and goes back to Ask at once. The
+marker shows whether or not the On/Off button is shown.
 
 ### Example prompts
 
@@ -141,8 +144,8 @@ change a model — for example:
   **Report view**. A later new address beyond loopback asks once on
   its own.
 - **Max response timeout** — how long the bridge waits for a page
-  (default 15 s). A file an agent sends counts the dialog in that
-  wait, from the call. Keep it below the client's own request
+  (default 15 s). Code or a file an agent sends counts the dialog in
+  that wait, from the call. Keep it below the client's own request
   limit, about 60 s for Claude Code. The preference allows up to
   600 s. The agent fetches the rest with `get_output_page`.
 - **Max page size** — the most one page may be, as the JSON the agent

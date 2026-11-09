@@ -5,6 +5,9 @@ Usage:
   python send_cmd.py <port> -f script.py
 
 The bridge must be running (MCP Bridge toolbar toggle on) in FreeCAD.
+In the Ask permission mode FreeCAD shows the code to the user first,
+and the output comes once they choose Run. In Unrestricted mode the
+code runs at once.
 Requests are sent as MCP protocol version 2026-07-28, with the bearer
 token from FREECAD_MCP_TOKEN_DIR/token, or <home>/.freecad-mcp-bridge/token.
 Stdlib only — runs on any Python 3, no FreeCAD or pip dependencies.
@@ -115,20 +118,6 @@ def run(port, name, arguments):
         sys.stderr.write(f"\n{page['error']}\n")
 
 
-def _enable_trust_when_inside_freecad():
-    """Turn Trust any code on when this process is FreeCAD.
-
-    A terminal run cannot see FreeCAD's preferences. Turn Trust any
-    code on in Preferences first, or that run waits on the dialog.
-    """
-    try:
-        import FreeCAD
-    except ImportError:
-        return
-    group = "User parameter:BaseApp/Preferences/Mod/freecad-mcp-bridge"
-    FreeCAD.ParamGet(group).SetBool("TrustAnyCode", True)
-
-
 def main(argv):
     if len(argv) < 3:
         print('Usage: python send_cmd.py <port> "code"  |  python send_cmd.py <port> -f script.py')
@@ -139,7 +128,6 @@ def main(argv):
         print("Error: <port> must be an integer")
         return 1
 
-    _enable_trust_when_inside_freecad()
     if argv[2] == "-f":
         if len(argv) < 4:
             print("Error: -f requires a script filepath")
@@ -156,7 +144,8 @@ if __name__ == "__main__":
     except urllib.error.URLError as exc:
         port = sys.argv[1] if len(sys.argv) > 1 else "39280"
         sys.stderr.write(
-            f"Error: cannot reach FreeCAD MCP Bridge at http://127.0.0.1:{port}/mcp ({exc}). "
+            "Error: cannot reach FreeCAD MCP Bridge at "
+            f"http://127.0.0.1:{port}/mcp ({exc}). "
             "Is the bridge running (toolbar toggle on)?\n"
         )
         sys.exit(1)

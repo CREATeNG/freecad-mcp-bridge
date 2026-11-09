@@ -217,12 +217,12 @@ class McpRequestHandler(BaseHTTPRequestHandler):
     def _ask_or_run(
         self, req_id, version, code, shown, started, drain_args
     ):
-        """Ask, unless Trust any code is on, then run what was shown.
+        """Ask, unless the mode is Unrestricted, then run what was shown.
 
         `shown` is the file path, or None for inline code. The timeout
         counts from `started`, so the dialog is inside it.
         """
-        if config.trust_any_code():
+        if config.unrestricted():
             self._run_shown(
                 req_id, version, code, shown, started, drain_args
             )
@@ -252,7 +252,7 @@ class McpRequestHandler(BaseHTTPRequestHandler):
     def _run_shown(
         self, req_id, version, code, shown, started, drain_args
     ):
-        """Run a trusted file. The timeout is what the call has left."""
+        """Run without asking. The timeout is what the call has left."""
         token, output_queue = paging.start_page()
         self.server.executor.submit(
             code, output_queue, shown, token=token
@@ -279,7 +279,8 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                     lambda: file_prompt.confirm(shown, code)
                 )
             except Exception as exc:
-                failure = f"The file dialog failed: {exc}"
+                which = "code" if shown is None else "file"
+                failure = f"The {which} dialog failed: {exc}"
                 FreeCAD.Console.PrintError(
                     f"{LOG_PREFIX} {failure}\n"
                 )
@@ -295,15 +296,6 @@ class McpRequestHandler(BaseHTTPRequestHandler):
                         else file_prompt.decline_message(shown),
                         retention_ms,
                     )
-
-    def _run_code(self, req_id, version, code, drain_args, filepath=None):
-        token, output_queue = paging.start_page()
-        self.server.executor.submit(
-            code, output_queue, filepath, token=token
-        )
-        # The initiating call returns page 0 — the first page the job produces.
-        result = paging.fetch(token, 0, *drain_args)
-        self._send_tool_result(req_id, version, result)
 
     def _send_tool_result(self, req_id, version, result):
         self._send_json(

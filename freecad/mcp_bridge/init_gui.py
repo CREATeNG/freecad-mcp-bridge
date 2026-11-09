@@ -387,7 +387,7 @@ class MCPBridgeCommand:
         mw = Gui.getMainWindow()
         if mw:
             mw.statusBar().showMessage(status)
-            refresh_trust_marker()
+            refresh_mode_marker()
         show_toggle_state()
         if started or stopped:
             App.Console.PrintNotification(status + "\n")
@@ -401,17 +401,20 @@ class MCPBridgeCommand:
             App.Console.PrintWarning(warning + "\n")
 
 
-TRUST_LABEL_NAME = "MCPBridgeTrustLabel"
+MODE_MARKER_NAME = "MCPBridgeModeMarker"
 
 
-def refresh_trust_marker():
-    """Show the permanent trust control beside the On/Off button."""
+def refresh_mode_marker():
+    """Show the permission mode beside the On/Off button, always.
+
+    The shield with a tick and "MCP: Ask", or the warning triangle
+    and "MCP: Unrestricted". A click switches modes.
+    """
     import FreeCADGui as Gui
 
     try:
         from PySide.QtCore import Qt
-        from PySide.QtGui import QIcon
-        from PySide.QtWidgets import QStyle, QToolButton
+        from PySide.QtWidgets import QToolButton
     except Exception:
         return
 
@@ -422,22 +425,17 @@ def refresh_trust_marker():
     if mw is None:
         return
     bar = mw.statusBar()
-    marker = bar.findChild(QToolButton, TRUST_LABEL_NAME)
+    marker = bar.findChild(QToolButton, MODE_MARKER_NAME)
     button = bar.findChild(QToolButton, STATUS_BUTTON_OBJECT_NAME)
     if marker is None:
         marker = QToolButton(bar)
-        marker.setObjectName(TRUST_LABEL_NAME)
+        marker.setObjectName(MODE_MARKER_NAME)
         marker.setAutoRaise(True)
-        marker.clicked.connect(_on_marker_clicked)
-    trust_on = config.trust_any_code()
-    marker.setText(file_prompt.marker_text(trust_on))
-    if file_prompt.marker_warns(trust_on):
-        icon = marker.style().standardIcon(QStyle.SP_MessageBoxWarning)
-        marker.setIcon(icon)
         marker.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
-    else:
-        marker.setIcon(QIcon())
-        marker.setToolButtonStyle(Qt.ToolButtonTextOnly)
+        marker.clicked.connect(_on_marker_clicked)
+    unrestricted = config.unrestricted()
+    marker.setText(file_prompt.marker_text(unrestricted))
+    marker.setIcon(file_prompt.mode_icon(unrestricted))
     if button is not None and button.parent() is bar and button is not marker:
         _normal, permanent = _status_bar_widgets(bar)
         if permanent is not None and button in permanent:
@@ -594,7 +592,7 @@ def _ensure_status_button(mw):
             bar.removeWidget(button)
             button.setParent(None)
             button.deleteLater()
-        refresh_trust_marker()
+        refresh_mode_marker()
         return None
     position = config.status_button_position()
     if button is not None:
@@ -639,7 +637,7 @@ def _ensure_status_button(mw):
     else:
         bar.addPermanentWidget(button)
     button.show()
-    refresh_trust_marker()
+    refresh_mode_marker()
     return button
 
 
@@ -734,43 +732,50 @@ class _StatusBarPrefObserver:
             config.migrate_legacy_port()
         if param in (None, "ShowStatusButton", "StatusButtonPosition"):
             show_toggle_state()
-        if param in (None, "TrustAnyCode"):
-            refresh_trust_marker()
-            _sync_open_checkbox()
+        if param in (None, "PermissionMode"):
+            refresh_mode_marker()
+            _sync_open_mode_box()
 
 
-def _apply_trust_gesture(want_on, box):
-    """One click, from the checkbox or the status-bar marker."""
+def _apply_mode_choice(want_unrestricted, box):
+    """One choice of mode, from Preferences or the status-bar marker."""
     from freecad.mcp_bridge import config, file_prompt
 
     def ask():
         parent = box.window() if box is not None else None
-        return file_prompt._ask_trust(parent)
+        return file_prompt._ask_unrestricted(parent)
 
-    enabled = file_prompt.commit_checkbox(box, want_on, ask)
-    config.set_trust_any_code(enabled)
-    _sync_open_checkbox()
-    refresh_trust_marker()
+    enabled = file_prompt.commit_mode(box, want_unrestricted, ask)
+    config.set_unrestricted(enabled)
+    _sync_open_mode_box()
+    refresh_mode_marker()
 
 
-def _on_trust_toggled(box, checked):
-    """Ticking Trust any code asks once. Only Yes leaves it ticked."""
-    if box.signalsBlocked():
+def _on_mode_chosen(box, index):
+    """Choosing Unrestricted in Preferences asks once. Only Yes keeps it.
+
+    Choosing the mode already in force changes nothing and asks nothing.
+    """
+    from freecad.mcp_bridge import config
+    from freecad.mcp_bridge.constants import PERMISSION_MODE_UNRESTRICTED
+
+    want_unrestricted = index == PERMISSION_MODE_UNRESTRICTED
+    if want_unrestricted == config.unrestricted():
         return
-    _apply_trust_gesture(checked, box)
+    _apply_mode_choice(want_unrestricted, box)
 
 
 def _on_marker_clicked():
-    """The status-bar marker toggles trust the same way as the tick."""
+    """The status-bar marker switches modes as the Preferences box does."""
     from freecad.mcp_bridge import config
 
-    _apply_trust_gesture(not config.trust_any_code(), None)
+    _apply_mode_choice(not config.unrestricted(), None)
 
 
-def _sync_open_checkbox():
-    """Keep an open Preferences tick in step with the preference."""
+def _sync_open_mode_box():
+    """Keep an open Preferences box in step with the preference."""
     try:
-        from PySide.QtWidgets import QCheckBox
+        from PySide.QtWidgets import QComboBox
         import FreeCADGui as Gui
     except Exception:
         return
@@ -779,15 +784,16 @@ def _sync_open_checkbox():
     mw = Gui.getMainWindow()
     if mw is None:
         return
-    box = mw.findChild(QCheckBox, "trustAnyCodeCheckBox")
-    file_prompt.set_checkbox_quietly(box, config.trust_any_code())
+    box = mw.findChild(QComboBox, "permissionModeComboBox")
+    file_prompt.set_mode_box_quietly(box, config.unrestricted())
 
 
 def _install_pref_page_filter(mw):
-    """Connect `generateTokenButton` when the Preferences page opens."""
+    """Connect `generateTokenButton` and the Permission mode box when
+    the Preferences page opens."""
     try:
         from PySide.QtCore import QEvent, QObject
-        from PySide.QtWidgets import QApplication, QCheckBox, QPushButton
+        from PySide.QtWidgets import QApplication, QComboBox, QPushButton
     except Exception:
         return
 
@@ -809,13 +815,15 @@ def _install_pref_page_filter(mw):
                 )
             if (
                 event.type() == QEvent.Show
-                and isinstance(obj, QCheckBox)
-                and obj.objectName() == "trustAnyCodeCheckBox"
-                and not obj.property("mcp_trust_hooked")
+                and isinstance(obj, QComboBox)
+                and obj.objectName() == "permissionModeComboBox"
+                and not obj.property("mcp_mode_hooked")
             ):
-                obj.setProperty("mcp_trust_hooked", True)
-                obj.toggled.connect(
-                    lambda checked, box=obj: _on_trust_toggled(box, checked)
+                obj.setProperty("mcp_mode_hooked", True)
+                # activated fires on the user's choice only, never
+                # when the code sets the box.
+                obj.activated.connect(
+                    lambda index, box=obj: _on_mode_chosen(box, index)
                 )
             return False
 

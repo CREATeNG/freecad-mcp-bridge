@@ -25,6 +25,17 @@ def icon_path() -> str:
     return legacy.replace("\\", "/")
 
 
+def mode_icon_path(unrestricted: bool) -> str:
+    """Absolute path to a permission mode's icon (SVG).
+
+    The shield with a tick is Ask. The warning triangle is
+    Unrestricted. The two are drawn as one set.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    name = "mode-unrestricted.svg" if unrestricted else "mode-ask.svg"
+    return os.path.join(here, "Resources", "Icons", name).replace("\\", "/")
+
+
 def preferences_ui_path() -> str:
     """Absolute path to the preferences page .ui file."""
     here = os.path.dirname(os.path.abspath(__file__))
