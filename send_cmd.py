@@ -24,7 +24,11 @@ CLIENT_INFO = {"name": "send_cmd", "version": "0"}
 def _token_from_file():
     """The bearer token FreeCAD wrote, or '' when the file is absent."""
     override = os.environ.get("FREECAD_MCP_TOKEN_DIR", "").strip()
-    folder = Path(override) if override else Path.home() / ".freecad-mcp-bridge"
+    folder = (
+        Path(override)
+        if override
+        else Path.home() / ".freecad-mcp-bridge"
+    )
     try:
         return (folder / "token").read_text(encoding="utf-8").strip()
     except OSError:
