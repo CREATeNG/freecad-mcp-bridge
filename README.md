@@ -110,7 +110,7 @@ bar shows the mode beside **MCP On** or **MCP Off**: a shield with a
 tick for Ask, or a warning triangle for Unrestricted. The menu on
 the button's arrow has **Permissions: Ask** and **Permissions:
 Unrestricted**, each with its icon, above **MCP Bridge
-Preferences**. Choosing one there switches modes the same way as
+Preferences**. Choosing a mode there switches modes the same way as
 **Permission mode** under **Permissions** in
 **Edit → Preferences → MCP Bridge**: it asks before going
 Unrestricted, and goes back to Ask at once. In Preferences too, the
