@@ -226,10 +226,12 @@ request. On a change pull request (step 1), the routine takes the
 `.mcpb` that the pull request's checks packed, installs it in Claude
 Desktop, and installs the pull request's addon in FreeCAD. The routine
 then runs a hello call (`print('hello')` in FreeCAD) through both
-together. A version pull request (step 3) gets a lighter check: the
-routine installs the `.mcpb`, runs the hello call, and flags anything in
-the pull request beyond the version files and `CHANGELOG.md`. If no
-result is posted, run the check by hand and post it the same way.
+together. It leaves the permission mode at Ask and chooses **Run** in
+FreeCAD's dialog, so the check covers the dialog too. A version pull
+request (step 3) gets a lighter check: the routine installs the
+`.mcpb`, runs the hello call, and flags anything in the pull request
+beyond the version files and `CHANGELOG.md`. If no result is posted,
+run the check by hand and post it the same way.
 
 **Duplicate versions are blocked.** **`release.yml`** reads
 `package.xml`, checks that `v{x.y.z}` does not already exist
