@@ -265,11 +265,20 @@ function readDpapi() {
 }
 
 function keychainAccount() {
+  const override = envSetting("FREECAD_MCP_KEYCHAIN_ACCOUNT");
+  if (override) return override;
   return os.userInfo().username;
 }
 
-function runSecurity(args) {
+function securityQuote(value) {
+  const text = String(value);
+  if (/^[\w.@+\-]+$/.test(text)) return text;
+  return `"${text.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function runSecurity(args, input) {
   const result = spawnSync("security", args, {
+    input,
     encoding: "utf8",
     timeout: 30000,
   });
@@ -278,18 +287,20 @@ function runSecurity(args) {
 }
 
 function writeKeychain(token) {
-  const result = runSecurity([
-    "add-generic-password",
-    "-U",
-    "-s",
-    KEYCHAIN_SERVICE,
-    "-a",
-    keychainAccount(),
-    "-w",
-    token,
-  ]);
+  // security -i reads the command from stdin. -X is the password as
+  // hex, so the token is not in the process's argument list.
+  const hex = Buffer.from(token, "utf8").toString("hex");
+  const line =
+    "add-generic-password -U -s " +
+    securityQuote(KEYCHAIN_SERVICE) +
+    " -a " +
+    securityQuote(keychainAccount()) +
+    " -X " +
+    hex +
+    "\n";
+  const result = runSecurity(["-i"], line);
   if (result.status !== 0) {
-    throw new Error((result.stderr || "security failed").trim());
+    throw new Error((result.stderr || result.stdout || "security failed").trim());
   }
 }
 
@@ -396,23 +407,23 @@ function handoverError(err) {
   );
 }
 
+function shortHandoverMessage(file) {
+  return (
+    `The hand-over file at ${file} holds fewer than 32 characters, so it was left in place. ` +
+    "Set a token of at least 32 characters in FreeCAD, or paste the token into Bearer token."
+  );
+}
+
 let activeToken = "";
 let activeSource = "";
+let activeNote = "";
 
 function resolveLocalToken() {
   const handover = readHandover();
   if (handover.status === "error") {
-    return { token: "", source: "", error: handoverError(handover.error) };
+    return { token: "", source: "", error: handoverError(handover.error), note: "" };
   }
-  if (handover.status === "short") {
-    return {
-      token: "",
-      source: "",
-      error:
-        `The hand-over file at ${handover.file} holds fewer than 32 characters, so it was left in place. ` +
-        "Set a token of at least 32 characters in FreeCAD, or paste the token into Bearer token.",
-    };
-  }
+  const note = handover.status === "short" ? shortHandoverMessage(handover.file) : "";
   if (handover.status === "present") {
     try {
       writeStore(handover.token);
@@ -431,13 +442,14 @@ function resolveLocalToken() {
       };
     }
     rememberStore(handover.token);
-    return { token: handover.token, source: "handover", error: "" };
+    return { token: handover.token, source: "handover", error: "", note: "" };
   }
   const stored = loadStore();
-  if (stored.error) return { token: "", source: "", error: stored.error };
-  if (stored.token) return { token: stored.token, source: "store", error: "" };
-  if (PASTED_TOKEN) return { token: PASTED_TOKEN, source: "paste", error: "" };
-  return { token: "", source: "", error: NO_LOCAL_TOKEN_MESSAGE };
+  if (stored.error) return { token: "", source: "", error: stored.error, note: "" };
+  if (stored.token) return { token: stored.token, source: "store", error: "", note };
+  if (PASTED_TOKEN) return { token: PASTED_TOKEN, source: "paste", error: "", note };
+  if (note) return { token: "", source: "", error: note, note: "" };
+  return { token: "", source: "", error: NO_LOCAL_TOKEN_MESSAGE, note: "" };
 }
 
 const TLS_CERT_FILE = envSetting("FREECAD_MCP_TLS_CERT_FILE");
@@ -565,13 +577,22 @@ function toolErrorResult(errorText) {
   };
 }
 
+function withToolNote(result) {
+  if (!activeNote || !result || typeof result !== "object") return result;
+  const content = Array.isArray(result.content)
+    ? result.content.map((item) => ({ ...item }))
+    : [];
+  content.push({ type: "text", text: activeNote });
+  return { ...result, content };
+}
+
 function sendErrorReply(message, errorText) {
   if (message.method === "tools/call") {
     writeLine(
       JSON.stringify({
         jsonrpc: "2.0",
         id: message.id,
-        result: toolErrorResult(errorText),
+        result: withToolNote(toolErrorResult(errorText)),
       })
     );
   } else {
@@ -694,6 +715,20 @@ function writeResult(id, result) {
 
 function writeBridgeLine(payload) {
   if (!payload) return;
+  if (!activeNote) {
+    writeLine(payload);
+    return;
+  }
+  try {
+    const message = JSON.parse(payload);
+    if (message.result && typeof message.result === "object") {
+      message.result = withToolNote(message.result);
+      writeLine(JSON.stringify(message));
+      return;
+    }
+  } catch {
+    // The bridge line is not JSON. Leave it unchanged.
+  }
   writeLine(payload);
 }
 
@@ -725,6 +760,7 @@ async function forward(rawLine, message) {
     );
     return;
   }
+  activeNote = "";
   if (!IS_DEFAULT_HOST) {
     if (!TLS_CERT_FILE) {
       sendErrorReply(message, MISSING_REMOTE_CERT_MESSAGE);
@@ -744,6 +780,7 @@ async function forward(rawLine, message) {
     }
     activeToken = resolved.token;
     activeSource = resolved.source;
+    activeNote = resolved.note || "";
   }
 
   const certFile = IS_DEFAULT_HOST ? localServingCert() : TLS_CERT_FILE;
@@ -779,7 +816,7 @@ async function forward(rawLine, message) {
       sendErrorReply(message, tlsErrorMessage(err));
       return;
     }
-    writeResult(message.id, offlineResult(message, err));
+    writeResult(message.id, withToolNote(offlineResult(message, err)));
     return;
   }
 
