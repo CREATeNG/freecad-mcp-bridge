@@ -179,8 +179,8 @@ change a model — for example:
   preferences, not the token. **Set token** stores a pasted token
   of at least 32 characters the same way, and does not show it
   again. Nothing is written for the extension to read. A bridge
-  that is already running
-  reads the hash again before it refuses a token that does not match.
+  that is already running reads the hash again before it refuses
+  a token that does not match.
 - **TLS certificate file (PEM)** and **TLS private key file (PEM)** —
   when both files are set, every listener serves HTTPS, loopback
   included, and each start writes a copy of the certificate to
