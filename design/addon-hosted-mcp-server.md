@@ -63,7 +63,7 @@ it. Choosing a mode there switches the same way as the
 confirmation to go Unrestricted, and back to Ask at once. A click
 on the button, its icon or its words, turns the bridge on or off.
 It does nothing else. While the mode is Unrestricted, the button is
-shown whatever **Show the On/Off button** says.
+shown whatever **Show** says.
 
 **Result shape**
 
@@ -421,35 +421,20 @@ No silent port increment. Dynamic port rejected — HTTP clients
 configure the endpoint URL directly; a changing port would require
 reconfiguration each session.
 
-Under **Listen addresses** the Preferences page lists this machine's
-addresses, one row for each interface that is up, labelled with the
-address and then the interface name. IPv4 comes first. Link-local
-IPv6 is left out. `::1` is a row. `127.0.0.1` is ticked by default
-and the other rows are off. An empty list is that default, so the
-`127.0.0.1` row stays ticked. Ticking adds `address:port`, using the
-port of the `127.0.0.1` entry, or 39280 when there is none.
-Unticking removes every entry for that address. A typed entry that
-matches a row shows the row ticked. **Refresh** reads the interfaces
-again.
-
-**Host names** holds this machine's own name as a row to tick,
-labelled "This machine: <name>", and other names typed one per line,
-in the `HostNames` preference. No name in **Host names** opens a
-listener. Each is accepted in the `Host` header on the listeners
-that are open, so a client can connect by name and keep working
-when the address changes, and **Generate certificate** covers each.
-A name that does not resolve to this machine is noted, and the
-bridge still starts. Names are looked up when the field loses focus
-and on **Refresh**.
-
-The page marks each entry it can tell will stop a start: one that
-does not parse, a wildcard, and an address this machine does not
-have. It notes an empty list, which starts the bridge on
-`127.0.0.1:39280`. A port already taken and the certificate's cover
-are found at the start. While the bridge is on and the lists
-differ, the page shows what the bridge is listening on beside its
-own list, and says that OK, then turning the bridge off and on,
-applies the list.
+**Listen addresses** is one list. **+** opens **MCP Bridge: Add to
+Listen addresses** and **-** removes the selected row. A new page
+shows one fixed row, `127.0.0.1:39280`. An adapter row stores the
+port and the adapter's name, and at each start the bridge listens
+on that adapter's IPv4 address. A fixed IP address listens on
+exactly that address. A host name has no port and opens no
+listener: it is accepted on every listener, and **Generate
+self-signed certificate** covers it. An empty saved list stays
+empty. A fixed address this machine does not have stops the start
+before the risk dialog, and the status bar and Report view name
+that row. An adapter that is down or has no IPv4 address is
+skipped with one Report view warning, and the bridge starts on
+the rest. While the bridge is on, the page compares its rows,
+an empty list included, with what the bridge is listening on.
 
 **Session management**
 
@@ -589,9 +574,8 @@ is not sent. A refused token says the pasted token was refused.
   beyond loopback fails. Beside **Listen addresses**, the Preferences
   page states that beyond loopback the bridge serves HTTPS only and
   that an MCP client must trust the certificate in `TlsCertFile`.
-  In the **Security** section, the user's own certificate and key file
-  fields come first, with **or generate one** and **Generate
-  certificate** beside them. **Generate certificate** calls
+  **Certificate (PEM)** and **Private key (PEM)** sit side by side,
+  with **Generate self-signed certificate**. That button calls
   `cert_tools.find_tools()` to find certificate tools on the machine
   (such as `openssl`, including Git for Windows' copy on Windows).
   Where tools are found, it offers a choice of tool and key type
@@ -609,10 +593,12 @@ is not sent. A refused token says the pasted token was refused.
   certificate file path, covered addresses, and expiry date. If an
   entry beyond loopback is configured without readable, valid
   certificate and key files, if a configured certificate is not yet
-  valid or has expired, or if the certificate does not cover a
-  listed address, loopback included, startup fails with an error naming
-  the problem and directing the user to select or generate the files
+  valid or has expired, startup fails with an error naming the
+  problem and directing the user to select or generate the files
   in Edit → Preferences → MCP Bridge, and the bridge stays off.
+  A listener whose address is not in the certificate is a Report
+  view warning when the certificate names no host, and the start
+  still proceeds.
 
 **Security posture — noted trade-offs**
 
@@ -767,16 +753,17 @@ running and fixes that job's retention interval, also used for later
 extensions. Preference changes affect jobs that finish afterwards, not
 histories whose intervals are already set.
 
-The preference page is registered as a `.ui` file and appears in Edit →
-Preferences → MCP Bridge. FreeCAD wires widgets to the parameter store
-automatically.
+The preference page is a Python class that owns its form. It appears
+in Edit → Preferences → MCP Bridge. FreeCAD calls its save and load.
 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
 | Listen addresses | `127.0.0.1:39280` | List of `address:port` entries (`[ipv6]:port` for IPv6) to bind; unspecified addresses such as `0.0.0.0` and `[::]` are refused; if unset, inherits a previously saved `Port` value; missing port or bind conflict at startup logs an error and leaves the bridge off; the first start asks once (`StartWarningAccepted`), including loopback; each later non-loopback entry requires acceptance once (`AcceptedListenAddresses`); every later start keeps a line in the status bar and Report view |
-| HostNames | `""` | Names accepted in the Host header on the open listeners, one per line. No name in Host names opens a listener. The page's own-name row is labelled "This machine: <name>". |
+| HostNames | `""` | Host name rows, one a line. No host name opens a listener. |
+| ListenAdapters | `""` | One adapter a line: the port, a tab, then the adapter's name. |
+| ListenListSaved | false | Set when the page is saved, so an empty list stays empty. |
 | Bearer token hash | Preferences `TokenHash` | Every listener requires `Authorization: Bearer <token>`; FreeCAD stores only the SHA-256 hash, shows a generated token once, and reads the hash again before refusing a mismatch |
-| TLS certificate file (PEM) / TLS private key file (PEM) | `""` | When both `TlsCertFile` and `TlsKeyFile` are set, every listener serves HTTPS. Without them, loopback is HTTP and a start beyond loopback fails. **Generate certificate** writes `tls-cert.pem` and `tls-key.pem` in `<home>/.freecad-mcp-bridge` and fills both fields |
+| Certificate (PEM) / Private key (PEM) | `""` | When both `TlsCertFile` and `TlsKeyFile` are set, every listener serves HTTPS. Without them, loopback is HTTP and a start beyond loopback fails. **Generate self-signed certificate** writes `tls-cert.pem` and `tls-key.pem` in `<home>/.freecad-mcp-bridge` and fills both fields |
 | Permission mode | `0` (Ask) | `PermissionMode`, `0` for Ask and `1` for Unrestricted: in Ask, FreeCAD shows an agent's code, and a file's path with it, before it runs; in Unrestricted the code runs unseen; switched in Preferences or from the On/Off button's menu, with a confirmation to go Unrestricted; each switch writes it at once, and the Preferences box has no preference entry of its own, so FreeCAD's own OK writes nothing for it |
 | Max response timeout (s) | 15 | Max wait for the first answer of `execute_python` and `execute_python_file`, dialog included, and for each later page, before returning with `has_more: true` |
 | Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |

@@ -144,31 +144,21 @@ change a model — for example:
 
 **Edit → Preferences → MCP Bridge:**
 
-- **Listen addresses** — the addresses and ports the server listens on,
-  written as `address:port` (or `[ipv6]:port`, such as `[::1]:39280`),
-  separated by new lines, spaces, commas, or semicolons (default
-  `127.0.0.1:39280`). Keep a `127.0.0.1:<PORT>` entry in the list if
-  you use the Claude Desktop extension on the same machine (`127.0.0.1`
-  is its default **FreeCAD host**).
-  Under the box, each address of this machine is a row you can tick.
-  `127.0.0.1` starts ticked, and **Refresh** reads the addresses
-  again. The page marks an entry it can tell will stop the bridge
-  starting, and, while the bridge is on, shows where the list
-  differs from what the bridge is listening on. Click **OK**, then
-  turn the bridge off and on again, to apply the list.
-  An entry of `0.0.0.0`, `[::]`, or any other unspecified address is
-  refused: enter a specific address of this machine. The first time
-  you turn the bridge on, loopback included, FreeCAD asks you to
-  accept that connected agents can run code with your full
-  permissions, and the bridge listens only after you accept. When
-  that first start also has addresses beyond loopback, one dialog
-  covers both. Each later start keeps a line in the status bar and
-  **Report view**. A later new address beyond loopback asks once on
-  its own.
-- **Host names** — names the bridge accepts on the addresses it
-  listens on, so an MCP client can connect by name. Tick this
-  machine's own name, or type others, one per line. A name there
-  opens no listener, and **Generate certificate** covers each.
+- **Listen addresses** — one list. **+** adds a row and **-** removes
+  the selected row, the last one included. A new page shows
+  `127.0.0.1:39280`. An adapter row listens on that adapter's IPv4
+  address at each start. A fixed IP address listens on exactly that
+  address. A host name opens no listener: the bridge accepts it on
+  every listener, and **Generate self-signed certificate** covers it.
+  Keep a `127.0.0.1` row if you use the Claude Desktop extension on
+  this machine. While the bridge is on, the page shows where the
+  list differs from what it is listening on. Click **OK**, then turn
+  the bridge off and on again, to apply the list. A fixed address
+  this machine does not have stops the start, and the status bar
+  and **Report view** name it. The first start asks you to accept
+  that connected agents can run code with your full permissions.
+  A later new address beyond loopback asks once, and a changed port
+  does not ask again.
 - **Max response timeout** — how long the bridge waits for a page
   (default 15 s). For code or a file an agent sends, that wait
   includes the dialog, counted from the call. Keep it below the
@@ -192,7 +182,7 @@ change a model — for example:
   again. Nothing is written for the extension to read. A bridge
   that is already running reads the hash again before it refuses
   a token that does not match.
-- **TLS certificate file (PEM)** and **TLS private key file (PEM)** —
+- **Certificate (PEM)** and **Private key (PEM)** —
   when both files are set, every listener serves HTTPS, loopback
   included, and each start writes a copy of the certificate to
   `<home>/.freecad-mcp-bridge/serving-cert.pem` so the Claude Desktop
@@ -203,7 +193,7 @@ change a model — for example:
   machine needs a copy of the certificate file, not the private
   key. The extension on this machine reads `serving-cert.pem` and
   trusts only that file.
-- **Generate certificate** — under **or generate one**, this
+- **Generate self-signed certificate** — this
   button creates `tls-cert.pem` and `tls-key.pem` (the key
   readable by you only) in `<home>/.freecad-mcp-bridge`, covering
   `127.0.0.1`, `localhost`, every listed address, loopback entries
@@ -217,13 +207,14 @@ change a model — for example:
   expiry.
 - A start fails when the certificate is not yet valid or has
   expired, and a start also fails when either file is not set for
-  an entry beyond loopback, or the certificate does not cover a
-  listed address, loopback included.
+  an entry beyond loopback. A listener whose address is not in
+  the certificate is a Report view warning when the certificate
+  names no host, and the start still proceeds.
 - **Permission mode** — **Ask** (the default) shows you an agent's
   code before it runs. **Unrestricted** runs it unseen, with your
   full permissions. [What the AI can do](#what-the-ai-can-do) has
   the rest.
-- **Show the On/Off button** — shows or hides the bridge's On/Off
+- **Show** — under **MCP Bridge status bar widget**, shows or hides the bridge's On/Off
   button on FreeCAD's status bar (on by default). While the
   permission mode is Unrestricted, the button is shown whatever this
   says, so Unrestricted stays shown on the status bar. The

@@ -33,24 +33,6 @@ if os.path.isdir(_icons_dir):
     Gui.addIconPath(_icons_dir.replace("\\", "/"))
 
 
-LISTEN_ADDRESS_NOTE = (
-    "Beyond loopback, the bridge serves HTTPS only, and an MCP client "
-    "must trust the certificate in TLS certificate file (PEM) below."
-)
-
-
-def _listen_address_note_text(cert_file=""):
-    """Return the note beside Listen addresses, naming `cert_file` when set."""
-    cert = (cert_file or "").strip()
-    if not cert:
-        return LISTEN_ADDRESS_NOTE
-    return (
-        "Beyond loopback, the bridge serves HTTPS only, and an MCP client "
-        "must trust the certificate in TLS certificate file (PEM) below "
-        f"({cert})."
-    )
-
-
 def _risk_dialog_text(entries):
     """Return (title, text) for the first-time non-loopback risk dialog."""
     if isinstance(entries, str):
@@ -513,6 +495,14 @@ def _cert_error_dialog_text(reason):
 
 def _chooser_file_name(host, object_name):
     """Read `fileName` from a `Gui::PrefFileChooser` on `host`, if present."""
+    try:
+        return _chooser_file_name_live(host, object_name)
+    except RuntimeError:
+        return ""
+
+
+def _chooser_file_name_live(host, object_name):
+    """The read, so a deleted chooser is caught by the caller."""
     if host is None:
         return ""
     try:
@@ -539,6 +529,14 @@ def _chooser_file_name(host, object_name):
 
 def _set_chooser_file_name(host, object_name, path):
     """Set `fileName` on a `Gui::PrefFileChooser` on `host`, if present."""
+    try:
+        _set_chooser_file_name_live(host, object_name, path)
+    except RuntimeError:
+        return
+
+
+def _set_chooser_file_name_live(host, object_name, path):
+    """The write, so a deleted chooser is caught by the caller."""
     if host is None:
         return
     try:
@@ -551,10 +549,7 @@ def _set_chooser_file_name(host, object_name, path):
         return
     chooser.setProperty("fileName", path)
     if hasattr(chooser, "setFileName") and callable(chooser.setFileName):
-        try:
-            chooser.setFileName(path)
-        except Exception:
-            pass
+        chooser.setFileName(path)
     if QLineEdit is not None:
         line = chooser.findChild(QLineEdit)
         if line is not None:
@@ -794,17 +789,6 @@ def generate_and_show_certificate(parent=None):
     c_str, k_str = str(c_path), str(k_path)
     _set_chooser_file_name(host, "tlsCertFileChooser", c_str)
     _set_chooser_file_name(host, "tlsKeyFileChooser", k_str)
-    if host is not None:
-        try:
-            from PySide.QtWidgets import QLabel
-        except Exception:
-            QLabel = object
-        try:
-            note = host.findChild(QLabel, "listenAddressNote")
-            if note is not None:
-                note.setText(_listen_address_note_text(c_str))
-        except Exception:
-            pass
     expiry_date = config.certificate_expiry_date(c_str) or ""
     title, body = _cert_generated_dialog_text(
         c_str, hosts, expiry_date=expiry_date, install_hint=install_hint
@@ -852,9 +836,17 @@ def _turn_bridge_on():
     from freecad.mcp_bridge.pref_pages import _machine
 
     machine = _machine(every)
-    entries = bind_entries(rows, ipv4)
+    from freecad.mcp_bridge.listeners import blocking_fixed_notes
+
+    blocked = blocking_fixed_notes(rows, machine)
+    if blocked:
+        for note in blocked:
+            App.Console.PrintWarning(f"{LOG_PREFIX} WARNING: {note}\n")
+        _show_status(blocked[0])
+        return blocked[0], False
     for note in start_notes(rows, ipv4, machine, names):
         App.Console.PrintWarning(f"{LOG_PREFIX} WARNING: {note}\n")
+    entries = bind_entries(rows, ipv4)
     has_row = any(row.kind in (KIND_ADDRESS, KIND_ADAPTER) for row in rows)
     cert_file = config.tls_cert_file()
     key_file = config.tls_key_file()
@@ -873,8 +865,17 @@ def _turn_bridge_on():
         _offline_status()
         return f"{DISPLAY_NAME}: Offline", False
     if not entries:
-        _offline_status()
-        return f"{DISPLAY_NAME}: Offline", False
+        reason = ""
+        for note in start_notes(rows, ipv4, machine, names):
+            if note:
+                reason = note
+                break
+        if not reason:
+            reason = (
+                "The bridge has no listen address it can open."
+            )
+        _show_status(reason)
+        return reason, False
     if non_loopback or (cert_file.strip() and key_file.strip()):
         config.build_ssl_context(cert_file, key_file, entries)
     if cert_file.strip():
@@ -912,52 +913,62 @@ def _turn_bridge_on():
 
 
 def _offline_status() -> None:
+    _show_status(f"{DISPLAY_NAME}: Offline")
+
+
+def _show_status(text: str) -> None:
+    """Put `text` on the status bar, where the user is looking."""
     import FreeCAD as App
     import FreeCADGui as Gui
 
-    status = f"{DISPLAY_NAME}: Offline"
     mw = Gui.getMainWindow()
     if mw:
-        mw.statusBar().showMessage(status)
+        mw.statusBar().showMessage(text)
     show_toggle_state()
-    App.Console.PrintNotification(status + "\n")
+    App.Console.PrintNotification(text + "\n")
 
 
 def _unaccepted(rows, ipv4):
-    """`(stored key, dialog line)` for listeners not yet accepted.
+    """`(stored IP, dialog line)` for listeners not yet accepted.
 
-    An adapter's key is the IP address alone. A fixed address's
-    key stays `address:port`.
+    The stored form is the IP address alone, for both kinds of row.
+    One address and port is one line, even when an adapter row and
+    a fixed row both name it.
     """
     from freecad.mcp_bridge import config
-    from freecad.mcp_bridge.listen_page import format_entry
     from freecad.mcp_bridge.listeners import (
         KIND_ADAPTER,
         KIND_ADDRESS,
+        format_entry,
         host_already_accepted,
         risk_line,
     )
 
     stored = config.accepted_listen_addresses()
     pending = []
+    seen_entry = set()
+    seen_ip = set()
     for row in rows:
         if row.kind == KIND_ADAPTER:
             present = ipv4.get(row.adapter, "")
             if not present:
                 continue
+            host = present
             entry = format_entry(present, row.port)
-            if config.is_loopback_address(entry):
-                continue
-            if host_already_accepted(stored, present):
-                continue
-            pending.append((present, risk_line(row, present)))
         elif row.kind == KIND_ADDRESS:
+            host = row.host
             entry = format_entry(row.host, row.port)
-            if config.is_loopback_address(entry):
-                continue
-            if config.is_address_accepted(entry):
-                continue
-            pending.append((entry, risk_line(row, row.host)))
+        else:
+            continue
+        if entry in seen_entry:
+            continue
+        seen_entry.add(entry)
+        if config.is_loopback_address(entry):
+            continue
+        if host_already_accepted(stored, host) or host in seen_ip:
+            continue
+        seen_ip.add(host)
+        pending.append((host, risk_line(row, host)))
     return pending
 
 
@@ -1327,8 +1338,6 @@ class _StatusBarPrefObserver:
             show_toggle_state()
         if param in (None, "PermissionMode"):
             _sync_open_mode_box()
-        if param in (None, "TlsCertFile"):
-            _sync_open_listen_note()
 
 
 def _apply_mode_choice(want_unrestricted, box):
@@ -1413,31 +1422,6 @@ def _show_mode_in_box(box):
     )
 
 
-def _sync_open_listen_note():
-    """Keep the Listen addresses TLS note in step with TlsCertFile."""
-    try:
-        from PySide.QtWidgets import QLabel
-        import FreeCADGui as Gui
-    except Exception:
-        return
-    from freecad.mcp_bridge import config
-
-    mw = Gui.getMainWindow()
-    if mw is None:
-        return
-    label = mw.findChild(QLabel, "listenAddressNote")
-    if label is not None:
-        label.setText(_listen_address_note_text(config.tls_cert_file()))
-
-
-def _page_child(edit, kind, name):
-    """Find `name` on the Preferences window that holds `edit`."""
-    window = edit.window()
-    if window is None:
-        return None
-    return window.findChild(kind, name)
-
-
 def _qt_interface_records(only_up=True):
     """`(interface name, address)` from Qt.
 
@@ -1464,178 +1448,6 @@ def _qt_interface_records(only_up=True):
                 continue
             records.append((name, ip.toString()))
     return records
-
-
-def _refresh_listen_page(edit, lookup=False):
-    """Rebuild the rows and marks. Look up names only when asked."""
-    if edit.property("mcp_listen_busy"):
-        return
-    from PySide.QtWidgets import QCheckBox, QLabel, QTextEdit, QWidget
-
-    from freecad.mcp_bridge import bridge, listen_page
-
-    edit.setProperty("mcp_listen_busy", True)
-    try:
-        rows = listen_page.address_rows(_qt_interface_records())
-        machine = listen_page.machine_addresses(
-            _qt_interface_records(only_up=False)
-        )
-        text = edit.toPlainText()
-        holder = _page_child(edit, QWidget, "addressRows")
-        key = "\n".join(address for _label, address in rows)
-        if holder is not None and holder.layout() is not None:
-            layout = holder.layout()
-            if edit.property("mcp_row_key") != key:
-                while layout.count():
-                    item = layout.takeAt(0)
-                    widget = item.widget()
-                    if widget is not None:
-                        widget.setParent(None)
-                        widget.deleteLater()
-                for label, address in rows:
-                    box = QCheckBox(label, holder)
-                    box.setProperty("mcp_address", address)
-                    box.toggled.connect(
-                        lambda checked, addr=address, edit=edit: (
-                            _toggle_address(edit, addr, checked)
-                        )
-                    )
-                    box.setChecked(
-                        listen_page.row_is_ticked(text, address)
-                    )
-                    layout.addWidget(box)
-                edit.setProperty("mcp_row_key", key)
-            else:
-                for box in holder.findChildren(QCheckBox):
-                    address = box.property("mcp_address")
-                    want = listen_page.row_is_ticked(text, address)
-                    if box.isChecked() != want:
-                        box.setChecked(want)
-        marks = _page_child(edit, QLabel, "listenAddressMarks")
-        if marks is not None:
-            marks.setText(
-                "\n".join(listen_page.entry_marks(text, machine))
-            )
-        diff = _page_child(edit, QLabel, "listeningDifferenceLabel")
-        if diff is not None:
-            listening = None
-            try:
-                if bridge.is_running():
-                    listening = bridge.listening_entries()
-            except Exception:
-                listening = None
-            diff.setText(listen_page.difference_text(text, listening))
-        names_edit = _page_child(edit, QTextEdit, "hostNamesTextEdit")
-        own = _page_child(edit, QCheckBox, "ownHostNameCheckBox")
-        own_name = listen_page.own_host_name()
-        if own is not None:
-            own.setText(
-                f"This machine: {own_name}" if own_name else "This machine"
-            )
-            if names_edit is not None:
-                own.setChecked(
-                    listen_page.name_is_listed(
-                        names_edit.toPlainText(), own_name
-                    )
-                )
-        notes = _page_child(edit, QLabel, "hostNameNotes")
-        if lookup and notes is not None and names_edit is not None:
-            notes.setText(
-                "\n".join(
-                    listen_page.host_name_notes(
-                        listen_page.parse_names(
-                            names_edit.toPlainText()
-                        ),
-                        listen_page.resolve_name,
-                        machine,
-                    )
-                )
-            )
-    finally:
-        edit.setProperty("mcp_listen_busy", False)
-
-
-def _toggle_address(edit, address, checked):
-    """Add or remove `address` when its row is ticked or unticked."""
-    if edit.property("mcp_listen_busy"):
-        return
-    from freecad.mcp_bridge import listen_page
-
-    text = edit.toPlainText()
-    if checked:
-        updated = listen_page.with_address(text, address)
-    else:
-        updated = listen_page.without_address(text, address)
-    if updated != text:
-        edit.setPlainText(updated)
-
-
-def _toggle_own_name(edit, checked):
-    """Tick this machine's name into Host names, or take it out."""
-    if edit.property("mcp_listen_busy"):
-        return
-    from PySide.QtWidgets import QTextEdit
-
-    from freecad.mcp_bridge import listen_page
-
-    names = _page_child(edit, QTextEdit, "hostNamesTextEdit")
-    if names is None:
-        return
-    own = listen_page.own_host_name()
-    text = names.toPlainText()
-    if checked:
-        updated = listen_page.with_name(text, own)
-    else:
-        updated = listen_page.without_name(text, own)
-    if updated != text:
-        names.setPlainText(updated)
-    _refresh_listen_page(edit, lookup=True)
-
-
-def _bind_listen_page(edit):
-    """Connect the address rows, Refresh, and the host name field."""
-    from PySide.QtCore import QEvent, QObject
-    from PySide.QtWidgets import QCheckBox, QPushButton, QTextEdit
-
-    if not edit.property("mcp_listen_hooked"):
-        edit.setProperty("mcp_listen_hooked", True)
-        edit.textChanged.connect(
-            lambda: _refresh_listen_page(edit, lookup=False)
-        )
-        refresh = _page_child(edit, QPushButton, "refreshAddressesButton")
-        if refresh is not None and not refresh.property("mcp_refresh_hooked"):
-            refresh.setProperty("mcp_refresh_hooked", True)
-            refresh.clicked.connect(
-                lambda: _refresh_listen_page(edit, lookup=True)
-            )
-        own = _page_child(edit, QCheckBox, "ownHostNameCheckBox")
-        if own is not None and not own.property("mcp_own_hooked"):
-            own.setProperty("mcp_own_hooked", True)
-            own.toggled.connect(
-                lambda checked: _toggle_own_name(edit, checked)
-            )
-        names = _page_child(edit, QTextEdit, "hostNamesTextEdit")
-        if names is not None and not names.property("mcp_names_hooked"):
-            names.setProperty("mcp_names_hooked", True)
-            names.textChanged.connect(
-                lambda: _refresh_listen_page(edit, lookup=False)
-            )
-
-        class _Focus(QObject):
-            def eventFilter(self, obj, event):
-                if event.type() == QEvent.FocusOut and obj in (
-                    edit,
-                    names,
-                ):
-                    _refresh_listen_page(edit, lookup=True)
-                return False
-
-        focus = _Focus(edit)
-        edit._listen_focus = focus
-        edit.installEventFilter(focus)
-        if names is not None:
-            names.installEventFilter(focus)
-    _refresh_listen_page(edit, lookup=True)
 
 
 def ensure_startup_ui():

@@ -1069,6 +1069,11 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             sys.modules.pop("freecad.mcp_bridge.init_gui", None)
             init_gui = importlib.import_module("freecad.mcp_bridge.init_gui")
             init_gui.show_toggle_state = lambda: None
+            init_gui._qt_interface_records = lambda only_up=True: [
+                ("Ethernet", "192.168.1.50"),
+                ("Ethernet", "10.0.0.5"),
+                ("Ethernet", "10.0.0.9"),
+            ]
             token_root = tempfile.TemporaryDirectory()
             self.addCleanup(token_root.cleanup)
             token_patch = mock.patch.object(
@@ -1283,7 +1288,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 start_calls[-1], ["127.0.0.1:39280", "192.168.1.50:39280"]
             )
             self.assertEqual(
-                config.accepted_listen_addresses(), ["192.168.1.50:39280"]
+                config.accepted_listen_addresses(), ["192.168.1.50"]
             )
             self.assertEqual(
                 statuses[-1],
@@ -1331,11 +1336,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             )
             self.assertEqual(
                 config.accepted_listen_addresses(),
-                [
-                    "192.168.1.50:39280",
-                    "10.0.0.5:39281",
-                    "10.0.0.9:39282",
-                ],
+                ["192.168.1.50", "10.0.0.5", "10.0.0.9"],
             )
             cmd.Activated()
             prompt_count = len(prompts)
@@ -3040,7 +3041,6 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                 )
                 self.assertEqual(page.cert_chooser.fileName(), expected_cert)
                 self.assertEqual(page.key_chooser.fileName(), expected_key)
-                self.assertIn(expected_cert, page.note_label.text)
                 self.assertNotIn("TlsCertFile", store)
                 self.assertNotIn("TlsKeyFile", store)
                 self.assertEqual(len(messages), 1)

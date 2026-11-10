@@ -171,3 +171,73 @@ class ListenListTests(unittest.TestCase):
         stored = ["192.168.1.20:39280"]
         self.assertTrue(host_already_accepted(stored, "192.168.1.20"))
         self.assertFalse(host_already_accepted(stored, "10.0.0.1"))
+        fixed = address_row("192.168.1.20", 5000)
+        self.assertEqual(acceptance_key(fixed, ""), "192.168.1.20")
+
+    def test_a_fixed_address_off_this_machine_blocks_before_the_dialog(self):
+        """The start names that row and does not treat it as a listener."""
+        from freecad.mcp_bridge.listeners import blocking_fixed_notes
+
+        row = address_row("10.9.9.9", 39280)
+        notes = blocking_fixed_notes([row], {"192.168.1.20"})
+        self.assertEqual(
+            notes,
+            [
+                "10.9.9.9 is not an address of this machine. "
+                "The bridge will not start with it."
+            ],
+        )
+        self.assertEqual(bind_entries([row], {}), ["10.9.9.9:39280"])
+
+    def test_an_adapter_with_no_ipv4_is_skipped_and_marked(self):
+        """An up adapter with no IPv4 is not a listener, and the row says so."""
+        from freecad.mcp_bridge.listeners import row_note
+
+        row = adapter_row("Ethernet 2", 39280)
+        note = row_note(row, set(), {"Ethernet 2"}, {})
+        self.assertIn("no IPv4 address", note)
+        self.assertEqual(bind_entries([row], {}), [])
+        self.assertEqual(start_notes([row], {}, set(), {"Ethernet 2"}), [note])
+
+    def test_the_same_address_and_port_is_one_listener(self):
+        """An adapter and a fixed row of the same endpoint bind once."""
+        adapter = adapter_row("Ethernet 2", 39280)
+        fixed = address_row("192.168.1.20", 39280)
+        ipv4 = {"Ethernet 2": "192.168.1.20"}
+        self.assertEqual(
+            bind_entries([fixed, adapter], ipv4),
+            ["192.168.1.20:39280"],
+        )
+
+    def test_an_empty_page_is_not_filled_with_the_default(self):
+        """The running line uses the rows as they are."""
+        from freecad.mcp_bridge.listeners import difference_text
+
+        text = difference_text([], ["127.0.0.1:39280"])
+        self.assertIn("Listen addresses has nothing", text)
+        self.assertNotIn("127.0.0.1:39280. Listen addresses has 127", text)
+
+    def test_add_refuses_a_bad_ipv6_address_and_a_spaced_name(self):
+        """A bad IPv6 address is unreadable. A name with a space is refused."""
+        self.assertIn(
+            "can't be read",
+            add_refusal(KIND_ADDRESS, "2001:db8:::1", "80", []),
+        )
+        self.assertIn(
+            "without a space",
+            add_refusal(KIND_NAME, "my pc", "80", []),
+        )
+
+    def test_a_dead_mode_box_is_dropped(self):
+        """A mode box deleted with its page is not kept."""
+        from freecad.mcp_bridge.pref_pages import (
+            live_mode_boxes,
+            remember_mode_box,
+        )
+
+        class Dead:
+            def objectName(self):
+                raise RuntimeError("deleted")
+
+        remember_mode_box(Dead())
+        self.assertEqual(live_mode_boxes(), [])

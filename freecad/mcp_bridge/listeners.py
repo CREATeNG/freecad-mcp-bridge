@@ -195,6 +195,7 @@ def row_note(
     row: ListenRow,
     machine: set[str],
     adapter_names: set[str],
+    ipv4_of: dict[str, str] | None = None,
 ) -> str:
     """The note for `row`, or '' when the row needs none."""
     if row.kind == KIND_ADDRESS and _unspecified(row.host):
@@ -210,6 +211,15 @@ def row_note(
         )
     if row.kind == KIND_ADAPTER and row.adapter not in adapter_names:
         return f"{row.adapter} is not an adapter of this machine."
+    if (
+        row.kind == KIND_ADAPTER
+        and ipv4_of is not None
+        and row.adapter not in ipv4_of
+    ):
+        return (
+            f"{row.adapter} has no IPv4 address, so the bridge "
+            "is not listening for it."
+        )
     if row.kind == KIND_LEGACY:
         return (
             f"Replace {row.raw}: a name with a port is not a listen "
@@ -278,6 +288,8 @@ def add_refusal(
         name = (value or "").strip()
         if not name:
             return "Enter a host name."
+        if any(ch.isspace() for ch in name):
+            return "Enter one host name, without a space."
         return ""
     port_error = _port_refusal(port_text)
     if port_error:
@@ -349,16 +361,16 @@ def bind_entries(
 
 
 def acceptance_key(row: ListenRow, present: str) -> str:
-    """What the risk dialog is remembered by.
+    """The IP address the risk dialog is remembered by.
 
-    An adapter is remembered by the IP address alone, so a changed
-    port does not ask again. A fixed address keeps address:port,
-    which is what the accepted list stored before adapters.
+    Both kinds of row use the address alone, so a changed port does
+    not ask again, and an address accepted for one kind counts for
+    the other. An older stored `address:port` still counts.
     """
     if row.kind == KIND_ADAPTER:
         return (present or "").strip()
     if row.kind == KIND_ADDRESS:
-        return format_entry(row.host, row.port)
+        return (row.host or "").strip()
     return ""
 
 
@@ -387,7 +399,9 @@ def risk_line(row: ListenRow, present: str) -> str:
     """The line the risk dialog shows for `row`."""
     if row.kind == KIND_ADAPTER and present:
         return f"{row.adapter} ({present}:{row.port})"
-    return acceptance_key(row, present)
+    if row.kind == KIND_ADDRESS:
+        return format_entry(row.host, row.port)
+    return ""
 
 
 def start_notes(
@@ -406,7 +420,7 @@ def start_notes(
                     "bridge is not listening for it."
                 )
                 continue
-        note = row_note(row, machine, adapter_names)
+        note = row_note(row, machine, adapter_names, ipv4_of)
         if note and note not in notes:
             notes.append(note)
     return notes
@@ -516,6 +530,11 @@ def _address_refusal(value: str) -> str:
     try:
         ip = ipaddress.ip_address(text)
     except ValueError:
+        if ":" in text:
+            return (
+                "That address can't be read. Use an address such as "
+                "192.168.1.20."
+            )
         if any(ch.isalpha() for ch in text) or " " in text:
             return (
                 "A fixed IP address has to be an address, not a "
@@ -532,6 +551,54 @@ def _address_refusal(value: str) -> str:
             "address of this machine."
         )
     return ""
+
+
+def blocking_fixed_notes(
+    rows: list[ListenRow], machine: set[str]
+) -> list[str]:
+    """Notes for fixed addresses this machine does not have.
+
+    The start stops on these before the risk dialog.
+    """
+    notes = []
+    for row in rows:
+        if row.kind != KIND_ADDRESS or _unspecified(row.host):
+            continue
+        if _on_machine(row.host, machine):
+            continue
+        note = row_note(row, machine, set())
+        if note and note not in notes:
+            notes.append(note)
+    return notes
+
+
+def difference_text(
+    page: list[str], listening: list[str] | None
+) -> str:
+    """How the page's listeners differ from a bridge that is on.
+
+    An empty page stays empty. No default address is put in.
+    `listening` is None when the bridge is off.
+    """
+    if listening is None:
+        return ""
+    if sorted(page) == sorted(list(listening)):
+        return ""
+    page_s = ", ".join(page) if page else "nothing"
+    listen_s = ", ".join(listening) if listening else "nothing"
+    return (
+        f"The bridge is listening on {listen_s}. "
+        f"Listen addresses has {page_s}. "
+        "Click OK, then turn the bridge off and on again, "
+        "to apply the change."
+    )
+
+
+def own_host_name() -> str:
+    """This machine's own host name."""
+    import socket
+
+    return socket.gethostname().strip()
 
 
 def default_entry() -> str:

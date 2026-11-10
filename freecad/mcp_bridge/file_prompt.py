@@ -70,11 +70,14 @@ def set_mode_box_quietly(box, unrestricted: bool) -> None:
     index = (
         PERMISSION_MODE_UNRESTRICTED if unrestricted else PERMISSION_MODE_ASK
     )
-    box.blockSignals(True)
     try:
-        box.setCurrentIndex(index)
-    finally:
-        box.blockSignals(False)
+        box.blockSignals(True)
+        try:
+            box.setCurrentIndex(index)
+        finally:
+            box.blockSignals(False)
+    except RuntimeError:
+        return
 
 
 def commit_mode(box, want_unrestricted: bool, ask) -> bool:
@@ -87,7 +90,10 @@ def commit_mode(box, want_unrestricted: bool, ask) -> bool:
         set_mode_box_quietly(box, False)
         return False
     enabled = ask() == "Yes"
-    set_mode_box_quietly(box, enabled)
+    try:
+        set_mode_box_quietly(box, enabled)
+    except RuntimeError:
+        return enabled
     return enabled
 
 

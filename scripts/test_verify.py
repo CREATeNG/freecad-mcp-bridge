@@ -391,7 +391,8 @@ def _verify_mode_on_status_button() -> None:
     if config.unrestricted():
         common.fail("Permission mode is not Ask at the start of verify")
     button = _status_button()
-    ask, unrestricted = button.menu().actions()[:2]
+    permissions = button.menu().actions()[0].menu()
+    ask, unrestricted = permissions.actions()[:2]
     width = button.sizeHint().width()
     try:
         # Unrestricted asks first, and No keeps Ask.
@@ -421,7 +422,7 @@ def _verify_mode_on_status_button() -> None:
                     "Status-bar button was hidden while Unrestricted"
                 )
             # Ask is at once, and the preference applies again.
-            _status_button().menu().actions()[0].trigger()
+            _status_button().menu().actions()[0].menu().actions()[0].trigger()
             if config.unrestricted():
                 common.fail("Choosing Ask did not switch the mode at once")
             if _status_button() is not None:

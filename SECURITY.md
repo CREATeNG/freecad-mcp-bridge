@@ -49,7 +49,7 @@ tick for Ask, or a warning triangle for Unrestricted. Its menu
 switches modes the same way as **Permission mode** under
 **Permissions** in **Edit → Preferences → MCP Bridge**. While the
 mode is Unrestricted, the button is shown whatever
-**Show the On/Off button** says. A request that carries an `Origin`
+**Show** says. A request that carries an `Origin`
 header is refused, as is a `Host` header that names neither the
 address that listener is bound to nor a name its certificate covers.
 

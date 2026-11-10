@@ -9,6 +9,7 @@ the application.
 from __future__ import annotations
 
 import os
+import traceback
 
 from freecad.mcp_bridge.constants import (
     DEFAULT_PORT,
@@ -48,8 +49,14 @@ def load_form():
     return Gui.PySideUic.loadUi(ui_path())
 
 
-def report_wiring(control: str, exc: BaseException) -> None:
-    """One Report view warning, naming `control`."""
+def report_wiring(
+    control: str, exc: BaseException, with_trace: bool = False
+) -> None:
+    """One Report view warning, naming `control`.
+
+    A `RuntimeError` is a widget that has gone. A wider catch adds
+    the traceback, so a coding fault is not reduced to one line.
+    """
     try:
         import FreeCAD as App
     except Exception:
@@ -57,10 +64,13 @@ def report_wiring(control: str, exc: BaseException) -> None:
     console = getattr(App, "Console", None)
     if console is None or not hasattr(console, "PrintWarning"):
         return
+    detail = f"{exc}"
+    if with_trace:
+        detail = traceback.format_exc().rstrip()
     try:
         console.PrintWarning(
             f"{LOG_PREFIX} The Preferences page could not wire "
-            f"{control} ({exc}).\n"
+            f"{control} ({detail}).\n"
         )
     except Exception:
         return
@@ -106,7 +116,7 @@ def _each_pref(form, method: str) -> None:
         except RuntimeError as exc:
             report_wiring(name, exc)
         except Exception as exc:
-            report_wiring(name, exc)
+            report_wiring(name, exc, with_trace=True)
 
 
 def remember_mode_box(box) -> None:
@@ -183,7 +193,7 @@ def _hook(widget, name: str, connect) -> None:
     except RuntimeError as exc:
         report_wiring(name, exc)
     except Exception as exc:
-        report_wiring(name, exc)
+        report_wiring(name, exc, with_trace=True)
 
 
 class PreferencesPage:
@@ -265,7 +275,9 @@ class PreferencesPage:
         except RuntimeError as exc:
             report_wiring("permissionModeComboBox", exc)
         except Exception as exc:
-            report_wiring("permissionModeComboBox", exc)
+            report_wiring(
+                "permissionModeComboBox", exc, with_trace=True
+            )
 
     def _prepare_table(self) -> None:
         table = self._table()
@@ -293,7 +305,7 @@ class PreferencesPage:
             for index, row in enumerate(self.rows):
                 present = ipv4.get(row.adapter, "")
                 what, port, kind = _cells(row, present)
-                warned = bool(_note(row, machine, names))
+                warned = bool(_note(row, machine, names, ipv4))
                 values = (what, port, kind)
                 for column, text in enumerate(values):
                     item = QTableWidgetItem(text)
@@ -303,7 +315,7 @@ class PreferencesPage:
         except RuntimeError as exc:
             report_wiring("listenTable", exc)
         except Exception as exc:
-            report_wiring("listenTable", exc)
+            report_wiring("listenTable", exc, with_trace=True)
         self.show_selected_note()
         self._show_running()
 
@@ -311,8 +323,10 @@ class PreferencesPage:
         from PySide.QtWidgets import QLabel
 
         from freecad.mcp_bridge import bridge
-        from freecad.mcp_bridge.listen_page import difference_text
-        from freecad.mcp_bridge.listeners import bind_entries
+        from freecad.mcp_bridge.listeners import (
+            bind_entries,
+            difference_text,
+        )
 
         label = form_child(
             self.form, QLabel, "listeningDifferenceLabel"
@@ -329,9 +343,13 @@ class PreferencesPage:
         ipv4, _names, _machine = self._facts()
         bound = bind_entries(self.rows, ipv4)
         try:
-            _set_label(label, difference_text("\n".join(bound), listening))
+            _set_label(label, difference_text(bound, listening))
         except RuntimeError as exc:
             report_wiring("listeningDifferenceLabel", exc)
+        except Exception as exc:
+            report_wiring(
+                "listeningDifferenceLabel", exc, with_trace=True
+            )
 
     def _selected_note(self) -> str:
         table = self._table()
@@ -344,8 +362,8 @@ class PreferencesPage:
             return ""
         if index < 0 or index >= len(self.rows):
             return ""
-        _ipv4, names, machine = self._facts()
-        return _note(self.rows[index], machine, names)
+        ipv4, names, machine = self._facts()
+        return _note(self.rows[index], machine, names, ipv4)
 
     def _show_note(self, text: str) -> None:
         from PySide.QtWidgets import QLabel
@@ -385,12 +403,12 @@ class PreferencesPage:
         return adapter_choices(_qt_interface_records(only_up=True))
 
     def _own_name(self) -> str:
-        from freecad.mcp_bridge.listen_page import own_host_name
+        from freecad.mcp_bridge.listeners import own_host_name
 
         try:
             return own_host_name()
         except Exception as exc:
-            report_wiring("host name", exc)
+            report_wiring("host name", exc, with_trace=True)
             return ""
 
 
@@ -427,7 +445,6 @@ def ask_add(parent, choices, own_name: str, rows):
         value.addItem(label, name)
     address = QLineEdit(holder)
     name_box = QLineEdit(holder)
-    name_box.setText(own_name or "")
     name_box.setPlaceholderText(own_name or "")
     for widget in (value, address, name_box):
         holder_layout.addWidget(widget)
@@ -505,10 +522,10 @@ def _cells(row, present: str):
     return cells(row, present or None)
 
 
-def _note(row, machine, names) -> str:
+def _note(row, machine, names, ipv4) -> str:
     from freecad.mcp_bridge.listeners import row_note
 
-    return row_note(row, machine, names)
+    return row_note(row, machine, names, ipv4)
 
 
 def _machine(records) -> set[str]:
