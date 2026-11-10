@@ -653,14 +653,14 @@ def _http_exec_probe(code: str, timeout_ms: int) -> dict:
 
     from PySide.QtCore import QCoreApplication, QThread
 
-    from freecad.mcp_bridge import config, token_file
+    from freecad.mcp_bridge import config
     from freecad.mcp_bridge.constants import PROTOCOL_VERSION
 
     entry = config.listen_addresses()[0]
     url = f"http://{entry}/mcp"
     timeout_s = timeout_ms / 1000.0
     result: dict = {}
-    token = token_file.read_token()
+    token = config.generate_and_store_token()
 
     def _post(payload):
         # A valid request in the bridge's protocol version: version, client

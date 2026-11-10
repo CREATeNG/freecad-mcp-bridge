@@ -92,32 +92,52 @@ def _confirm_non_loopback_risk(entries):
         box.deleteLater()
 
 
+def _share_tick_sentence():
+    """The sentence under Share with Claude Desktop. One place to edit."""
+    return (
+        "With this ticked, FreeCAD leaves the token in a file only you "
+        "can read, and the Claude Desktop extension on this machine "
+        "takes it at its next tool call. You don't need to copy it."
+    )
+
+
 def _token_dialog_text(token):
     """Return (title, text) for the one-time bearer token dialog."""
-    from freecad.mcp_bridge import token_file
-
     title = f"{DISPLAY_NAME}: Bearer token"
-    body = f"""Copy this bearer token now. It will not be shown again.
+    body = f"""This is the bridge's bearer token. It is shown only now: \
+FreeCAD keeps a hash of it, not the token.
 
 {token}
 
-It is stored in {token_file.token_path()}, readable only by you. \
-The Claude Desktop extension reads it from that file. Other clients \
-send it in the Authorization header:
+{_share_tick_sentence()}
+
+Any other MCP client needs the token copied now, and sends it in \
+the Authorization header:
 Authorization: Bearer {token}
 
 If you lose it, click Generate new token in Edit → Preferences → \
-MCP Bridge. A new token replaces the old one. Every other client \
-then needs the new token."""
+MCP Bridge. A new token replaces this one, and every MCP client \
+you copied it to needs the new one."""
     return title, body
 
 
+def _apply_share_tick(checked, token):
+    """Ticking shares `token`. Unticking turns sharing off and removes it."""
+    from freecad.mcp_bridge import config, token_file
+
+    config.set_share_with_claude(checked)
+    if checked and token:
+        token_file.write_handover(token)
+
+
 def _show_generated_token(token, parent=None):
-    """Display `token` once in a modal dialog with a Copy Token button."""
+    """Display `token` once, with Copy token, Close, and the share tick."""
     import FreeCADGui as Gui
     from PySide.QtCore import Qt
     from PySide.QtGui import QGuiApplication
-    from PySide.QtWidgets import QDialog, QMessageBox
+    from PySide.QtWidgets import QCheckBox, QDialog, QMessageBox
+
+    from freecad.mcp_bridge import config
 
     title, body = _token_dialog_text(token)
     host = parent if parent is not None else Gui.getMainWindow()
@@ -131,10 +151,17 @@ def _show_generated_token(token, parent=None):
     QDialog.setWindowTitle(box, title)
     box.setObjectName("MCPBridgeTokenDialog")
     box.setTextInteractionFlags(Qt.TextSelectableByMouse)
-    copy_btn = box.addButton("Copy Token", QMessageBox.ActionRole)
-    ok_btn = box.addButton("OK", QMessageBox.AcceptRole)
-    box.setDefaultButton(ok_btn)
-    box.setEscapeButton(ok_btn)
+    tick = QCheckBox("Share with Claude Desktop", box)
+    tick.setObjectName("shareWithClaudeCheckBox")
+    tick.setChecked(config.share_with_claude())
+    box.setCheckBox(tick)
+    if tick.isChecked():
+        _apply_share_tick(True, token)
+    tick.toggled.connect(lambda checked: _apply_share_tick(checked, token))
+    copy_btn = box.addButton("Copy token", QMessageBox.ActionRole)
+    close_btn = box.addButton("Close", QMessageBox.AcceptRole)
+    box.setDefaultButton(close_btn)
+    box.setEscapeButton(close_btn)
     try:
         while True:
             box.exec()
@@ -198,23 +225,22 @@ def _confirm_first_start(entries):
 
 
 def _token_write_failure_text(exc):
-    """Return the dialog text when the token file cannot be written."""
+    """Return the dialog text when the hand-over file cannot be written."""
     from freecad.mcp_bridge import token_file
 
     return (
-        "Could not write the bearer token file "
-        f"({token_file.token_path()}): {exc}. "
+        "Could not write the hand-over file "
+        f"({token_file.handover_path()}): {exc}. "
         "Check that the folder is writable, then try again."
     )
 
 
-def _show_token_write_failure(exc, parent=None):
-    """Tell the user that Generate new token could not write the file."""
+def _show_token_message(body, parent=None):
+    """Show a bearer-token warning. The title stays MCP Bridge: Bearer token."""
     import FreeCADGui as Gui
     from PySide.QtWidgets import QDialog, QMessageBox
 
     title = f"{DISPLAY_NAME}: Bearer token"
-    body = _token_write_failure_text(exc)
     host = parent if parent is not None else Gui.getMainWindow()
     box = QMessageBox(
         QMessageBox.Warning,
@@ -235,8 +261,94 @@ def _show_token_write_failure(exc, parent=None):
         box.deleteLater()
 
 
+def _show_token_write_failure(exc, parent=None):
+    """Tell the user that the hand-over file could not be written."""
+    _show_token_message(_token_write_failure_text(exc), parent=parent)
+
+
+def _set_token_dialog_text():
+    """Return (title, text) for Set token. The token is not shown back."""
+    title = f"{DISPLAY_NAME}: Bearer token"
+    body = (
+        "Paste a bearer token of at least 32 characters. "
+        "FreeCAD keeps a hash of it, not the token.\n\n"
+        + _share_tick_sentence()
+    )
+    return title, body
+
+
+def _share_next_token_text():
+    """The Preferences line shown when Share with Claude Desktop is turned on."""
+    return (
+        "FreeCAD keeps no copy of the current token, so only the next "
+        "one you generate or set is shared with Claude Desktop."
+    )
+
+
+def set_pasted_token_from_dialog(parent=None):
+    """Ask for a pasted token. Do not show that token back."""
+    import FreeCADGui as Gui
+    from PySide.QtWidgets import (
+        QCheckBox,
+        QDialog,
+        QDialogButtonBox,
+        QLabel,
+        QLineEdit,
+        QVBoxLayout,
+    )
+
+    from freecad.mcp_bridge import config
+
+    host = parent if parent is not None else Gui.getMainWindow()
+    title, body = _set_token_dialog_text()
+    dlg = QDialog(host)
+    QDialog.setWindowTitle(dlg, title)
+    dlg.setObjectName("MCPBridgeSetTokenDialog")
+    layout = QVBoxLayout(dlg)
+    label = QLabel(body, dlg)
+    label.setWordWrap(True)
+    layout.addWidget(label)
+    edit = QLineEdit(dlg)
+    edit.setObjectName("setTokenLineEdit")
+    edit.setEchoMode(QLineEdit.Password)
+    layout.addWidget(edit)
+    tick = QCheckBox("Share with Claude Desktop", dlg)
+    tick.setObjectName("shareWithClaudeCheckBox")
+    tick.setChecked(config.share_with_claude())
+    layout.addWidget(tick)
+    buttons = QDialogButtonBox(
+        QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dlg
+    )
+    buttons.accepted.connect(dlg.accept)
+    buttons.rejected.connect(dlg.reject)
+    layout.addWidget(buttons)
+
+    def on_toggle(checked):
+        text = edit.text().strip()
+        # Untick removes a hand-over not yet taken and turns the setting off.
+        _apply_share_tick(checked, text if len(text) >= 32 else "")
+
+    tick.toggled.connect(on_toggle)
+    try:
+        if dlg.exec() != QDialog.Accepted:
+            return None
+        text = edit.text().strip()
+        if len(text) < 32:
+            _show_token_message(
+                "A token must be at least 32 characters.", parent=host
+            )
+            return None
+        config.store_token(text)
+        # The pasted token is not shown again. The tick is this line.
+        _apply_share_tick(tick.isChecked(), text)
+        return text
+    finally:
+        dlg.setParent(None)
+        dlg.deleteLater()
+
+
 def generate_and_show_token(parent=None):
-    """Generate a new bearer token, write the token file, and show it once.
+    """Generate a new bearer token, store its hash, and show it once.
 
     A failed write shows the reason and returns None.
     """
@@ -738,9 +850,7 @@ class MCPBridgeCommand:
                     show_toggle_state()
                     App.Console.PrintNotification(status + "\n")
                     return
-                from freecad.mcp_bridge import token_file
-
-                if not token_file.read_token():
+                if not config.token_hash():
                     if generate_and_show_token() is None:
                         status = f"{DISPLAY_NAME}: Offline"
                         mw = Gui.getMainWindow()
@@ -748,9 +858,9 @@ class MCPBridgeCommand:
                             mw.statusBar().showMessage(status)
                         show_toggle_state()
                         App.Console.PrintWarning(
-                            f"{LOG_PREFIX} Could not write the bearer "
-                            "token file. Check that the folder is "
-                            "writable, then try again.\n"
+                            f"{LOG_PREFIX} Could not store the bearer "
+                            "token. Check that the folder is writable, "
+                            "then try again.\n"
                         )
                         return
                 bridge.start(
@@ -1207,6 +1317,25 @@ def _sync_open_listen_note():
         label.setText(_listen_address_note_text(config.tls_cert_file()))
 
 
+def _on_pref_share(checked, box):
+    """Show the next-token line. Unticking removes a hand-over not yet taken."""
+    from PySide.QtWidgets import QLabel
+
+    from freecad.mcp_bridge import config
+
+    window = box.window()
+    label = (
+        window.findChild(QLabel, "shareNextTokenLabel")
+        if window is not None
+        else None
+    )
+    if label is not None:
+        label.setText(_share_next_token_text())
+        label.setVisible(bool(checked))
+    if not checked:
+        config.set_share_with_claude(False)
+
+
 def _install_pref_page_filter(mw):
     """Connect `generateTokenButton` and the Permission mode box when
     the Preferences page opens."""
@@ -1237,6 +1366,28 @@ def _install_pref_page_filter(mw):
                 obj.clicked.connect(
                     lambda *_: generate_and_show_token(parent=obj.window())
                 )
+            if (
+                event.type() == QEvent.Show
+                and isinstance(obj, QPushButton)
+                and obj.objectName() == "setTokenButton"
+                and not obj.property("mcp_set_token_hooked")
+            ):
+                obj.setProperty("mcp_set_token_hooked", True)
+                obj.clicked.connect(
+                    lambda *_: set_pasted_token_from_dialog(
+                        parent=obj.window()
+                    )
+                )
+            if (
+                event.type() == QEvent.Show
+                and obj.objectName() == "shareWithClaudeCheckBox"
+                and not obj.property("mcp_share_hooked")
+            ):
+                obj.setProperty("mcp_share_hooked", True)
+                obj.toggled.connect(
+                    lambda checked, box=obj: _on_pref_share(checked, box)
+                )
+                _on_pref_share(bool(obj.isChecked()), obj)
             if (
                 event.type() == QEvent.Show
                 and isinstance(obj, QPushButton)

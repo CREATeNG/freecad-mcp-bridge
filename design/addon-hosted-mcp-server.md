@@ -540,13 +540,17 @@ user only, and on Windows its one allow entry is inheritable, so a
 file created in it is user-only too. On Linux and macOS the folder
 is mode `0700` and the file is mode `0600`. FreeCAD creates the folder
 and the file at the first start, shows the token once, and writes the
-file. The write goes to a temporary file in that folder and then
-replaces the token file, so a reader never sees it empty.
-**Generate new token** replaces the file and shows the new
-token once. Preferences do not keep a hash. The old `TokenHash`,
-`RequireToken`, `RequireTls` and `RequireOnLoopback` values are left
-unread. A running bridge, when a request's token does not match,
-reads the file again before refusing.
+file. FreeCAD keeps only a SHA-256 hash of the bearer token in
+`TokenHash` and shows the token once. It does not write a token
+file. **Generate new token** stores a new hash and shows the new
+token once. **Set token** stores a pasted token of at least 32
+characters the same way and does not show it back. **Share with
+Claude Desktop** is off by default. While it is on, a token that is
+generated or set is written to `token-handover` in that folder,
+user-only, by replacing a temporary file. Turning it off removes a
+hand-over not yet taken. `RequireToken`, `RequireTls` and
+`RequireOnLoopback` stay unread. A running bridge hashes the
+request's token and reads `TokenHash` again before refusing.
 
 The Claude Desktop extension reads that file on each `tools/call`. A
 token pasted into its Bearer token setting is written to the file
@@ -754,7 +758,7 @@ automatically.
 | Parameter | Default | Notes |
 |-----------|---------|-------|
 | Listen addresses | `127.0.0.1:39280` | List of `address:port` entries (`[ipv6]:port` for IPv6) to bind; unspecified addresses such as `0.0.0.0` and `[::]` are refused; if unset, inherits a previously saved `Port` value; missing port or bind conflict at startup logs an error and leaves the bridge off; the first start asks once (`StartWarningAccepted`), including loopback; each later non-loopback entry requires acceptance once (`AcceptedListenAddresses`); every later start keeps a line in the status bar and Report view |
-| Bearer token file | `<home>/.freecad-mcp-bridge/token` | Every listener requires `Authorization: Bearer <token>`; FreeCAD writes the file at the first start and on **Generate new token**, shows the token once, and does not keep a hash; a mismatch reads the file again before refusing |
+| Bearer token hash | Preferences `TokenHash` | Every listener requires `Authorization: Bearer <token>`; FreeCAD stores only the SHA-256 hash, shows a generated token once, and reads the hash again before refusing a mismatch |
 | TLS certificate file (PEM) / TLS private key file (PEM) | `""` | PEM certificate (`TlsCertFile`) and private key (`TlsKeyFile`) paths for HTTPS on non-loopback entries; loopback stays HTTP; **Generate certificate** writes `tls-cert.pem` and `tls-key.pem` (`tls-key.pem` readable by the user only) in `<home>/.freecad-mcp-bridge` covering the addresses beyond loopback in **Listen addresses** and fills both fields; startup fails on an entry beyond loopback without valid certificate and key files, when the certificate is not yet valid or has expired, or when the certificate does not cover the address |
 | Permission mode | `0` (Ask) | `PermissionMode`, `0` for Ask and `1` for Unrestricted: in Ask, FreeCAD shows an agent's code, and a file's path with it, before it runs; in Unrestricted the code runs unseen; switched in Preferences or from the On/Off button's menu, with a confirmation to go Unrestricted; each switch writes it at once, and the Preferences box has no preference entry of its own, so FreeCAD's own OK writes nothing for it |
 | Max response timeout (s) | 15 | Max wait for the first answer of `execute_python` and `execute_python_file`, dialog included, and for each later page, before returning with `has_more: true` |

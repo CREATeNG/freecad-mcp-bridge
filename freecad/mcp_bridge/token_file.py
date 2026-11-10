@@ -1,11 +1,13 @@
-"""The bearer token and serving certificate files FreeCAD and the extension share.
+"""Files FreeCAD and the extension share beside the token's hash.
 
 The folder is ``FREECAD_MCP_TOKEN_DIR`` when that variable is set,
-and ``<home>/.freecad-mcp-bridge`` otherwise. The token file is
-``token``, and the certificate copy written when the bridge starts
-with TLS is ``serving-cert.pem``. The folder is readable by the user
-only, and its one allow entry is inheritable, so a file created in it
-is user-only too. Each write sets that same user-only access on the
+and ``<home>/.freecad-mcp-bridge`` otherwise. FreeCAD keeps only a
+hash of the bearer token. While Share with Claude Desktop is on, it
+writes the token to ``token-handover`` for the extension to take.
+The certificate copy written when the bridge starts with TLS is
+``serving-cert.pem``. The folder is readable by the user only, and
+its one allow entry is inheritable, so a file created in it is
+user-only too. Each write sets that same user-only access on the
 file itself.
 """
 
@@ -19,14 +21,14 @@ import time
 from pathlib import Path
 
 DIR_NAME = ".freecad-mcp-bridge"
-FILE_NAME = "token"
+HANDOVER_FILE_NAME = "token-handover"
 SERVING_CERT_FILE_NAME = "serving-cert.pem"
 MIN_TOKEN_LENGTH = 32
 _REPLACE_ATTEMPTS = 5
 
 
 def token_dir() -> Path:
-    """Folder that holds the token file.
+    """Folder for the hand-over file and the certificate copy.
 
     ``FREECAD_MCP_TOKEN_DIR`` overrides the home folder when it is set.
     """
@@ -36,9 +38,9 @@ def token_dir() -> Path:
     return Path.home() / DIR_NAME
 
 
-def token_path() -> Path:
-    """Path of the token file."""
-    return token_dir() / FILE_NAME
+def handover_path() -> Path:
+    """Path of the hand-over file (`token-handover`)."""
+    return token_dir() / HANDOVER_FILE_NAME
 
 
 def serving_cert_path() -> Path:
@@ -46,39 +48,39 @@ def serving_cert_path() -> Path:
     return token_dir() / SERVING_CERT_FILE_NAME
 
 
-def read_token() -> str:
-    """Return the token in the file, or '' when it cannot be read."""
-    try:
-        return token_path().read_text(encoding="utf-8").strip()
-    except OSError:
-        return ""
+def write_handover(token: str) -> None:
+    """Write `token` to the hand-over file by replacing a temporary file.
 
-
-def write_token(token: str) -> None:
-    """Write `token` by replacing the file from a temporary file.
-
-    The temporary file is in the same folder, so it inherits that
-    folder's user-only entry. A reader never sees an empty token file.
+    The temporary file is in the same folder, so a reader never sees
+    a half-written hand-over.
     """
     directory = token_dir()
     directory.mkdir(parents=True, exist_ok=True)
     _user_only(directory, is_dir=True)
     descriptor, name = tempfile.mkstemp(
-        prefix=".token-", suffix=".tmp", dir=directory
+        prefix=".token-handover-", suffix=".tmp", dir=directory
     )
     temporary = Path(name)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
             handle.write(token.strip() + "\n")
         _user_only(temporary, is_dir=False)
-        _replace_file(temporary, token_path())
+        _replace_file(temporary, handover_path())
     except OSError:
         temporary.unlink(missing_ok=True)
         raise
 
 
+def remove_handover() -> None:
+    """Remove a hand-over file the extension has not taken yet."""
+    try:
+        handover_path().unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
 def write_serving_cert(cert_file: str | Path) -> None:
-    """Write a copy of `cert_file` to `serving-cert.pem` beside the token file."""
+    """Write a copy of `cert_file` to `serving-cert.pem` in the bridge folder."""
     content = Path(cert_file).read_text(encoding="utf-8")
     directory = token_dir()
     directory.mkdir(parents=True, exist_ok=True)

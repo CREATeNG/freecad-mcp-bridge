@@ -180,11 +180,14 @@ change a model — for example:
 - **Bearer token** — every listener requires
   `Authorization: Bearer <token>`. The first time the bridge starts,
   and whenever you click **Generate new token**, FreeCAD generates a
-  random token, shows it once so you can copy it, and writes it to
-  `<home>/.freecad-mcp-bridge/token`, a file only you can read.
-  Preferences do not keep a copy. Generating a new token replaces
-  the file. A bridge that is already running reads the file again
-  before it refuses a token that does not match.
+  random token and shows it once. It keeps a SHA-256 hash in
+  preferences, not the token. **Set token** stores a pasted token
+  of at least 32 characters the same way. **Share with Claude
+  Desktop** is off until you tick it. While it is on, a new or
+  pasted token is written to
+  `<home>/.freecad-mcp-bridge/token-handover`, a file only you can
+  read, for the extension to take. A bridge that is already running
+  reads the hash again before it refuses a token that does not match.
 - **TLS certificate file (PEM)** and **TLS private key file (PEM)** —
   when both files are set, every listener serves HTTPS, loopback
   included, and each start writes a copy of the certificate to

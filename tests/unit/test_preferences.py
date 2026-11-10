@@ -47,6 +47,7 @@ SETTINGS = (
     "MaxHistoryRetentionMinutes",
     "ShowStatusButton",
     "StatusButtonPosition",
+    "ShareWithClaudeDesktop",
 )
 
 
@@ -277,7 +278,9 @@ class UnsetPreferenceTests(unittest.TestCase):
         # PermissionMode, which only a confirmed choice writes.
         self.assertEqual(set(groups), {PREF_GROUP})
         self.assertEqual(
-            params.read, set(SETTINGS) | {"Port", "PermissionMode"}
+            params.read,
+            (set(SETTINGS) - {"ShareWithClaudeDesktop"})
+            | {"Port", "PermissionMode"},
         )
 
 
@@ -858,9 +861,8 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 config.is_address_accepted("192.168.1.61:39280")
             )
 
-    def test_bearer_token_is_written_to_the_file_and_reread_on_mismatch(self):
-        """Generating a bearer token writes the token file, leaves TokenHash
-        unread, and a mismatch reads the file again before refusing."""
+    def test_a_bearer_token_is_kept_as_a_hash_and_reread_on_mismatch(self):
+        """A bearer token is stored as TokenHash, and a mismatch reads it again."""
         store = {"TokenHash": "left-unread", "RequireToken": False}
 
         class DictParams:
@@ -877,6 +879,9 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             def GetBool(self, name, default=False):
                 self.read.add(name)
                 return store.get(name, default)
+
+            def SetBool(self, name, value):
+                store[name] = bool(value)
 
         params = DictParams()
         freecad = types.SimpleNamespace(ParamGet=lambda _g: params)
@@ -895,29 +900,28 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
 
                     token1 = config.generate_and_store_token()
                     self.assertGreaterEqual(len(token1), 32)
+                    self.assertFalse((home / "token").exists())
+                    self.assertFalse((home / "token-handover").exists())
                     self.assertEqual(
-                        (home / "token").read_text(encoding="utf-8").strip(),
-                        token1,
+                        store.get("TokenHash"), config.hash_token(token1)
                     )
-                    self.assertEqual(store.get("TokenHash"), "left-unread")
                     for val in store.values():
                         self.assertNotIn(token1, str(val))
                     self.assertTrue(config.verify_token(token1))
                     self.assertFalse(config.verify_token(token1 + "x"))
                     self.assertFalse(config.verify_token(""))
 
-                    # A mismatch reads again, so a replacement is taken up.
-                    real_read = config.token_file.read_token
+                    real_hash = config.token_hash
                     reads = {"n": 0}
 
-                    def flip_read():
+                    def flip_hash():
                         reads["n"] += 1
                         if reads["n"] == 1:
-                            return "stale-token-value-not-the-file"
-                        return real_read()
+                            return "0" * 64
+                        return real_hash()
 
                     with mock.patch.object(
-                        config.token_file, "read_token", side_effect=flip_read
+                        config, "token_hash", side_effect=flip_hash
                     ):
                         self.assertTrue(config.verify_token(token1))
                     self.assertEqual(reads["n"], 2)
@@ -928,13 +932,18 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                     self.assertTrue(config.verify_token(token2))
                     for val in store.values():
                         self.assertNotIn(token2, str(val))
-                    if os.name != "nt":
-                        directory_mode = stat.S_IMODE(home.stat().st_mode)
-                        file_mode = stat.S_IMODE(
-                            (home / "token").stat().st_mode
-                        )
-                        self.assertEqual(directory_mode, 0o700)
-                        self.assertEqual(file_mode, 0o600)
+                    with self.assertRaises(ValueError):
+                        config.set_pasted_token("short")
+                    config.set_share_with_claude(True)
+                    token3 = config.generate_and_store_token()
+                    self.assertEqual(
+                        (home / "token-handover").read_text(
+                            encoding="utf-8"
+                        ).strip(),
+                        token3,
+                    )
+                    config.set_share_with_claude(False)
+                    self.assertFalse((home / "token-handover").exists())
 
             # build_ssl_context passes an empty password callback so an
             # encrypted private key fails with ValueError instead of prompting.
@@ -1111,20 +1120,18 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
 
             tok_title, tok_body = init_gui._token_dialog_text("tok-sample")
             self.assertEqual(tok_title, "MCP Bridge: Bearer token")
-            self.assertIn("readable only by you", tok_body)
-            self.assertIn(str(config.token_file.token_path()), tok_body)
             self.assertIn(
-                "The Claude Desktop extension reads it from that file.",
+                "FreeCAD keeps a hash of it, not the token.", tok_body
+            )
+            self.assertIn("You don't need to copy it.", tok_body)
+            self.assertIn(
+                "Any other MCP client needs the token copied now",
                 tok_body,
             )
-            self.assertIn(
-                "Other clients send it in the Authorization header:",
-                tok_body,
-            )
-            self.assertNotIn("one-way hash", tok_body)
             self.assertIn("Authorization: Bearer tok-sample", tok_body)
             self.assertIn(
-                "Every other client then needs the new token.", tok_body
+                "every MCP client you copied it to needs the new one.",
+                tok_body,
             )
             start_title, start_body = init_gui._first_start_dialog_text([])
             self.assertEqual(start_title, "MCP Bridge: Start the bridge?")
@@ -1288,9 +1295,8 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             self.assertIn("full permissions", statuses[-1])
             self.assertIn("beyond loopback", statuses[-1])
 
-            # 5. An empty token file on a later start shows a new token once.
-            token_file = Path(token_root.name) / "token"
-            token_file.unlink()
+            # 5. With no hash stored, a later start shows a new token once.
+            store.pop("TokenHash", None)
             cmd.Activated()
             self.assertFalse(running)
             cmd.Activated()
@@ -2111,9 +2117,11 @@ class TokenFileTests(unittest.TestCase):
                 os.environ, {"FREECAD_MCP_TOKEN_DIR": folder}
             ):
                 self.assertEqual(token_file.token_dir(), Path(folder))
-                token_file.write_token("a" * 32)
+                token_file.write_handover("a" * 32)
             self.assertEqual(
-                (Path(folder) / "token").read_text(encoding="utf-8").strip(),
+                (Path(folder) / "token-handover").read_text(
+                    encoding="utf-8"
+                ).strip(),
                 "a" * 32,
             )
             leftovers = [
@@ -2124,10 +2132,12 @@ class TokenFileTests(unittest.TestCase):
             self.assertEqual(leftovers, [])
             if os.name == "nt":
                 self.assertEqual(
-                    _windows_ace_count(Path(folder) / "token"), 1
+                    _windows_ace_count(Path(folder) / "token-handover"), 1
                 )
             else:
-                mode = stat.S_IMODE((Path(folder) / "token").stat().st_mode)
+                mode = stat.S_IMODE(
+                    (Path(folder) / "token-handover").stat().st_mode
+                )
                 self.assertEqual(mode, 0o600)
 
     def test_the_acceptance_client_reads_the_same_override(self):
@@ -2160,7 +2170,7 @@ class TokenFileTests(unittest.TestCase):
             lambda *args, **kwargs: shown.append("shown")
         )
         text = init_gui._token_write_failure_text(OSError("access denied"))
-        self.assertIn("Could not write the bearer token file", text)
+        self.assertIn("Could not write the hand-over file", text)
         self.assertIn("access denied", text)
         self.assertIn(
             "Check that the folder is writable, then try again.", text
@@ -2194,10 +2204,12 @@ class TokenFileTests(unittest.TestCase):
                     return real(source, dest)
 
                 with mock.patch("os.replace", side_effect=flaky):
-                    token_file.write_token("c" * 32)
+                    token_file.write_handover("c" * 32)
             self.assertGreaterEqual(calls["n"], 3)
             self.assertEqual(
-                (Path(folder) / "token").read_text(encoding="utf-8").strip(),
+                (Path(folder) / "token-handover").read_text(
+                    encoding="utf-8"
+                ).strip(),
                 "c" * 32,
             )
 
@@ -2771,6 +2783,9 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                 "generateCertLabel",
                 "generateCertButton",
                 "generateTokenButton",
+                "setTokenButton",
+                "shareWithClaudeCheckBox",
+                "shareNextTokenLabel",
             ],
         )
         gen_label = next(

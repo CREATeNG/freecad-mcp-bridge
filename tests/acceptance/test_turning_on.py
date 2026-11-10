@@ -384,7 +384,7 @@ def click_dialog_button(label, prefix, attempts=40):
     )
     wanted = label
     if dlg.objectName() == 'MCPBridgeTokenDialog':
-        wanted = 'OK'
+        wanted = 'Close'
     elif (
         dlg.objectName() == 'MCPBridgeFirstStartDialog'
         and label.startswith('Accept')
@@ -446,8 +446,12 @@ def step_accept():
     seen['accepted_status'] = mw.statusBar().currentMessage()
     seen['accepted_report'] = report_view_text()[before:]
     seen['accepted_saved'] = params.GetString('AcceptedListenAddresses', '')
-    from freecad.mcp_bridge import token_file as token_store
-    seen['token'] = token_store.read_token()
+    seen['token'] = ''
+    for line in seen.get('accept_token_text', '').splitlines():
+        if line.startswith('Authorization: Bearer '):
+            seen['token'] = line.split(
+                'Authorization: Bearer ', 1
+            )[1].strip()
     with open({seen_file!r} + '.ready', 'w', encoding='utf-8') as handle:
         json.dump(seen, handle)
     QTimer.singleShot(200, wait_for_runner)
@@ -1083,27 +1087,26 @@ class ListenAddressTests(unittest.TestCase):
         # shown again on restart. Generate new token shows it again.
         self.assertTrue(seen.get("token1_dialog_found"))
         self.assertIn(
-            "readable only by you",
+            "FreeCAD keeps a hash of it, not the token.",
             seen.get("token1_dialog_text", ""),
         )
         self.assertIn(
-            "The Claude Desktop extension reads it from that file.",
+            "You don't need to copy it.",
             seen.get("token1_dialog_text", ""),
         )
         self.assertIn(
-            "Other clients send it in the Authorization header:",
+            "Any other MCP client needs the token copied now",
             seen.get("token1_dialog_text", ""),
         )
-        self.assertNotIn("one-way hash", seen.get("token1_dialog_text", ""))
-        self.assertTrue(seen.get("token_file_matches_dialog"))
+        self.assertTrue(seen.get("token_hash_matches"))
         self.assertFalse(seen.get("restart_token_dialog_found"))
         self.assertTrue(seen.get("regen_token_dialog_found"))
 
         # 4. user.cfg holds neither raw token nor a new hash.
-        self.assertEqual(seen.get("token1_hash_len"), 0)
+        self.assertEqual(seen.get("token1_hash_len"), 64)
         self.assertFalse(seen.get("user_cfg_contains_token1"))
         self.assertFalse(seen.get("user_cfg_contains_token2"))
-        self.assertFalse(seen.get("user_cfg_contains_hash2"))
+        self.assertTrue(seen.get("user_cfg_contains_hash2"))
 
         # 5. Status bar and Report view warning for both on.
         expected_status = (
@@ -1349,7 +1352,7 @@ def handle_dialogs(risk_key, token_key):
         seen[token_key + '_text'] = tok_dlg.text()
         seen[token_key + '_value'] = extract_token(tok_dlg.text())
         for btn in tok_dlg.buttons():
-            if btn.text() == 'OK':
+            if btn.text() == 'Close':
                 btn.click()
                 return
 
@@ -1450,7 +1453,7 @@ def step_no_cert_then_start():
     params.SetString('TlsCertFile', {cert_path!r})
     params.SetString('TlsKeyFile', {key_path!r})
     from freecad.mcp_bridge import token_file as token_store
-    token_path = str(token_store.token_path())
+    token_path = str(token_store.token_dir() / "token")
     serving_cert_path = str(token_store.serving_cert_path())
     if os.path.exists(token_path):
         os.remove(token_path)
@@ -1471,8 +1474,11 @@ def step_no_cert_then_start():
     if os.path.exists(token_path):
         with open(token_path, encoding='utf-8') as token_file:
             file_token = token_file.read().strip()
-    seen['token_file_matches_dialog'] = (
-        bool(seen['token1']) and file_token == seen['token1']
+    from freecad.mcp_bridge import config as bridge_cfg
+    seen['token_hash_matches'] = (
+        bool(seen['token1'])
+        and not os.path.exists(token_path)
+        and bridge_cfg.token_hash() == bridge_cfg.hash_token(seen['token1'])
     )
     expected_cert_text = ''
     with open({cert_path!r}, encoding='utf-8') as cf:
@@ -1532,7 +1538,7 @@ def wait_for_phase2():
                     seen['regen_token_dialog_found'] = True
                     seen['token2'] = extract_token(box.text())
                     for b in box.buttons():
-                        if b.text() == 'OK':
+                        if b.text() == 'Close':
                             b.click()
                             break
                     break

@@ -1,8 +1,9 @@
 """Runtime configuration for the MCP Bridge, read from FreeCAD preferences.
 
 Values live under PREF_GROUP and are read fresh on each access. The listen
-addresses and security settings are read at server start. Token checks read
-the token file, and a mismatch reads it again. Timeout and page size are
+addresses and security settings are read at server start. Token checks
+hash the candidate and read TokenHash, and a mismatch reads it again.
+Timeout and page size are
 read per request. Retention is read when a job finishes running.
 Status-bar button settings are read when the status-bar button is created or
 refreshed.
@@ -211,7 +212,11 @@ def accept_start_warning() -> None:
 
 
 def token_hash() -> str:
-    """Legacy preference. The bridge leaves it unread."""
+    """SHA-256 hex of the bearer token, in the TokenHash preference.
+
+    That entry is the one 0.1.27 already used for the hash. The token
+    itself is not stored.
+    """
     return _params().GetString("TokenHash", "").strip()
 
 
@@ -220,12 +225,41 @@ def hash_token(token: str) -> str:
     return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
 
 
+def share_with_claude() -> bool:
+    """True when Share with Claude Desktop is on. Off by default."""
+    return bool(_params().GetBool("ShareWithClaudeDesktop", False))
+
+
+def set_share_with_claude(enabled: bool) -> None:
+    """Turn sharing on or off. Off removes a hand-over not yet taken."""
+    _params().SetBool("ShareWithClaudeDesktop", bool(enabled))
+    if not enabled:
+        token_file.remove_handover()
+
+
+def store_token(token: str) -> str:
+    """Keep only the hash of `token`. Hand it over when sharing is on."""
+    digest = hash_token(token)
+    _params().SetString("TokenHash", digest)
+    if share_with_claude():
+        token_file.write_handover(token)
+    return digest
+
+
 def generate_and_store_token() -> str:
-    """Generate a new bearer token, write it to the token file, and
-    return it once."""
+    """Generate a bearer token, store its hash, and return it once."""
     token = secrets.token_urlsafe(32)
-    token_file.write_token(token)
+    store_token(token)
     return token
+
+
+def set_pasted_token(token: str) -> str:
+    """Store a pasted token of at least 32 characters. Return its hash."""
+    text = (token or "").strip()
+    if len(text) < token_file.MIN_TOKEN_LENGTH:
+        raise ValueError("A token must be at least 32 characters.")
+    store_token(text)
+    return hash_token(text)
 
 
 def _tokens_match(candidate: str, expected: str) -> bool:
@@ -240,16 +274,18 @@ def _tokens_match(candidate: str, expected: str) -> bool:
 def verify_token(
     candidate: str, expected_hash: str | None = None
 ) -> bool:
-    """True when `candidate` matches the token file.
+    """True when `candidate` hashes to the stored hash.
 
-    A mismatch reads the file again before refusing, so a token
-    written while the bridge is running is taken up.
-    `expected_hash` is accepted for older callers and ignored.
+    A mismatch reads the preference again before refusing, so a hash
+    changed while the bridge is running is taken up. The comparison
+    is constant time. `expected_hash` is accepted for older callers
+    and ignored.
     """
     del expected_hash
-    if _tokens_match(candidate, token_file.read_token()):
+    digest = hash_token(candidate) if candidate else ""
+    if _tokens_match(digest, token_hash()):
         return True
-    return _tokens_match(candidate, token_file.read_token())
+    return _tokens_match(digest, token_hash())
 
 
 def unrestricted() -> bool:
