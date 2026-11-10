@@ -60,19 +60,14 @@ The server is off until you toggle it on, each session — click the button agai
    in FreeCAD's **Listen addresses**, and check that the extension
    is **Enabled**. On the Linux beta, the extension's tools default
    to **Needs approval**.
-   - **On this machine:** Leave **Bearer token** and **TLS
-     certificate file (PEM)** blank. FreeCAD writes the token at
-     the first start to a file only you can read, and the extension
-     reads that file. It also reads `serving-cert.pem` in the same
+   - **On this machine:** Paste the token FreeCAD showed into
+     **Bearer token**. The extension writes nothing and reads no
+     token file. It reads `serving-cert.pem` in the bridge's
      folder, which the bridge writes at each start with TLS and
      removes at each start without. With that file the extension
-     uses HTTPS and trusts only it. Without it, HTTP. Paste a
-     token of at least 32 characters into **Bearer token** only to
-     replace that token file for every client, and a shorter one
-     is ignored.
-   - **For another host:** Paste FreeCAD's bearer token into
-     **Bearer token**. That pasted token is used by the extension
-     only and is not written to the local token file. Set **TLS
+     uses HTTPS and trusts only it. Without it, HTTP.
+   - **For another host:** Paste the token FreeCAD showed into
+     **Bearer token**. The extension writes nothing. Set **TLS
      certificate file (PEM)** to a copy of FreeCAD's certificate
      file, not the private key, so the extension connects over
      HTTPS and trusts only that certificate.
@@ -81,7 +76,7 @@ Claude Desktop can't open an HTTP endpoint the way Claude Code and
 others can, so the extension runs a small stdio↔HTTP/HTTPS relay (the
 shim in [`mcp-stdio-shim/`](mcp-stdio-shim/)). On this machine the
 extension forwards to `http://<HOST>:<PORT>/mcp` unless
-`serving-cert.pem` is beside the token file, in which case it
+`serving-cert.pem` is in the bridge's folder, in which case it
 forwards to `https://<HOST>:<PORT>/mcp` and trusts only that file.
 `localhost` is taken as `127.0.0.1`. The certificate setting is
 ignored on this machine. For another host it forwards to
@@ -182,11 +177,9 @@ change a model — for example:
   and whenever you click **Generate new token**, FreeCAD generates a
   random token and shows it once. It keeps a SHA-256 hash in
   preferences, not the token. **Set token** stores a pasted token
-  of at least 32 characters the same way. **Share with Claude
-  Desktop** is off until you tick it. While it is on, a new or
-  pasted token is written to
-  `<home>/.freecad-mcp-bridge/token-handover`, a file only you can
-  read, for the extension to take. A bridge that is already running
+  of at least 32 characters the same way, and does not show it
+  again. Nothing is written for the extension to read. A bridge
+  that is already running
   reads the hash again before it refuses a token that does not match.
 - **TLS certificate file (PEM)** and **TLS private key file (PEM)** —
   when both files are set, every listener serves HTTPS, loopback

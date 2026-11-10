@@ -47,7 +47,6 @@ SETTINGS = (
     "MaxHistoryRetentionMinutes",
     "ShowStatusButton",
     "StatusButtonPosition",
-    "ShareWithClaudeDesktop",
 )
 
 
@@ -279,8 +278,7 @@ class UnsetPreferenceTests(unittest.TestCase):
         self.assertEqual(set(groups), {PREF_GROUP})
         self.assertEqual(
             params.read,
-            (set(SETTINGS) - {"ShareWithClaudeDesktop"})
-            | {"Port", "PermissionMode"},
+            set(SETTINGS) | {"Port", "PermissionMode"},
         )
 
 
@@ -934,15 +932,6 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                         self.assertNotIn(token2, str(val))
                     with self.assertRaises(ValueError):
                         config.set_pasted_token("short")
-                    config.set_share_with_claude(True)
-                    token3 = config.generate_and_store_token()
-                    self.assertEqual(
-                        (home / "token-handover").read_text(
-                            encoding="utf-8"
-                        ).strip(),
-                        token3,
-                    )
-                    config.set_share_with_claude(False)
                     self.assertFalse((home / "token-handover").exists())
 
             # build_ssl_context passes an empty password callback so an
@@ -1123,7 +1112,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             self.assertIn(
                 "FreeCAD keeps a hash of it, not the token.", tok_body
             )
-            self.assertIn("You don't need to copy it.", tok_body)
+            self.assertNotIn("You don't need to copy it.", tok_body)
             self.assertIn(
                 "Any other MCP client needs the token copied now",
                 tok_body,
@@ -2117,28 +2106,6 @@ class TokenFileTests(unittest.TestCase):
                 os.environ, {"FREECAD_MCP_TOKEN_DIR": folder}
             ):
                 self.assertEqual(token_file.token_dir(), Path(folder))
-                token_file.write_handover("a" * 32)
-            self.assertEqual(
-                (Path(folder) / "token-handover").read_text(
-                    encoding="utf-8"
-                ).strip(),
-                "a" * 32,
-            )
-            leftovers = [
-                name
-                for name in os.listdir(folder)
-                if name.endswith(".tmp")
-            ]
-            self.assertEqual(leftovers, [])
-            if os.name == "nt":
-                self.assertEqual(
-                    _windows_ace_count(Path(folder) / "token-handover"), 1
-                )
-            else:
-                mode = stat.S_IMODE(
-                    (Path(folder) / "token-handover").stat().st_mode
-                )
-                self.assertEqual(mode, 0o600)
 
     def test_the_acceptance_client_reads_the_same_override(self):
         """mcp_client reads FREECAD_MCP_TOKEN_DIR, and the home folder otherwise."""
@@ -2159,38 +2126,20 @@ class TokenFileTests(unittest.TestCase):
                 self.assertEqual(client._token_dir(), Path(folder))
             sys.modules.pop("tests.acceptance.mcp_client", None)
 
-    def test_generate_new_token_reports_a_failed_write(self):
-        """Generate new token shows the write error and does not show a token."""
-        init_gui = _fresh_init_gui()
-        shown = []
-        init_gui._show_token_write_failure = (
-            lambda exc, parent=None: shown.append(str(exc))
-        )
-        init_gui._show_generated_token = (
-            lambda *args, **kwargs: shown.append("shown")
-        )
-        text = init_gui._token_write_failure_text(OSError("access denied"))
-        self.assertIn("Could not write the hand-over file", text)
-        self.assertIn("access denied", text)
-        self.assertIn(
-            "Check that the folder is writable, then try again.", text
-        )
-        with mock.patch(
-            "freecad.mcp_bridge.config.generate_and_store_token",
-            side_effect=OSError("access denied"),
-        ):
-            self.assertIsNone(init_gui.generate_and_show_token())
-        self.assertEqual(shown, ["access denied"])
-
     def test_a_windows_sharing_error_retries_the_replace(self):
-        """A sharing error on Windows retries the replace, then the token is whole."""
+        """A sharing error on Windows retries the replace, then the certificate is whole."""
         if os.name != "nt":
             self.skipTest("the retry is for a Windows sharing error")
         from freecad.mcp_bridge import token_file
 
         with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "cert.pem"
+            source.write_text(
+                "certificate-bytes\n", encoding="utf-8", newline="\n"
+            )
+            dest_dir = Path(folder) / "out"
             with mock.patch.dict(
-                os.environ, {"FREECAD_MCP_TOKEN_DIR": folder}
+                os.environ, {"FREECAD_MCP_TOKEN_DIR": str(dest_dir)}
             ):
                 real = os.replace
                 calls = {"n": 0}
@@ -2204,13 +2153,11 @@ class TokenFileTests(unittest.TestCase):
                     return real(source, dest)
 
                 with mock.patch("os.replace", side_effect=flaky):
-                    token_file.write_handover("c" * 32)
+                    token_file.write_serving_cert(source)
             self.assertGreaterEqual(calls["n"], 3)
             self.assertEqual(
-                (Path(folder) / "token-handover").read_text(
-                    encoding="utf-8"
-                ).strip(),
-                "c" * 32,
+                (dest_dir / "serving-cert.pem").read_text(encoding="utf-8"),
+                "certificate-bytes\n",
             )
 
 
@@ -2784,8 +2731,6 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                 "generateCertButton",
                 "generateTokenButton",
                 "setTokenButton",
-                "shareWithClaudeCheckBox",
-                "shareNextTokenLabel",
             ],
         )
         gen_label = next(

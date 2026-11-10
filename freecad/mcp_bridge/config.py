@@ -225,24 +225,10 @@ def hash_token(token: str) -> str:
     return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
 
 
-def share_with_claude() -> bool:
-    """True when Share with Claude Desktop is on. Off by default."""
-    return bool(_params().GetBool("ShareWithClaudeDesktop", False))
-
-
-def set_share_with_claude(enabled: bool) -> None:
-    """Turn sharing on or off. Off removes a hand-over not yet taken."""
-    _params().SetBool("ShareWithClaudeDesktop", bool(enabled))
-    if not enabled:
-        token_file.remove_handover()
-
-
 def store_token(token: str) -> str:
-    """Keep only the hash of `token`. Hand it over when sharing is on."""
+    """Keep only the hash of `token`."""
     digest = hash_token(token)
     _params().SetString("TokenHash", digest)
-    if share_with_claude():
-        token_file.write_handover(token)
     return digest
 
 

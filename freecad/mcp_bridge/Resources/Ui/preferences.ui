@@ -446,38 +446,6 @@
          </widget>
         </item>
         <item>
-         <widget class="Gui::PrefCheckBox" name="shareWithClaudeCheckBox">
-          <property name="toolTip">
-           <string>Hand the next token to the Claude Desktop extension.</string>
-          </property>
-          <property name="text">
-           <string>Share with Claude Desktop</string>
-          </property>
-          <property name="checked">
-           <bool>false</bool>
-          </property>
-          <property name="prefEntry" stdset="0">
-           <cstring>ShareWithClaudeDesktop</cstring>
-          </property>
-          <property name="prefPath" stdset="0">
-           <cstring>Mod/freecad-mcp-bridge</cstring>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="shareNextTokenLabel">
-          <property name="text">
-           <string>FreeCAD keeps no copy of the current token, so only the next one you generate or set is shared with Claude Desktop.</string>
-          </property>
-          <property name="wordWrap">
-           <bool>true</bool>
-          </property>
-          <property name="visible">
-           <bool>false</bool>
-          </property>
-         </widget>
-        </item>
-        <item>
          <spacer name="tokenRowSpacer">
           <property name="orientation">
            <enum>Qt::Horizontal</enum>
