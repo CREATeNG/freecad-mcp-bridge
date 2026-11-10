@@ -205,6 +205,11 @@ def _script_path() -> Path:
 
 
 def _run(command: list[str]) -> None:
+    # FreeCAD on Windows is a windowed program. Without this flag a
+    # console window flashes for the length of openssl or PowerShell.
+    flags = {}
+    if sys.platform.startswith("win"):
+        flags["creationflags"] = subprocess.CREATE_NO_WINDOW
     try:
         result = subprocess.run(
             command,
@@ -212,6 +217,7 @@ def _run(command: list[str]) -> None:
             text=True,
             timeout=120,
             check=False,
+            **flags,
         )
     except OSError as exc:
         raise CertToolError(str(exc)) from exc

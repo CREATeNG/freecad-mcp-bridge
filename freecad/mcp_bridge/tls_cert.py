@@ -2,7 +2,7 @@
 
 Generates a 2048-bit RSA key (`e = 65537`) and an 825-day X.509 v3
 certificate (`CA:FALSE`, `digitalSignature` and `keyEncipherment`,
-`serverAuth`) covering the given addresses beyond loopback (`iPAddress`
+`serverAuth`) covering the given hosts (`iPAddress`
 and `dNSName` Subject Alternative Names), using Python's standard library
 only (`secrets`, `hashlib`, `ipaddress`, `math`, `datetime`). Writes
 `tls-cert.pem` and `tls-key.pem` in `token_file.token_dir()`, with
@@ -318,8 +318,7 @@ def generate_self_signed_cert(
     cleaned = [h.strip() for h in hosts if h and h.strip()]
     if not cleaned:
         raise ValueError(
-            "At least one address beyond loopback is required to generate a "
-            "certificate."
+            "At least one host is required to generate a certificate."
         )
     if key is None:
         key = generate_rsa_keypair()
