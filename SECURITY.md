@@ -27,13 +27,13 @@ non-loopback entry in **Listen addresses** in **Edit → Preferences →
 MCP Bridge** exposes the endpoint beyond this machine. Every
 listener requires a bearer token. FreeCAD keeps a SHA-256 hash of
 it, not the token. Nothing is written for an MCP client to read.
-When a TLS certificate file and
-private key file are set, every listener serves HTTPS, loopback
+When **Certificate (PEM)** and
+**Private key (PEM)** are set, every listener serves HTTPS, loopback
 included, and each start writes a copy of the serving certificate to
 `<home>/.freecad-mcp-bridge/serving-cert.pem` for the local Claude
 Desktop extension. When they are not set, loopback entries use
 HTTP, and a start with a non-loopback entry fails. **Generate
-certificate** creates `tls-cert.pem` and `tls-key.pem` in
+self-signed certificate** creates `tls-cert.pem` and `tls-key.pem` in
 `<home>/.freecad-mcp-bridge/`, with `tls-key.pem` readable by you
 only, covering `127.0.0.1`, `localhost`, and any listed address
 beyond loopback. Any client that can reach an entry, with the

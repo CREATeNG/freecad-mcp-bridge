@@ -284,14 +284,25 @@ class PreferencesPage:
         if table is None:
             return
         try:
+            from PySide.QtCore import Qt
+            from PySide.QtWidgets import QHeaderView
+
             table.setColumnCount(3)
-            table.horizontalHeader().setStretchLastSection(True)
+            header = table.horizontalHeader()
+            header.setVisible(False)
+            header.setSectionResizeMode(0, QHeaderView.Stretch)
+            header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+            header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
             table.verticalHeader().setVisible(False)
             table.setShowGrid(False)
+            table.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarAlwaysOff
+            )
+            table.setWordWrap(False)
         except RuntimeError as exc:
             report_wiring("listenTable", exc)
         except Exception as exc:
-            report_wiring("listenTable", exc)
+            report_wiring("listenTable", exc, with_trace=True)
 
     def _fill(self) -> None:
         from PySide.QtWidgets import QTableWidgetItem
@@ -312,6 +323,13 @@ class PreferencesPage:
                     if warned and column == 0:
                         _set_warning_mark(item)
                     table.setItem(index, column, item)
+        except RuntimeError as exc:
+            report_wiring("listenTable", exc)
+        except Exception as exc:
+            report_wiring("listenTable", exc, with_trace=True)
+        try:
+            table.resizeColumnToContents(1)
+            table.resizeColumnToContents(2)
         except RuntimeError as exc:
             report_wiring("listenTable", exc)
         except Exception as exc:

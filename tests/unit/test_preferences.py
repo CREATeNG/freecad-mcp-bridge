@@ -76,6 +76,7 @@ class EmptyParams:
 
     def __init__(self):
         self.read = set()
+        self.values = {}
 
     def GetInt(self, name, default):
         self.read.add(name)
@@ -83,11 +84,23 @@ class EmptyParams:
 
     def GetBool(self, name, default):
         self.read.add(name)
-        return default
+        return self.values.get(name, default)
 
     def GetString(self, name, default=""):
         self.read.add(name)
-        return default
+        return self.values.get(name, default) if hasattr(self, "values") else default
+
+    def SetString(self, name, value):
+        self.values[name] = value
+
+    def SetBool(self, name, value):
+        self.values[name] = bool(value)
+
+    def RemString(self, name):
+        self.values.pop(name, None)
+
+    def RemBool(self, name):
+        self.values.pop(name, None)
 
 
 def fresh_config():

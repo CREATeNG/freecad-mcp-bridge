@@ -241,3 +241,52 @@ class ListenListTests(unittest.TestCase):
 
         remember_mode_box(Dead())
         self.assertEqual(live_mode_boxes(), [])
+
+    def test_the_page_loads_saves_cancels_and_opens_again(self):
+        """Load shows the save. Cancel leaves it. A second open reads it."""
+        import sys
+        import types
+        from unittest import mock
+
+        widgets = types.ModuleType("PySide.QtWidgets")
+        for name in (
+            "QWidget",
+            "QTableWidget",
+            "QComboBox",
+            "QLabel",
+            "QPushButton",
+            "QTableWidgetItem",
+        ):
+            setattr(widgets, name, type(name, (), {}))
+        sys.modules["PySide"] = types.ModuleType("PySide")
+        sys.modules["PySide.QtWidgets"] = widgets
+
+        class Form:
+            def findChild(self, _kind, _name=""):
+                return None
+
+            def findChildren(self, _kind):
+                return []
+
+        from freecad.mcp_bridge import pref_pages
+        from freecad.mcp_bridge.listeners import adapter_row
+
+        with mock.patch.object(
+            pref_pages, "load_form", return_value=Form()
+        ):
+            first = pref_pages.PreferencesPage()
+            first._show_mode = lambda: None
+            first.loadSettings()
+            self.assertEqual(first.rows[0].host, "127.0.0.1")
+            first.rows = [adapter_row("Ethernet 2", 4000)]
+            second = pref_pages.PreferencesPage()
+            second._show_mode = lambda: None
+            second.loadSettings()
+            self.assertEqual(second.rows[0].host, "127.0.0.1")
+            second.rows = [adapter_row("Ethernet 2", 4000)]
+            second.saveSettings()
+            third = pref_pages.PreferencesPage()
+            third._show_mode = lambda: None
+            third.loadSettings()
+        self.assertEqual(third.rows[0].adapter, "Ethernet 2")
+        self.assertEqual(third.rows[0].port, 4000)
