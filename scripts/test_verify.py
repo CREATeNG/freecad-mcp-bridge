@@ -789,6 +789,7 @@ def _verify_http_round_trip() -> None:
 def _run() -> None:
     import FreeCAD as App
 
+    common.require_isolated_token_dir()
     common.log_group_start("Verify addon after restart")
     common.log(
         "Verify phase after restart "

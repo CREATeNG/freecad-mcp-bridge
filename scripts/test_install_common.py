@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 LOG_PREFIX = "[test_install]"
 PACKAGE_NS = "https://wiki.freecad.org/Package_Metadata"
@@ -288,6 +289,49 @@ def fail(message: str) -> None:
 
 def env(name: str, default: str) -> str:
     return os.environ.get(name, default).strip()
+
+
+def _same_folder(left: Path, right: Path) -> bool:
+    """True when `left` and `right` are the same folder."""
+    return os.path.normcase(os.path.abspath(left)) == os.path.normcase(
+        os.path.abspath(right)
+    )
+
+
+def bridge_token_dir() -> Path:
+    """Folder `token_file.token_dir()` uses.
+
+    ``FREECAD_MCP_TOKEN_DIR`` when it is set, and the home
+    ``.freecad-mcp-bridge`` folder otherwise.
+    """
+    override = os.environ.get("FREECAD_MCP_TOKEN_DIR", "").strip()
+    if override:
+        return Path(override)
+    return Path.home() / ".freecad-mcp-bridge"
+
+
+def token_dir_refusal() -> str:
+    """Why these scripts must not start, or '' when the folder is safe."""
+    home_folder = Path.home() / ".freecad-mcp-bridge"
+    override = os.environ.get("FREECAD_MCP_TOKEN_DIR", "").strip()
+    if not override:
+        return (
+            "FREECAD_MCP_TOKEN_DIR is not set, so the bridge would use "
+            "the home .freecad-mcp-bridge folder. Set it to another folder."
+        )
+    if _same_folder(bridge_token_dir(), home_folder):
+        return (
+            "FREECAD_MCP_TOKEN_DIR is the home .freecad-mcp-bridge folder. "
+            "Set it to another folder."
+        )
+    return ""
+
+
+def require_isolated_token_dir() -> None:
+    """Refuse to start unless the token folder is away from home."""
+    message = token_dir_refusal()
+    if message:
+        fail(message)
 
 
 def version_from_tag(tag: str) -> str:
