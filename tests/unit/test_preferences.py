@@ -3170,6 +3170,48 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                     )
                     self.assertIsNotNone(ctx)
 
+    def test_a_failed_generate_restores_the_cursor_before_the_dialog(
+        self,
+    ):
+        """The wait cursor is gone before the failure dialog opens."""
+        init_gui = _fresh_init_gui()
+        events = []
+
+        class App:
+            def setOverrideCursor(self, _cursor):
+                events.append("set")
+
+            def restoreOverrideCursor(self):
+                events.append("restore")
+
+        class Qt:
+            WaitCursor = object()
+
+        widgets = types.ModuleType("PySide.QtWidgets")
+        widgets.QApplication = types.SimpleNamespace(instance=lambda: App())
+        core = types.ModuleType("PySide.QtCore")
+        core.Qt = Qt
+        init_gui._cert_would_replace = lambda host: False
+        init_gui._find_cert_tools = lambda: (None, [])
+
+        def show(*_args, **_kwargs):
+            events.append("dialog")
+
+        init_gui._show_cert_message = show
+        with (
+            mock.patch.dict(
+                sys.modules,
+                {"PySide.QtWidgets": widgets, "PySide.QtCore": core},
+            ),
+            mock.patch.object(
+                self.tls_cert,
+                "generate_and_store_certificate",
+                side_effect=OSError("disk full"),
+            ),
+        ):
+            self.assertIsNone(init_gui.generate_and_show_certificate())
+        self.assertEqual(events, ["set", "restore", "dialog"])
+
 
 if __name__ == "__main__":
     unittest.main()
