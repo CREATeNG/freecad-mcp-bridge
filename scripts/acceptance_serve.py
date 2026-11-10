@@ -191,6 +191,7 @@ def _watch_for_stop(stop_file: str, timeout_s: float) -> None:
 def _run() -> None:
     from freecad.mcp_bridge import config
 
+    common.require_isolated_token_dir()
     # The suite drives the bridge. The permission mode is Unrestricted
     # so its calls are not waiting on a dialog.
     config.set_unrestricted(True)

@@ -151,6 +151,7 @@ def _index_addon(addon_name: str):
 def _run() -> None:
     import FreeCAD as App
 
+    common.require_isolated_token_dir()
     tag = common.env("RELEASE_INSTALL_TAG", "v0.1.11")
     repo_url = common.env(
         "RELEASE_INSTALL_REPO", "https://github.com/CREATeNG/freecad-mcp-bridge"
