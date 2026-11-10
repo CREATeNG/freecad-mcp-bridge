@@ -536,7 +536,10 @@ class HttpServer:
         except OSError as exc:
             FreeCAD.Console.PrintWarning(
                 f"{LOG_PREFIX} Could not update serving-cert.pem "
-                f"({exc}). The bridge is listening.\n"
+                f"({exc}). The bridge is listening, but the Claude "
+                "Desktop extension on this machine may not connect. "
+                "Check that the folder is writable, then turn the "
+                "bridge off and on again.\n"
             )
         endpoints_with_path = ", ".join(
             f"{entry}{ENDPOINT_PATH}" for entry in entries

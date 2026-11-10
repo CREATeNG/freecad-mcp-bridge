@@ -185,7 +185,7 @@ function tlsErrorMessage(err) {
   if (IS_DEFAULT_HOST) {
     return (
       where +
-      "Turn the bridge off and on again in FreeCAD to rewrite it."
+      `Check that the bridge's certificate covers ${BARE_HOST}. If it does, turn the bridge off and on again in FreeCAD, so it rewrites serving-cert.pem beside the token file.`
     );
   }
   return (
