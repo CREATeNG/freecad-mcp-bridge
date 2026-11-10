@@ -3019,21 +3019,30 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
 
                 # 4. When cert_tools.find_tools() returns tools, the button
                 # offers the choice of tool and key type (RSA 4096 or
-                # ECDSA P-256), calls cert_tools.generate(tool, key_type,
-                # hosts, cert_path, key_path), applies user-only permissions
-                # to tls-key.pem, and omits the fallback install hint.
+                # ECDSA P-256) and maps them to cert_tools' tool id and
+                # key_type ("rsa-4096" or "ecdsa-p256") in
+                # cert_tools.generate(tool, key_type, hosts, cert_path,
+                # key_path), applies user-only permissions to tls-key.pem,
+                # and omits the fallback install hint.
+                from freecad.mcp_bridge import cert_tools as real_cert_tools
+
                 tool_calls = []
 
                 def stub_generate(
                     tool, key_type, hosts, cert_path, key_path
                 ):
+                    self.assertIn(
+                        key_type,
+                        (real_cert_tools.KEY_RSA, real_cert_tools.KEY_ECDSA),
+                    )
+                    self.assertIsInstance(tool, str)
                     tool_calls.append(
                         (
                             tool,
                             key_type,
                             list(hosts),
-                            Path(cert_path),
-                            Path(key_path),
+                            cert_path,
+                            key_path,
                         )
                     )
                     Path(cert_path).write_text(
@@ -3043,23 +3052,27 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                         self.key_pem, encoding="utf-8"
                     )
 
+                stub_tools = [
+                    {"id": "openssl", "label": "openssl"},
+                    {
+                        "id": "git-openssl",
+                        "label": "openssl (Git for Windows)",
+                        "path": "C:/Program Files/Git/usr/bin/openssl.exe",
+                    },
+                    {"id": "powershell", "label": "Windows PowerShell"},
+                ]
                 stub_cert_tools = types.SimpleNamespace(
-                    find_tools=lambda: [
-                        {"label": "OpenSSL (PATH)", "path": "/usr/bin/openssl"},
-                        {
-                            "label": "Git for Windows OpenSSL",
-                            "path": "C:/Program Files/Git/usr/bin/openssl.exe",
-                        },
-                    ],
+                    find_tools=lambda: list(stub_tools),
                     generate=stub_generate,
                 )
                 with mock.patch.dict(
                     sys.modules,
                     {"freecad.mcp_bridge.cert_tools": stub_cert_tools},
                 ):
-                    for chosen_idx, chosen_key_type in (
-                        (0, "RSA 4096"),
-                        (1, "ECDSA P-256"),
+                    for chosen_idx, chosen_key_type, expected_id, expected_kt in (
+                        (0, "RSA 4096", "openssl", "rsa-4096"),
+                        (1, "ECDSA P-256", "git-openssl", "ecdsa-p256"),
+                        (2, "RSA 4096", "powershell", "rsa-4096"),
                     ):
                         messages.clear()
                         replace_answers.append(True)
@@ -3076,16 +3089,16 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                         self.assertEqual(
                             tool_calls[-1],
                             (
-                                stub_cert_tools.find_tools()[chosen_idx],
-                                chosen_key_type,
+                                expected_id,
+                                expected_kt,
                                 [
                                     "127.0.0.1",
                                     "localhost",
                                     "192.168.1.50",
                                     "freecad.local",
                                 ],
-                                Path(expected_cert),
-                                Path(expected_key),
+                                expected_cert,
+                                expected_key,
                             ),
                         )
                         if os.name == "nt":
@@ -3105,6 +3118,58 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                         self.assertIn(
                             "2029-02-11 (825 days)", messages[-1][1]
                         )
+
+            # 5. End-to-end check against real cert_tools module: the button's
+            # choice reaches real cert_tools.generate() with a valid tool id
+            # and key_type ("ecdsa-p256") and produces a pair that
+            # config.build_ssl_context loads.
+            real_tools = real_cert_tools.find_tools()
+            if real_tools:
+                with (
+                    mock.patch.dict(
+                        os.environ, {"FREECAD_MCP_TOKEN_DIR": folder}
+                    ),
+                    mock.patch.object(
+                        config, "_params", return_value=DictParams()
+                    ),
+                    mock.patch.object(
+                        real_cert_tools,
+                        "generate",
+                        wraps=real_cert_tools.generate,
+                    ) as real_gen_spy,
+                ):
+                    messages.clear()
+                    replace_answers.append(True)
+                    init_gui._choose_cert_tool_and_key_type = (
+                        lambda tools, parent=None: (
+                            tools[0],
+                            "ECDSA P-256",
+                        )
+                    )
+                    res_real = init_gui.generate_and_show_certificate(
+                        parent=page
+                    )
+                    self.assertEqual(
+                        res_real, (expected_cert, expected_key)
+                    )
+                    real_gen_spy.assert_called_once_with(
+                        real_tools[0]["id"],
+                        "ecdsa-p256",
+                        [
+                            "127.0.0.1",
+                            "localhost",
+                            "192.168.1.50",
+                            "freecad.local",
+                        ],
+                        expected_cert,
+                        expected_key,
+                    )
+                    ctx = config.build_ssl_context(
+                        expected_cert,
+                        expected_key,
+                        ["192.168.1.50:39280", "freecad.local:39281"],
+                    )
+                    self.assertIsNotNone(ctx)
 
 
 if __name__ == "__main__":

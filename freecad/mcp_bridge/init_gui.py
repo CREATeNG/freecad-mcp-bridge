@@ -252,6 +252,24 @@ def generate_and_show_token(parent=None):
 
 
 CERT_KEY_TYPES = ("RSA 4096", "ECDSA P-256")
+_CERT_KEY_TYPE_IDS = {
+    "RSA 4096": "rsa-4096",
+    "ECDSA P-256": "ecdsa-p256",
+}
+
+
+def _tool_id(tool):
+    """Return the tool identifier expected by `cert_tools.generate()`."""
+    if isinstance(tool, dict) and "id" in tool:
+        return tool["id"]
+    if hasattr(tool, "id"):
+        return tool.id
+    return str(tool)
+
+
+def _key_type_id(key_type):
+    """Return the key-type identifier expected by `cert_tools.generate()`."""
+    return _CERT_KEY_TYPE_IDS.get(key_type, key_type)
 
 
 def _cert_tool_install_hint(platform_name=None):
@@ -603,7 +621,11 @@ def generate_and_show_certificate(parent=None):
             folder.mkdir(mode=0o700, parents=True, exist_ok=True)
             token_file._user_only(folder, is_dir=True)
             cert_tools_mod.generate(
-                chosen_tool, chosen_key_type, hosts, c_path, k_path
+                _tool_id(chosen_tool),
+                _key_type_id(chosen_key_type),
+                hosts,
+                str(c_path),
+                str(k_path),
             )
             token_file._user_only(k_path, is_dir=False)
         else:

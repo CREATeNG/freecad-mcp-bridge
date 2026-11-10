@@ -914,6 +914,12 @@ class ListenAddressTests(unittest.TestCase):
             self.assertEqual(loopback_out, "loopback unchanged\n")
             node_bin = shutil.which("node")
             if node_bin is not None:
+                local_https_shim_out = _run_via_stdio_shim(
+                    node_bin, PORT, "print('desktop shim https on loopback')"
+                )
+                self.assertEqual(
+                    local_https_shim_out, "desktop shim https on loopback\n"
+                )
                 remote_tok_dir = os.path.join(folder, "remote_shim_tok")
                 os.makedirs(remote_tok_dir, exist_ok=True)
                 local_tok_file = os.path.join(remote_tok_dir, "token")
