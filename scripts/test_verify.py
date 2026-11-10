@@ -364,15 +364,21 @@ def _answer_unrestricted_dialog(label: str) -> None:
     def tick():
         attempts["left"] -= 1
         app = QApplication.instance()
-        widget = app.activeModalWidget() if app is not None else None
-        if (
-            isinstance(widget, QMessageBox)
-            and widget.objectName() == "MCPBridgeUnrestrictedDialog"
-        ):
-            for btn in widget.buttons():
-                if btn.text() == label:
-                    btn.click()
-                    return
+        widgets = []
+        if app is not None:
+            active = app.activeModalWidget()
+            if active is not None:
+                widgets.append(active)
+            widgets.extend(app.topLevelWidgets())
+        for widget in widgets:
+            if (
+                isinstance(widget, QMessageBox)
+                and widget.objectName() == "MCPBridgeUnrestrictedDialog"
+            ):
+                for btn in widget.buttons():
+                    if btn.text() == label:
+                        btn.click()
+                        return
         if attempts["left"] > 0:
             QTimer.singleShot(50, tick)
 
