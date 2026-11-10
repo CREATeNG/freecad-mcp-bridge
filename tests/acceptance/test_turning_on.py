@@ -1035,8 +1035,8 @@ class ListenAddressTests(unittest.TestCase):
         # does not cover the address, start failed and left the bridge off.
         self.assertFalse(seen.get("no_cert_running"))
         self.assertIn(
-            "TLS is required and needs a certificate file and a private "
-            "key file.",
+            "An address beyond loopback requires TLS, which needs a "
+            "certificate file and a private key file.",
             seen.get("no_cert_status", ""),
         )
         self.assertIn(

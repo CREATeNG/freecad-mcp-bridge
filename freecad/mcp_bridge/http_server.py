@@ -519,10 +519,25 @@ class HttpServer:
             raise
 
         self._servers = started_servers
-        if ssl_context is not None:
-            token_file.write_serving_cert(cert_file)
-        else:
-            token_file.remove_serving_cert()
+        try:
+            if ssl_context is not None:
+                token_file.write_serving_cert(cert_file)
+            else:
+                token_file.remove_serving_cert()
+                cert_set = bool((cert_file or "").strip())
+                key_set = bool((key_file or "").strip())
+                if cert_set != key_set:
+                    FreeCAD.Console.PrintWarning(
+                        f"{LOG_PREFIX} One TLS file is set and the other "
+                        "is not, so the bridge is serving HTTP. Select or "
+                        "generate both in Edit → Preferences → "
+                        "MCP Bridge.\n"
+                    )
+        except OSError as exc:
+            FreeCAD.Console.PrintWarning(
+                f"{LOG_PREFIX} Could not update serving-cert.pem "
+                f"({exc}). The bridge is listening.\n"
+            )
         endpoints_with_path = ", ".join(
             f"{entry}{ENDPOINT_PATH}" for entry in entries
         )

@@ -317,12 +317,12 @@ def _cert_tool_install_hint(platform_name=None):
     plat = sys.platform if platform_name is None else platform_name
     if plat == "win32":
         where = (
-            "Install Git for Windows (which includes OpenSSL) or "
-            "OpenSSL for Windows."
+            "Install Git for Windows (which includes openssl) or "
+            "openssl for Windows."
         )
     elif plat == "darwin":
         where = (
-            "Install OpenSSL (for example with Homebrew: "
+            "Install openssl (for example with Homebrew: "
             "brew install openssl) or Xcode Command Line Tools."
         )
     else:
@@ -378,7 +378,7 @@ def _cert_replace_dialog_text():
     return (
         f"{DISPLAY_NAME}: Replace TLS certificate?",
         "Replace the TLS certificate and private key?\n\n"
-        "Any MCP client that trusts the present certificate will need the "
+        "Any MCP client that trusts the current certificate will need the "
         "new certificate file.",
     )
 
@@ -401,9 +401,10 @@ def _cert_generated_dialog_text(
     if install_hint:
         body += f"{install_hint}\n\n"
     body += (
-        "Configure each MCP client connecting beyond loopback (or any "
-        "client that takes a certificate file) to trust this "
-        "certificate file."
+        "Click OK in Preferences to use it. The Claude Desktop "
+        "extension on this machine takes the certificate by itself "
+        "at the bridge's next start. Give any other MCP client a "
+        "copy of this certificate file, not the private key, to trust."
     )
     return (f"{DISPLAY_NAME}: TLS certificate", body)
 
@@ -412,7 +413,9 @@ def _cert_error_dialog_text(reason):
     """Return `(title, body)` when certificate generation or writing fails."""
     return (
         f"{DISPLAY_NAME}: TLS certificate",
-        f"Could not generate the TLS certificate ({reason}).",
+        "Could not generate the TLS certificate "
+        f"({str(reason).strip().rstrip('.')}). "
+        "Choose another certificate tool, or select your own files.",
     )
 
 
@@ -651,6 +654,17 @@ def generate_and_show_certificate(parent=None):
     else:
         install_hint = _cert_tool_install_hint()
 
+    wait_cursor = False
+    try:
+        from PySide.QtCore import Qt
+        from PySide.QtWidgets import QApplication
+
+        app = QApplication.instance()
+        if app is not None:
+            app.setOverrideCursor(Qt.WaitCursor)
+            wait_cursor = True
+    except Exception:
+        app = None
     try:
         if chosen is not None and cert_tools_mod is not None:
             chosen_tool, chosen_key_type = chosen
@@ -680,6 +694,12 @@ def generate_and_show_certificate(parent=None):
             parent=host,
         )
         return None
+    finally:
+        if wait_cursor:
+            try:
+                app.restoreOverrideCursor()
+            except Exception:
+                pass
 
     c_str, k_str = str(c_path), str(k_path)
     _set_chooser_file_name(host, "tlsCertFileChooser", c_str)

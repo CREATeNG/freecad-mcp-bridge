@@ -220,9 +220,9 @@ class PreferencePageTests(unittest.TestCase):
             "(PEM) below.",
         )
         self.assertIn(
-            "Beyond loopback, use <br/><nobr>https:&#x2060;//&#x2060;"
-            "&lt;ADDRESS&gt;&#x2060;:&#x2060;&lt;PORT&gt;/mcp</nobr>. "
-            "Every listener requires the bearer token.",
+            "With one, every entry uses <br/><nobr>https:&#x2060;//&#x2060;"
+            "&lt;ADDRESS&gt;&#x2060;:&#x2060;&lt;PORT&gt;/mcp</nobr>, "
+            "and beyond loopback one is required.",
             widgets_by_name["clientNote"]["text"],
         )
         spin_names = (
@@ -1158,8 +1158,8 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             self.assertEqual(prompts, [])
             self.assertEqual(shown_tokens, [])
             self.assertIn(
-                "TLS is required and needs a certificate file and a private "
-                "key file.",
+                "An address beyond loopback requires TLS, which needs a "
+                "certificate file and a private key file.",
                 statuses[-1],
             )
             self.assertIn(
@@ -1488,8 +1488,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 self.assertFalse(srv.is_running())
                 self.assertEqual(bound, [])
                 self.assertIn(
-                    "TLS is required and needs a certificate file and a "
-                    "private key file.",
+                    "certificate file and a private key file.",
                     errors[-1],
                 )
                 ssl_ctx_patch = mock.patch.object(
@@ -2774,7 +2773,7 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
             client_note_props["text"],
         )
         self.assertIn(
-            "with a certificate, every entry uses HTTPS.",
+            "and beyond loopback one is required.",
             client_note_props["text"],
         )
 
@@ -2932,7 +2931,7 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                     rep_title, "MCP Bridge: Replace TLS certificate?"
                 )
                 self.assertIn(
-                    "Any MCP client that trusts the present certificate "
+                    "Any MCP client that trusts the current certificate "
                     "will need the new certificate file.",
                     rep_body,
                 )
