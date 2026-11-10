@@ -1,4 +1,4 @@
-"""Send Python to a running FreeCAD MCP Bridge over HTTP (loopback test client).
+"""Send Python to a running MCP Bridge over HTTP (loopback test client).
 
 Usage:
   python send_cmd.py <port> "print('hi')"
@@ -144,7 +144,7 @@ if __name__ == "__main__":
     except urllib.error.URLError as exc:
         port = sys.argv[1] if len(sys.argv) > 1 else "39280"
         sys.stderr.write(
-            "Error: cannot reach FreeCAD MCP Bridge at "
+            "Error: cannot reach MCP Bridge at "
             f"http://127.0.0.1:{port}/mcp ({exc}). "
             "Is the bridge running (toolbar toggle on)?\n"
         )

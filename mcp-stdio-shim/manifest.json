@@ -1,9 +1,9 @@
 {
   "manifest_version": "0.3",
   "name": "freecad-mcp-bridge",
-  "display_name": "FreeCAD MCP Bridge",
+  "display_name": "MCP Bridge for FreeCAD",
   "version": "0.1.27",
-  "description": "Connect to a running FreeCAD session through the FreeCAD MCP Bridge addon.",
+  "description": "Connect to a running FreeCAD session through the MCP Bridge addon.",
   "long_description": "Connects to an open FreeCAD session, so Claude can run Python in FreeCAD and read the output.\n\nNeeds FreeCAD's MCP Bridge addon. Setup instructions are in the [README on GitHub](https://github.com/CREATeNG/freecad-mcp-bridge#readme).",
   "icon": "icon.png",
   "author": {
@@ -50,7 +50,7 @@
     },
     "port": {
       "type": "number",
-      "title": "FreeCAD MCP Bridge port",
+      "title": "MCP Bridge port",
       "description": "Requires the MCP Bridge addon installed and switched on in FreeCAD. Must match the port of the entry you connect to in FreeCAD's Edit → Preferences → MCP Bridge → Listen addresses. Extension 0.1.27.",
       "default": 39280,
       "required": false

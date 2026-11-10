@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * FreeCAD MCP Bridge - Claude Desktop shim.
+ * MCP Bridge - Claude Desktop shim.
  *
  * A zero-dependency stdio <-> HTTP/HTTPS proxy. Claude Desktop speaks
  * MCP over stdio (newline-delimited JSON-RPC); this forwards each
@@ -81,11 +81,11 @@ const TOKEN_FILE_NAME = "token";
 const SERVING_CERT_NAME = "serving-cert.pem";
 const PASTE_RECORD_NAME = "pasted";
 const SHORT_TOKEN_MESSAGE =
-  "The bearer token pasted into the FreeCAD MCP Bridge extension was ignored because it's shorter than 32 characters.";
+  "The bearer token pasted into the MCP Bridge for FreeCAD extension was ignored because it's shorter than 32 characters.";
 const MISSING_FOLDER_MESSAGE =
   "The token folder doesn't exist yet. Turn the bridge on in FreeCAD once, so it can create it.";
 const WRITE_FAILED_MESSAGE =
-  "The bearer token pasted into the FreeCAD MCP Bridge extension could not be written to the token file. Check that the folder is writable, then try again.";
+  "The bearer token pasted into the MCP Bridge for FreeCAD extension could not be written to the token file. Check that the folder is writable, then try again.";
 
 function tokenDir() {
   const override = envSetting("FREECAD_MCP_TOKEN_DIR");
@@ -215,14 +215,14 @@ try {
 const TLS_CERT_FILE = envSetting("FREECAD_MCP_TLS_CERT_FILE");
 const HTTPS_ENDPOINT = `https://${URL_HOST}:${PORT}/mcp`;
 const PLAIN_HTTP_TO_HTTPS_MESSAGE =
-  `FreeCAD MCP Bridge serves HTTPS at ${HTTPS_ENDPOINT}, and this connection was plain HTTP. ` +
+  `MCP Bridge serves HTTPS at ${HTTPS_ENDPOINT}, and this connection was plain HTTP. ` +
   "On this machine the extension trusts serving-cert.pem beside the token file, which is not there. Turn the bridge off and on again in FreeCAD, so it writes that file, and check that FREECAD_MCP_TOKEN_DIR, if set, is the same for both.";
 const MISSING_REMOTE_CERT_MESSAGE =
   `FreeCAD host is set to ${BARE_HOST}, which requires HTTPS. ` +
-  "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to a copy of FreeCAD's certificate file, not the private key.";
+  "Set TLS certificate file (PEM) in the MCP Bridge for FreeCAD extension settings to a copy of FreeCAD's certificate file, not the private key.";
 const MISSING_REMOTE_TOKEN_MESSAGE =
   `FreeCAD host is set to ${BARE_HOST}, another machine, so the extension cannot read its token file. ` +
-  "Paste FreeCAD's bearer token into Bearer token in the FreeCAD MCP Bridge extension settings.";
+  "Paste FreeCAD's bearer token into Bearer token in the MCP Bridge for FreeCAD extension settings.";
 const LEGACY_PROTOCOL_VERSION = "2025-11-25";
 const MODERN_PROTOCOL_VERSION = "2026-07-28";
 const META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion";
@@ -234,7 +234,7 @@ function unauthorizedMessage() {
   if (!IS_DEFAULT_HOST) {
     return (
       `FreeCAD at ${bridgeEndpoint()} refused the bearer token. ` +
-      "Check that Bearer token in the FreeCAD MCP Bridge extension settings matches FreeCAD's token."
+      "Check that Bearer token in the MCP Bridge for FreeCAD extension settings matches FreeCAD's token."
     );
   }
   const file = tokenFilePath();
@@ -310,7 +310,7 @@ function portServesHttps(port) {
 
 function tlsErrorMessage(err) {
   const detail = fetchErrorMessage(err);
-  const where = `FreeCAD MCP Bridge TLS connection failed at ${bridgeEndpoint()} (${detail}). `;
+  const where = `MCP Bridge TLS connection failed at ${bridgeEndpoint()} (${detail}). `;
   if (IS_DEFAULT_HOST) {
     return (
       where +
@@ -319,7 +319,7 @@ function tlsErrorMessage(err) {
   }
   return (
     where +
-    `Check that TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings is a copy of FreeCAD's certificate file, not the private key, and covers ${BARE_HOST}.`
+    `Check that TLS certificate file (PEM) in the MCP Bridge for FreeCAD extension settings is a copy of FreeCAD's certificate file, not the private key, and covers ${BARE_HOST}.`
   );
 }
 

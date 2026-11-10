@@ -17,7 +17,7 @@ The server runs only while you toggle it on, and only on your own machine.
    notification, `MCP Bridge: Listening on 127.0.0.1:39280` (`39280` is
    the default port).
 3. Connect your MCP client:
-   - **Claude Desktop:** install the **FreeCAD MCP Bridge** extension
+   - **Claude Desktop:** install the **MCP Bridge for FreeCAD** extension
      using the steps in [Claude Desktop](#claude-desktop) below.
      There's no file to edit and no URL to type.
    - **Other MCP clients (Claude Code and others):** point the client
@@ -53,7 +53,7 @@ The server is off until you toggle it on, each session — click the button agai
    On the Linux beta, either drag it into the pane or choose
    **Advanced settings → Install extension** to select the file.
    Accept the installation warning to continue.
-3. In the Extensions list, open **FreeCAD MCP Bridge**.
+3. In the Extensions list, open **MCP Bridge for FreeCAD**.
    **FreeCAD host** is `127.0.0.1` by default (`localhost`, `::1`,
    and `127.x.x.x` count as this machine too), and **port** is
    `39280` by default. Set them to match the entry you connect to
