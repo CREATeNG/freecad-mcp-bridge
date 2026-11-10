@@ -54,30 +54,37 @@ The server is off until you toggle it on, each session — click the button agai
    **Advanced settings → Install extension** to select the file.
    Accept the installation warning to continue.
 3. In the Extensions list, open **FreeCAD MCP Bridge**.
-   **FreeCAD machine** is `127.0.0.1` by default (`localhost`, `::1`,
-   and `127.x.x.x` count as loopback too), and **port** is `39280` by
-   default. Set them to match the entry you connect to in FreeCAD's
-   **Listen addresses**, and check that the extension is **Enabled**.
-   On the Linux beta, the extension's tools default to **Needs
-   approval**.
-   - **On loopback:** Leave **Bearer token** and **TLS certificate
-     file (PEM)** blank. FreeCAD writes the token at the first start
-     to a file only you can read, the extension reads that file, and
-     the bridge and extension use HTTP. Paste a token of at least 32
-     characters into **Bearer token** only to replace that token file
-     for every client, and a shorter one is ignored.
-   - **Beyond loopback:** Paste FreeCAD's bearer token into **Bearer
-     token**. That pasted token is used by the extension only and is
-     not written to the local token file. Set **TLS certificate file
-     (PEM)** to a copy of FreeCAD's certificate file, not the private
-     key, so the extension connects over HTTPS and trusts only that
-     certificate.
+   **FreeCAD host** is `127.0.0.1` by default (`localhost`, `::1`,
+   and `127.x.x.x` count as this machine too), and **port** is
+   `39280` by default. Set them to match the entry you connect to
+   in FreeCAD's **Listen addresses**, and check that the extension
+   is **Enabled**. On the Linux beta, the extension's tools default
+   to **Needs approval**.
+   - **On this machine:** Leave **Bearer token** and **TLS
+     certificate file (PEM)** blank. FreeCAD writes the token at
+     the first start to a file only you can read, and the extension
+     reads that file. It also reads `serving-cert.pem` in the same
+     folder, which the bridge writes at each start with TLS and
+     removes at each start without. With that file the extension
+     uses HTTPS and trusts only it. Without it, HTTP. Paste a
+     token of at least 32 characters into **Bearer token** only to
+     replace that token file for every client, and a shorter one
+     is ignored.
+   - **For another host:** Paste FreeCAD's bearer token into
+     **Bearer token**. That pasted token is used by the extension
+     only and is not written to the local token file. Set **TLS
+     certificate file (PEM)** to a copy of FreeCAD's certificate
+     file, not the private key, so the extension connects over
+     HTTPS and trusts only that certificate.
 
 Claude Desktop can't open an HTTP endpoint the way Claude Code and
 others can, so the extension runs a small stdio↔HTTP/HTTPS relay (the
-shim in [`mcp-stdio-shim/`](mcp-stdio-shim/)). On loopback the
-extension forwards to `http://<HOST>:<PORT>/mcp`, with `localhost`
-taken as `127.0.0.1`. Beyond loopback it forwards to
+shim in [`mcp-stdio-shim/`](mcp-stdio-shim/)). On this machine the
+extension forwards to `http://<HOST>:<PORT>/mcp` unless
+`serving-cert.pem` is beside the token file, in which case it
+forwards to `https://<HOST>:<PORT>/mcp` and trusts only that file.
+`localhost` is taken as `127.0.0.1`. The certificate setting is
+ignored on this machine. For another host it forwards to
 `https://<HOST>:<PORT>/mcp`.
 
 Alternatively, stdio clients can run the shim directly with node, instead of installing the bundle.
@@ -147,7 +154,7 @@ change a model — for example:
   separated by new lines, spaces, commas, or semicolons (default
   `127.0.0.1:39280`). Keep a `127.0.0.1:<PORT>` entry in the list if
   you use the Claude Desktop extension on the same machine (`127.0.0.1`
-  is its default **FreeCAD machine**).
+  is its default **FreeCAD host**).
   An entry of `0.0.0.0`, `[::]`, or any other unspecified address is
   refused: enter a specific address of this machine. The first time
   you turn the bridge on, loopback included, FreeCAD asks you to

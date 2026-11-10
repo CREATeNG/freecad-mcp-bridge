@@ -440,7 +440,7 @@ function makeSelfSignedCert(dir, prefix, sanIp = "127.0.0.1", sanDns = "") {
   };
 }
 
-test("manifest.json declares optional FreeCAD machine, port, sensitive bearer token, and TLS certificate file", () => {
+test("manifest.json declares optional FreeCAD host, port, sensitive bearer token, and TLS certificate file", () => {
   const manifest = readJson(path.join(SHIM_DIR, "manifest.json"));
   const env = manifest.server.mcp_config.env;
   assert.deepEqual(env, {
@@ -453,24 +453,25 @@ test("manifest.json declares optional FreeCAD machine, port, sensitive bearer to
   assert.equal(cfg.host.type, "string");
   assert.equal(cfg.host.required, false);
   assert.equal(cfg.host.default, "127.0.0.1");
-  assert.equal(cfg.host.title, "FreeCAD machine");
+  assert.equal(cfg.host.title, "FreeCAD host");
   assert.match(cfg.host.description, /127\.0\.0\.1 by default/);
-  assert.match(cfg.host.description, /Loopback includes localhost, ::1, and 127\.x\.x\.x/);
+  assert.match(cfg.host.description, /This machine includes localhost, ::1, and 127\.x\.x\.x/);
   assert.equal(cfg.token.type, "string");
   assert.equal(cfg.token.sensitive, true);
   assert.equal(cfg.token.required, false);
   assert.equal(cfg.token.title, "Bearer token");
-  assert.match(cfg.token.description, /On loopback, optional/);
+  assert.match(cfg.token.description, /On this machine, optional/);
   assert.match(cfg.token.description, /at least 32 characters/);
   assert.match(cfg.token.description, /replaces that token for every client/);
-  assert.match(cfg.token.description, /Beyond loopback, required/);
+  assert.match(cfg.token.description, /For another host, required/);
   assert.equal(cfg.tls_cert_file.type, "file");
   assert.equal(cfg.tls_cert_file.required, false);
   assert.equal(cfg.tls_cert_file.title, "TLS certificate file (PEM)");
-  assert.match(cfg.tls_cert_file.description, /Used beyond loopback only/);
+  assert.match(cfg.tls_cert_file.description, /Used for another host only/);
   assert.match(cfg.tls_cert_file.description, /copy of FreeCAD's certificate file, not the private key/);
   assert.match(cfg.tls_cert_file.description, /trusts only that certificate/);
-  assert.match(cfg.tls_cert_file.description, /On loopback the extension uses HTTP/);
+  assert.match(cfg.tls_cert_file.description, /serving-cert\.pem/);
+  assert.match(cfg.tls_cert_file.description, /uses HTTPS only when that file is present/);
 });
 
 function pastedText(result) {
@@ -721,7 +722,7 @@ test("a 401 names the token file the extension used, with and without a token", 
   bridge.close();
 });
 
-test("on loopback, the shim uses HTTP whatever FREECAD_MCP_TLS_CERT_FILE is set to", async () => {
+test("on this machine, with no serving-cert.pem, the shim uses HTTP whatever the certificate setting is, and the user sees the tool result", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shim-loopback-cert-ignored-"));
   try {
     const serverCert = makeSelfSignedCert(tmpDir, "server", "127.0.0.1");
@@ -771,7 +772,63 @@ test("on loopback, the shim uses HTTP whatever FREECAD_MCP_TLS_CERT_FILE is set 
   }
 });
 
-test("plain HTTP against a loopback port that speaks HTTPS names the TLS settings, and a closed port does not", async () => {
+test("on this machine, with serving-cert.pem present, the shim uses HTTPS trusting only that file, and the user sees the tool result", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shim-serving-present-"));
+  try {
+    const serverCert = makeSelfSignedCert(tmpDir, "server", "127.0.0.1");
+    const otherCert = makeSelfSignedCert(tmpDir, "other", "127.0.0.1");
+    const bridge = await startBridge(echo, {
+      cert: serverCert.cert,
+      key: serverCert.key,
+    });
+    const shim = startShim(
+      bridge.port,
+      { FREECAD_MCP_TLS_CERT_FILE: otherCert.certPath },
+      { seedToken: TOKEN_OK }
+    );
+    fs.copyFileSync(serverCert.certPath, path.join(shim.tokenDir, "serving-cert.pem"));
+    shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call" }) + "\n");
+    const [reply] = await shim.waitForLines(1);
+    assert.equal(reply.result.echoed, "tools/call");
+    assert.equal(reply.result.isError, undefined);
+    assert.equal(JSON.stringify(reply), JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      result: { echoed: "tools/call" },
+    }));
+    assert.equal(bridge.requests.length, 1);
+    assert.equal(bridge.requests[0].headers["authorization"], `Bearer ${TOKEN_OK}`);
+    await shim.stop();
+    bridge.close();
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("on this machine, a stale serving-cert.pem with nothing listening says the bridge is unreachable", async () => {
+  const port = await closedPort();
+  const shim = startShim(port, {}, { seedToken: TOKEN_OK });
+  fs.writeFileSync(path.join(shim.tokenDir, "serving-cert.pem"), "not a certificate\n");
+  shim.send(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name: "execute_python", arguments: { code: "print(1)" } },
+    }) + "\n"
+  );
+  const [reply] = await shim.waitForLines(1);
+  const error = JSON.parse(reply.result.content[0].text).error;
+  assert.equal(
+    error,
+    "FreeCAD isn't reachable. Start FreeCAD and turn the bridge on with the MCP Bridge toolbar button, then try again. " +
+      `(https://127.0.0.1:${port}/mcp: connect ECONNREFUSED 127.0.0.1:${port})`
+  );
+  assert.doesNotMatch(error, /TLS certificate file/);
+  await shim.stop();
+});
+
+test("plain HTTP against a loopback port that speaks HTTPS names the missing serving-cert.pem, and a closed port does not", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shim-https-plain-"));
   try {
     const serverCert = makeSelfSignedCert(tmpDir, "server", "127.0.0.1");
@@ -794,7 +851,7 @@ test("plain HTTP against a loopback port that speaks HTTPS names the TLS setting
     assert.equal(
       error,
       `FreeCAD MCP Bridge serves HTTPS at ${endpoint}, and this connection was plain HTTP. ` +
-        "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to a copy of FreeCAD's certificate file, not the private key."
+        "On this machine the extension trusts serving-cert.pem beside the token file, which is not there. Turn the bridge on in FreeCAD with a certificate set, so it writes that file."
     );
     assert.doesNotMatch(error, /isn't reachable/);
     await shim.stop();
@@ -853,7 +910,7 @@ test("with no certificate set, an HTTPS port answers initialize and tools/list, 
     assert.equal(
       error,
       `FreeCAD MCP Bridge serves HTTPS at ${endpoint}, and this connection was plain HTTP. ` +
-        "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to a copy of FreeCAD's certificate file, not the private key."
+        "On this machine the extension trusts serving-cert.pem beside the token file, which is not there. Turn the bridge on in FreeCAD with a certificate set, so it writes that file."
     );
     await shim.stop();
     httpsBridge.close();
@@ -1061,7 +1118,7 @@ test("for another machine, a tools/call without a certificate or without a paste
     assert.equal(noCertCall.result.isError, true);
     assert.equal(
       JSON.parse(noCertCall.result.content[0].text).error,
-      "FreeCAD machine is set to freecad.lan, which requires HTTPS. " +
+      "FreeCAD host is set to freecad.lan, which requires HTTPS. " +
         "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to a copy of FreeCAD's certificate file, not the private key."
     );
     assert.equal(fs.existsSync(noCert.tokenDir), false);
@@ -1089,7 +1146,7 @@ test("for another machine, a tools/call without a certificate or without a paste
     assert.equal(noTokenCall.result.isError, true);
     assert.equal(
       JSON.parse(noTokenCall.result.content[0].text).error,
-      "FreeCAD machine is set to freecad.lan, another machine, so the extension cannot read its token file. " +
+      "FreeCAD host is set to freecad.lan, another machine, so the extension cannot read its token file. " +
         "Paste FreeCAD's bearer token into Bearer token in the FreeCAD MCP Bridge extension settings."
     );
     assert.equal(bridge.requests.length, 0);
