@@ -43,8 +43,8 @@
   "user_config": {
     "host": {
       "type": "string",
-      "title": "FreeCAD machine",
-      "description": "The address or hostname of the machine running FreeCAD (127.0.0.1 by default). Loopback includes localhost, ::1, and 127.x.x.x. Beyond loopback, also set Bearer token and TLS certificate file (PEM) below.",
+      "title": "FreeCAD host",
+      "description": "The address or hostname of the machine running FreeCAD (127.0.0.1 by default). This machine includes localhost, ::1, and 127.x.x.x. For another host, also set Bearer token and TLS certificate file (PEM) below.",
       "default": "127.0.0.1",
       "required": false
     },
@@ -59,13 +59,13 @@
       "type": "string",
       "sensitive": true,
       "title": "Bearer token",
-      "description": "On loopback, optional: the extension sends the token from the file FreeCAD writes at the first start. A paste of at least 32 characters replaces that token for every client, and a shorter one is ignored. Beyond loopback, required: the pasted token is used by the extension only.",
+      "description": "On this machine, optional: the extension sends the token from the file FreeCAD writes at the first start. A paste of at least 32 characters replaces that token for every client, and a shorter one is ignored. For another host, required: the pasted token is used by the extension only.",
       "required": false
     },
     "tls_cert_file": {
       "type": "file",
       "title": "TLS certificate file (PEM)",
-      "description": "Used beyond loopback only, where it is required. Set this to a copy of FreeCAD's certificate file, not the private key, so the extension connects over HTTPS and trusts only that certificate. On loopback the extension uses HTTP.",
+      "description": "Used for another host only, where it is required. Set this to a copy of FreeCAD's certificate file, not the private key, so the extension connects over HTTPS and trusts only that certificate. On this machine the extension reads serving-cert.pem beside the token file, and uses HTTPS only when that file is present.",
       "required": false
     }
   }
