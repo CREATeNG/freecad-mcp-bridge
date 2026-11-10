@@ -192,11 +192,12 @@ change a model — for example:
   extension on this machine can verify it automatically. Without them,
   loopback entries serve HTTP, and a start with an entry beyond
   loopback fails.
-- **The certificate copy** — another MCP client needs a copy of the
-  certificate file, not the private key. The extension on this
-  machine reads `serving-cert.pem` and trusts only that file.
-- **Generate certificate** — beside the two file fields, **or
-  generate one** creates `tls-cert.pem` and `tls-key.pem` (the key
+- An MCP client other than the Claude Desktop extension on this
+  machine needs a copy of the certificate file, not the private
+  key. The extension on this machine reads `serving-cert.pem` and
+  trusts only that file.
+- **Generate certificate** — under **or generate one**, this
+  button creates `tls-cert.pem` and `tls-key.pem` (the key
   readable by you only) in `<home>/.freecad-mcp-bridge`, covering
   `127.0.0.1`, `localhost`, and every address beyond loopback,
   for 825 days, and fills in both fields. OK in Preferences saves
@@ -206,10 +207,10 @@ change a model — for example:
   its own RSA 2048 generator. It asks before replacing the current
   certificate, then shows the path, the covered addresses, and the
   expiry.
-- **Certificate failures** — a start fails when the certificate is
-  not yet valid or has expired, and a start with an entry beyond
-  loopback also fails when either file is not set or the certificate
-  does not cover the address.
+- A start fails when the certificate is not yet valid or has
+  expired, and a start with an entry beyond loopback also fails
+  when either file is not set or the certificate does not cover
+  the address.
 - **Permission mode** — **Ask** (the default) shows you an agent's
   code before it runs. **Unrestricted** runs it unseen, with your
   full permissions. [What the AI can do](#what-the-ai-can-do) has

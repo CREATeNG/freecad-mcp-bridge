@@ -646,6 +646,12 @@ def generate_and_show_certificate(parent=None):
             c_path, k_path = tls_cert.generate_and_store_certificate(hosts)
             token_file._user_only(k_path, is_dir=False)
     except Exception as exc:
+        if wait_cursor:
+            try:
+                app.restoreOverrideCursor()
+            except Exception:
+                pass
+            wait_cursor = False
         title, body = _cert_error_dialog_text(exc)
         _show_cert_message(
             title,
