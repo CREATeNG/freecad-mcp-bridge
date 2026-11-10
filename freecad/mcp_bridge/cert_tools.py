@@ -87,8 +87,12 @@ def generate(
     cleaned = _clean_hosts(hosts)
     cert = Path(cert_path)
     key = Path(key_path)
-    cert.parent.mkdir(parents=True, exist_ok=True)
-    key.parent.mkdir(parents=True, exist_ok=True)
+    _protect_created_directory(cert.parent)
+    _protect_created_directory(key.parent)
+    # An empty user-only file first, so the tool overwrites it and
+    # keeps that access instead of creating a new file.
+    key.write_bytes(b"")
+    token_file._user_only(key, is_dir=False)
     if tool == "openssl":
         binary = shutil.which("openssl")
         if not binary:
@@ -106,7 +110,23 @@ def generate(
         _powershell_generate(exe, key_type, cleaned, cert, key)
     else:
         raise CertToolError(f"Unknown certificate tool {tool}.")
-    token_file._user_only(key, is_dir=False)
+
+
+def _protect_created_directory(path: Path) -> None:
+    """Create `path` when it is missing, and protect only what this created."""
+    if path.exists():
+        return
+    missing = []
+    current = path
+    while not current.exists():
+        missing.append(current)
+        if current.parent == current:
+            break
+        current = current.parent
+    path.mkdir(parents=True, exist_ok=True)
+    for created in reversed(missing):
+        if created.is_dir():
+            token_file._user_only(created, is_dir=True)
 
 
 def _clean_hosts(hosts: list[str]) -> list[str]:
@@ -208,26 +228,50 @@ def _openssl_generate(
         config.write_text(
             _openssl_config(hosts), encoding="utf-8", newline="\n"
         )
-        command = [
-            binary,
-            "req",
-            "-x509",
-            "-newkey",
-            "rsa:4096" if key_type == KEY_RSA else "ec",
-            "-nodes",
-            "-keyout",
-            str(key),
-            "-out",
-            str(cert),
-            "-days",
-            _VALIDITY_DAYS,
-            "-config",
-            str(config),
-        ]
         if key_type == KEY_ECDSA:
-            command[5:5] = [
-                "-pkeyopt",
-                "ec_paramgen_curve:prime256v1",
+            # ecparam, then req -key, is accepted by OpenSSL and by
+            # LibreSSL (macOS /usr/bin/openssl). -newkey ec -pkeyopt
+            # is not.
+            _run([
+                binary,
+                "ecparam",
+                "-name",
+                "prime256v1",
+                "-genkey",
+                "-noout",
+                "-out",
+                str(key),
+            ])
+            command = [
+                binary,
+                "req",
+                "-new",
+                "-x509",
+                "-key",
+                str(key),
+                "-out",
+                str(cert),
+                "-days",
+                _VALIDITY_DAYS,
+                "-config",
+                str(config),
+            ]
+        else:
+            command = [
+                binary,
+                "req",
+                "-x509",
+                "-newkey",
+                "rsa:4096",
+                "-nodes",
+                "-keyout",
+                str(key),
+                "-out",
+                str(cert),
+                "-days",
+                _VALIDITY_DAYS,
+                "-config",
+                str(config),
             ]
         _run(command)
 
