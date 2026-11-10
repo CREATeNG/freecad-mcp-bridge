@@ -65,10 +65,10 @@ behaviors it checks are execution and file execution, stdout/stderr and
 tracebacks, output paging and replay, retention preferences, execution
 order, GUI event handling, the two supported MCP protocol versions,
 HTTP, Origin and Host validation, loopback and non-loopback
-listen-address binding, the bearer token on every listener and TLS on every listener
-once a certificate and key are set, the first-start dialog and per-entry risk
-acceptance, port changes and stopping the bridge with running or
-queued jobs. When `BUNDLE_MCPB`
+listen-address binding, the bearer token on every listener, and
+TLS on every listener once a certificate and key are set, the
+first-start dialog and per-entry risk acceptance, port changes
+and stopping the bridge with running or queued jobs. When `BUNDLE_MCPB`
 names a packed `.mcpb`, `test_bundle_mcp.py` calls that shim
 over stdio, in both protocol versions, and then expects it
 to exit. With no bundle named, that test skips;
