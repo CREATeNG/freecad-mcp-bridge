@@ -116,8 +116,9 @@ python scripts/list_requirements.py
 
 In CI, [install-verify.yml](.github/workflows/install-verify.yml) starts
 a third FreeCAD process with
-[acceptance_serve.py](scripts/acceptance_serve.py). The token dialog
-is closed, and its token is passed to the test step in
+[acceptance_serve.py](scripts/acceptance_serve.py). That process
+stores a bearer token before the toolbar click and writes it to
+`ACCEPTANCE_TOKEN_FILE`. The test step reads that file into
 `FREECAD_MCP_TOKEN`. Nothing is written for the extension to read.
 That process turns the installed bridge on through its toolbar
 action and writes its port

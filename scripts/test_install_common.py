@@ -770,6 +770,23 @@ def store_token_for_toolbar_start() -> str:
     return config.generate_and_store_token()
 
 
+def publish_acceptance_token(token: str) -> None:
+    """Write the stored token where the acceptance step can export it.
+
+    The bridge keeps a hash, so the token dialog that used to fill
+    ``ACCEPTANCE_TOKEN_FILE`` does not open. The file is the runner's,
+    and nothing here is written for the extension to read.
+    """
+    path = os.environ.get("ACCEPTANCE_TOKEN_FILE", "").strip()
+    text = token.strip()
+    if not path or not text:
+        return
+    partial = f"{path}.partial"
+    with open(partial, "w", encoding="utf-8") as handle:
+        handle.write(text + "\n")
+    os.replace(partial, path)
+
+
 def start_bridge() -> None:
     """Start the HTTP server by triggering the real toolbar button."""
     from freecad.mcp_bridge import bridge
