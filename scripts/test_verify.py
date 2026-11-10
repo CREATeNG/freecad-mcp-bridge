@@ -248,7 +248,8 @@ def _assert_status_button(running: bool) -> None:
             "Status-bar button menu is missing or unexpected: "
             f"expected {expected_menu!r}, got {texts!r}"
         )
-    permissions = menu.actions()[0].menu()
+    perm_action = menu.actions()[0]
+    permissions = perm_action.menu()
     sub = None if permissions is None else [
         a.text() for a in permissions.actions()
     ]
@@ -354,6 +355,66 @@ def _verify_status_button_hide() -> None:
     )
 
 
+def _watch_after_click(what: str) -> dict:
+    """Name any dialog still open a few seconds after a click.
+
+    The text is the title and class of the active modal widget and
+    of every visible top-level widget. Those widgets are then closed.
+    """
+    from PySide.QtCore import QTimer
+    from PySide.QtWidgets import QApplication
+
+    found = {"text": ""}
+    timer = QTimer()
+    timer.setSingleShot(True)
+
+    def tick():
+        app = QApplication.instance()
+        lines = []
+        dialogs = []
+        if app is None:
+            lines.append("QApplication is None")
+        else:
+            active = app.activeModalWidget()
+            if active is None:
+                lines.append("activeModalWidget: none")
+            else:
+                lines.append(
+                    "activeModalWidget: "
+                    f"{type(active).__name__} "
+                    f"title={active.windowTitle()!r} "
+                    f"name={active.objectName()!r}"
+                )
+                dialogs.append(active)
+            for widget in app.topLevelWidgets():
+                try:
+                    visible = widget.isVisible()
+                except Exception:
+                    visible = False
+                if not visible:
+                    continue
+                lines.append(
+                    "top-level: "
+                    f"{type(widget).__name__} "
+                    f"title={widget.windowTitle()!r} "
+                    f"name={widget.objectName()!r}"
+                )
+                if type(widget).__name__ != "QMainWindow":
+                    dialogs.append(widget)
+        found["text"] = f"After {what}: " + "; ".join(lines)
+        common.log_notice(found["text"])
+        for widget in dialogs:
+            try:
+                widget.close()
+            except Exception:
+                pass
+
+    timer.timeout.connect(tick)
+    timer.start(3000)
+    found["timer"] = timer
+    return found
+
+
 def _answer_unrestricted_dialog(label: str) -> None:
     """Click `label` on the Unrestricted confirmation when it shows."""
     from PySide.QtCore import QTimer
@@ -397,13 +458,20 @@ def _verify_mode_on_status_button() -> None:
     if config.unrestricted():
         common.fail("Permission mode is not Ask at the start of verify")
     button = _status_button()
-    permissions = button.menu().actions()[0].menu()
+    perm_action = button.menu().actions()[0]
+    permissions = perm_action.menu()
     ask, unrestricted = permissions.actions()[:2]
     width = button.sizeHint().width()
     try:
         # Unrestricted asks first, and No keeps Ask.
         _answer_unrestricted_dialog("No")
+        watched = _watch_after_click("the Unrestricted menu item")
         unrestricted.trigger()
+        watched["timer"].stop()
+        if watched["text"] and "activeModalWidget: none" not in (
+            watched["text"]
+        ):
+            common.fail(watched["text"])
         if config.unrestricted():
             common.fail("No on the confirmation switched to Unrestricted")
         _assert_status_button(False)
@@ -428,7 +496,9 @@ def _verify_mode_on_status_button() -> None:
                     "Status-bar button was hidden while Unrestricted"
                 )
             # Ask is at once, and the preference applies again.
-            _status_button().menu().actions()[0].menu().actions()[0].trigger()
+            ask_item = _status_button().menu().actions()[0]
+            ask_menu = ask_item.menu()
+            ask_menu.actions()[0].trigger()
             if config.unrestricted():
                 common.fail("Choosing Ask did not switch the mode at once")
             if _status_button() is not None:
