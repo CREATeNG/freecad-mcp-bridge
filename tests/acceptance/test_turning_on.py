@@ -647,7 +647,7 @@ class ListenAddressTests(unittest.TestCase):
         self.assertFalse(seen.get("no_port_running"))
         self.assertIn(address, seen.get("no_port_status", ""))
         self.assertIn(
-            "not a listen address",
+            "needs a port",
             seen.get("no_port_report", ""),
         )
         self.assertTrue(seen.get("decline_dialog_found"))
@@ -1101,9 +1101,9 @@ class ListenAddressTests(unittest.TestCase):
             seen.get("enc_key_report", ""),
         )
         self.assertFalse(seen.get("uncovered_cert_running"))
-        self.assertNotIn(
-            "does not cover",
-            seen.get("uncovered_cert_status", ""),
+        self.assertIn(
+            f"{address} is not in the TLS certificate",
+            seen.get("uncovered_cert_report", ""),
         )
         self.assertTrue(seen.get("gen_cert_replace_dialog_found"))
         self.assertTrue(seen.get("gen_cert_dialog_found"))
@@ -1721,7 +1721,6 @@ def wait_for_finish():
         params.RemString('TlsKeyFile')
     if dock is not None and not was_visible:
         dock.hide()
-    QTimer.singleShot(50, lambda: dismiss_setup('restore_setup'))
     action.trigger()
     with open({seen_file!r}, 'w', encoding='utf-8') as handle:
         json.dump(seen, handle)

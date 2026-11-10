@@ -120,7 +120,7 @@ tick for Ask, or a warning triangle for Unrestricted. The menu on
 the button's arrow has **Permissions**, with **Ask** and
 **Unrestricted** under it, each with its icon, above **MCP Bridge
 Preferences**. Choosing a mode there switches the same way as
-**Permission mode** under **Permissions** in
+**Permission mode** under **Execution permission** in
 **Edit → Preferences → MCP Bridge**: it asks before going
 Unrestricted, and goes back to Ask at once. In Preferences too, the
 choice applies at once, without OK. A click on the button, its icon

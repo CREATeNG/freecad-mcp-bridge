@@ -67,7 +67,7 @@
         <item>
          <layout class="QHBoxLayout" name="listenButtons">
           <item>
-           <widget class="QPushButton" name="addListenButton">
+           <widget class="QToolButton" name="addListenButton">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
               <horstretch>0</horstretch>
@@ -95,7 +95,7 @@
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="removeListenButton">
+           <widget class="QToolButton" name="removeListenButton">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
               <horstretch>0</horstretch>
@@ -401,7 +401,7 @@
            <string>An MCP client must trust this certificate.</string>
           </property>
           <property name="wordWrap">
-           <bool>true</bool>
+           <bool>false</bool>
           </property>
          </widget>
         </item>

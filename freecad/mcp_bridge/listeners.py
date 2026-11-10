@@ -221,6 +221,11 @@ def row_note(
             "is not listening for it."
         )
     if row.kind == KIND_LEGACY:
+        if _bare_ip(row.raw):
+            return (
+                f"{row.raw} needs a port. Add it as a fixed IP "
+                f"address, such as {row.raw}:39280."
+            )
         return (
             f"Replace {row.raw}: a name with a port is not a listen "
             "address. Add an adapter or a fixed IP address, and add "
@@ -288,8 +293,11 @@ def add_refusal(
         name = (value or "").strip()
         if not name:
             return "Enter a host name."
-        if any(ch.isspace() for ch in name):
-            return "Enter one host name, without a space."
+        if any(ch.isspace() or ch in ",;" for ch in name):
+            return (
+                "Enter one host name, without a space, comma "
+                "or semicolon."
+            )
         return ""
     port_error = _port_refusal(port_text)
     if port_error:
@@ -358,20 +366,6 @@ def bind_entries(
         if entry not in entries:
             entries.append(entry)
     return entries
-
-
-def acceptance_key(row: ListenRow, present: str) -> str:
-    """The IP address the risk dialog is remembered by.
-
-    Both kinds of row use the address alone, so a changed port does
-    not ask again, and an address accepted for one kind counts for
-    the other. An older stored `address:port` still counts.
-    """
-    if row.kind == KIND_ADAPTER:
-        return (present or "").strip()
-    if row.kind == KIND_ADDRESS:
-        return (row.host or "").strip()
-    return ""
 
 
 def host_already_accepted(stored: list[str], host: str) -> bool:
@@ -514,6 +508,23 @@ def _on_machine(host: str, machine: set[str]) -> bool:
     return str(ip) in machine
 
 
+def _bare_ip(text: str) -> bool:
+    """True when `text` is an IP address and not address:port."""
+    try:
+        ipaddress.ip_address((text or "").strip())
+    except ValueError:
+        return False
+    return True
+
+
+def _name_with_port(text: str) -> bool:
+    """True when `text` is a name, a colon, and a port."""
+    if text.count(":") != 1:
+        return False
+    host, port = text.rsplit(":", 1)
+    return bool(host) and any(ch.isalpha() for ch in host) and port.isdigit()
+
+
 def _port_refusal(port_text: str) -> str:
     text = (port_text or "").strip()
     if not text.isdigit() or not (1 <= int(text) <= 65535):
@@ -530,12 +541,9 @@ def _address_refusal(value: str) -> str:
     try:
         ip = ipaddress.ip_address(text)
     except ValueError:
-        if ":" in text:
-            return (
-                "That address can't be read. Use an address such as "
-                "192.168.1.20."
-            )
-        if any(ch.isalpha() for ch in text) or " " in text:
+        if _name_with_port(text) or (
+            ":" not in text and any(ch.isalpha() for ch in text)
+        ):
             return (
                 "A fixed IP address has to be an address, not a "
                 "name. Add the name as a host name."

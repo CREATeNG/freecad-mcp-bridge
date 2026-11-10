@@ -59,7 +59,7 @@ modes. Its menu has `Permissions`, with `Ask` and `Unrestricted`
 under it, each with its icon, above `MCP Bridge Preferences`.
 The menu does not mark the mode in force: the button's icon shows
 it. Choosing a mode there switches the same way as the
-**Permission mode** preference under **Permissions**: a
+**Permission mode** preference under **Execution permission**: a
 confirmation to go Unrestricted, and back to Ask at once. A click
 on the button, its icon or its words, turns the bridge on or off.
 It does nothing else. While the mode is Unrestricted, the button is
@@ -571,9 +571,8 @@ is not sent. A refused token says the pasted token was refused.
   user-only copy of the certificate to `serving-cert.pem` in the
   bridge's folder. When they are not set, loopback listeners serve HTTP,
   each start removes `serving-cert.pem`, and a start with an entry
-  beyond loopback fails. Beside **Listen addresses**, the Preferences
-  page states that beyond loopback the bridge serves HTTPS only and
-  that an MCP client must trust the certificate in `TlsCertFile`.
+  beyond loopback fails. In the TLS certificate group the page
+  states that an MCP client must trust this certificate.
   **Certificate (PEM)** and **Private key (PEM)** sit side by side,
   with **Generate self-signed certificate**. That button calls
   `cert_tools.find_tools()` to find certificate tools on the machine

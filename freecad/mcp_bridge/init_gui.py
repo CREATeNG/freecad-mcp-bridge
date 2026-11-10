@@ -820,6 +820,7 @@ def _turn_bridge_on():
     from freecad.mcp_bridge.listeners import (
         KIND_ADAPTER,
         KIND_ADDRESS,
+        KIND_LEGACY,
         adapter_ipv4,
         adapter_names,
         bind_entries,
@@ -838,16 +839,21 @@ def _turn_bridge_on():
     machine = _machine(every)
     from freecad.mcp_bridge.listeners import blocking_fixed_notes
 
+    def warn(note: str) -> None:
+        App.Console.PrintWarning(f"{LOG_PREFIX} WARNING: {note}\n")
+
     blocked = blocking_fixed_notes(rows, machine)
     if blocked:
-        for note in blocked:
-            App.Console.PrintWarning(f"{LOG_PREFIX} WARNING: {note}\n")
+        warn(blocked[0])
         _show_status(blocked[0])
-        return blocked[0], False
-    for note in start_notes(rows, ipv4, machine, names):
-        App.Console.PrintWarning(f"{LOG_PREFIX} WARNING: {note}\n")
+        return blocked[0], False, True
+    notes = start_notes(rows, ipv4, machine, names)
+    for note in notes:
+        warn(note)
     entries = bind_entries(rows, ipv4)
-    has_row = any(row.kind in (KIND_ADDRESS, KIND_ADAPTER) for row in rows)
+    can_listen = any(
+        row.kind in (KIND_ADDRESS, KIND_ADAPTER) for row in rows
+    )
     cert_file = config.tls_cert_file()
     key_file = config.tls_key_file()
     non_loopback = [
@@ -861,23 +867,20 @@ def _turn_bridge_on():
     )
     # A legacy row is not an empty list. The set-up dialog is only
     # for a list with no rows at all.
-    need_listen = not rows
+    # Host names do not listen. A legacy row is named on its own.
+    need_listen = not can_listen and not any(
+        row.kind == KIND_LEGACY for row in rows
+    )
     if need_token or need_tls or need_listen:
         _show_setup_dialog(need_token, need_tls, need_listen)
         _offline_status()
-        return f"{DISPLAY_NAME}: Offline", False
-    if not entries:
-        reason = ""
-        for note in start_notes(rows, ipv4, machine, names):
-            if note:
-                reason = note
-                break
-        if not reason:
-            reason = (
-                "The bridge has no listen address it can open."
-            )
+        return f"{DISPLAY_NAME}: Offline", False, False
+    if not entries and not need_listen:
+        reason = notes[0] if notes else (
+            "The bridge has no listen address it can open."
+        )
         _show_status(reason)
-        return reason, False
+        return reason, False, True
     if non_loopback or (cert_file.strip() and key_file.strip()):
         config.build_ssl_context(cert_file, key_file, entries)
     if cert_file.strip():
@@ -889,10 +892,10 @@ def _turn_bridge_on():
     if first_start:
         if not _confirm_first_start(lines):
             _offline_status()
-            return f"{DISPLAY_NAME}: Offline", False
+            return f"{DISPLAY_NAME}: Offline", False, False
     elif lines and not _confirm_non_loopback_risk(lines):
         _offline_status()
-        return f"{DISPLAY_NAME}: Offline", False
+        return f"{DISPLAY_NAME}: Offline", False, False
     bridge.start(
         addresses=entries,
         tls_cert_file=cert_file,
@@ -911,6 +914,7 @@ def _turn_bridge_on():
     return (
         f"{DISPLAY_NAME}: Listening on {endpoints} (warning: {warning})",
         True,
+        False,
     )
 
 
@@ -919,15 +923,16 @@ def _offline_status() -> None:
 
 
 def _show_status(text: str) -> None:
-    """Put `text` on the status bar, where the user is looking."""
-    import FreeCAD as App
+    """Put `text` on the status bar, where the user is looking.
+
+    The caller prints the one Report view line.
+    """
     import FreeCADGui as Gui
 
     mw = Gui.getMainWindow()
     if mw:
         mw.statusBar().showMessage(text)
     show_toggle_state()
-    App.Console.PrintNotification(text + "\n")
 
 
 def _unaccepted(rows, ipv4):
@@ -994,6 +999,7 @@ class MCPBridgeCommand:
 
         started = False
         stopped = False
+        reported = False
         bad_listen = False
         try:
             if bridge.is_running():
@@ -1001,7 +1007,7 @@ class MCPBridgeCommand:
                 status = f"{DISPLAY_NAME}: Offline"
                 stopped = True
             else:
-                status, started = _turn_bridge_on()
+                status, started, reported = _turn_bridge_on()
         except Exception as e:
             App.Console.PrintDeveloperError(
                 f"{LOG_PREFIX} Error toggling bridge: {e}\n"
@@ -1014,7 +1020,9 @@ class MCPBridgeCommand:
         if mw:
             mw.statusBar().showMessage(status)
         show_toggle_state()
-        if started or stopped:
+        if reported:
+            pass
+        elif started or stopped:
             App.Console.PrintNotification(status + "\n")
         else:
             warning = status
@@ -1223,6 +1231,10 @@ def _ensure_status_button(mw):
         lambda *_: Gui.showPreferences(DISPLAY_NAME, 0)
     )
     button.setMenu(menu)
+    # Keep the menus on the button. A caller that only chains
+    # menu() can otherwise meet a deleted wrapper.
+    button._menu = menu
+    button._permissions_menu = permissions
     command = App.MCPBridgeCommand
     button.clicked.connect(lambda *_: Gui.runCommand(command))
     theme_filter = _BarThemeFilter(button)
@@ -1347,7 +1359,12 @@ def _apply_mode_choice(want_unrestricted, box):
     from freecad.mcp_bridge import config, file_prompt
 
     def ask():
-        parent = box.window() if box is not None else None
+        parent = None
+        if box is not None:
+            try:
+                parent = box.window()
+            except RuntimeError:
+                parent = None
         return file_prompt._ask_unrestricted(parent)
 
     enabled = file_prompt.commit_mode(box, want_unrestricted, ask)

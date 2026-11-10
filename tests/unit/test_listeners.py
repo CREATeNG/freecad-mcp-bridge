@@ -33,7 +33,6 @@ from freecad.mcp_bridge.listeners import (
     KIND_ADAPTER,
     KIND_ADDRESS,
     KIND_NAME,
-    acceptance_key,
     adapter_choices,
     adapter_ipv4,
     adapter_row,
@@ -73,6 +72,12 @@ class ListenListTests(unittest.TestCase):
         self.assertEqual(cells(rows[0], None), (
             "127.0.0.1", "39280", "Fixed IP address",
         ))
+
+    def test_only_host_names_open_no_listener(self):
+        """Host names alone are not something the bridge can listen on."""
+        rows = rows_from_store("", "", "studio.example", True)
+        self.assertEqual([row.kind for row in rows], [KIND_NAME])
+        self.assertEqual(bind_entries(rows, {}), [])
 
     def test_a_saved_empty_list_stays_empty(self):
         """OK on an empty list does not put the default row back."""
@@ -163,7 +168,6 @@ class ListenListTests(unittest.TestCase):
     def test_an_accepted_address_ignores_the_port(self):
         """A changed port does not ask again. The key is the address."""
         row = adapter_row("Ethernet 2", 4000)
-        self.assertEqual(acceptance_key(row, "192.168.1.20"), "192.168.1.20")
         self.assertIn(
             "Ethernet 2 (192.168.1.20:4000)",
             risk_line(row, "192.168.1.20"),
@@ -171,8 +175,6 @@ class ListenListTests(unittest.TestCase):
         stored = ["192.168.1.20:39280"]
         self.assertTrue(host_already_accepted(stored, "192.168.1.20"))
         self.assertFalse(host_already_accepted(stored, "10.0.0.1"))
-        fixed = address_row("192.168.1.20", 5000)
-        self.assertEqual(acceptance_key(fixed, ""), "192.168.1.20")
 
     def test_a_fixed_address_off_this_machine_blocks_before_the_dialog(self):
         """The start names that row and does not treat it as a listener."""
@@ -227,6 +229,18 @@ class ListenListTests(unittest.TestCase):
             "without a space",
             add_refusal(KIND_NAME, "my pc", "80", []),
         )
+        self.assertIn(
+            "comma",
+            add_refusal(KIND_NAME, "a,b", "80", []),
+        )
+        self.assertIn(
+            "semicolon",
+            add_refusal(KIND_NAME, "a;b", "80", []),
+        )
+        self.assertIn(
+            "not a name",
+            add_refusal(KIND_ADDRESS, "myhost:39280", "80", []),
+        )
 
     def test_a_dead_mode_box_is_dropped(self):
         """A mode box deleted with its page is not kept."""
@@ -255,6 +269,8 @@ class ListenListTests(unittest.TestCase):
             "QComboBox",
             "QLabel",
             "QPushButton",
+            "QToolButton",
+            "QSizePolicy",
             "QTableWidgetItem",
         ):
             setattr(widgets, name, type(name, (), {}))
@@ -279,6 +295,19 @@ class ListenListTests(unittest.TestCase):
             first.loadSettings()
             self.assertEqual(first.rows[0].host, "127.0.0.1")
             first.rows = [adapter_row("Ethernet 2", 4000)]
+            first._choices = lambda: []
+            first._own_name = lambda: ""
+            first._fill = lambda: None
+            first._table = lambda: type(
+                "T", (), {"currentRow": lambda self: 0}
+            )()
+            with mock.patch.object(
+                pref_pages, "ask_add", return_value=name_row("workshop-pc")
+            ):
+                first.add_listen()
+            self.assertEqual(len(first.rows), 2)
+            first.remove_listen()
+            self.assertEqual(len(first.rows), 1)
             second = pref_pages.PreferencesPage()
             second._show_mode = lambda: None
             second.loadSettings()

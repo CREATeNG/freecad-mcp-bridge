@@ -251,8 +251,7 @@ def _assert_status_button(running: bool) -> None:
             "Status-bar button menu is missing or unexpected: "
             f"expected {expected_menu!r}, got {texts!r}"
         )
-    perm_action = menu.actions()[0]
-    permissions = perm_action.menu()
+    permissions = button._permissions_menu
     sub = None if permissions is None else [
         a.text() for a in permissions.actions()
     ]
@@ -461,8 +460,7 @@ def _verify_mode_on_status_button() -> None:
     if config.unrestricted():
         common.fail("Permission mode is not Ask at the start of verify")
     button = _status_button()
-    perm_action = button.menu().actions()[0]
-    permissions = perm_action.menu()
+    permissions = button._permissions_menu
     ask, unrestricted = permissions.actions()[:2]
     width = button.sizeHint().width()
     try:
@@ -499,9 +497,7 @@ def _verify_mode_on_status_button() -> None:
                     "Status-bar button was hidden while Unrestricted"
                 )
             # Ask is at once, and the preference applies again.
-            ask_item = _status_button().menu().actions()[0]
-            ask_menu = ask_item.menu()
-            ask_menu.actions()[0].trigger()
+            _status_button()._permissions_menu.actions()[0].trigger()
             if config.unrestricted():
                 common.fail("Choosing Ask did not switch the mode at once")
             if _status_button() is not None:

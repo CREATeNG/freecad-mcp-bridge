@@ -142,15 +142,20 @@ def live_mode_boxes():
 
 def bind_page(form, page) -> None:
     """Connect the page's buttons once, each in its own guard."""
-    from PySide.QtWidgets import QComboBox, QPushButton, QTableWidget
+    from PySide.QtWidgets import (
+        QComboBox,
+        QPushButton,
+        QTableWidget,
+        QToolButton,
+    )
 
     _hook(
-        form_child(form, QPushButton, "addListenButton"),
+        form_child(form, QToolButton, "addListenButton"),
         "addListenButton",
         lambda button: button.clicked.connect(page.add_listen),
     )
     _hook(
-        form_child(form, QPushButton, "removeListenButton"),
+        form_child(form, QToolButton, "removeListenButton"),
         "removeListenButton",
         lambda button: button.clicked.connect(page.remove_listen),
     )
@@ -203,7 +208,26 @@ class PreferencesPage:
         self.form = load_form()
         self.rows = []
         self._prepare_table()
+        self._square_buttons()
         bind_page(self.form, self)
+
+    def _square_buttons(self) -> None:
+        """Keep + and - small squares. A layout will not stretch them."""
+        from PySide.QtWidgets import QSizePolicy, QWidget
+
+        for name in ("addListenButton", "removeListenButton"):
+            button = form_child(self.form, QWidget, name)
+            if button is None:
+                continue
+            try:
+                button.setFixedSize(22, 22)
+                button.setSizePolicy(
+                    QSizePolicy.Fixed, QSizePolicy.Fixed
+                )
+            except RuntimeError as exc:
+                report_wiring(name, exc)
+            except Exception as exc:
+                report_wiring(name, exc, with_trace=True)
 
     def loadSettings(self) -> None:
         """Show the saved list and the saved preference widgets."""
@@ -356,7 +380,9 @@ class PreferencesPage:
             if bridge.is_running():
                 listening = bridge.listening_entries()
         except Exception as exc:
-            report_wiring("listeningDifferenceLabel", exc)
+            report_wiring(
+                "listeningDifferenceLabel", exc, with_trace=True
+            )
             listening = None
         ipv4, _names, _machine = self._facts()
         bound = bind_entries(self.rows, ipv4)
@@ -573,4 +599,4 @@ def _set_warning_mark(item) -> None:
             return
         item.setIcon(style.standardIcon(QStyle.SP_MessageBoxWarning))
     except Exception as exc:
-        report_wiring("listenTable", exc)
+        report_wiring("listenTable", exc, with_trace=True)

@@ -226,14 +226,6 @@ def accepted_listen_addresses() -> list[str]:
     ]
 
 
-def is_address_accepted(address: str) -> bool:
-    """True if `address` is loopback or has been accepted by the user."""
-    addr = (address or "").strip()
-    if is_loopback_address(addr):
-        return True
-    return addr in accepted_listen_addresses()
-
-
 def accept_address(address: str) -> None:
     """Record that the user accepted the risk dialog for `address`."""
     addr = (address or "").strip()
@@ -531,7 +523,11 @@ def certificate_names_a_host(decoded: dict) -> bool:
     """True when `decoded` has a DNS name, not only IP addresses."""
     saw_ip = False
     for kind, value in decoded.get("subjectAltName", ()):
-        if kind == "DNS" and value:
+        if (
+            kind == "DNS"
+            and value
+            and str(value).casefold() != "localhost"
+        ):
             return True
         if kind == "IP Address" and value:
             saw_ip = True
@@ -540,6 +536,8 @@ def certificate_names_a_host(decoded: dict) -> bool:
     for rdn in decoded.get("subject", ()):
         for key, value in rdn:
             if key == "commonName" and value:
+                if str(value).casefold() == "localhost":
+                    continue
                 try:
                     ipaddress.ip_address(str(value))
                 except ValueError:

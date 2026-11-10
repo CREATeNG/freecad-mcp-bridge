@@ -47,7 +47,7 @@ that code runs unseen, stays off until you confirm a second dialog.
 The On/Off button on the status bar shows the mode: a shield with a
 tick for Ask, or a warning triangle for Unrestricted. Its menu
 switches modes the same way as **Permission mode** under
-**Permissions** in **Edit → Preferences → MCP Bridge**. While the
+**Execution permission** in **Edit → Preferences → MCP Bridge**. While the
 mode is Unrestricted, the button is shown whatever
 **Show** says. A request that carries an `Origin`
 header is refused, as is a `Host` header that names neither the

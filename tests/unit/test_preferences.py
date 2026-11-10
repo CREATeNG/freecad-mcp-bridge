@@ -822,6 +822,8 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
     def test_per_address_acceptance_is_stored_and_queried_by_address(self):
         """Loopback is always accepted; non-loopback entries are stored as
         distinct items in AcceptedListenAddresses."""
+        from freecad.mcp_bridge.listeners import host_already_accepted
+
         store = {}
 
         class DictParams:
@@ -835,36 +837,28 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
         with mock.patch.dict(sys.modules, {"FreeCAD": freecad}):
             sys.modules.pop("freecad.mcp_bridge.config", None)
             config = importlib.import_module("freecad.mcp_bridge.config")
-            self.assertTrue(config.is_address_accepted("127.0.0.1:39280"))
-            self.assertTrue(config.is_address_accepted("127.0.0.2:39280"))
-            self.assertTrue(config.is_address_accepted("[::1]:39280"))
-            self.assertTrue(config.is_address_accepted("localhost:39280"))
-            self.assertFalse(config.is_address_accepted("192.168.1.50:39280"))
-            self.assertFalse(config.is_address_accepted("0.0.0.0:39280"))
-
+            self.assertTrue(
+                config.is_loopback_address("127.0.0.1:39280")
+            )
+            self.assertFalse(
+                host_already_accepted(
+                    config.accepted_listen_addresses(), "192.168.1.50"
+                )
+            )
+            config.accept_address("192.168.1.50")
+            self.assertTrue(
+                host_already_accepted(
+                    config.accepted_listen_addresses(), "192.168.1.50"
+                )
+            )
+            self.assertEqual(
+                config.accepted_listen_addresses(), ["192.168.1.50"]
+            )
             config.accept_address("192.168.1.50:39280")
-            self.assertTrue(config.is_address_accepted("192.168.1.50:39280"))
-            self.assertFalse(config.is_address_accepted("192.168.1.50:39281"))
-            self.assertFalse(config.is_address_accepted("0.0.0.0:39280"))
-            self.assertEqual(
-                config.accepted_listen_addresses(), ["192.168.1.50:39280"]
-            )
-
-            config.accept_address("0.0.0.0:39280")
-            self.assertTrue(config.is_address_accepted("192.168.1.50:39280"))
-            self.assertTrue(config.is_address_accepted("0.0.0.0:39280"))
-            self.assertEqual(
-                config.accepted_listen_addresses(),
-                ["192.168.1.50:39280", "0.0.0.0:39280"],
-            )
-
-            # An item containing a comma is kept as one item, never split.
-            config.accept_address("192.168.1.60:39280,192.168.1.61:39280")
-            self.assertFalse(
-                config.is_address_accepted("192.168.1.60:39280")
-            )
-            self.assertFalse(
-                config.is_address_accepted("192.168.1.61:39280")
+            self.assertTrue(
+                host_already_accepted(
+                    config.accepted_listen_addresses(), "192.168.1.50"
+                )
             )
 
     def test_a_bearer_token_is_kept_as_a_hash_and_reread_on_mismatch(self):
@@ -1177,7 +1171,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 any("192.168.1.50" in item for item in warnings)
             )
             self.assertTrue(
-                any("not a listen address" in item for item in warnings)
+                any("needs a port" in item for item in warnings)
             )
 
             # 0b. With no certificate/key set, a non-loopback start fails
@@ -2497,6 +2491,11 @@ class PermissionModeTests(unittest.TestCase):
         self.assertEqual(MENU_ASK, "Ask")
         self.assertEqual(MENU_UNRESTRICTED, "Unrestricted")
         self.assertEqual(MENU_PREFERENCES, "MCP Bridge Preferences")
+        menu_src = (
+            ROOT / "freecad" / "mcp_bridge" / "init_gui.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("button._permissions_menu = permissions", menu_src)
+        self.assertIn("button._menu = menu", menu_src)
 
     def test_unrestricted_shows_the_button_whatever_the_preference(self):
         """Show the On/Off button hides the button only in Ask mode, so
@@ -3528,6 +3527,8 @@ class SetTokenDialogTests(unittest.TestCase):
 
         widgets = types.ModuleType("PySide.QtWidgets")
         widgets.QPushButton = QPushButton
+        widgets.QToolButton = type("QToolButton", (), {})
+        widgets.QSizePolicy = type("QSizePolicy", (), {"Fixed": 0})
         widgets.QApplication = QApplication
         widgets.QComboBox = type("QComboBox", (), {})
         widgets.QLabel = type("QLabel", (), {})
