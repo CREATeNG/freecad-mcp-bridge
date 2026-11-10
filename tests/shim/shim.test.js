@@ -461,7 +461,7 @@ test("manifest.json declares optional FreeCAD host, port, sensitive bearer token
   assert.equal(cfg.host.default, "127.0.0.1");
   assert.equal(cfg.host.title, "FreeCAD host");
   assert.match(cfg.host.description, /127\.0\.0\.1 by default/);
-  assert.match(cfg.host.description, /This machine includes localhost, ::1, and 127\.x\.x\.x/);
+  assert.match(cfg.host.description, /localhost, ::1 and 127\.x\.x\.x count as this machine/);
   assert.equal(cfg.token.type, "string");
   assert.equal(cfg.token.sensitive, true);
   assert.equal(cfg.token.required, false);
@@ -759,7 +759,7 @@ test("plain HTTP against a loopback port that speaks HTTPS names the missing ser
     assert.equal(
       error,
       `FreeCAD MCP Bridge serves HTTPS at ${endpoint}, and this connection was plain HTTP. ` +
-        "On this machine the extension trusts serving-cert.pem in the bridge's folder, which is not there. Turn the bridge on in FreeCAD with a certificate set, so it writes that file."
+        "On this machine the extension trusts serving-cert.pem in the bridge's folder, which is not there. Turn the bridge off and on again in FreeCAD, so it writes that file, and check that FREECAD_MCP_TOKEN_DIR, if set, is the same for both."
     );
     assert.doesNotMatch(error, /isn't reachable/);
     await shim.stop();
@@ -818,7 +818,7 @@ test("with no certificate set, an HTTPS port answers initialize and tools/list, 
     assert.equal(
       error,
       `FreeCAD MCP Bridge serves HTTPS at ${endpoint}, and this connection was plain HTTP. ` +
-        "On this machine the extension trusts serving-cert.pem in the bridge's folder, which is not there. Turn the bridge on in FreeCAD with a certificate set, so it writes that file."
+        "On this machine the extension trusts serving-cert.pem in the bridge's folder, which is not there. Turn the bridge off and on again in FreeCAD, so it writes that file, and check that FREECAD_MCP_TOKEN_DIR, if set, is the same for both."
     );
     await shim.stop();
     httpsBridge.close();

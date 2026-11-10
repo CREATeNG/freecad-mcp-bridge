@@ -319,63 +319,14 @@
       <string>Security</string>
      </property>
      <layout class="QFormLayout" name="securityLayout">
-      <item row="0" column="0" colspan="2">
-       <layout class="QHBoxLayout" name="tlsTokenRow">
-        <item>
-         <widget class="QPushButton" name="generateTokenButton">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="toolTip">
-           <string>Generate a new bearer token and show it once.</string>
-          </property>
-          <property name="text">
-           <string>Generate new token</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="generateCertButton">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="toolTip">
-           <string>Generate a certificate for addresses beyond loopback.</string>
-          </property>
-          <property name="text">
-           <string>Generate certificate</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <spacer name="tokenRowSpacer">
-          <property name="orientation">
-           <enum>Qt::Horizontal</enum>
-          </property>
-          <property name="sizeHint" stdset="0">
-           <size>
-            <width>20</width>
-            <height>10</height>
-           </size>
-          </property>
-         </spacer>
-        </item>
-       </layout>
-      </item>
-      <item row="1" column="0">
+      <item row="0" column="0">
        <widget class="QLabel" name="tlsCertFileLabel">
         <property name="text">
          <string>TLS certificate file (PEM)</string>
         </property>
        </widget>
       </item>
-      <item row="1" column="1">
+      <item row="0" column="1">
        <widget class="Gui::PrefFileChooser" name="tlsCertFileChooser">
         <property name="toolTip">
          <string>PEM certificate file for HTTPS.</string>
@@ -394,14 +345,14 @@
         </property>
        </widget>
       </item>
-      <item row="2" column="0">
+      <item row="1" column="0">
        <widget class="QLabel" name="tlsKeyFileLabel">
         <property name="text">
          <string>TLS private key file (PEM)</string>
         </property>
        </widget>
       </item>
-      <item row="2" column="1">
+      <item row="1" column="1">
        <widget class="Gui::PrefFileChooser" name="tlsKeyFileChooser">
         <property name="toolTip">
          <string>PEM private key file for HTTPS.</string>
@@ -419,6 +370,79 @@
          <cstring>Mod/freecad-mcp-bridge</cstring>
         </property>
        </widget>
+      </item>
+      <item row="2" column="1">
+       <layout class="QHBoxLayout" name="tlsGenerateRow">
+        <item>
+         <widget class="QLabel" name="generateCertLabel">
+          <property name="text">
+           <string>or generate one</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="generateCertButton">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="toolTip">
+           <string>Generate a self-signed TLS certificate.</string>
+          </property>
+          <property name="text">
+           <string>Generate certificate</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="certRowSpacer">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>10</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </item>
+      <item row="3" column="0" colspan="2">
+       <layout class="QHBoxLayout" name="tlsTokenRow">
+        <item>
+         <widget class="QPushButton" name="generateTokenButton">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="toolTip">
+           <string>Generate a new bearer token and show it once.</string>
+          </property>
+          <property name="text">
+           <string>Generate new token</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="tokenRowSpacer">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>10</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
       </item>
      </layout>
     </widget>
@@ -592,7 +616,7 @@
          <enum>Qt::RichText</enum>
         </property>
         <property name="text">
-         <string>A loopback entry uses &lt;br/&gt;&lt;nobr&gt;http:&amp;#x2060;//&amp;#x2060;127.0.0.1&amp;#x2060;:&amp;#x2060;&amp;lt;PORT&amp;gt;/mcp&lt;/nobr&gt;. Beyond loopback, use &lt;br/&gt;&lt;nobr&gt;https:&amp;#x2060;//&amp;#x2060;&amp;lt;ADDRESS&amp;gt;&amp;#x2060;:&amp;#x2060;&amp;lt;PORT&amp;gt;/mcp&lt;/nobr&gt;. Every listener requires the bearer token.&lt;br/&gt;Claude Desktop speaks stdio only and needs this connector: &lt;a href="https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest/download/freecad-mcp-bridge.mcpb"&gt;Download the bundle&lt;/a&gt;.</string>
+         <string>Without a TLS certificate, a loopback entry uses &lt;br/&gt;&lt;nobr&gt;http:&amp;#x2060;//&amp;#x2060;127.0.0.1&amp;#x2060;:&amp;#x2060;&amp;lt;PORT&amp;gt;/mcp&lt;/nobr&gt;. With one, every entry uses &lt;br/&gt;&lt;nobr&gt;https:&amp;#x2060;//&amp;#x2060;&amp;lt;ADDRESS&amp;gt;&amp;#x2060;:&amp;#x2060;&amp;lt;PORT&amp;gt;/mcp&lt;/nobr&gt;, and beyond loopback one is required. Every listener requires the bearer token.&lt;br/&gt;Claude Desktop speaks stdio only and needs this connector: &lt;a href="https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest/download/freecad-mcp-bridge.mcpb"&gt;Download the bundle&lt;/a&gt;.</string>
         </property>
         <property name="wordWrap">
          <bool>true</bool>

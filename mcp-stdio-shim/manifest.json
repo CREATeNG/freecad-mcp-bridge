@@ -44,7 +44,7 @@
     "host": {
       "type": "string",
       "title": "FreeCAD host",
-      "description": "The address or hostname of the machine running FreeCAD (127.0.0.1 by default). This machine includes localhost, ::1, and 127.x.x.x. For another host, also set Bearer token and TLS certificate file (PEM) below.",
+      "description": "The address or hostname of the machine running FreeCAD (127.0.0.1 by default). localhost, ::1 and 127.x.x.x count as this machine. For another host, also set Bearer token and TLS certificate file (PEM) below.",
       "default": "127.0.0.1",
       "required": false
     },

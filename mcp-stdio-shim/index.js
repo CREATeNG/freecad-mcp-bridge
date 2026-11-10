@@ -27,11 +27,10 @@
  * a certificate for another host, or a token, or when the call finds the
  * bridge unreachable, serving HTTPS on this machine with no
  * serving-cert.pem, returning 401, or failing TLS, the tool result's
- * error says which.
- * A ping is answered
- * locally with an empty result. A notification is not sent and gets no
- * reply. Any other method gets a method-not-found error naming the
- * method. Node stdlib only (global fetch and node:https, >=18).
+ * error says which. A ping is answered locally with an empty result.
+ * A notification is not sent and gets no reply. Any other method gets
+ * a method-not-found error naming the method. Node stdlib only
+ * (global fetch and node:https, >=18).
  */
 
 const fs = require("fs");
@@ -122,7 +121,7 @@ const TLS_CERT_FILE = envSetting("FREECAD_MCP_TLS_CERT_FILE");
 const HTTPS_ENDPOINT = `https://${URL_HOST}:${PORT}/mcp`;
 const PLAIN_HTTP_TO_HTTPS_MESSAGE =
   `FreeCAD MCP Bridge serves HTTPS at ${HTTPS_ENDPOINT}, and this connection was plain HTTP. ` +
-  "On this machine the extension trusts serving-cert.pem in the bridge's folder, which is not there. Turn the bridge on in FreeCAD with a certificate set, so it writes that file.";
+  "On this machine the extension trusts serving-cert.pem in the bridge's folder, which is not there. Turn the bridge off and on again in FreeCAD, so it writes that file, and check that FREECAD_MCP_TOKEN_DIR, if set, is the same for both.";
 const MISSING_REMOTE_CERT_MESSAGE =
   `FreeCAD host is set to ${BARE_HOST}, which requires HTTPS. ` +
   "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to a copy of FreeCAD's certificate file, not the private key.";
@@ -186,7 +185,7 @@ function tlsErrorMessage(err) {
   if (IS_DEFAULT_HOST) {
     return (
       where +
-      `Check that serving-cert.pem in the bridge's folder is the certificate the bridge is serving, and covers ${BARE_HOST}.`
+      "Turn the bridge off and on again in FreeCAD to rewrite it."
     );
   }
   return (

@@ -1,4 +1,5 @@
 import os
+import sys
 
 import FreeCAD as App
 import FreeCADGui as Gui
@@ -250,14 +251,86 @@ def generate_and_show_token(parent=None):
     return token
 
 
-def _cert_no_address_dialog_text():
-    """Return `(title, body)` when `Listen addresses` has no address beyond
-    loopback."""
+CERT_KEY_TYPES = ("RSA 4096", "ECDSA P-256")
+_CERT_KEY_TYPE_IDS = {
+    "RSA 4096": "rsa-4096",
+    "ECDSA P-256": "ecdsa-p256",
+}
+
+
+def _tool_id(tool):
+    """Return the tool identifier expected by `cert_tools.generate()`."""
+    if isinstance(tool, dict) and "id" in tool:
+        return tool["id"]
+    if hasattr(tool, "id"):
+        return tool.id
+    return str(tool)
+
+
+def _key_type_id(key_type):
+    """Return the key-type identifier expected by `cert_tools.generate()`."""
+    return _CERT_KEY_TYPE_IDS.get(key_type, key_type)
+
+
+def _cert_tool_install_hint(platform_name=None):
+    """Return a platform-specific note explaining where to install a
+    certificate tool when none was found on this machine."""
+    plat = sys.platform if platform_name is None else platform_name
+    if plat == "win32":
+        where = (
+            "Install Git for Windows (which includes openssl) or "
+            "openssl for Windows."
+        )
+    elif plat == "darwin":
+        where = (
+            "Install openssl (for example with Homebrew: "
+            "brew install openssl) or Xcode Command Line Tools."
+        )
+    else:
+        where = (
+            "Install the openssl package from your system package "
+            "manager (for example: apt install openssl or "
+            "dnf install openssl)."
+        )
     return (
-        f"{DISPLAY_NAME}: TLS certificate",
-        "Add an address beyond loopback in Listen addresses first, then "
-        "click Generate certificate.",
+        "No certificate tool was found on this machine, so this "
+        "certificate was generated with the built-in RSA 2048 "
+        f"fallback. To generate RSA 4096 or ECDSA P-256 certificates: "
+        f"{where}"
     )
+
+
+def _tool_display_label(tool):
+    """Return a human-readable label for a tool returned by `find_tools()`."""
+    if isinstance(tool, str):
+        return tool
+    if isinstance(tool, dict):
+        for key in ("label", "name", "description", "kind", "path"):
+            val = tool.get(key)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+        return str(tool)
+    for attr in ("label", "name", "description"):
+        val = getattr(tool, attr, None)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    return str(tool)
+
+
+def _find_cert_tools():
+    """Return `(cert_tools_module, tools)` from `freecad.mcp_bridge.cert_tools`,
+    or `(None, [])` when `cert_tools` is unavailable or returns no tools."""
+    import importlib
+
+    try:
+        cert_tools = importlib.import_module("freecad.mcp_bridge.cert_tools")
+    except ImportError:
+        return None, []
+    find_fn = getattr(cert_tools, "find_tools", None)
+    if not callable(find_fn):
+        return cert_tools, []
+    tools = list(find_fn() or ())
+    return cert_tools, tools
 
 
 def _cert_replace_dialog_text():
@@ -266,30 +339,44 @@ def _cert_replace_dialog_text():
     return (
         f"{DISPLAY_NAME}: Replace TLS certificate?",
         "Replace the TLS certificate and private key?\n\n"
-        "Any MCP client that trusts the present certificate will need the "
+        "Any MCP client that trusts the current certificate will need the "
         "new certificate file.",
     )
 
 
-def _cert_generated_dialog_text(cert_file, hosts):
+def _cert_generated_dialog_text(
+    cert_file, hosts, expiry_date="", install_hint=""
+):
     """Return `(title, body)` after generating a TLS certificate and private
     key."""
     addr_lines = "\n".join(f"  {host}" for host in hosts)
-    return (
-        f"{DISPLAY_NAME}: TLS certificate",
+    expiry_line = (
+        f"{expiry_date} (825 days)" if expiry_date else "825 days"
+    )
+    body = (
         "Generated a new TLS certificate and private key.\n\n"
         f"Certificate file:\n  {cert_file}\n\n"
-        f"Addresses beyond loopback covered:\n{addr_lines}\n\n"
-        "Configure each MCP client connecting beyond loopback to trust this "
-        "certificate file.",
+        f"Addresses covered:\n{addr_lines}\n\n"
+        f"Expires:\n  {expiry_line}\n\n"
     )
+    if install_hint:
+        body += f"{install_hint}\n\n"
+    body += (
+        "Click OK in Preferences to use it. The Claude Desktop "
+        "extension on this machine takes the certificate by itself "
+        "at the bridge's next start. Give any other MCP client a "
+        "copy of this certificate file, not the private key, to trust."
+    )
+    return (f"{DISPLAY_NAME}: TLS certificate", body)
 
 
 def _cert_error_dialog_text(reason):
     """Return `(title, body)` when certificate generation or writing fails."""
     return (
         f"{DISPLAY_NAME}: TLS certificate",
-        f"Could not generate the TLS certificate ({reason}).",
+        "Could not generate the TLS certificate "
+        f"({str(reason).strip().rstrip('.')}). "
+        "Choose another certificate tool, or select your own files.",
     )
 
 
@@ -401,11 +488,80 @@ def _show_cert_message(title, body, warning, object_name, parent=None):
         box.deleteLater()
 
 
+def _choose_cert_tool_and_key_type(tools, parent=None):
+    """Prompt the user to choose a certificate tool from `tools` and a key
+    type (`RSA 4096` or `ECDSA P-256`). Return `(tool, key_type)` or `None`."""
+    if not tools:
+        return None
+    try:
+        import FreeCADGui as Gui
+        from PySide.QtWidgets import (
+            QComboBox,
+            QDialog,
+            QDialogButtonBox,
+            QFormLayout,
+            QLabel,
+            QVBoxLayout,
+            QWidget,
+        )
+    except Exception:
+        return tools[0], CERT_KEY_TYPES[0]
+
+    host = (
+        parent
+        if isinstance(parent, QWidget)
+        else Gui.getMainWindow()
+    )
+    dlg = QDialog(host)
+    title = f"{DISPLAY_NAME}: Generate TLS certificate"
+    QDialog.setWindowTitle(dlg, title)
+    dlg.setObjectName("MCPBridgeCertToolDialog")
+    layout = QVBoxLayout(dlg)
+    intro = QLabel(
+        "Choose the certificate tool and key type for the new TLS "
+        "certificate:",
+        dlg,
+    )
+    intro.setObjectName("certToolDialogLabel")
+    intro.setWordWrap(True)
+    layout.addWidget(intro)
+
+    form = QFormLayout()
+    tool_combo = QComboBox(dlg)
+    tool_combo.setObjectName("certToolComboBox")
+    for tool in tools:
+        tool_combo.addItem(_tool_display_label(tool))
+    form.addRow("Certificate tool", tool_combo)
+
+    key_combo = QComboBox(dlg)
+    key_combo.setObjectName("certKeyTypeComboBox")
+    for key_type in CERT_KEY_TYPES:
+        key_combo.addItem(key_type)
+    form.addRow("Key type", key_combo)
+    layout.addLayout(form)
+
+    buttons = QDialogButtonBox(
+        QDialogButtonBox.Ok | QDialogButtonBox.Cancel, dlg
+    )
+    buttons.accepted.connect(dlg.accept)
+    buttons.rejected.connect(dlg.reject)
+    layout.addWidget(buttons)
+    try:
+        if dlg.exec() != QDialog.Accepted:
+            return None
+        tool_idx = max(0, min(tool_combo.currentIndex(), len(tools) - 1))
+        return tools[tool_idx], key_combo.currentText()
+    finally:
+        dlg.setParent(None)
+        dlg.deleteLater()
+
+
 def generate_and_show_certificate(parent=None):
-    """Generate a self-signed TLS certificate and private key for the
-    addresses beyond loopback in `Listen addresses`, fill both TLS file
-    fields, and show the certificate path and covered addresses."""
-    from freecad.mcp_bridge import config, tls_cert
+    """Generate a self-signed TLS certificate and private key covering
+    `127.0.0.1`, `localhost`, and any addresses beyond loopback in `Listen
+    addresses`, fill both TLS file fields, and show the certificate path,
+    covered addresses, and expiry."""
+    from freecad.mcp_bridge import config, tls_cert, token_file
 
     host = parent
     if host is None:
@@ -433,7 +589,7 @@ def generate_and_show_certificate(parent=None):
             if raw_entries is not None
             else config.listen_addresses()
         )
-        hosts = tls_cert.beyond_loopback_hosts(entries)
+        hosts = config.certificate_target_hosts(entries)
     except ValueError as exc:
         _show_cert_message(
             f"{DISPLAY_NAME}: TLS certificate",
@@ -444,24 +600,51 @@ def generate_and_show_certificate(parent=None):
         )
         return None
 
-    if not hosts:
-        title, body = _cert_no_address_dialog_text()
-        _show_cert_message(
-            title,
-            body,
-            warning=True,
-            object_name="MCPBridgeCertNoAddressDialog",
-            parent=host,
-        )
-        return None
-
     if _cert_would_replace(host) and not _confirm_replace_certificate(
         parent=host
     ):
         return None
 
+    cert_tools_mod, tools = _find_cert_tools()
+    install_hint = ""
+    chosen = None
+    if tools and cert_tools_mod is not None:
+        chosen = _choose_cert_tool_and_key_type(tools, parent=host)
+        if chosen is None:
+            return None
+    else:
+        install_hint = _cert_tool_install_hint()
+
+    wait_cursor = False
     try:
-        c_path, k_path = tls_cert.generate_and_store_certificate(hosts)
+        from PySide.QtCore import Qt
+        from PySide.QtWidgets import QApplication
+
+        app = QApplication.instance()
+        if app is not None:
+            app.setOverrideCursor(Qt.WaitCursor)
+            wait_cursor = True
+    except Exception:
+        app = None
+    try:
+        if chosen is not None and cert_tools_mod is not None:
+            chosen_tool, chosen_key_type = chosen
+            c_path = tls_cert.cert_path()
+            k_path = tls_cert.key_path()
+            folder = c_path.parent
+            folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+            token_file._user_only(folder, is_dir=True)
+            cert_tools_mod.generate(
+                _tool_id(chosen_tool),
+                _key_type_id(chosen_key_type),
+                hosts,
+                str(c_path),
+                str(k_path),
+            )
+            token_file._user_only(k_path, is_dir=False)
+        else:
+            c_path, k_path = tls_cert.generate_and_store_certificate(hosts)
+            token_file._user_only(k_path, is_dir=False)
     except Exception as exc:
         title, body = _cert_error_dialog_text(exc)
         _show_cert_message(
@@ -472,6 +655,12 @@ def generate_and_show_certificate(parent=None):
             parent=host,
         )
         return None
+    finally:
+        if wait_cursor:
+            try:
+                app.restoreOverrideCursor()
+            except Exception:
+                pass
 
     c_str, k_str = str(c_path), str(k_path)
     _set_chooser_file_name(host, "tlsCertFileChooser", c_str)
@@ -487,7 +676,10 @@ def generate_and_show_certificate(parent=None):
                 note.setText(_listen_address_note_text(c_str))
         except Exception:
             pass
-    title, body = _cert_generated_dialog_text(c_str, hosts)
+    expiry_date = config.certificate_expiry_date(c_str) or ""
+    title, body = _cert_generated_dialog_text(
+        c_str, hosts, expiry_date=expiry_date, install_hint=install_hint
+    )
     _show_cert_message(
         title,
         body,
@@ -535,7 +727,9 @@ class MCPBridgeCommand:
                     for entry in entries
                     if not config.is_loopback_address(entry)
                 ]
-                if non_loopback:
+                if non_loopback or (
+                    cert_file.strip() and key_file.strip()
+                ):
                     config.build_ssl_context(
                         cert_file, key_file, non_loopback
                     )

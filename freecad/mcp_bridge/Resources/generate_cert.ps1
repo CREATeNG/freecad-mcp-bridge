@@ -97,6 +97,16 @@ try {
     )
     $request.CertificateExtensions.Add($basic)
 
+    $usageFlags = (
+        [System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature -bor
+        [System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::KeyEncipherment
+    )
+    $usage = New-Object `
+        System.Security.Cryptography.X509Certificates.X509KeyUsageExtension(
+        $usageFlags, $true
+    )
+    $request.CertificateExtensions.Add($usage)
+
     $oids = New-Object System.Security.Cryptography.OidCollection
     [void]$oids.Add((New-Object System.Security.Cryptography.Oid(
         "1.3.6.1.5.5.7.3.1"

@@ -377,6 +377,46 @@ def _certificate_expired_date(decoded: dict) -> str | None:
     return None
 
 
+def certificate_expiry_date(cert_file: str) -> str | None:
+    """Return the UTC `YYYY-MM-DD` expiry date of `cert_file`, or `None`
+    when `notAfter` cannot be read."""
+    decoded = _decode_cert(cert_file)
+    if decoded is None:
+        return None
+    not_after = decoded.get("notAfter")
+    if not isinstance(not_after, str) or not not_after.strip():
+        return None
+    try:
+        expires_at = ssl.cert_time_to_seconds(not_after)
+    except (ValueError, OverflowError, OSError):
+        return None
+    dt = datetime.datetime.fromtimestamp(
+        expires_at, tz=datetime.timezone.utc
+    )
+    return dt.strftime("%Y-%m-%d")
+
+
+def certificate_target_hosts(
+    entries: list[str] | tuple[str, ...],
+) -> list[str]:
+    """Return `127.0.0.1`, `localhost`, and each distinct host beyond
+    loopback from `entries`, in order."""
+    hosts: list[str] = ["127.0.0.1", "localhost"]
+    seen: set[str] = set(hosts)
+    for entry in entries:
+        host, _ = parse_listen_entry(entry)
+        if is_loopback_address(host):
+            continue
+        try:
+            norm = str(ipaddress.ip_address(host))
+        except ValueError:
+            norm = host.lower()
+        if norm not in seen:
+            seen.add(norm)
+            hosts.append(norm)
+    return hosts
+
+
 def certificate_hosts(cert_file: str) -> set[str]:
     """Names and IP addresses covered by the PEM certificate `cert_file`."""
     decoded = _decode_cert(cert_file)
@@ -416,16 +456,17 @@ def build_ssl_context(
 ) -> ssl.SSLContext:
     """Build a server SSLContext from `cert_file` and `key_file`.
 
-    When `addresses` has entries beyond loopback, `cert_file` must not be
-    expired and must cover every entry beyond loopback.
+    `cert_file` must be valid now (neither before `notBefore` nor past
+    `notAfter`), and when `addresses` has entries beyond loopback, it
+    must cover every entry beyond loopback.
     """
     cert = (cert_file or "").strip()
     key = (key_file or "").strip()
     if not cert or not key:
         raise ValueError(
-            "TLS is required and needs a certificate file and a private "
-            "key file. Generate or select both in Edit → Preferences → "
-            "MCP Bridge."
+            "An address beyond loopback requires TLS, which needs a "
+            "certificate file and a private key file. Select or "
+            "generate both in Edit → Preferences → MCP Bridge."
         )
     try:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
@@ -435,45 +476,45 @@ def build_ssl_context(
     except (OSError, ssl.SSLError) as exc:
         raise ValueError(
             f"Could not load TLS certificate or private key ({exc}). "
-            "Check or generate the TLS files in Edit → Preferences → "
+            "Select or generate the TLS files in Edit → Preferences → "
             "MCP Bridge."
         ) from exc
+    decoded = _decode_cert(cert)
+    if decoded is None:
+        FreeCAD.Console.PrintWarning(
+            f"[{DISPLAY_NAME}] WARNING: could not inspect the TLS "
+            "certificate for expiry or address coverage. Continuing "
+            "without those checks. Connect by the listed address, "
+            "not by a name.\n"
+        )
+        return context
+    not_before_date = _certificate_not_yet_valid_date(decoded)
+    if not_before_date is not None:
+        raise ValueError(
+            f"The TLS certificate is not valid until {not_before_date}. "
+            "Select or generate a certificate in Edit → Preferences → "
+            "MCP Bridge."
+        )
+    expired_date = _certificate_expired_date(decoded)
+    if expired_date is not None:
+        raise ValueError(
+            f"The TLS certificate expired on {expired_date}. "
+            "Select or generate a certificate in Edit → Preferences → "
+            "MCP Bridge."
+        )
     beyond_loopback = [
         entry
         for entry in (addresses or ())
         if not is_loopback_address(entry)
     ]
     if beyond_loopback:
-        decoded = _decode_cert(cert)
-        if decoded is None:
-            FreeCAD.Console.PrintWarning(
-                f"[{DISPLAY_NAME}] WARNING: could not inspect the TLS "
-                "certificate for expiry or address coverage. Continuing "
-                "without those checks. Connect by the listed address, "
-                "not by a name.\n"
-            )
-            return context
-        not_before_date = _certificate_not_yet_valid_date(decoded)
-        if not_before_date is not None:
-            raise ValueError(
-                f"The TLS certificate is not valid until {not_before_date}. "
-                "Generate the certificate again in Edit → Preferences → "
-                "MCP Bridge."
-            )
-        expired_date = _certificate_expired_date(decoded)
-        if expired_date is not None:
-            raise ValueError(
-                f"The TLS certificate expired on {expired_date}. "
-                "Generate the certificate again in Edit → Preferences → "
-                "MCP Bridge."
-            )
         covered = _certificate_hosts_from_decoded(decoded)
         for entry in beyond_loopback:
             host = _entry_host(entry)
             if not certificate_covers_host(covered, host):
                 raise ValueError(
                     f"The TLS certificate does not cover {host}. "
-                    "Generate the certificate again in Edit → "
+                    "Select or generate a certificate in Edit → "
                     "Preferences → MCP Bridge."
                 )
     return context
