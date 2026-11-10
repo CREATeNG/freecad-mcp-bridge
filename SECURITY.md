@@ -33,11 +33,11 @@ included, and each start writes a copy of the serving certificate to
 `<home>/.freecad-mcp-bridge/serving-cert.pem` for the local Claude
 Desktop extension; when they are not set, loopback entries use HTTP
 (and `serving-cert.pem` is removed at start), while non-loopback
-entries serve HTTPS only and require a certificate covering each
-non-loopback address (**Generate certificate** creates `tls-cert.pem`
-and `tls-key.pem` in `<home>/.freecad-mcp-bridge/`, with `tls-key.pem`
-readable by you only, covering `127.0.0.1`, `localhost`, and any
-listed non-loopback addresses). Any client that can reach an entry,
+entries fail to start until both files are set. **Generate
+certificate** creates `tls-cert.pem` and `tls-key.pem` in
+`<home>/.freecad-mcp-bridge/`, with `tls-key.pem` readable by you
+only, covering `127.0.0.1`, `localhost`, and any listed address
+beyond loopback. Any client that can reach an entry,
 with the
 bearer token, can run Python code in FreeCAD as your user account.
 The first start asks you to accept that, loopback included, and each

@@ -464,9 +464,9 @@ def build_ssl_context(
     key = (key_file or "").strip()
     if not cert or not key:
         raise ValueError(
-            "TLS is required and needs a certificate file and a private "
-            "key file. Select or generate both in Edit → Preferences → "
-            "MCP Bridge."
+            "An address beyond loopback requires TLS, which needs a "
+            "certificate file and a private key file. Select or "
+            "generate both in Edit → Preferences → MCP Bridge."
         )
     try:
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)

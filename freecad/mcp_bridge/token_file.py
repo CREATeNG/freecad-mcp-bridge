@@ -79,7 +79,7 @@ def write_token(token: str) -> None:
 
 def write_serving_cert(cert_file: str | Path) -> None:
     """Write a copy of `cert_file` to `serving-cert.pem` beside the token file."""
-    content = Path(cert_file).read_text(encoding="utf-8")
+    content = Path(cert_file).read_bytes()
     directory = token_dir()
     directory.mkdir(parents=True, exist_ok=True)
     _user_only(directory, is_dir=True)
@@ -88,9 +88,7 @@ def write_serving_cert(cert_file: str | Path) -> None:
     )
     temporary = Path(name)
     try:
-        with os.fdopen(
-            descriptor, "w", encoding="utf-8", newline="\n"
-        ) as handle:
+        with os.fdopen(descriptor, "wb") as handle:
             handle.write(content)
         _user_only(temporary, is_dir=False)
         _replace_file(temporary, serving_cert_path())

@@ -3,6 +3,7 @@
 import ctypes
 import socket
 import ssl
+import subprocess
 import stat
 import sys
 import tempfile
@@ -187,6 +188,22 @@ class CertToolTests(unittest.TestCase):
                 if path.name not in ("cert.pem", "key.pem")
             ]
             self.assertEqual(leftovers, [])
+
+
+class RunWindowTests(unittest.TestCase):
+    def test_run_passes_the_no_window_flag_on_windows(self):
+        """On Windows, _run starts the tool with no console window."""
+        if not sys.platform.startswith("win"):
+            self.skipTest("the console flag is Windows only")
+        with mock.patch(
+            "freecad.mcp_bridge.cert_tools.subprocess.run"
+        ) as run:
+            run.return_value = subprocess.CompletedProcess([], 0)
+            cert_tools._run(["openssl", "version"])
+        self.assertEqual(
+            run.call_args.kwargs.get("creationflags"),
+            subprocess.CREATE_NO_WINDOW,
+        )
 
 
 if __name__ == "__main__":

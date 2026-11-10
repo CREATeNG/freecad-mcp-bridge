@@ -66,7 +66,7 @@ The server is off until you toggle it on, each session — click the button agai
      reads that file. It also reads `serving-cert.pem` in the same
      folder, which the bridge writes at each start with TLS and
      removes at each start without. With that file the extension
-     uses HTTPS and trusts only it. Without it, HTTP. Paste a
+     uses HTTPS and trusts only it. Without it, it uses HTTP. Paste a
      token of at least 32 characters into **Bearer token** only to
      replace that token file for every client, and a shorter one
      is ignored.
@@ -190,27 +190,26 @@ change a model — for example:
   included, and each start writes a copy of the certificate to
   `<home>/.freecad-mcp-bridge/serving-cert.pem` so the Claude Desktop
   extension on this machine can verify it automatically. Without them,
-  loopback entries serve HTTP (and `serving-cert.pem` is removed at
-  start), while entries beyond loopback serve HTTPS only. Beside the
-  two file fields, **or generate one** → **Generate certificate**
-  creates a self-signed certificate
-  (`<home>/.freecad-mcp-bridge/tls-cert.pem`) and private key
-  (`<home>/.freecad-mcp-bridge/tls-key.pem`, readable by you only)
-  covering `127.0.0.1`, `localhost`, and every address beyond loopback
-  in **Listen addresses**, valid for 825 days, and fills in both
-  fields. When a certificate tool is found on the machine (such as
-  OpenSSL, including Git for Windows' copy on Windows), FreeCAD offers
-  a choice of tool and key type (**RSA 4096** or **ECDSA P-256**);
-  when none is found, it notes where to install one for your platform
-  and falls back to the built-in RSA 2048 generator. If a certificate
-  or private key is already set or exists there, FreeCAD asks before
-  replacing it because MCP clients that trust the present certificate
-  will need the new one, and afterwards shows the certificate path,
-  the covered addresses, and the expiry date. Starting with a
-  certificate fails when the certificate is not yet valid or has
-  expired, and starting with an entry beyond loopback also fails when
-  either file is not set or the certificate does not cover the
-  address.
+  loopback entries serve HTTP, and a start with an entry beyond
+  loopback fails.
+- **The certificate copy** — another MCP client needs a copy of the
+  certificate file, not the private key. The extension on this
+  machine reads `serving-cert.pem` and trusts only that file.
+- **Generate certificate** — beside the two file fields, **or
+  generate one** creates `tls-cert.pem` and `tls-key.pem` (the key
+  readable by you only) in `<home>/.freecad-mcp-bridge`, covering
+  `127.0.0.1`, `localhost`, and every address beyond loopback,
+  for 825 days, and fills in both fields. OK in Preferences saves
+  them. Where openssl, Git for Windows' copy, or Windows PowerShell
+  is found, you choose the tool and **RSA 4096** or **ECDSA P-256**.
+  Where none is found, FreeCAD says where to install one and uses
+  its own RSA 2048 generator. It asks before replacing the current
+  certificate, then shows the path, the covered addresses, and the
+  expiry.
+- **Certificate failures** — a start fails when the certificate is
+  not yet valid or has expired, and a start with an entry beyond
+  loopback also fails when either file is not set or the certificate
+  does not cover the address.
 - **Permission mode** — **Ask** (the default) shows you an agent's
   code before it runs. **Unrestricted** runs it unseen, with your
   full permissions. [What the AI can do](#what-the-ai-can-do) has
