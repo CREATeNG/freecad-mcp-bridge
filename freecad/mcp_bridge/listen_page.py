@@ -61,9 +61,17 @@ def port_for_new_row(raw: str) -> int:
     return DEFAULT_PORT
 
 
+def effective_entries(raw: str) -> list[str]:
+    """Entries the page acts on. An empty box is the default."""
+    items = split_entries(raw)
+    if items:
+        return items
+    return [format_entry(DEFAULT_LISTEN_HOST, DEFAULT_PORT)]
+
+
 def row_is_ticked(raw: str, address: str) -> bool:
-    """True when any entry in `raw` is for `address`."""
-    for item in split_entries(raw):
+    """True when any effective entry is for `address`."""
+    for item in effective_entries(raw):
         try:
             host, _port = parse_listen_entry(item)
         except ValueError:
@@ -74,10 +82,18 @@ def row_is_ticked(raw: str, address: str) -> bool:
 
 
 def with_address(raw: str, address: str) -> str:
-    """Add `address` at the row port when it is not already listed."""
+    """Add `address` at the row port when it is not already listed.
+
+    An empty box is the default entry, so a new tick keeps it.
+    """
+    base = (
+        effective_entries(raw)
+        if not split_entries(raw)
+        else split_entries(raw)
+    )
     if row_is_ticked(raw, address):
-        return join_entries(split_entries(raw))
-    entries = split_entries(raw)
+        return join_entries(base)
+    entries = list(base)
     entries.append(format_entry(address, port_for_new_row(raw)))
     return join_entries(entries)
 
@@ -104,7 +120,7 @@ def address_rows(
 
     `records` is `(interface name, address)`. IPv4 comes first.
     Link-local IPv6 is left out. `::1` stays. One row per address.
-    The label is `<interface name> <address>`.
+    The label is `<address> (<interface name>)`.
     """
     ipv4: list[tuple[str, str]] = []
     ipv6: list[tuple[str, str]] = []
@@ -123,7 +139,8 @@ def address_rows(
         if key in seen:
             continue
         seen.add(key)
-        label = f"{(name or '').strip()} {text}".strip()
+        iface = (name or "").strip()
+        label = f"{text} ({iface})" if iface else text
         row = (label, text)
         if ip.version == 4:
             ipv4.append(row)
@@ -143,18 +160,32 @@ def machine_addresses(rows: list[tuple[str, str]]) -> set[str]:
     return found
 
 
-def entry_marks(raw: str, machine: set[str]) -> list[str]:
-    """Why an entry will stop a start, one line each.
+def on_this_machine(host: str, listed: set[str]) -> bool:
+    """True when `host` is an address of this machine.
 
-    A name in the list is left alone: it still binds as it does today.
-    An empty list is marked, and a start with nothing saved still uses
-    127.0.0.1:39280, because an unset list looks the same.
+    Every address in `listed` counts, and so does all of 127.0.0.0/8.
+    The /8 is not copied into `listed`.
+    """
+    try:
+        ip = ipaddress.ip_address((host or "").strip())
+    except ValueError:
+        return False
+    if ip.version == 4 and ip in ipaddress.ip_network("127.0.0.0/8"):
+        return True
+    return str(ip) in listed
+
+
+def entry_marks(raw: str, machine: set[str]) -> list[str]:
+    """Lines for entries that will stop a start, and the empty-list note.
+
+    A name in the list is left alone. An empty list is noted, and a
+    start with nothing saved still uses 127.0.0.1:39280, because an
+    unset list looks the same.
     """
     items = split_entries(raw)
     if not items:
         return [
-            "Nothing to listen on. An empty list starts the bridge "
-            "on 127.0.0.1:39280."
+            "The list is empty, so the bridge starts on 127.0.0.1:39280."
         ]
     marks = []
     for item in items:
@@ -164,11 +195,14 @@ def entry_marks(raw: str, machine: set[str]) -> list[str]:
             marks.append(str(exc))
             continue
         try:
-            ip = ipaddress.ip_address(host)
+            ipaddress.ip_address(host)
         except ValueError:
             continue
-        if str(ip) not in machine:
-            marks.append(f"{host} is not an address of this machine.")
+        if not on_this_machine(host, machine):
+            marks.append(
+                f"{host} is not an address of this machine. "
+                "The bridge will not start with it."
+            )
     return marks
 
 
@@ -279,15 +313,16 @@ def difference_text(page_raw: str, listening: list[str] | None) -> str:
     """
     if listening is None:
         return ""
-    page = split_entries(page_raw)
+    page = effective_entries(page_raw)
     if _same_entries(page, list(listening)):
         return ""
-    page_s = ", ".join(page) if page else "nothing"
+    page_s = ", ".join(page)
     listen_s = ", ".join(listening) if listening else "nothing"
     return (
         f"The bridge is listening on {listen_s}. "
-        f"This list is {page_s}. "
-        "Click OK, then turn the bridge off and on, to apply it."
+        f"Listen addresses has {page_s}. "
+        "Click OK, then turn the bridge off and on again, "
+        "to apply the change."
     )
 
 

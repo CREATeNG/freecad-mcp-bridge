@@ -303,7 +303,7 @@
          <string>Refresh</string>
         </property>
         <property name="toolTip">
-         <string>Read this machine's addresses again, and look up the host names.</string>
+         <string>Read the addresses and look up the names again.</string>
         </property>
        </widget>
       </item>
@@ -339,14 +339,14 @@
             <string>This machine</string>
            </property>
            <property name="toolTip">
-            <string>Accept this name on the addresses above. It does not open a listener.</string>
+            <string>Lets MCP clients use this name for the addresses above.</string>
            </property>
           </widget>
          </item>
          <item>
           <widget class="Gui::PrefTextEdit" name="hostNamesTextEdit">
            <property name="toolTip">
-            <string>Other names to accept on the addresses above, one per line. A name does not open a listener.</string>
+            <string>Other names for the addresses above, one per line.</string>
            </property>
            <property name="tabChangesFocus">
             <bool>true</bool>

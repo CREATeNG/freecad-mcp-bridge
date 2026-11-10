@@ -397,7 +397,7 @@ def certificate_expiry_date(cert_file: str) -> str | None:
 
 
 def host_names() -> list[str]:
-    """Host names accepted on the open listeners. None opens a listener."""
+    """Host names accepted on the open listeners. No name opens a listener."""
     raw = _params().GetString("HostNames", "")
     names: list[str] = []
     seen: set[str] = set()
@@ -421,14 +421,12 @@ def certificate_target_hosts(
     entries: list[str] | tuple[str, ...],
     extra_names: list[str] | tuple[str, ...] | None = None,
 ) -> list[str]:
-    """Return `127.0.0.1`, `localhost`, each host beyond loopback in
-    `entries`, then each name in `extra_names`, in order."""
+    """Return `127.0.0.1`, `localhost`, every address in `entries`,
+    loopback included, then each name in `extra_names`, in order."""
     hosts: list[str] = ["127.0.0.1", "localhost"]
     seen: set[str] = set(hosts)
     for entry in entries:
         host, _ = parse_listen_entry(entry)
-        if is_loopback_address(host):
-            continue
         try:
             norm = str(ipaddress.ip_address(host))
         except ValueError:

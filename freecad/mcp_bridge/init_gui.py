@@ -558,9 +558,9 @@ def _choose_cert_tool_and_key_type(tools, parent=None):
 
 def generate_and_show_certificate(parent=None):
     """Generate a self-signed TLS certificate and private key covering
-    `127.0.0.1`, `localhost`, and any addresses beyond loopback in `Listen
-    addresses`, fill both TLS file fields, and show the certificate path,
-    covered addresses, and expiry."""
+    `127.0.0.1`, `localhost`, every listed address, loopback included,
+    and each host name. Fill both TLS file fields, and show the path,
+    the covered addresses, and the expiry."""
     from freecad.mcp_bridge import config, tls_cert, token_file
 
     host = parent
@@ -1265,8 +1265,12 @@ def _page_child(edit, kind, name):
     return window.findChild(kind, name)
 
 
-def _qt_interface_records():
-    """`(interface name, address)` for interfaces that are up."""
+def _qt_interface_records(only_up=True):
+    """`(interface name, address)` from Qt.
+
+    `only_up` leaves out interfaces that are down. The rows use that.
+    Membership uses every interface, up or down.
+    """
     from PySide.QtNetwork import QHostAddress, QNetworkInterface
 
     records = []
@@ -1274,7 +1278,7 @@ def _qt_interface_records():
     v4 = QHostAddress.IPv4Protocol
     v6 = QHostAddress.IPv6Protocol
     for iface in QNetworkInterface.allInterfaces():
-        if not (iface.flags() & up):
+        if only_up and not (iface.flags() & up):
             continue
         name = iface.humanReadableName() or iface.name()
         for entry in iface.addressEntries():
@@ -1296,7 +1300,9 @@ def _refresh_listen_page(edit, lookup=False):
     edit.setProperty("mcp_listen_busy", True)
     try:
         rows = listen_page.address_rows(_qt_interface_records())
-        machine = listen_page.machine_addresses(rows)
+        machine = listen_page.machine_addresses(
+            _qt_interface_records(only_up=False)
+        )
         text = edit.toPlainText()
         holder = _page_child(edit, QWidget, "addressRows")
         key = "\n".join(address for _label, address in rows)
@@ -1346,7 +1352,9 @@ def _refresh_listen_page(edit, lookup=False):
         own = _page_child(edit, QCheckBox, "ownHostNameCheckBox")
         own_name = listen_page.own_host_name()
         if own is not None:
-            own.setText(own_name or "This machine")
+            own.setText(
+                f"This machine: {own_name}" if own_name else "This machine"
+            )
             if names_edit is not None:
                 own.setChecked(
                     listen_page.name_is_listed(
@@ -1404,6 +1412,7 @@ def _toggle_own_name(edit, checked):
         updated = listen_page.without_name(text, own)
     if updated != text:
         names.setPlainText(updated)
+    _refresh_listen_page(edit, lookup=True)
 
 
 def _bind_listen_page(edit):
@@ -1429,6 +1438,11 @@ def _bind_listen_page(edit):
                 lambda checked: _toggle_own_name(edit, checked)
             )
         names = _page_child(edit, QTextEdit, "hostNamesTextEdit")
+        if names is not None and not names.property("mcp_names_hooked"):
+            names.setProperty("mcp_names_hooked", True)
+            names.textChanged.connect(
+                lambda: _refresh_listen_page(edit, lookup=False)
+            )
 
         class _Focus(QObject):
             def eventFilter(self, obj, event):

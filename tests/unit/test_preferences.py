@@ -277,9 +277,10 @@ class UnsetPreferenceTests(unittest.TestCase):
         # upgrade fallback when ListenAddress has never been saved, and
         # PermissionMode, which only a confirmed choice writes.
         self.assertEqual(set(groups), {PREF_GROUP})
+        self.assertEqual(config.host_names(), [])
         self.assertEqual(
             params.read,
-            (set(SETTINGS) - {"HostNames"}) | {"Port", "PermissionMode"},
+            set(SETTINGS) | {"Port", "PermissionMode"},
         )
 
 
@@ -2684,6 +2685,7 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                 [
                     "127.0.0.1",
                     "localhost",
+                    "::1",
                     "192.168.1.50",
                     "freecad.local",
                 ],
@@ -2960,15 +2962,20 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
             def setText(self, val):
                 self.text = val
 
+            def toPlainText(self):
+                return self.text
+
         class FakePrefPage:
             def __init__(self):
                 self.cert_chooser = FakeChooser()
                 self.key_chooser = FakeChooser()
                 self.note_label = FakeLabel()
+                self.names = FakeLabel()
                 self._children = {
                     "tlsCertFileChooser": self.cert_chooser,
                     "tlsKeyFileChooser": self.key_chooser,
                     "listenAddressNote": self.note_label,
+                    "hostNamesTextEdit": self.names,
                 }
 
             def findChild(self, _cls, name=""):
@@ -3017,12 +3024,30 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                 # and platform install hint, and fills both fields without
                 # saving preferences yet.
                 store["ListenAddress"] = "127.0.0.1:39280\n[::1]:39281"
+                store["HostNames"] = "my-pc"
+                page.names.text = "my-pc"
+                qt_widgets = types.ModuleType("PySide.QtWidgets")
+                qt_widgets.QTextEdit = object
+                qt_mod = types.ModuleType("PySide")
+                qt_mod.__path__ = []
+                sys.modules["PySide"] = qt_mod
+                sys.modules["PySide.QtWidgets"] = qt_widgets
+                sys.modules["freecad.mcp_bridge.config"] = config
+                if getattr(config, "FreeCAD", None) is not None:
+                    sys.modules["FreeCAD"] = config.FreeCAD
+                self.addCleanup(
+                    lambda: sys.modules.pop("PySide", None)
+                )
+                self.addCleanup(
+                    lambda: sys.modules.pop("PySide.QtWidgets", None)
+                )
                 result = init_gui.generate_and_show_certificate(parent=page)
                 expected_cert = str(Path(folder) / "tls-cert.pem")
                 expected_key = str(Path(folder) / "tls-key.pem")
                 self.assertEqual(result, (expected_cert, expected_key))
                 self.assertEqual(
-                    generated_hosts[-1], ["127.0.0.1", "localhost"]
+                    generated_hosts[-1],
+                    ["127.0.0.1", "localhost", "::1", "my-pc"],
                 )
                 self.assertEqual(page.cert_chooser.fileName(), expected_cert)
                 self.assertEqual(page.key_chooser.fileName(), expected_key)
@@ -3047,6 +3072,8 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                 # asks to replace; Yes generates covering 127.0.0.1,
                 # localhost, 192.168.1.50, and freecad.local.
                 messages.clear()
+                page.names.text = ""
+                store["HostNames"] = ""
                 store["ListenAddress"] = (
                     "127.0.0.1:39280\n192.168.1.50:39280\nfreecad.local:39281"
                 )
