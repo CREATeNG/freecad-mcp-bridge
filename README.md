@@ -147,7 +147,7 @@ change a model — for example:
   separated by new lines, spaces, commas, or semicolons (default
   `127.0.0.1:39280`). Keep a `127.0.0.1:<PORT>` entry in the list if
   you use the Claude Desktop extension on the same machine (`127.0.0.1`
-  is its default **FreeCAD machine**).
+  is its default **FreeCAD host**).
   An entry of `0.0.0.0`, `[::]`, or any other unspecified address is
   refused: enter a specific address of this machine. The first time
   you turn the bridge on, loopback included, FreeCAD asks you to
@@ -179,21 +179,31 @@ change a model — for example:
   the file. A bridge that is already running reads the file again
   before it refuses a token that does not match.
 - **TLS certificate file (PEM)** and **TLS private key file (PEM)** —
-  entries beyond loopback in **Listen addresses** serve HTTPS only,
-  using these files. Loopback entries use HTTP. Click **Generate
-  certificate** to create a self-signed RSA-2048 certificate
+  when both files are set, every listener serves HTTPS, loopback
+  included, and each start writes a copy of the certificate to
+  `<home>/.freecad-mcp-bridge/serving-cert.pem` so the Claude Desktop
+  extension on this machine can verify it automatically. Without them,
+  loopback entries serve HTTP (and `serving-cert.pem` is removed at
+  start), while entries beyond loopback serve HTTPS only. Beside the
+  two file fields, **or generate one** → **Generate certificate**
+  creates a self-signed certificate
   (`<home>/.freecad-mcp-bridge/tls-cert.pem`) and private key
   (`<home>/.freecad-mcp-bridge/tls-key.pem`, readable by you only)
-  covering the addresses beyond loopback in **Listen addresses**, and
-  fill in both fields; if a certificate or private key is already set
-  or exists there, FreeCAD asks before replacing it because MCP
-  clients that trust the present certificate will need the new one.
-  The certificate must cover every address beyond loopback in the
-  list, and an MCP client connecting to an address beyond loopback
-  must trust the bridge's certificate. Starting with an entry beyond
-  loopback fails and leaves the bridge off when either file is not
-  set, when the certificate is not yet valid or has expired, or when
-  the certificate does not cover the address.
+  covering `127.0.0.1`, `localhost`, and every address beyond loopback
+  in **Listen addresses**, valid for 825 days, and fills in both
+  fields. When a certificate tool is found on the machine (such as
+  OpenSSL, including Git for Windows' copy on Windows), FreeCAD offers
+  a choice of tool and key type (**RSA 4096** or **ECDSA P-256**);
+  when none is found, it notes where to install one for your platform
+  and falls back to the built-in RSA 2048 generator. If a certificate
+  or private key is already set or exists there, FreeCAD asks before
+  replacing it because MCP clients that trust the present certificate
+  will need the new one, and afterwards shows the certificate path,
+  the covered addresses, and the expiry date. Starting with a
+  certificate fails when the certificate is not yet valid or has
+  expired, and starting with an entry beyond loopback also fails when
+  either file is not set or the certificate does not cover the
+  address.
 - **Permission mode** — **Ask** (the default) shows you an agent's
   code before it runs. **Unrestricted** runs it unseen, with your
   full permissions. [What the AI can do](#what-the-ai-can-do) has
@@ -233,8 +243,10 @@ MCP Bridge is designed for **local** control of FreeCAD.
   which you do yourself, each session. Any process on your machine
   can reach the open loopback port, not only your MCP client. The
   bridge listens on every entry in **Listen addresses**. Every
-  listener requires the bearer token. Non-loopback entries serve
-  HTTPS only. Loopback entries use HTTP. The first start asks you to
+  listener requires the bearer token. When a certificate and private
+  key are set, every listener serves HTTPS, loopback included; without
+  them, loopback entries use HTTP and non-loopback entries are
+  refused. The first start asks you to
   accept that connected agents can run code with your full
   permissions. Once you accept a non-loopback entry, the bridge
   listens on it too. Any client that can reach one, with the bearer

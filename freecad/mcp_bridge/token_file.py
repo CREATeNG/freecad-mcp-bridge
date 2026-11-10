@@ -1,10 +1,12 @@
-"""The bearer token file both FreeCAD and the extension share.
+"""The bearer token and serving certificate files FreeCAD and the extension share.
 
 The folder is ``FREECAD_MCP_TOKEN_DIR`` when that variable is set,
-and ``<home>/.freecad-mcp-bridge`` otherwise. The file is ``token``.
-The folder is readable by the user only, and its one allow entry is
-inheritable, so a file created in it is user-only too. Each write of
-the token file sets that same user-only access on the file itself.
+and ``<home>/.freecad-mcp-bridge`` otherwise. The token file is
+``token``, and the certificate copy written when the bridge starts
+with TLS is ``serving-cert.pem``. The folder is readable by the user
+only, and its one allow entry is inheritable, so a file created in it
+is user-only too. Each write sets that same user-only access on the
+file itself.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ from pathlib import Path
 
 DIR_NAME = ".freecad-mcp-bridge"
 FILE_NAME = "token"
+SERVING_CERT_FILE_NAME = "serving-cert.pem"
 MIN_TOKEN_LENGTH = 32
 _REPLACE_ATTEMPTS = 5
 
@@ -36,6 +39,11 @@ def token_dir() -> Path:
 def token_path() -> Path:
     """Path of the token file."""
     return token_dir() / FILE_NAME
+
+
+def serving_cert_path() -> Path:
+    """Path of the serving certificate copy (`serving-cert.pem`)."""
+    return token_dir() / SERVING_CERT_FILE_NAME
 
 
 def read_token() -> str:
@@ -67,6 +75,33 @@ def write_token(token: str) -> None:
     except OSError:
         temporary.unlink(missing_ok=True)
         raise
+
+
+def write_serving_cert(cert_file: str | Path) -> None:
+    """Write a copy of `cert_file` to `serving-cert.pem` beside the token file."""
+    content = Path(cert_file).read_text(encoding="utf-8")
+    directory = token_dir()
+    directory.mkdir(parents=True, exist_ok=True)
+    _user_only(directory, is_dir=True)
+    descriptor, name = tempfile.mkstemp(
+        prefix=".serving-cert-", suffix=".tmp", dir=directory
+    )
+    temporary = Path(name)
+    try:
+        with os.fdopen(
+            descriptor, "w", encoding="utf-8", newline="\n"
+        ) as handle:
+            handle.write(content)
+        _user_only(temporary, is_dir=False)
+        _replace_file(temporary, serving_cert_path())
+    except OSError:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def remove_serving_cert() -> None:
+    """Remove `serving-cert.pem` if it exists."""
+    serving_cert_path().unlink(missing_ok=True)
 
 
 def _replace_file(source: Path, dest: Path) -> None:

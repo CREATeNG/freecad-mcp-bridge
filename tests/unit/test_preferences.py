@@ -1167,7 +1167,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 statuses[-1],
             )
             self.assertIn(
-                "Generate or select both in Edit → Preferences → MCP Bridge.",
+                "Select or generate both in Edit → Preferences → MCP Bridge.",
                 warnings[-1],
             )
             self.assertNotIn("untick Require TLS", warnings[-1])
@@ -1458,7 +1458,10 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 token_patch.start()
                 self.addCleanup(token_patch.stop)
 
-                # 1. Default loopback: binds 127.0.0.1:39280 only, no warning.
+                # 1. Default loopback without cert/key: binds 127.0.0.1:39280
+                # as HTTP, removes any stale serving-cert.pem, no warning.
+                serving_cert = Path(token_root.name) / "serving-cert.pem"
+                serving_cert.write_text("STALE-CERT\n", encoding="utf-8")
                 srv.start()
                 self.assertEqual(bound, [("127.0.0.1", 39280)])
                 self.assertEqual(warnings, [])
@@ -1466,16 +1469,16 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 self.assertEqual(
                     srv._servers[0][0].bound_host, "127.0.0.1"
                 )
+                self.assertEqual(wrapped_sockets, [])
+                self.assertFalse(serving_cert.exists())
                 srv.stop()
 
                 # 2. List with loopback, LAN, and IPv6 on distinct ports:
                 # missing cert raises ValueError and stays off; a token
                 # file is not required to bind; failed wrap_socket closes
-                # the bound socket; a valid cert wraps only the
-                # non-loopback socket with do_handshake_on_connect=False.
-                # Every listener requires the token, and non-loopback
-                # entries always serve HTTPS, even if the legacy
-                # RequireTls preference is False.
+                # the bound socket; a valid cert wraps every listener
+                # (loopback included) with do_handshake_on_connect=False
+                # and writes serving-cert.pem beside the token file.
                 bound.clear()
                 shut_down.clear()
                 closed.clear()
@@ -1501,24 +1504,31 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 )
                 ssl_ctx_patch.start()
                 self.addCleanup(ssl_ctx_patch.stop)
-                store["TlsCertFile"] = "cert.pem"
-                store["TlsKeyFile"] = "key.pem"
+                cert_file_path = Path(token_root.name) / "custom-cert.pem"
+                key_file_path = Path(token_root.name) / "custom-key.pem"
+                cert_file_path.write_text("CUSTOM-CERT-PEM\n", encoding="utf-8")
+                key_file_path.write_text("CUSTOM-KEY-PEM\n", encoding="utf-8")
+                store["TlsCertFile"] = str(cert_file_path)
+                store["TlsKeyFile"] = str(key_file_path)
                 fail_wrap_on = True
                 with self.assertRaises(OSError):
                     srv.start(
-                        tls_cert_file="cert.pem", tls_key_file="key.pem"
+                        tls_cert_file=str(cert_file_path),
+                        tls_key_file=str(key_file_path),
                     )
                 fail_wrap_on = False
                 self.assertFalse(srv.is_running())
                 self.assertEqual(
                     closed,
-                    [("127.0.0.1", 39280), ("192.168.1.50", 39281)],
+                    [("127.0.0.1", 39280)],
                 )
+                self.assertFalse(serving_cert.exists())
                 bound.clear()
                 closed.clear()
 
                 srv.start(
-                    tls_cert_file="cert.pem", tls_key_file="key.pem"
+                    tls_cert_file=str(cert_file_path),
+                    tls_key_file=str(key_file_path),
                 )
                 self.assertTrue(srv.is_running())
                 self.assertEqual(
@@ -1535,9 +1545,18 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 self.assertEqual(
                     wrapped_sockets,
                     [
+                        "tls(raw-sock-127.0.0.1:39280, "
+                        "server_side=True, do_handshake_on_connect=False)",
                         "tls(raw-sock-192.168.1.50:39281, "
-                        "server_side=True, do_handshake_on_connect=False)"
+                        "server_side=True, do_handshake_on_connect=False)",
+                        "tls(raw-sock-::1:39282, "
+                        "server_side=True, do_handshake_on_connect=False)",
                     ],
+                )
+                self.assertTrue(serving_cert.exists())
+                self.assertEqual(
+                    serving_cert.read_text(encoding="utf-8"),
+                    "CUSTOM-CERT-PEM\n",
                 )
                 self.assertEqual(len(warnings), 1)
                 self.assertEqual(
@@ -1551,6 +1570,9 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                     "192.168.1.50:39281.\n",
                 )
                 srv.stop()
+                # Stopping leaves serving-cert.pem in place until a start
+                # without TLS removes it.
+                self.assertTrue(serving_cert.exists())
                 self.assertEqual(
                     shut_down,
                     [
@@ -1568,14 +1590,31 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                     ],
                 )
 
-                # 2c. The old Apply-to-loopback preference does not wrap
-                # loopback in TLS, and there is no non-loopback warning.
+                # 2c. On loopback-only, setting certificate and key wraps
+                # loopback in TLS and writes serving-cert.pem; clearing them
+                # serves HTTP on loopback and removes serving-cert.pem.
                 bound.clear()
                 closed.clear()
                 warnings.clear()
                 errors.clear()
                 wrapped_sockets.clear()
                 store["ListenAddress"] = "127.0.0.1:39280"
+                srv.start()
+                self.assertTrue(srv.is_running())
+                self.assertEqual(
+                    wrapped_sockets,
+                    [
+                        "tls(raw-sock-127.0.0.1:39280, "
+                        "server_side=True, do_handshake_on_connect=False)"
+                    ],
+                )
+                self.assertTrue(serving_cert.exists())
+                self.assertEqual(warnings, [])
+                srv.stop()
+
+                bound.clear()
+                closed.clear()
+                wrapped_sockets.clear()
                 store["RequireOnLoopback"] = True
                 store["TlsCertFile"] = ""
                 store["TlsKeyFile"] = ""
@@ -1583,11 +1622,12 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 self.assertTrue(srv.is_running())
                 self.assertTrue(srv._servers[0][0].require_token)
                 self.assertEqual(wrapped_sockets, [])
+                self.assertFalse(serving_cert.exists())
                 self.assertEqual(warnings, [])
                 srv.stop()
                 store["RequireOnLoopback"] = False
-                store["TlsCertFile"] = "cert.pem"
-                store["TlsKeyFile"] = "key.pem"
+                store["TlsCertFile"] = str(cert_file_path)
+                store["TlsKeyFile"] = str(key_file_path)
 
                 # 2d. An unspecified address is refused before any bind.
                 bound.clear()
@@ -1896,8 +1936,8 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 )
             self.assertEqual(
                 str(uncovered.exception),
-                "The TLS certificate does not cover 10.0.0.9. Generate "
-                "the certificate again in Edit → Preferences → MCP Bridge.",
+                "The TLS certificate does not cover 10.0.0.9. Select or "
+                "generate a certificate in Edit → Preferences → MCP Bridge.",
             )
 
             # A certificate that is not yet valid fails naming its start date.
@@ -1921,8 +1961,9 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 )
             self.assertEqual(
                 str(not_yet_valid.exception),
-                "The TLS certificate is not valid until 2099-01-01. Generate "
-                "the certificate again in Edit → Preferences → MCP Bridge.",
+                "The TLS certificate is not valid until 2099-01-01. Select "
+                "or generate a certificate in Edit → Preferences → "
+                "MCP Bridge.",
             )
 
             # An expired certificate fails naming the expiry date.
@@ -1945,8 +1986,8 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 )
             self.assertEqual(
                 str(expired.exception),
-                "The TLS certificate expired on 2020-01-01. Generate "
-                "the certificate again in Edit → Preferences → MCP Bridge.",
+                "The TLS certificate expired on 2020-01-01. Select or "
+                "generate a certificate in Edit → Preferences → MCP Bridge.",
             )
 
             # When _test_decode_cert is missing or raises, start goes ahead
@@ -2393,7 +2434,13 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
         cls.now = datetime.datetime(
             2026, 11, 10, 0, 0, 0, tzinfo=datetime.timezone.utc
         )
-        cls.hosts = ["192.168.1.50", "2001:db8::5", "freecad.local"]
+        cls.hosts = [
+            "127.0.0.1",
+            "localhost",
+            "192.168.1.50",
+            "2001:db8::5",
+            "freecad.local",
+        ]
         cls.cert_pem, cls.key_pem, cls.meta = (
             tls_cert.generate_self_signed_cert(cls.hosts, now=cls.now)
         )
@@ -2504,7 +2551,37 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
             c_path.write_text(self.cert_pem, encoding="utf-8")
             self.assertEqual(
                 config.certificate_hosts(str(c_path)),
-                {"192.168.1.50", "2001:db8::5", "freecad.local"},
+                {
+                    "127.0.0.1",
+                    "localhost",
+                    "192.168.1.50",
+                    "2001:db8::5",
+                    "freecad.local",
+                },
+            )
+            self.assertEqual(
+                config.certificate_expiry_date(str(c_path)),
+                "2029-02-11",
+            )
+            self.assertEqual(
+                config.certificate_target_hosts(["127.0.0.1:39280"]),
+                ["127.0.0.1", "localhost"],
+            )
+            self.assertEqual(
+                config.certificate_target_hosts(
+                    [
+                        "127.0.0.1:39280",
+                        "[::1]:39281",
+                        "192.168.1.50:39280",
+                        "freecad.local:39281",
+                    ]
+                ),
+                [
+                    "127.0.0.1",
+                    "localhost",
+                    "192.168.1.50",
+                    "freecad.local",
+                ],
             )
             openssl_bin = shutil.which("openssl")
             if openssl_bin is not None:
@@ -2570,18 +2647,19 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
             thread.start()
             try:
                 good_ctx = ssl.create_default_context(cafile=str(c_path))
-                with socket.create_connection(
-                    ("127.0.0.1", port), timeout=5
-                ) as raw:
-                    with good_ctx.wrap_socket(
-                        raw, server_hostname="freecad.local"
-                    ) as tls_sock:
-                        tls_sock.sendall(
-                            b"GET / HTTP/1.1\r\nHost: freecad.local\r\n"
-                            b"Connection: close\r\n\r\n"
-                        )
-                        reply = tls_sock.recv(1024)
-                self.assertIn(b"200 OK", reply)
+                for hostname in ("127.0.0.1", "localhost", "freecad.local"):
+                    with socket.create_connection(
+                        ("127.0.0.1", port), timeout=5
+                    ) as raw:
+                        with good_ctx.wrap_socket(
+                            raw, server_hostname=hostname
+                        ) as tls_sock:
+                            tls_sock.sendall(
+                                f"GET / HTTP/1.1\r\nHost: {hostname}\r\n"
+                                "Connection: close\r\n\r\n".encode("ascii")
+                            )
+                            reply = tls_sock.recv(1024)
+                    self.assertIn(b"200 OK", reply)
 
                 bad_ctx = ssl.create_default_context(cafile=str(other_c_path))
                 with self.assertRaises(ssl.SSLCertVerificationError):
@@ -2589,7 +2667,7 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                         ("127.0.0.1", port), timeout=5
                     ) as raw:
                         with bad_ctx.wrap_socket(
-                            raw, server_hostname="freecad.local"
+                            raw, server_hostname="127.0.0.1"
                         ):
                             pass
             finally:
@@ -2666,13 +2744,49 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                 thread.join(timeout=2)
 
     def test_generate_certificate_button_flow_and_replace_confirmation(self):
-        """Generate certificate refuses when there is no address beyond
-        loopback, asks before replacing an existing certificate or setting,
-        and fills both TLS file fields without saving preferences (so Cancel
-        leaves the old paths and OK saves the new ones)."""
+        """Preferences put the user's own certificate and key fields first with
+        'or generate one' beside Generate certificate; the button covers
+        127.0.0.1, localhost, and any beyond-loopback entries, uses cert_tools
+        when available (RSA 4096 or ECDSA P-256) or falls back to tls_cert with
+        an install hint, asks before replacing, and fills both fields without
+        saving preferences until OK."""
+        tree = ET.parse(PAGE)
+        sec_group = next(
+            widget
+            for widget in tree.iter("widget")
+            if widget.get("name") == "securityGroup"
+        )
+        sec_widgets = [
+            widget.get("name")
+            for widget in sec_group.iter("widget")
+            if widget is not sec_group and widget.get("name")
+        ]
+        self.assertEqual(
+            sec_widgets,
+            [
+                "tlsCertFileLabel",
+                "tlsCertFileChooser",
+                "tlsKeyFileLabel",
+                "tlsKeyFileChooser",
+                "generateCertLabel",
+                "generateCertButton",
+                "generateTokenButton",
+            ],
+        )
+        gen_label = next(
+            widget
+            for widget in sec_group.iter("widget")
+            if widget.get("name") == "generateCertLabel"
+        )
+        gen_label_props = {
+            prop.get("name"): prop[0].text
+            for prop in gen_label.findall("property")
+        }
+        self.assertEqual(gen_label_props["text"], "or generate one")
+
         btn = next(
             widget
-            for widget in ET.parse(PAGE).iter("widget")
+            for widget in sec_group.iter("widget")
             if widget.get("name") == "generateCertButton"
         )
         props = {
@@ -2682,9 +2796,27 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
         self.assertEqual(props["text"], "Generate certificate")
         self.assertEqual(
             props["toolTip"],
-            "Generate a certificate for addresses beyond loopback.",
+            "Generate a self-signed TLS certificate.",
         )
         self.assertLess(len(props["toolTip"]), 60)
+
+        client_note = next(
+            widget
+            for widget in tree.iter("widget")
+            if widget.get("name") == "clientNote"
+        )
+        client_note_props = {
+            prop.get("name"): prop[0].text
+            for prop in client_note.findall("property")
+        }
+        self.assertIn(
+            "Without a TLS certificate, a loopback entry uses",
+            client_note_props["text"],
+        )
+        self.assertIn(
+            "with a certificate, every entry uses HTTPS.",
+            client_note_props["text"],
+        )
 
         init_gui = _fresh_init_gui()
         config, _, _ = fresh_config()
@@ -2744,6 +2876,7 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
         page = FakePrefPage()
         messages = []
         replace_answers = []
+        generated_hosts = []
         init_gui._show_cert_message = (
             lambda title, body, warning, object_name, parent=None: (
                 messages.append((title, body, warning, object_name))
@@ -2752,6 +2885,11 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
         init_gui._confirm_replace_certificate = (
             lambda parent=None: replace_answers.pop(0)
         )
+
+        def fake_generate_self_signed(hosts, now=None):
+            generated_hosts.append(list(hosts))
+            return self.cert_pem, self.key_pem, self.meta
+
         with tempfile.TemporaryDirectory() as folder:
             with (
                 mock.patch.dict(
@@ -2763,39 +2901,24 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                 mock.patch.object(
                     self.tls_cert,
                     "generate_self_signed_cert",
-                    return_value=(self.cert_pem, self.key_pem, self.meta),
+                    side_effect=fake_generate_self_signed,
+                ),
+                mock.patch.dict(
+                    sys.modules, {"freecad.mcp_bridge.cert_tools": None}
                 ),
             ):
-                # 1. Loopback only -> warning dialog, nothing written.
+                # 1. Loopback only with no external tool found -> falls back
+                # to tls_cert covering 127.0.0.1 and localhost, names expiry
+                # and platform install hint, and fills both fields without
+                # saving preferences yet.
                 store["ListenAddress"] = "127.0.0.1:39280\n[::1]:39281"
-                self.assertIsNone(
-                    init_gui.generate_and_show_certificate(parent=page)
-                )
-                self.assertEqual(len(messages), 1)
-                self.assertEqual(
-                    messages[-1],
-                    (
-                        "MCP Bridge: TLS certificate",
-                        "Add an address beyond loopback in Listen addresses "
-                        "first, then click Generate certificate.",
-                        True,
-                        "MCPBridgeCertNoAddressDialog",
-                    ),
-                )
-                self.assertFalse((Path(folder) / "tls-cert.pem").exists())
-
-                # 2. Address beyond loopback, nothing existing -> writes both
-                # files without asking to replace, fills both fields on the
-                # page without saving preferences yet, and shows path and
-                # covered addresses.
-                messages.clear()
-                store["ListenAddress"] = (
-                    "127.0.0.1:39280\n192.168.1.50:39280\nfreecad.local:39281"
-                )
                 result = init_gui.generate_and_show_certificate(parent=page)
                 expected_cert = str(Path(folder) / "tls-cert.pem")
                 expected_key = str(Path(folder) / "tls-key.pem")
                 self.assertEqual(result, (expected_cert, expected_key))
+                self.assertEqual(
+                    generated_hosts[-1], ["127.0.0.1", "localhost"]
+                )
                 self.assertEqual(page.cert_chooser.fileName(), expected_cert)
                 self.assertEqual(page.key_chooser.fileName(), expected_key)
                 self.assertIn(expected_cert, page.note_label.text)
@@ -2807,6 +2930,36 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                 )
                 self.assertFalse(messages[-1][2])
                 self.assertIn(expected_cert, messages[-1][1])
+                self.assertIn("127.0.0.1", messages[-1][1])
+                self.assertIn("localhost", messages[-1][1])
+                self.assertIn("2029-02-11 (825 days)", messages[-1][1])
+                self.assertIn(
+                    "No certificate tool was found on this machine",
+                    messages[-1][1],
+                )
+
+                # 2. Address beyond loopback, existing files from step 1 ->
+                # asks to replace; Yes generates covering 127.0.0.1,
+                # localhost, 192.168.1.50, and freecad.local.
+                messages.clear()
+                store["ListenAddress"] = (
+                    "127.0.0.1:39280\n192.168.1.50:39280\nfreecad.local:39281"
+                )
+                replace_answers.append(True)
+                result = init_gui.generate_and_show_certificate(parent=page)
+                self.assertEqual(result, (expected_cert, expected_key))
+                self.assertEqual(
+                    generated_hosts[-1],
+                    [
+                        "127.0.0.1",
+                        "localhost",
+                        "192.168.1.50",
+                        "freecad.local",
+                    ],
+                )
+                self.assertEqual(len(messages), 1)
+                self.assertIn("127.0.0.1", messages[-1][1])
+                self.assertIn("localhost", messages[-1][1])
                 self.assertIn("192.168.1.50", messages[-1][1])
                 self.assertIn("freecad.local", messages[-1][1])
 
@@ -2863,6 +3016,95 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                 page.accept()
                 self.assertEqual(store["TlsCertFile"], expected_cert)
                 self.assertEqual(store["TlsKeyFile"], expected_key)
+
+                # 4. When cert_tools.find_tools() returns tools, the button
+                # offers the choice of tool and key type (RSA 4096 or
+                # ECDSA P-256), calls cert_tools.generate(tool, key_type,
+                # hosts, cert_path, key_path), applies user-only permissions
+                # to tls-key.pem, and omits the fallback install hint.
+                tool_calls = []
+
+                def stub_generate(
+                    tool, key_type, hosts, cert_path, key_path
+                ):
+                    tool_calls.append(
+                        (
+                            tool,
+                            key_type,
+                            list(hosts),
+                            Path(cert_path),
+                            Path(key_path),
+                        )
+                    )
+                    Path(cert_path).write_text(
+                        self.cert_pem, encoding="utf-8"
+                    )
+                    Path(key_path).write_text(
+                        self.key_pem, encoding="utf-8"
+                    )
+
+                stub_cert_tools = types.SimpleNamespace(
+                    find_tools=lambda: [
+                        {"label": "OpenSSL (PATH)", "path": "/usr/bin/openssl"},
+                        {
+                            "label": "Git for Windows OpenSSL",
+                            "path": "C:/Program Files/Git/usr/bin/openssl.exe",
+                        },
+                    ],
+                    generate=stub_generate,
+                )
+                with mock.patch.dict(
+                    sys.modules,
+                    {"freecad.mcp_bridge.cert_tools": stub_cert_tools},
+                ):
+                    for chosen_idx, chosen_key_type in (
+                        (0, "RSA 4096"),
+                        (1, "ECDSA P-256"),
+                    ):
+                        messages.clear()
+                        replace_answers.append(True)
+                        init_gui._choose_cert_tool_and_key_type = (
+                            lambda tools, parent=None, idx=chosen_idx, kt=chosen_key_type: (
+                                tools[idx],
+                                kt,
+                            )
+                        )
+                        res = init_gui.generate_and_show_certificate(
+                            parent=page
+                        )
+                        self.assertEqual(res, (expected_cert, expected_key))
+                        self.assertEqual(
+                            tool_calls[-1],
+                            (
+                                stub_cert_tools.find_tools()[chosen_idx],
+                                chosen_key_type,
+                                [
+                                    "127.0.0.1",
+                                    "localhost",
+                                    "192.168.1.50",
+                                    "freecad.local",
+                                ],
+                                Path(expected_cert),
+                                Path(expected_key),
+                            ),
+                        )
+                        if os.name == "nt":
+                            self.assertEqual(
+                                _windows_ace_count(Path(expected_key)), 1
+                            )
+                        else:
+                            mode = stat.S_IMODE(
+                                Path(expected_key).stat().st_mode
+                            )
+                            self.assertEqual(mode, 0o600)
+                        self.assertEqual(len(messages), 1)
+                        self.assertNotIn(
+                            "No certificate tool was found",
+                            messages[-1][1],
+                        )
+                        self.assertIn(
+                            "2029-02-11 (825 days)", messages[-1][1]
+                        )
 
 
 if __name__ == "__main__":

@@ -18,7 +18,13 @@ import time
 from http.server import BaseHTTPRequestHandler
 import FreeCAD
 
-from freecad.mcp_bridge import config, file_prompt, mcp_protocol, paging
+from freecad.mcp_bridge import (
+    config,
+    file_prompt,
+    mcp_protocol,
+    paging,
+    token_file,
+)
 from freecad.mcp_bridge.constants import (
     ENDPOINT_PATH,
     LOG_PREFIX,
@@ -432,9 +438,12 @@ class HttpServer:
             for entry in entries
             if not config.is_loopback_address(entry)
         ]
+        use_tls = bool(
+            non_loopback or (cert_file.strip() and key_file.strip())
+        )
         ssl_context = None
         cert_hosts = set()
-        if non_loopback:
+        if use_tls:
             try:
                 ssl_context = config.build_ssl_context(
                     cert_file, key_file, non_loopback
@@ -452,17 +461,15 @@ class HttpServer:
         try:
             for entry, host, bind_port in targets:
                 failed_entry = entry
-                is_loopback = config.is_loopback_address(entry)
-                protect_entry = not is_loopback
                 srv = paging.MaintenanceHTTPServer(
                     (host, bind_port), McpRequestHandler
                 )
                 bound_servers.append(srv)
                 srv.executor = self._executor
                 srv.bound_host = host
-                srv.cert_hosts = cert_hosts if protect_entry else set()
+                srv.cert_hosts = cert_hosts
                 srv.require_token = True
-                if ssl_context is not None and protect_entry:
+                if ssl_context is not None:
                     srv.socket = ssl_context.wrap_socket(
                         srv.socket,
                         server_side=True,
@@ -512,6 +519,10 @@ class HttpServer:
             raise
 
         self._servers = started_servers
+        if ssl_context is not None:
+            token_file.write_serving_cert(cert_file)
+        else:
+            token_file.remove_serving_cert()
         endpoints_with_path = ", ".join(
             f"{entry}{ENDPOINT_PATH}" for entry in entries
         )

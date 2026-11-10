@@ -529,7 +529,7 @@ address is stored in FreeCAD's preferences
 start, loopback included, keeps a line in the status bar and the
 Report view.
 
-**Authentication on every listener, TLS beyond loopback**
+**Authentication on every listener, TLS with a certificate**
 
 Every request on every listener must carry
 `Authorization: Bearer <token>` or is rejected with `401 Unauthorized`
@@ -561,27 +561,40 @@ result. The shim's own error text carries that note beside `error`.
 The call is still sent, with the token from the file. **Generate new
 token** tells the user when the file cannot be written.
 
-- **TLS beyond loopback (`TlsCertFile`, `TlsKeyFile`)** — non-loopback
-  listeners serve HTTPS only, using the certificate file
-  (`TlsCertFile`) and private key file (`TlsKeyFile`) with Python's
-  standard-library `ssl` module. Loopback listeners serve HTTP. Beside
-  **Listen addresses**, the Preferences page states that an MCP client
-  connecting to an address beyond loopback must trust the bridge's
-  certificate and names the certificate file. **Generate certificate**
-  creates a self-signed 2048-bit RSA X.509 v3 certificate (825-day
-  validity, `CA:FALSE`, `digitalSignature` and `keyEncipherment`,
-  `serverAuth`) covering the addresses beyond loopback in **Listen
-  addresses**, writes `tls-cert.pem` and `tls-key.pem` (`tls-key.pem`
-  readable by the user only) in `<home>/.freecad-mcp-bridge` (or
-  `FREECAD_MCP_TOKEN_DIR`), and fills in the `TlsCertFile` and
-  `TlsKeyFile` fields, asking first when either field is already set or
-  either file already exists. If an entry beyond loopback is
-  configured without readable, valid certificate and key files, if the
-  certificate is not yet valid or has expired, or if the certificate
-  does not cover a
+- **TLS (`TlsCertFile`, `TlsKeyFile`, `serving-cert.pem`)** — when a
+  certificate file (`TlsCertFile`) and private key file (`TlsKeyFile`)
+  are set, every listener serves HTTPS, loopback included, using
+  Python's standard-library `ssl` module, and each start writes a
+  user-only copy of the certificate to `serving-cert.pem` beside the
+  token file. When they are not set, loopback listeners serve HTTP,
+  each start removes `serving-cert.pem`, and a start with an entry
+  beyond loopback fails. Beside **Listen addresses**, the Preferences
+  page states that beyond loopback the bridge serves HTTPS only and
+  that an MCP client must trust the certificate in `TlsCertFile`.
+  In the **Security** section, the user's own certificate and key file
+  fields come first, with **or generate one** and **Generate
+  certificate** beside them. **Generate certificate** calls
+  `cert_tools.find_tools()` to find certificate tools on the machine
+  (such as `openssl`, including Git for Windows' copy on Windows).
+  Where tools are found, it offers a choice of tool and key type
+  (`RSA 4096` or `ECDSA P-256`) and calls `cert_tools.generate()`;
+  where none is found, it states where to install one for the
+  platform and falls back to the built-in pure-Python RSA 2048
+  generator (`tls_cert.py`). Either way, the certificate is
+  self-signed (825-day validity, `CA:FALSE`, `digitalSignature` and
+  `keyEncipherment`, `serverAuth`), covers `127.0.0.1`, `localhost`,
+  and every listed address beyond loopback, writes `tls-cert.pem` and
+  `tls-key.pem` (`tls-key.pem` readable by the user only) in
+  `<home>/.freecad-mcp-bridge` (or `FREECAD_MCP_TOKEN_DIR`), fills in
+  the `TlsCertFile` and `TlsKeyFile` fields (asking first when either
+  field is already set or either file already exists), and shows the
+  certificate file path, covered addresses, and expiry date. If an
+  entry beyond loopback is configured without readable, valid
+  certificate and key files, if a configured certificate is not yet
+  valid or has expired, or if the certificate does not cover a
   non-loopback address in the list, startup fails with an error naming
-  the problem and directing the user to Edit → Preferences → MCP
-  Bridge, and the bridge stays off.
+  the problem and directing the user to select or generate the files
+  in Edit → Preferences → MCP Bridge, and the bridge stays off.
 
 **Security posture — noted trade-offs**
 

@@ -27,12 +27,18 @@ non-loopback entry in **Listen addresses** in **Edit → Preferences →
 MCP Bridge** exposes the endpoint beyond this machine. Every
 listener requires a bearer token, stored in
 `<home>/.freecad-mcp-bridge/token`, a file only you can read.
-Preferences do not keep a copy of it. Non-loopback entries serve
-HTTPS only, using the configured certificate and private key files
-(**Generate certificate** creates `tls-cert.pem` and `tls-key.pem` in
-`<home>/.freecad-mcp-bridge/`, with `tls-key.pem` readable by you
-only), and the certificate must cover each non-loopback address.
-Loopback entries use HTTP. Any client that can reach an entry, with the
+Preferences do not keep a copy of it. When a TLS certificate file and
+private key file are set, every listener serves HTTPS, loopback
+included, and each start writes a copy of the serving certificate to
+`<home>/.freecad-mcp-bridge/serving-cert.pem` for the local Claude
+Desktop extension; when they are not set, loopback entries use HTTP
+(and `serving-cert.pem` is removed at start), while non-loopback
+entries serve HTTPS only and require a certificate covering each
+non-loopback address (**Generate certificate** creates `tls-cert.pem`
+and `tls-key.pem` in `<home>/.freecad-mcp-bridge/`, with `tls-key.pem`
+readable by you only, covering `127.0.0.1`, `localhost`, and any
+listed non-loopback addresses). Any client that can reach an entry,
+with the
 bearer token, can run Python code in FreeCAD as your user account.
 The first start asks you to accept that, loopback included, and each
 later start warns in the status bar and **Report view**. In the
