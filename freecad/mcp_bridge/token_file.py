@@ -12,6 +12,7 @@ sets that same user-only access on the file itself.
 from __future__ import annotations
 
 import os
+import re
 import stat
 import sys
 import tempfile
@@ -20,7 +21,18 @@ from pathlib import Path
 
 DIR_NAME = ".freecad-mcp-bridge"
 SERVING_CERT_FILE_NAME = "serving-cert.pem"
-MIN_TOKEN_LENGTH = 32
+# RFC 6750 token68: one or more of these characters, then "=" only at
+# the end. ASCII letters only. Empty is not a token.
+_BEARER_TOKEN = re.compile(r"[A-Za-z0-9._~+/-]+={0,}\Z")
+TOKEN_REFUSAL = (
+    "Only letters, digits and - . _ ~ + / are allowed in a bearer "
+    "token, with = at the end."
+)
+
+
+def token_is_bearer(token: str) -> bool:
+    """True when `token` is an RFC 6750 bearer token."""
+    return _BEARER_TOKEN.fullmatch(token or "") is not None
 _REPLACE_ATTEMPTS = 5
 
 

@@ -59,7 +59,7 @@
       "type": "string",
       "sensitive": true,
       "title": "Bearer token",
-      "description": "Required. Paste the token FreeCAD showed. The extension uses only this setting, on this machine and for another host, and writes nothing. A token is at least 32 characters.",
+      "description": "Required. Paste the token FreeCAD showed. The extension uses only this setting, on this machine and for another host, and writes nothing. A bearer token uses letters, digits and - . _ ~ + /, with = at the end.",
       "required": false
     },
     "tls_cert_file": {

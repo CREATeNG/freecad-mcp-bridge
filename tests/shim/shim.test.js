@@ -470,7 +470,7 @@ test("manifest.json declares optional FreeCAD host, port, sensitive bearer token
   assert.match(cfg.token.description, /uses only this setting/);
   assert.match(cfg.token.description, /on this machine and for another host/);
   assert.match(cfg.token.description, /writes nothing/);
-  assert.match(cfg.token.description, /at least 32 characters/);
+  assert.match(cfg.token.description, /with = at the end/);
   assert.doesNotMatch(cfg.token.description, /Share with Claude Desktop/);
   assert.doesNotMatch(cfg.token.description, /DPAPI/);
   assert.doesNotMatch(cfg.token.description, /Keychain/);
@@ -497,8 +497,8 @@ const TOKEN_OK = "0123456789abcdef0123456789abcdef";
 const TOKEN_NEW = "fedcba9876543210fedcba9876543210";
 const NO_TOKEN_MESSAGE =
   "Paste the token FreeCAD showed into Bearer token, or make a new one with Generate new token in FreeCAD's MCP Bridge preferences.";
-const SHORT_TOKEN_MESSAGE =
-  "The token in Bearer token is shorter than 32 characters. Paste the token FreeCAD showed, or make a new one with Generate new token in FreeCAD's MCP Bridge preferences.";
+const INVALID_TOKEN_MESSAGE =
+  "The token in Bearer token is not a valid bearer token. Only letters, digits and - . _ ~ + / are allowed, with = at the end. Paste the token FreeCAD showed, or make a new one with Generate new token in FreeCAD's MCP Bridge preferences.";
 const REFUSED_TOKEN_MESSAGE =
   "FreeCAD refused the pasted token. Check that it matches FreeCAD's token.";
 
@@ -546,9 +546,9 @@ test("a paste is sent and nothing is written", async () => {
   bridge.close();
 });
 
-test("a paste shorter than 32 characters is not sent", async () => {
+test("a paste that is not a bearer token is not sent, and a short one is", async () => {
   const bridge = await startBridge(echo);
-  const shim = startShim(bridge.port, { FREECAD_MCP_TOKEN: "short-token" });
+  const shim = startShim(bridge.port, { FREECAD_MCP_TOKEN: "not a token" });
   fs.mkdirSync(shim.tokenDir, { recursive: true });
   fs.writeFileSync(path.join(shim.tokenDir, "token-handover"), `${TOKEN_OK}\n`, {
     encoding: "utf8",
@@ -563,7 +563,7 @@ test("a paste shorter than 32 characters is not sent", async () => {
   );
   const [reply] = await shim.waitForLines(1);
   assert.equal(reply.result.isError, true);
-  assert.equal(JSON.parse(reply.result.content[0].text).error, SHORT_TOKEN_MESSAGE);
+  assert.equal(JSON.parse(reply.result.content[0].text).error, INVALID_TOKEN_MESSAGE);
   assert.equal(bridge.requests.length, 0);
   assert.equal(
     fs.readFileSync(path.join(shim.tokenDir, "token-handover"), "utf8").trim(),
@@ -572,6 +572,19 @@ test("a paste shorter than 32 characters is not sent", async () => {
   assert.equal(fs.existsSync(path.join(shim.tokenDir, "token.dpapi")), false);
   assert.equal(fs.existsSync(path.join(shim.tokenDir, "token.extension")), false);
   await shim.stop();
+  const short = startShim(bridge.port, { FREECAD_MCP_TOKEN: "ab" });
+  short.send(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/call",
+      params: { name: "execute_python", arguments: { code: "print(1)" } },
+    }) + "\n"
+  );
+  const [ok] = await short.waitForLines(1);
+  assert.equal(ok.result.echoed, "tools/call");
+  assert.equal(bridge.requests[0].headers.authorization, "Bearer ab");
+  await short.stop();
   bridge.close();
 });
 

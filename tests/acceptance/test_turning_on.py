@@ -448,10 +448,15 @@ def step_accept():
     seen['accepted_saved'] = params.GetString('AcceptedListenAddresses', '')
     seen['token'] = ''
     for line in seen.get('accept_token_text', '').splitlines():
-        if line.startswith('Authorization: Bearer '):
-            seen['token'] = line.split(
-                'Authorization: Bearer ', 1
-            )[1].strip()
+        stripped = line.strip()
+        if (
+            stripped
+            and ' ' not in stripped
+            and stripped != '<token>'
+            and not stripped.endswith('.')
+        ):
+            seen['token'] = stripped
+            break
     with open({seen_file!r} + '.ready', 'w', encoding='utf-8') as handle:
         json.dump(seen, handle)
     QTimer.singleShot(200, wait_for_runner)
@@ -1322,8 +1327,14 @@ def report_view_text():
 
 def extract_token(text):
     for line in (text or '').splitlines():
-        if line.startswith('Authorization: Bearer '):
-            return line.split('Authorization: Bearer ', 1)[1].strip()
+        stripped = line.strip()
+        if (
+            stripped
+            and ' ' not in stripped
+            and stripped != '<token>'
+            and not stripped.endswith('.')
+        ):
+            return stripped
     return ''
 
 

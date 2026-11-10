@@ -932,8 +932,12 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                     self.assertTrue(config.verify_token(token2))
                     for val in store.values():
                         self.assertNotIn(token2, str(val))
+                    self.assertEqual(
+                        config.set_pasted_token("ab"),
+                        config.hash_token("ab"),
+                    )
                     with self.assertRaises(ValueError):
-                        config.set_pasted_token("short")
+                        config.set_pasted_token("not a token")
                     pasted = "c" * 32
                     digest = config.set_pasted_token(pasted)
                     self.assertEqual(digest, config.hash_token(pasted))
@@ -1097,6 +1101,12 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             init_gui._show_generated_token = (
                 lambda tok, parent=None: shown_tokens.append(tok)
             )
+            setup_calls = []
+
+            def fake_setup(need_token, need_tls):
+                setup_calls.append((need_token, need_tls))
+
+            init_gui._show_setup_dialog = fake_setup
 
             # Check risk dialog text: token and TLS are always required
             # beyond loopback, so only the code-execution risk remains.
@@ -1120,14 +1130,16 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 "FreeCAD keeps a hash of it, not the token.", tok_body
             )
             self.assertNotIn("You don't need to copy it.", tok_body)
+            self.assertIn("tok-sample", tok_body)
             self.assertIn(
-                "Any other MCP client needs the token copied now",
-                tok_body,
+                "Copy it now. Every MCP client needs it.", tok_body
             )
-            self.assertIn("Authorization: Bearer tok-sample", tok_body)
+            self.assertIn("Authorization: Bearer <token>", tok_body)
+            self.assertNotIn(
+                "Authorization: Bearer tok-sample", tok_body
+            )
             self.assertIn(
-                "every MCP client you copied it to needs the new one.",
-                tok_body,
+                "click Generate new token again.", tok_body
             )
             start_title, start_body = init_gui._first_start_dialog_text([])
             self.assertEqual(start_title, "MCP Bridge: Start the bridge?")
@@ -1164,19 +1176,9 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             self.assertFalse(running)
             self.assertEqual(prompts, [])
             self.assertEqual(shown_tokens, [])
-            self.assertIn(
-                "An address beyond loopback requires TLS, which needs a "
-                "certificate file and a private key file.",
-                statuses[-1],
-            )
-            self.assertIn(
-                "Select or generate both in Edit → Preferences → MCP Bridge.",
-                warnings[-1],
-            )
-            self.assertNotIn("untick Require TLS", warnings[-1])
-            self.assertNotIn(
-                "Change the listen addresses in Edit", warnings[-1]
-            )
+            self.assertEqual(first_prompts, [])
+            self.assertEqual(setup_calls, [(True, True)])
+            self.assertEqual(statuses[-1], "MCP Bridge: Offline")
             store["TlsCertFile"] = "cert.pem"
             store["TlsKeyFile"] = "key.pem"
             ssl_patch = mock.patch.object(
@@ -1196,7 +1198,8 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             cmd.Activated()
             self.assertFalse(running)
             self.assertEqual(prompts, [])
-            self.assertEqual(first_prompts, [["192.168.1.50:39280"]])
+            self.assertEqual(first_prompts, [])
+            self.assertEqual(setup_calls, [(True, True), (True, False)])
             self.assertEqual(config.accepted_listen_addresses(), [])
             self.assertFalse(config.start_warning_accepted())
             store["ListenAddress"] = "127.0.0.1:39280"
@@ -1206,16 +1209,19 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             cmd.Activated()
             self.assertFalse(running)
             self.assertEqual(prompts, [])
-            self.assertEqual(first_prompts[-1], [])
+            self.assertEqual(first_prompts, [])
+            self.assertEqual(setup_calls[-1], (True, False))
             self.assertEqual(shown_tokens, [])
             self.assertEqual(statuses[-1], "MCP Bridge: Offline")
             self.assertFalse(config.start_warning_accepted())
+            store["TokenHash"] = config.hash_token("ab")
             decision = True
             cmd.Activated()
             self.assertTrue(running)
             self.assertEqual(prompts, [])
-            self.assertEqual(len(shown_tokens), 1)
-            self.assertTrue(config.verify_token(shown_tokens[0]))
+            self.assertEqual(first_prompts, [[]])
+            self.assertEqual(shown_tokens, [])
+            self.assertTrue(config.verify_token("ab"))
             self.assertTrue(config.start_warning_accepted())
             self.assertEqual(
                 statuses[-1],
@@ -1291,14 +1297,17 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             self.assertIn("full permissions", statuses[-1])
             self.assertIn("beyond loopback", statuses[-1])
 
-            # 5. With no hash stored, a later start shows a new token once.
+            # 5. With no hash stored, a later start makes no token.
             store.pop("TokenHash", None)
             cmd.Activated()
             self.assertFalse(running)
             cmd.Activated()
+            self.assertFalse(running)
+            self.assertEqual(setup_calls[-1][0], True)
+            self.assertEqual(len(shown_tokens), shown_before)
+            store["TokenHash"] = config.hash_token("ab")
+            cmd.Activated()
             self.assertTrue(running)
-            self.assertEqual(len(shown_tokens), shown_before + 1)
-            self.assertTrue(config.verify_token(shown_tokens[-1]))
 
             # 6. Add two new specific addresses: one dialog lists both.
             # An unspecified address is refused before any dialog.
@@ -3305,9 +3314,9 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
         self.assertEqual(events, ["set", "restore", "dialog"])
 
 class SetTokenDialogTests(unittest.TestCase):
-    def test_set_token_stores_a_hash_refuses_a_short_one_and_cancel(self):
-        """A good paste is stored as a hash. A short one is refused.
-        Cancel stores nothing."""
+    def test_set_token_stores_a_hash_refuses_a_bad_one_and_cancel(self):
+        """A bearer token of any length is stored as a hash. One that
+        is not a bearer token is refused. Cancel stores nothing."""
         config, _empty, _groups = fresh_config()
         store = {}
 
@@ -3421,10 +3430,19 @@ class SetTokenDialogTests(unittest.TestCase):
             )
             self.assertEqual(store.get("TokenHash"), config.hash_token(good))
             self.assertNotIn(good, str(store.get("TokenHash")))
-            Edit.text_value = "short"
+            Edit.text_value = "ab"
+            self.assertEqual(
+                init_gui.set_pasted_token_from_dialog(), "ab"
+            )
+            self.assertEqual(store.get("TokenHash"), config.hash_token("ab"))
+            Edit.text_value = "not a token"
             self.assertIsNone(init_gui.set_pasted_token_from_dialog())
             self.assertEqual(
-                shown, ["A token must be at least 32 characters."]
+                shown,
+                [
+                    "Only letters, digits and - . _ ~ + / are allowed "
+                    "in a bearer token, with = at the end."
+                ],
             )
             Dialog.result = 0
             Edit.text_value = "e" * 32

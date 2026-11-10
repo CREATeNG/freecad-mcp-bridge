@@ -240,10 +240,13 @@ def generate_and_store_token() -> str:
 
 
 def set_pasted_token(token: str) -> str:
-    """Store a pasted token of at least 32 characters. Return its hash."""
+    """Store a pasted bearer token. Return its hash.
+
+    Any length is accepted when the text is an RFC 6750 token.
+    """
     text = (token or "").strip()
-    if len(text) < token_file.MIN_TOKEN_LENGTH:
-        raise ValueError("A token must be at least 32 characters.")
+    if not token_file.token_is_bearer(text):
+        raise ValueError(token_file.TOKEN_REFUSAL)
     store_token(text)
     return hash_token(text)
 

@@ -95,18 +95,21 @@ def _confirm_non_loopback_risk(entries):
 def _token_dialog_text(token):
     """Return (title, text) for the one-time bearer token dialog."""
     title = f"{DISPLAY_NAME}: Bearer token"
-    body = f"""This is the bridge's bearer token. It is shown only now: \
-FreeCAD keeps a hash of it, not the token.
-
-{token}
-
-Any other MCP client needs the token copied now, and sends it in \
-the Authorization header:
-Authorization: Bearer {token}
-
-If you lose it, click Generate new token in Edit → Preferences → \
-MCP Bridge. A new token replaces this one, and every MCP client \
-you copied it to needs the new one."""
+    body = (
+        "This is the bridge's bearer token. It is shown only now: "
+        "FreeCAD keeps a hash of it, not the token.\n"
+        "\n"
+        f"{token}\n"
+        "\n"
+        "Copy it now. Every MCP client needs it. In Claude Desktop, "
+        "paste it into the Bearer token setting of the MCP Bridge for "
+        "FreeCAD extension. Other MCP clients send it in the "
+        "Authorization header:\n"
+        "Authorization: Bearer <token>\n"
+        "\n"
+        "If you lose it, click Generate new token again. A new token "
+        "replaces this one, and every MCP client then needs the new one."
+    )
     return title, body
 
 
@@ -223,10 +226,11 @@ def _show_token_message(body, parent=None):
 
 def _set_token_dialog_text():
     """Return (title, text) for Set token. The token is not shown back."""
-    title = f"{DISPLAY_NAME}: Bearer token"
+    title = f"{DISPLAY_NAME}: Set token"
     body = (
-        "Paste a bearer token of at least 32 characters. "
-        "FreeCAD keeps a hash of it, not the token."
+        "Paste a bearer token. It becomes the bridge's only token, "
+        "and every MCP client must then send it. FreeCAD keeps a "
+        "hash of it, not the token."
     )
     return title, body
 
@@ -273,11 +277,82 @@ def set_pasted_token_from_dialog(parent=None):
         except ValueError as exc:
             _show_token_message(str(exc), parent=host)
             return None
-        # The pasted token is not shown again.
+        _report_line("Set the bearer token.")
         return text
     finally:
         dlg.setParent(None)
         dlg.deleteLater()
+
+
+def _report_line(sentence: str) -> None:
+    """Print one Report view line. It never includes a token."""
+    import FreeCAD as App
+    from datetime import datetime
+
+    console = getattr(App, "Console", None)
+    printer = getattr(console, "PrintMessage", None)
+    if printer is None:
+        return
+    stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    printer(f"{LOG_PREFIX} {stamp} {sentence}\n")
+
+
+def _setup_dialog_text(need_token: bool, need_tls: bool):
+    """Return (title, text) for what is missing before a start."""
+    title = f"{DISPLAY_NAME}: Set up the bridge"
+    lines = [
+        "The bridge can't start yet. In Edit → Preferences → "
+        "MCP Bridge, it needs:",
+    ]
+    if need_token:
+        lines.append(
+            "• An authorization bearer token. Click Generate new "
+            "token, or Set token if you already have one from "
+            "elsewhere."
+        )
+    if need_tls:
+        lines.append(
+            "• A TLS certificate and private key, for the addresses "
+            "beyond loopback in Listen addresses. Enter your own "
+            "certificate files, or click Generate certificate to "
+            "self-sign one."
+        )
+    lines.append(
+        "Click Open Preferences to go there, then turn the bridge "
+        "on again."
+    )
+    return title, "\n".join(lines)
+
+
+def _show_setup_dialog(need_token: bool, need_tls: bool) -> None:
+    """Say what is missing. Nothing starts. Open Preferences can
+    open the MCP Bridge page."""
+    import FreeCADGui as Gui
+    from PySide.QtWidgets import QDialog, QMessageBox
+
+    title, body = _setup_dialog_text(need_token, need_tls)
+    box = QMessageBox(
+        QMessageBox.Warning,
+        title,
+        body,
+        QMessageBox.NoButton,
+        Gui.getMainWindow(),
+    )
+    QDialog.setWindowTitle(box, title)
+    box.setObjectName("MCPBridgeSetupDialog")
+    open_btn = box.addButton(
+        "Open Preferences", QMessageBox.ActionRole
+    )
+    close_btn = box.addButton("Close", QMessageBox.RejectRole)
+    box.setDefaultButton(close_btn)
+    box.setEscapeButton(close_btn)
+    try:
+        box.exec()
+        if box.clickedButton() is open_btn:
+            Gui.showPreferences(DISPLAY_NAME, 0)
+    finally:
+        box.setParent(None)
+        box.deleteLater()
 
 
 def generate_and_show_token(parent=None):
@@ -285,6 +360,7 @@ def generate_and_show_token(parent=None):
     from freecad.mcp_bridge import config
 
     token = config.generate_and_store_token()
+    _report_line("Generated a new bearer token.")
     _show_generated_token(token, parent=parent)
     return token
 
@@ -745,6 +821,10 @@ def generate_and_show_certificate(parent=None):
         object_name="MCPBridgeCertGeneratedDialog",
         parent=host,
     )
+    covered = ", ".join(hosts)
+    _report_line(
+        f"Generated a certificate at {c_str}, covering {covered}."
+    )
     return c_str, k_str
 
 
@@ -785,6 +865,19 @@ class MCPBridgeCommand:
                     for entry in entries
                     if not config.is_loopback_address(entry)
                 ]
+                need_token = not config.token_hash()
+                need_tls = bool(non_loopback) and not (
+                    cert_file.strip() and key_file.strip()
+                )
+                if need_token or need_tls:
+                    _show_setup_dialog(need_token, need_tls)
+                    status = f"{DISPLAY_NAME}: Offline"
+                    mw = Gui.getMainWindow()
+                    if mw:
+                        mw.statusBar().showMessage(status)
+                    show_toggle_state()
+                    App.Console.PrintNotification(status + "\n")
+                    return
                 if non_loopback or (
                     cert_file.strip() and key_file.strip()
                 ):
@@ -816,8 +909,6 @@ class MCPBridgeCommand:
                     show_toggle_state()
                     App.Console.PrintNotification(status + "\n")
                     return
-                if not config.token_hash():
-                    generate_and_show_token()
                 bridge.start(
                     addresses=entries,
                     tls_cert_file=cert_file,

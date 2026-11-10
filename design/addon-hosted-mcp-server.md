@@ -567,7 +567,8 @@ and `WWW-Authenticate: Bearer`. FreeCAD keeps only a SHA-256 hash
 of the bearer token in `TokenHash` and shows the token once. It does
 not write a token file, and nothing is shared as a file. **Generate
 new token** stores a new hash and shows the new token once. **Set
-token** stores a pasted token of at least 32 characters the same way
+token** stores a pasted bearer token the same way, of any length
+when it uses letters, digits and - . _ ~ + /, with = at the end,
 and does not show it back. `RequireToken`, `RequireTls` and
 `RequireOnLoopback` stay unread. A running bridge hashes the
 request's token and reads `TokenHash` again before refusing.
@@ -575,8 +576,8 @@ request's token and reads `TokenHash` again before refusing.
 The Claude Desktop extension takes the token only from its Bearer
 token setting, on this machine and for another host. It reads no
 token file and writes nothing. With no token set, or with a paste
-shorter than 32 characters, the tool result says so and the call is
-not sent. A refused token says the pasted token was refused.
+that is not a bearer token, the tool result says so and the call
+is not sent. A refused token says the pasted token was refused.
 
 - **TLS (`TlsCertFile`, `TlsKeyFile`, `serving-cert.pem`)** — when a
   certificate file (`TlsCertFile`) and private key file (`TlsKeyFile`)
@@ -674,8 +675,8 @@ and `::1` are treated as loopback), the port from `FREECAD_MCP_PORT`
 `manifest.json`). On this machine and for another host, each
 `tools/call` sends `Authorization: Bearer` with
 `FREECAD_MCP_TOKEN` only. The shim reads no token file and writes
-nothing. With no token set, or with a paste shorter than 32
-characters, the tool result says so and the call is not sent. On
+nothing. With no token set, or with a paste that is not a bearer
+token, the tool result says so and the call is not sent. On
 this machine, when `serving-cert.pem` is in `FREECAD_MCP_TOKEN_DIR`
 or `<home>/.freecad-mcp-bridge`, the shim connects over HTTPS and
 trusts only that file. When the file is absent it connects over

@@ -186,8 +186,9 @@ change a model — for example:
   `Authorization: Bearer <token>`. The first time the bridge starts,
   and whenever you click **Generate new token**, FreeCAD generates a
   random token and shows it once. It keeps a SHA-256 hash in
-  preferences, not the token. **Set token** stores a pasted token
-  of at least 32 characters the same way, and does not show it
+  preferences, not the token. **Set token** stores a pasted bearer
+  token the same way, of any length when it uses letters, digits
+  and - . _ ~ + /, with = at the end, and does not show it
   again. Nothing is written for the extension to read. A bridge
   that is already running reads the hash again before it refuses
   a token that does not match.

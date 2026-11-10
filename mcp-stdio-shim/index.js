@@ -74,15 +74,15 @@ const TOKEN_DIR_NAME = ".freecad-mcp-bridge";
 const SERVING_CERT_NAME = "serving-cert.pem";
 const NO_TOKEN_MESSAGE =
   "Paste the token FreeCAD showed into Bearer token, or make a new one with Generate new token in FreeCAD's MCP Bridge preferences.";
-const SHORT_TOKEN_MESSAGE =
-  "The token in Bearer token is shorter than 32 characters. Paste the token FreeCAD showed, or make a new one with Generate new token in FreeCAD's MCP Bridge preferences.";
+const INVALID_TOKEN_MESSAGE =
+  "The token in Bearer token is not a valid bearer token. Only letters, digits and - . _ ~ + / are allowed, with = at the end. Paste the token FreeCAD showed, or make a new one with Generate new token in FreeCAD's MCP Bridge preferences.";
 const REFUSED_TOKEN_MESSAGE =
   "FreeCAD refused the pasted token. Check that it matches FreeCAD's token.";
-const MIN_TOKEN_LENGTH = 32;
+const BEARER_TOKEN = /^[A-Za-z0-9._~+/-]+={0,}$/;
 
 function pastedTokenProblem() {
   if (!PASTED_TOKEN) return NO_TOKEN_MESSAGE;
-  if (PASTED_TOKEN.length < MIN_TOKEN_LENGTH) return SHORT_TOKEN_MESSAGE;
+  if (!BEARER_TOKEN.test(PASTED_TOKEN)) return INVALID_TOKEN_MESSAGE;
   return "";
 }
 
