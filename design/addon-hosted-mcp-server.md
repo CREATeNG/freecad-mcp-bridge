@@ -55,8 +55,8 @@ The MCP server exposes three tools (schemas in `tools.py`).
 The On/Off button on the status bar shows the permission mode
 beside its words: a shield with a tick for Ask, or a warning
 triangle for Unrestricted. The button is the same width in both
-modes. Its menu has `Permissions: Ask` and `Permissions:
-Unrestricted`, each with its icon, above `MCP Bridge Preferences`.
+modes. Its menu has `Permissions`, with `Ask` and `Unrestricted`
+under it, each with its icon, above `MCP Bridge Preferences`.
 The menu does not mark the mode in force: the button's icon shows
 it. Choosing a mode there switches the same way as the
 **Permission mode** preference under **Permissions**: a

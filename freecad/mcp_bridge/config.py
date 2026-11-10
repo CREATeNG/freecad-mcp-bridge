@@ -155,11 +155,57 @@ def migrate_legacy_port() -> str:
 
 
 def listen_addresses() -> list[str]:
-    """Configured `address:port` entries for the HTTP server."""
-    raw = _params().GetString("ListenAddress", "")
-    if any(re.split(r"[\s,;]+", (raw or "").strip())):
-        return parse_listen_addresses(raw)
+    """Fixed `address:port` entries saved for the HTTP server.
+
+    An adapter's address is resolved at start, not stored here.
+    With nothing saved, the list is the default entry.
+    """
+    rows = saved_listen_rows()
+    from freecad.mcp_bridge.listeners import KIND_ADDRESS, format_entry
+
+    entries = []
+    for row in rows:
+        if row.kind != KIND_ADDRESS:
+            continue
+        entry = format_entry(row.host, row.port)
+        if entry not in entries:
+            entries.append(entry)
+    if entries:
+        return entries
+    if _params().GetBool("ListenListSaved", False):
+        return []
     return [migrate_legacy_port()]
+
+
+def saved_listen_rows():
+    """The listen list: fixed addresses, adapters and host names."""
+    from freecad.mcp_bridge.listeners import rows_from_store
+
+    migrate_legacy_port()
+    params = _params()
+    return rows_from_store(
+        params.GetString("ListenAddress", ""),
+        params.GetString("ListenAdapters", ""),
+        params.GetString("HostNames", ""),
+        bool(getattr(params, "GetBool", lambda *_args: False)(
+            "ListenListSaved", False
+        )),
+    )
+
+
+def save_listen_rows(rows) -> None:
+    """Store the listen list. An empty list stays empty."""
+    from freecad.mcp_bridge.listeners import (
+        dump_adapters,
+        dump_addresses,
+        dump_names,
+    )
+
+    params = _params()
+    params.SetString("ListenAddress", dump_addresses(rows))
+    params.SetString("ListenAdapters", dump_adapters(rows))
+    params.SetString("HostNames", dump_names(rows))
+    params.SetBool("ListenListSaved", True)
 
 
 def accepted_listen_addresses() -> list[str]:
@@ -481,6 +527,50 @@ def certificate_hosts(cert_file: str) -> set[str]:
     return _certificate_hosts_from_decoded(decoded)
 
 
+def certificate_names_a_host(decoded: dict) -> bool:
+    """True when `decoded` has a DNS name, not only IP addresses."""
+    saw_ip = False
+    for kind, value in decoded.get("subjectAltName", ()):
+        if kind == "DNS" and value:
+            return True
+        if kind == "IP Address" and value:
+            saw_ip = True
+    if saw_ip:
+        return False
+    for rdn in decoded.get("subject", ()):
+        for key, value in rdn:
+            if key == "commonName" and value:
+                try:
+                    ipaddress.ip_address(str(value))
+                except ValueError:
+                    return True
+    return False
+
+
+def listener_coverage_warnings(
+    cert_file: str, entries: list[str]
+) -> list[str]:
+    """One warning per listener address missing from a nameless certificate.
+
+    A certificate that names a host is left to the client's own check.
+    """
+    decoded = _decode_cert(cert_file)
+    if decoded is None or certificate_names_a_host(decoded):
+        return []
+    covered = _certificate_hosts_from_decoded(decoded)
+    warnings = []
+    for entry in entries:
+        host = _entry_host(entry)
+        if certificate_covers_host(covered, host):
+            continue
+        warnings.append(
+            f"{host} is not in the TLS certificate, and the "
+            "certificate names no host. A client that checks "
+            "the name will refuse it."
+        )
+    return warnings
+
+
 def certificate_covers_host(
     cert_hosts: set[str] | list[str] | tuple[str, ...], host: str
 ) -> bool:
@@ -512,9 +602,10 @@ def build_ssl_context(
 ) -> ssl.SSLContext:
     """Build a server SSLContext from `cert_file` and `key_file`.
 
-    `cert_file` must be valid now (neither before `notBefore` nor past
-    `notAfter`), and it must cover every listed address, loopback
-    included.
+    `cert_file` must be valid now: not before `notBefore`, and not
+    past `notAfter`. A listener whose address the certificate does
+    not cover is not a reason to refuse. `addresses` is accepted
+    for older callers and is not checked.
     """
     cert = (cert_file or "").strip()
     key = (key_file or "").strip()
@@ -558,17 +649,7 @@ def build_ssl_context(
             "Select or generate a certificate in Edit → Preferences → "
             "MCP Bridge."
         )
-    listed = list(addresses or ())
-    if listed:
-        covered = _certificate_hosts_from_decoded(decoded)
-        for entry in listed:
-            host = _entry_host(entry)
-            if not certificate_covers_host(covered, host):
-                raise ValueError(
-                    f"The TLS certificate does not cover {host}. "
-                    "Select or generate a certificate in Edit → "
-                    "Preferences → MCP Bridge."
-                )
+    del addresses
     return context
 
 

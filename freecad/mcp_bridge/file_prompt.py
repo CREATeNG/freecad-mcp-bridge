@@ -25,10 +25,11 @@ CODE_INTRO = (
     "permissions:"
 )
 CODE_DECLINE = "The user declined to run this code."
-# The On/Off button's menu: the two mode items, each with its icon,
-# then the item that opens the Preferences page.
-MENU_ASK = "Permissions: Ask"
-MENU_UNRESTRICTED = "Permissions: Unrestricted"
+# The On/Off button's menu: Permissions, with Ask and Unrestricted
+# in a submenu, then the item that opens the Preferences page.
+MENU_PERMISSIONS = "Permissions"
+MENU_ASK = "Ask"
+MENU_UNRESTRICTED = "Unrestricted"
 MENU_PREFERENCES = "MCP Bridge Preferences"
 MODE_TOOLTIP = (
     "Ask shows you an agent's code first. Unrestricted runs it unseen."

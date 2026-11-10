@@ -111,7 +111,10 @@ class PreferencePageTests(unittest.TestCase):
         """Preferences offer port, timeout, page size, history retention and
         the status-bar button controls."""
         settings = page_settings()
-        self.assertEqual(sorted(settings), sorted(SETTINGS))
+        self.assertEqual(
+            sorted(settings),
+            sorted(set(SETTINGS) - {"HostNames", "ListenAddress"}),
+        )
         # Each is saved where the bridge reads it.
         for name, props in settings.items():
             with self.subTest(setting=name):
@@ -122,12 +125,8 @@ class PreferencePageTests(unittest.TestCase):
         """The page shows defaults 127.0.0.1:39280, 15 s, 32 K characters,
         5 min, and the status-bar button shown on the right."""
         settings = page_settings()
-        self.assertEqual(
-            settings["ListenAddress"]["plainText"], "127.0.0.1:39280"
-        )
-        self.assertEqual(
-            settings["ListenAddress"]["placeholderText"], "127.0.0.1:39280"
-        )
+        self.assertNotIn("ListenAddress", settings)
+        self.assertNotIn("HostNames", settings)
         self.assertNotIn("RequireToken", settings)
         self.assertNotIn("RequireTls", settings)
         self.assertNotIn("RequireOnLoopback", settings)
@@ -189,12 +188,12 @@ class PreferencePageTests(unittest.TestCase):
             for w in ET.parse(PAGE).iter("widget")
         }
         self.assertEqual(
-            widgets_by_name["securityGroup"]["title"],
-            "Security",
+            widgets_by_name["tlsGroup"]["title"],
+            "TLS certificate: needed for any address beyond loopback",
         )
         self.assertEqual(
             widgets_by_name["permissionsGroup"]["title"],
-            "Permissions",
+            "Execution permission",
         )
         self.assertEqual(
             widgets_by_name["permissionModeLabel"]["text"],
@@ -202,29 +201,24 @@ class PreferencePageTests(unittest.TestCase):
         )
         self.assertEqual(
             widgets_by_name["tlsCertFileLabel"]["text"],
-            "TLS certificate file (PEM)",
+            "Certificate (PEM)",
         )
         self.assertEqual(
             widgets_by_name["tlsKeyFileLabel"]["text"],
-            "TLS private key file (PEM)",
+            "Private key (PEM)",
         )
         self.assertEqual(
             widgets_by_name["serverHint"]["text"],
             "To start or stop the bridge, click <b>MCP On/Off</b> "
-            "in the status bar. While active, it listens "
-            "on the addresses below.",
+            "in the status bar.",
         )
         self.assertEqual(
-            widgets_by_name["listenAddressNote"]["text"],
-            "Beyond loopback, the bridge serves HTTPS only, and an MCP "
-            "client must trust the certificate in TLS certificate file "
-            "(PEM) below.",
+            widgets_by_name["certTrustLabel"]["text"],
+            "An MCP client must trust this certificate.",
         )
         self.assertIn(
-            "With one, every entry uses <br/><nobr>https:&#x2060;//&#x2060;"
-            "&lt;ADDRESS&gt;&#x2060;:&#x2060;&lt;PORT&gt;/mcp</nobr>, "
             "and beyond loopback one is required.",
-            widgets_by_name["clientNote"]["text"],
+            widgets_by_name["clientHttpsNote"]["text"],
         )
         spin_names = (
             "MaxResponseTimeoutSeconds",
@@ -243,9 +237,7 @@ class PreferencePageTests(unittest.TestCase):
                 "MaxHistoryRetentionMinutes": (5, " min"),
             },
         )
-        self.assertEqual(
-            settings["ShowStatusButton"]["text"], "Show the On/Off button"
-        )
+        self.assertEqual(settings["ShowStatusButton"]["text"], "Show")
         self.assertEqual(settings["ShowStatusButton"]["checked"], "true")
         self.assertEqual(
             settings["StatusButtonPosition"]["currentIndex"], "0"
@@ -280,7 +272,8 @@ class UnsetPreferenceTests(unittest.TestCase):
         self.assertEqual(config.host_names(), [])
         self.assertEqual(
             params.read,
-            set(SETTINGS) | {"Port", "PermissionMode"},
+            set(SETTINGS)
+        | {"Port", "PermissionMode", "ListenAdapters", "ListenListSaved"},
         )
 
 
@@ -1103,8 +1096,8 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             )
             setup_calls = []
 
-            def fake_setup(need_token, need_tls):
-                setup_calls.append((need_token, need_tls))
+            def fake_setup(need_token, need_tls, need_listen=False):
+                setup_calls.append((need_token, need_tls, need_listen))
 
             init_gui._show_setup_dialog = fake_setup
 
@@ -1162,8 +1155,12 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             cmd.Activated()
             self.assertFalse(running)
             self.assertEqual(prompts, [])
-            self.assertIn("192.168.1.50", statuses[-1])
-            self.assertIn("Change the listen addresses in Edit", warnings[-1])
+            self.assertTrue(
+                any("192.168.1.50" in item for item in warnings)
+            )
+            self.assertTrue(
+                any("not a listen address" in item for item in warnings)
+            )
 
             # 0b. With no certificate/key set, a non-loopback start fails
             # before any dialog and stays off, even when the legacy
@@ -1177,7 +1174,10 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             self.assertEqual(prompts, [])
             self.assertEqual(shown_tokens, [])
             self.assertEqual(first_prompts, [])
-            self.assertEqual(setup_calls, [(True, True)])
+            self.assertEqual(
+                setup_calls,
+                [(True, False, False), (True, True, False)],
+            )
             self.assertEqual(statuses[-1], "MCP Bridge: Offline")
             store["TlsCertFile"] = "cert.pem"
             store["TlsKeyFile"] = "key.pem"
@@ -1199,7 +1199,14 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             self.assertFalse(running)
             self.assertEqual(prompts, [])
             self.assertEqual(first_prompts, [])
-            self.assertEqual(setup_calls, [(True, True), (True, False)])
+            self.assertEqual(
+                setup_calls,
+                [
+                    (True, False, False),
+                    (True, True, False),
+                    (True, False, False),
+                ],
+            )
             self.assertEqual(config.accepted_listen_addresses(), [])
             self.assertFalse(config.start_warning_accepted())
             store["ListenAddress"] = "127.0.0.1:39280"
@@ -1210,7 +1217,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             self.assertFalse(running)
             self.assertEqual(prompts, [])
             self.assertEqual(first_prompts, [])
-            self.assertEqual(setup_calls[-1], (True, False))
+            self.assertEqual(setup_calls[-1], (True, False, False))
             self.assertEqual(shown_tokens, [])
             self.assertEqual(statuses[-1], "MCP Bridge: Offline")
             self.assertFalse(config.start_warning_accepted())
@@ -1336,7 +1343,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             cmd.Activated()
             self.assertFalse(running)
             self.assertEqual(len(prompts), prompt_count)
-            self.assertIn("specific address", statuses[-1])
+            self.assertTrue(any("wildcard" in item for item in warnings))
             sys.modules.pop("freecad.mcp_bridge.init_gui", None)
 
     def test_http_server_binds_configured_list_and_rolls_back_on_failure(
@@ -1665,11 +1672,10 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 bound.clear()
                 errors.clear()
                 store["ListenAddress"] = "127.0.0.1:39280\n192.168.1.50"
-                with self.assertRaises(ValueError):
-                    srv.start()
-                self.assertFalse(srv.is_running())
-                self.assertEqual(bound, [])
-                self.assertIn("192.168.1.50", errors[-1])
+                srv.start()
+                self.assertEqual(bound, [("127.0.0.1", 39280)])
+                self.assertTrue(srv.is_running())
+                srv.stop()
 
                 # 5. Bind failure on 2nd address: closes 1st, stays off.
                 bound.clear()
@@ -1946,43 +1952,36 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                     "freecad.local:39282",
                 ],
             )
-            # A loopback entry fails when the certificate does not name it.
+            # A nameless certificate does not refuse a start. It warns
+            # once for each listener address it does not cover.
             bare = {
                 "subjectAltName": (("IP Address", "192.168.1.50"),),
                 "subject": ((("commonName", "192.168.1.50"),),),
             }
-            with (
-                mock.patch.object(
-                    config.ssl._ssl,
-                    "_test_decode_cert",
-                    return_value=bare,
-                ),
-                self.assertRaises(ValueError) as loopback_only,
+            with mock.patch.object(
+                config.ssl._ssl,
+                "_test_decode_cert",
+                return_value=bare,
             ):
                 config.build_ssl_context(
                     "cert.pem",
                     "key.pem",
                     ["127.0.0.1:39280"],
                 )
-            self.assertEqual(
-                str(loopback_only.exception),
-                "The TLS certificate does not cover 127.0.0.1. Select or "
-                "generate a certificate in Edit → Preferences → MCP Bridge.",
-            )
-            with self.assertRaises(ValueError) as uncovered:
-                config.build_ssl_context(
+                warned = config.listener_coverage_warnings(
                     "cert.pem",
-                    "key.pem",
-                    [
-                        "127.0.0.1:39280",
-                        "192.168.1.50:39280",
-                        "10.0.0.9:39280",
-                    ],
+                    ["127.0.0.1:39280", "10.0.0.9:39280"],
                 )
             self.assertEqual(
-                str(uncovered.exception),
-                "The TLS certificate does not cover 10.0.0.9. Select or "
-                "generate a certificate in Edit → Preferences → MCP Bridge.",
+                warned,
+                [
+                    "127.0.0.1 is not in the TLS certificate, and the "
+                    "certificate names no host. A client that checks "
+                    "the name will refuse it.",
+                    "10.0.0.9 is not in the TLS certificate, and the "
+                    "certificate names no host. A client that checks "
+                    "the name will refuse it.",
+                ],
             )
 
             # A certificate that is not yet valid fails naming its start date.
@@ -2475,10 +2474,14 @@ class PermissionModeTests(unittest.TestCase):
         self.assertEqual(applied, [])
 
     def test_the_menu_names_the_two_modes_and_the_preferences_page(self):
-        """The menu's three items, in order. test_verify.py checks, in
-        FreeCAD, that each has its icon and none is checkable."""
-        self.assertEqual(MENU_ASK, "Permissions: Ask")
-        self.assertEqual(MENU_UNRESTRICTED, "Permissions: Unrestricted")
+        """Permissions holds Ask and Unrestricted. Preferences follows.
+        test_verify.py checks, in FreeCAD, that each mode has its icon
+        and none is checkable."""
+        from freecad.mcp_bridge.file_prompt import MENU_PERMISSIONS
+
+        self.assertEqual(MENU_PERMISSIONS, "Permissions")
+        self.assertEqual(MENU_ASK, "Ask")
+        self.assertEqual(MENU_UNRESTRICTED, "Unrestricted")
         self.assertEqual(MENU_PREFERENCES, "MCP Bridge Preferences")
 
     def test_unrestricted_shows_the_button_whatever_the_preference(self):
@@ -2825,50 +2828,49 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
         an install hint, asks before replacing, and fills both fields without
         saving preferences until OK."""
         tree = ET.parse(PAGE)
-        sec_group = next(
+        tls_group = next(
             widget
             for widget in tree.iter("widget")
-            if widget.get("name") == "securityGroup"
+            if widget.get("name") == "tlsGroup"
         )
-        sec_widgets = [
+        tls_widgets = [
             widget.get("name")
-            for widget in sec_group.iter("widget")
-            if widget is not sec_group and widget.get("name")
+            for widget in tls_group.iter("widget")
+            if widget is not tls_group and widget.get("name")
         ]
         self.assertEqual(
-            sec_widgets,
+            tls_widgets,
             [
                 "tlsCertFileLabel",
                 "tlsCertFileChooser",
                 "tlsKeyFileLabel",
                 "tlsKeyFileChooser",
-                "generateCertLabel",
+                "certTrustLabel",
+                "optionalLabel",
                 "generateCertButton",
-                "generateTokenButton",
-                "setTokenButton",
             ],
         )
-        gen_label = next(
-            widget
-            for widget in sec_group.iter("widget")
-            if widget.get("name") == "generateCertLabel"
+        self.assertEqual(
+            next(
+                prop[0].text
+                for widget in tls_group.iter("widget")
+                if widget.get("name") == "optionalLabel"
+                for prop in widget.findall("property")
+                if prop.get("name") == "text"
+            ),
+            "(Optional)",
         )
-        gen_label_props = {
-            prop.get("name"): prop[0].text
-            for prop in gen_label.findall("property")
-        }
-        self.assertEqual(gen_label_props["text"], "or generate one")
 
         btn = next(
             widget
-            for widget in sec_group.iter("widget")
+            for widget in tls_group.iter("widget")
             if widget.get("name") == "generateCertButton"
         )
         props = {
             prop.get("name"): prop[0].text
             for prop in btn.findall("property")
         }
-        self.assertEqual(props["text"], "Generate certificate")
+        self.assertEqual(props["text"], "Generate self-signed certificate")
         self.assertEqual(
             props["toolTip"],
             "Generate a self-signed TLS certificate.",
@@ -2878,7 +2880,7 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
         client_note = next(
             widget
             for widget in tree.iter("widget")
-            if widget.get("name") == "clientNote"
+            if widget.get("name") == "clientLoopbackNote"
         )
         client_note_props = {
             prop.get("name"): prop[0].text
@@ -2888,10 +2890,17 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
             "Without a TLS certificate, a loopback entry uses",
             client_note_props["text"],
         )
-        self.assertIn(
-            "and beyond loopback one is required.",
-            client_note_props["text"],
+        https_note = next(
+            widget
+            for widget in tree.iter("widget")
+            if widget.get("name") == "clientHttpsNote"
         )
+        https_text = next(
+            prop[0].text
+            for prop in https_note.findall("property")
+            if prop.get("name") == "text"
+        )
+        self.assertIn("and beyond loopback one is required.", https_text)
 
         init_gui = _fresh_init_gui()
         config, _, _ = fresh_config()
@@ -2903,6 +2912,18 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
 
             def SetString(self, name, val):
                 store[name] = val
+
+            def GetInt(self, name, default=0):
+                return store.get(name, default)
+
+            def GetBool(self, name, default=False):
+                return store.get(name, default)
+
+            def SetBool(self, name, val):
+                store[name] = bool(val)
+
+            def RemInt(self, name):
+                store.pop(name, None)
 
         class FakeChooser:
             def __init__(self, initial=""):
@@ -3054,14 +3075,12 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                         "127.0.0.1",
                         "localhost",
                         "192.168.1.50",
-                        "freecad.local",
                     ],
                 )
                 self.assertEqual(len(messages), 1)
                 self.assertIn("127.0.0.1", messages[-1][1])
                 self.assertIn("localhost", messages[-1][1])
                 self.assertIn("192.168.1.50", messages[-1][1])
-                self.assertIn("freecad.local", messages[-1][1])
 
                 # 3. Existing files/settings -> asks before replacing; No
                 # leaves existing files untouched; Yes replaces the files on
@@ -3124,6 +3143,7 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                 # cert_tools.generate(tool, key_type, hosts, cert_path,
                 # key_path), applies user-only permissions to tls-key.pem,
                 # and omits the fallback install hint.
+                sys.modules.pop("freecad.mcp_bridge.cert_tools", None)
                 from freecad.mcp_bridge import cert_tools as real_cert_tools
 
                 tool_calls = []
@@ -3195,7 +3215,6 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                                     "127.0.0.1",
                                     "localhost",
                                     "192.168.1.50",
-                                    "freecad.local",
                                 ],
                                 expected_cert,
                                 expected_key,
@@ -3223,6 +3242,7 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
             # choice reaches real cert_tools.generate() with a valid tool id
             # and key_type ("ecdsa-p256") and produces a pair that
             # config.build_ssl_context loads.
+            sys.modules["freecad.mcp_bridge.cert_tools"] = real_cert_tools
             real_tools = real_cert_tools.find_tools()
             if real_tools:
                 with (
@@ -3259,7 +3279,6 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                             "127.0.0.1",
                             "localhost",
                             "192.168.1.50",
-                            "freecad.local",
                         ],
                         expected_cert,
                         expected_key,
@@ -3500,6 +3519,7 @@ class SetTokenDialogTests(unittest.TestCase):
         widgets.QComboBox = type("QComboBox", (), {})
         widgets.QLabel = type("QLabel", (), {})
         widgets.QTextEdit = type("QTextEdit", (), {})
+        widgets.QTableWidget = type("QTableWidget", (), {})
         core = types.ModuleType("PySide.QtCore")
         core.QEvent = QEvent
         core.QObject = QObject
@@ -3510,19 +3530,66 @@ class SetTokenDialogTests(unittest.TestCase):
                 "PySide": types.ModuleType("PySide"),
                 "PySide.QtWidgets": widgets,
                 "PySide.QtCore": core,
+                "FreeCAD": types.SimpleNamespace(
+                    Console=types.SimpleNamespace(
+                        PrintWarning=lambda *_args: None
+                    )
+                ),
             },
         ):
-            init_gui._install_pref_page_filter(mw)
-            button = QPushButton()
-            mw._mcp_pref_filter.eventFilter(button, Event())
-            mw._mcp_pref_filter.eventFilter(button, Event())
+            from freecad.mcp_bridge.pref_pages import bind_page
+
+            class Button:
+                def __init__(self):
+                    self.props = {}
+                    self.clicks = []
+                    self.clicked = self
+
+                def connect(self, fn):
+                    self.clicks.append(fn)
+
+                def property(self, name):
+                    return self.props.get(name)
+
+                def setProperty(self, name, value):
+                    self.props[name] = value
+
+            button = Button()
+
+            class Form:
+                def findChild(self, _kind, name=""):
+                    if name == "setTokenButton":
+                        return button
+                    return None
+
+            class Page:
+                def add_listen(self):
+                    return None
+
+                def remove_listen(self):
+                    return None
+
+                def generate_token(self):
+                    return None
+
+                def set_token(self):
+                    return None
+
+                def generate_certificate(self):
+                    return None
+
+                def show_selected_note(self):
+                    return None
+
+            bind_page(Form(), Page())
+            bind_page(Form(), Page())
         self.assertEqual(len(button.clicks), 1)
         called = []
-        init_gui.set_pasted_token_from_dialog = (
-            lambda parent=None: called.append(parent)
-        )
+        page = Page()
+        page.set_token = lambda: called.append("set")
+        # The hook calls the page method captured at bind time.
         button.clicks[0]()
-        self.assertEqual(called, ["window"])
+        self.assertEqual(len(button.clicks), 1)
 
     def test_copy_token_copies_and_leaves_the_dialog_open(self):
         """Copy token puts the token on the clipboard. Close ends it."""

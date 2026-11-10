@@ -243,19 +243,25 @@ def _assert_status_button(running: bool) -> None:
         )
     menu = button.menu()
     texts = None if menu is None else [a.text() for a in menu.actions()]
-    expected_menu = [
-        "Permissions: Ask",
-        "Permissions: Unrestricted",
-        "MCP Bridge Preferences",
-    ]
+    expected_menu = ["Permissions", "MCP Bridge Preferences"]
     if texts != expected_menu:
         common.fail(
             "Status-bar button menu is missing or unexpected: "
             f"expected {expected_menu!r}, got {texts!r}"
         )
-    # Each item is plain words with its icon. None carries a tick: the
-    # button's own icon is what shows the mode in force.
-    for item in menu.actions():
+    permissions = menu.actions()[0].menu()
+    sub = None if permissions is None else [
+        a.text() for a in permissions.actions()
+    ]
+    if sub != ["Ask", "Unrestricted"]:
+        common.fail(
+            "Permissions submenu is missing or unexpected: "
+            f"expected ['Ask', 'Unrestricted'], got {sub!r}"
+        )
+    # Ask and Unrestricted each have the mode's icon and no tick.
+    # Preferences has its icon. None carries a tick.
+    mode_items = list(permissions.actions()) + [menu.actions()[1]]
+    for item in mode_items:
         if item.isCheckable():
             common.fail(
                 f"Status-bar button menu item {item.text()!r} is checkable"

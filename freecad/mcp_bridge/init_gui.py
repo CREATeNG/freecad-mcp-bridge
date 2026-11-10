@@ -5,6 +5,11 @@ import FreeCAD as App
 import FreeCADGui as Gui
 
 from freecad.mcp_bridge import MCP_Bridge, bridge
+from freecad.mcp_bridge.listeners import (
+    KIND_NAME,
+    adapter_ipv4,
+    bind_entries,
+)
 from freecad.mcp_bridge.constants import (
     COMMAND_ID,
     DISPLAY_NAME,
@@ -286,7 +291,10 @@ def set_pasted_token_from_dialog(parent=None):
 
 def _report_line(sentence: str) -> None:
     """Print one Report view line. It never includes a token."""
-    import FreeCAD as App
+    try:
+        import FreeCAD as App
+    except Exception:
+        return
     from datetime import datetime
 
     console = getattr(App, "Console", None)
@@ -297,13 +305,20 @@ def _report_line(sentence: str) -> None:
     printer(f"{LOG_PREFIX} {stamp} {sentence}\n")
 
 
-def _setup_dialog_text(need_token: bool, need_tls: bool):
+def _setup_dialog_text(
+    need_token: bool, need_tls: bool, need_listen: bool = False
+):
     """Return (title, text) for what is missing before a start."""
     title = f"{DISPLAY_NAME}: Set up the bridge"
     lines = [
         "The bridge can't start yet. In Edit → Preferences → "
         "MCP Bridge, it needs:",
     ]
+    if need_listen:
+        lines.append(
+            "• A listen address. Under Listen addresses, click + "
+            "and add an adapter or a fixed IP address."
+        )
     if need_token:
         lines.append(
             "• An authorization bearer token. Click Generate new "
@@ -314,8 +329,8 @@ def _setup_dialog_text(need_token: bool, need_tls: bool):
         lines.append(
             "• A TLS certificate and private key, for the addresses "
             "beyond loopback in Listen addresses. Enter your own "
-            "certificate files, or click Generate certificate to "
-            "self-sign one."
+            "certificate files, or click Generate self-signed "
+            "certificate."
         )
     lines.append(
         "Click Open Preferences to go there, then turn the bridge "
@@ -324,13 +339,15 @@ def _setup_dialog_text(need_token: bool, need_tls: bool):
     return title, "\n".join(lines)
 
 
-def _show_setup_dialog(need_token: bool, need_tls: bool) -> None:
+def _show_setup_dialog(
+    need_token: bool, need_tls: bool, need_listen: bool = False
+) -> None:
     """Say what is missing. Nothing starts. Open Preferences can
     open the MCP Bridge page."""
     import FreeCADGui as Gui
     from PySide.QtWidgets import QDialog, QMessageBox
 
-    title, body = _setup_dialog_text(need_token, need_tls)
+    title, body = _setup_dialog_text(need_token, need_tls, need_listen)
     box = QMessageBox(
         QMessageBox.Warning,
         title,
@@ -686,37 +703,15 @@ def generate_and_show_certificate(parent=None):
         except Exception:
             host = None
 
-    raw_entries = None
-    if host is not None:
-        try:
-            from PySide.QtWidgets import QTextEdit
-
-            edit = host.findChild(QTextEdit, "listenAddressTextEdit")
-            if edit is not None:
-                raw_entries = edit.toPlainText()
-        except Exception:
-            raw_entries = None
-
     try:
-        entries = (
-            config.parse_listen_addresses(raw_entries)
-            if raw_entries is not None
-            else config.listen_addresses()
-        )
-        extra_names = config.host_names()
-        if host is not None:
-            try:
-                from PySide.QtWidgets import QTextEdit
-
-                names_edit = host.findChild(
-                    QTextEdit, "hostNamesTextEdit"
-                )
-            except Exception:
-                names_edit = None
-            if names_edit is not None:
-                from freecad.mcp_bridge.listen_page import parse_names
-
-                extra_names = parse_names(names_edit.toPlainText())
+        rows = getattr(host, "_listen_rows", None)
+        if rows is None:
+            rows = config.saved_listen_rows()
+        ipv4 = adapter_ipv4(_qt_interface_records(only_up=True))
+        entries = bind_entries(rows, ipv4)
+        extra_names = [
+            row.host for row in rows if row.kind == KIND_NAME and row.host
+        ]
         hosts = config.certificate_target_hosts(entries, extra_names)
     except ValueError as exc:
         _show_cert_message(
@@ -828,6 +823,144 @@ def generate_and_show_certificate(parent=None):
     return c_str, k_str
 
 
+def _turn_bridge_on():
+    """Start every listed listener. Return `(status, started)`.
+
+    The set-up dialog appears when a token, a certificate, or a
+    listen address is missing, and then nothing starts.
+    """
+    import FreeCAD as App
+    import FreeCADGui as Gui
+
+    from freecad.mcp_bridge import config
+    from freecad.mcp_bridge.listeners import (
+        KIND_ADAPTER,
+        KIND_ADDRESS,
+        adapter_ipv4,
+        adapter_names,
+        bind_entries,
+        host_already_accepted,
+        risk_line,
+        start_notes,
+    )
+
+    rows = config.saved_listen_rows()
+    up = _qt_interface_records(only_up=True)
+    every = _qt_interface_records(only_up=False)
+    ipv4 = adapter_ipv4(up)
+    names = adapter_names(up)
+    from freecad.mcp_bridge.pref_pages import _machine
+
+    machine = _machine(every)
+    entries = bind_entries(rows, ipv4)
+    for note in start_notes(rows, ipv4, machine, names):
+        App.Console.PrintWarning(f"{LOG_PREFIX} WARNING: {note}\n")
+    has_row = any(row.kind in (KIND_ADDRESS, KIND_ADAPTER) for row in rows)
+    cert_file = config.tls_cert_file()
+    key_file = config.tls_key_file()
+    non_loopback = [
+        entry
+        for entry in entries
+        if not config.is_loopback_address(entry)
+    ]
+    need_token = not config.token_hash()
+    need_tls = bool(non_loopback) and not (
+        cert_file.strip() and key_file.strip()
+    )
+    need_listen = not has_row
+    if need_token or need_tls or need_listen:
+        _show_setup_dialog(need_token, need_tls, need_listen)
+        _offline_status()
+        return f"{DISPLAY_NAME}: Offline", False
+    if not entries:
+        _offline_status()
+        return f"{DISPLAY_NAME}: Offline", False
+    if non_loopback or (cert_file.strip() and key_file.strip()):
+        config.build_ssl_context(cert_file, key_file, entries)
+    if cert_file.strip():
+        for line in config.listener_coverage_warnings(cert_file, entries):
+            App.Console.PrintWarning(f"{LOG_PREFIX} WARNING: {line}\n")
+    pending = _unaccepted(rows, ipv4)
+    lines = [line for _key, line in pending]
+    first_start = not config.start_warning_accepted()
+    if first_start:
+        if not _confirm_first_start(lines):
+            _offline_status()
+            return f"{DISPLAY_NAME}: Offline", False
+    elif lines and not _confirm_non_loopback_risk(lines):
+        _offline_status()
+        return f"{DISPLAY_NAME}: Offline", False
+    bridge.start(
+        addresses=entries,
+        tls_cert_file=cert_file,
+        tls_key_file=key_file,
+    )
+    if first_start:
+        config.accept_start_warning()
+    for key, _line in pending:
+        config.accept_address(key)
+    endpoints = ", ".join(entries)
+    warning = (
+        "connected agents can run code with your full permissions"
+    )
+    if non_loopback:
+        warning += f"; beyond loopback: {', '.join(non_loopback)}"
+    return (
+        f"{DISPLAY_NAME}: Listening on {endpoints} (warning: {warning})",
+        True,
+    )
+
+
+def _offline_status() -> None:
+    import FreeCAD as App
+    import FreeCADGui as Gui
+
+    status = f"{DISPLAY_NAME}: Offline"
+    mw = Gui.getMainWindow()
+    if mw:
+        mw.statusBar().showMessage(status)
+    show_toggle_state()
+    App.Console.PrintNotification(status + "\n")
+
+
+def _unaccepted(rows, ipv4):
+    """`(stored key, dialog line)` for listeners not yet accepted.
+
+    An adapter's key is the IP address alone. A fixed address's
+    key stays `address:port`.
+    """
+    from freecad.mcp_bridge import config
+    from freecad.mcp_bridge.listen_page import format_entry
+    from freecad.mcp_bridge.listeners import (
+        KIND_ADAPTER,
+        KIND_ADDRESS,
+        host_already_accepted,
+        risk_line,
+    )
+
+    stored = config.accepted_listen_addresses()
+    pending = []
+    for row in rows:
+        if row.kind == KIND_ADAPTER:
+            present = ipv4.get(row.adapter, "")
+            if not present:
+                continue
+            entry = format_entry(present, row.port)
+            if config.is_loopback_address(entry):
+                continue
+            if host_already_accepted(stored, present):
+                continue
+            pending.append((present, risk_line(row, present)))
+        elif row.kind == KIND_ADDRESS:
+            entry = format_entry(row.host, row.port)
+            if config.is_loopback_address(entry):
+                continue
+            if config.is_address_accepted(entry):
+                continue
+            pending.append((entry, risk_line(row, row.host)))
+    return pending
+
+
 class MCPBridgeCommand:
     def GetResources(self):
         import FreeCAD as App
@@ -855,81 +988,7 @@ class MCPBridgeCommand:
                 status = f"{DISPLAY_NAME}: Offline"
                 stopped = True
             else:
-                entries = config.listen_addresses()
-                cert_file = config.tls_cert_file()
-                key_file = config.tls_key_file()
-                for entry in entries:
-                    config.parse_listen_entry(entry)
-                non_loopback = [
-                    entry
-                    for entry in entries
-                    if not config.is_loopback_address(entry)
-                ]
-                need_token = not config.token_hash()
-                need_tls = bool(non_loopback) and not (
-                    cert_file.strip() and key_file.strip()
-                )
-                if need_token or need_tls:
-                    _show_setup_dialog(need_token, need_tls)
-                    status = f"{DISPLAY_NAME}: Offline"
-                    mw = Gui.getMainWindow()
-                    if mw:
-                        mw.statusBar().showMessage(status)
-                    show_toggle_state()
-                    App.Console.PrintNotification(status + "\n")
-                    return
-                if non_loopback or (
-                    cert_file.strip() and key_file.strip()
-                ):
-                    config.build_ssl_context(
-                        cert_file, key_file, entries
-                    )
-                unaccepted = [
-                    entry
-                    for entry in non_loopback
-                    if not config.is_address_accepted(entry)
-                ]
-                first_start = not config.start_warning_accepted()
-                if first_start:
-                    if not _confirm_first_start(unaccepted):
-                        status = f"{DISPLAY_NAME}: Offline"
-                        mw = Gui.getMainWindow()
-                        if mw:
-                            mw.statusBar().showMessage(status)
-                        show_toggle_state()
-                        App.Console.PrintNotification(status + "\n")
-                        return
-                elif unaccepted and not _confirm_non_loopback_risk(
-                    unaccepted
-                ):
-                    status = f"{DISPLAY_NAME}: Offline"
-                    mw = Gui.getMainWindow()
-                    if mw:
-                        mw.statusBar().showMessage(status)
-                    show_toggle_state()
-                    App.Console.PrintNotification(status + "\n")
-                    return
-                bridge.start(
-                    addresses=entries,
-                    tls_cert_file=cert_file,
-                    tls_key_file=key_file,
-                )
-                if first_start:
-                    config.accept_start_warning()
-                for entry in unaccepted:
-                    config.accept_address(entry)
-                endpoints = ", ".join(entries)
-                warning = (
-                    "connected agents can run code with your full "
-                    "permissions"
-                )
-                if non_loopback:
-                    warning += f"; beyond loopback: {', '.join(non_loopback)}"
-                status = (
-                    f"{DISPLAY_NAME}: Listening on {endpoints} "
-                    f"(warning: {warning})"
-                )
-                started = True
+                status, started = _turn_bridge_on()
         except Exception as e:
             App.Console.PrintDeveloperError(
                 f"{LOG_PREFIX} Error toggling bridge: {e}\n"
@@ -1129,13 +1188,16 @@ def _ensure_status_button(mw):
     button.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
     button.setPopupMode(QToolButton.MenuButtonPopup)
     menu = QMenu(button)
-    ask_action = menu.addAction(
+    permissions = menu.addMenu(file_prompt.MENU_PERMISSIONS)
+    ask_action = permissions.addAction(
         file_prompt.mode_icon(False), file_prompt.MENU_ASK
     )
+    ask_action.setCheckable(False)
     ask_action.triggered.connect(lambda *_: _on_mode_menu(False))
-    unrestricted_action = menu.addAction(
+    unrestricted_action = permissions.addAction(
         file_prompt.mode_icon(True), file_prompt.MENU_UNRESTRICTED
     )
+    unrestricted_action.setCheckable(False)
     unrestricted_action.triggered.connect(lambda *_: _on_mode_menu(True))
     prefs_action = menu.addAction(
         QIcon(icon_path()), file_prompt.MENU_PREFERENCES
@@ -1313,17 +1375,12 @@ def _on_mode_menu(want_unrestricted):
 def _sync_open_mode_box():
     """Keep an open Preferences box in step with the preference."""
     try:
-        from PySide.QtWidgets import QComboBox
-        import FreeCADGui as Gui
+        from freecad.mcp_bridge import config, file_prompt
+        from freecad.mcp_bridge.pref_pages import live_mode_boxes
     except Exception:
         return
-    from freecad.mcp_bridge import config, file_prompt
-
-    mw = Gui.getMainWindow()
-    if mw is None:
-        return
-    box = mw.findChild(QComboBox, "permissionModeComboBox")
-    file_prompt.set_mode_box_quietly(box, config.unrestricted())
+    for box in live_mode_boxes():
+        file_prompt.set_mode_box_quietly(box, config.unrestricted())
 
 
 def _show_mode_in_box(box):
@@ -1385,9 +1442,13 @@ def _qt_interface_records(only_up=True):
     """`(interface name, address)` from Qt.
 
     `only_up` leaves out interfaces that are down. The rows use that.
-    Membership uses every interface, up or down.
+    Membership uses every interface, up or down. With no Qt network
+    module the list is empty and only fixed addresses can start.
     """
-    from PySide.QtNetwork import QHostAddress, QNetworkInterface
+    try:
+        from PySide.QtNetwork import QHostAddress, QNetworkInterface
+    except Exception:
+        return []
 
     records = []
     up = QNetworkInterface.IsUp
@@ -1577,89 +1638,6 @@ def _bind_listen_page(edit):
     _refresh_listen_page(edit, lookup=True)
 
 
-def _install_pref_page_filter(mw):
-    """Connect the Preferences page when it opens."""
-    try:
-        from PySide.QtCore import QEvent, QObject
-        from PySide.QtWidgets import (
-            QApplication,
-            QComboBox,
-            QLabel,
-            QPushButton,
-            QTextEdit,
-        )
-    except Exception:
-        return
-
-    app = QApplication.instance()
-    if app is None or getattr(mw, "_mcp_pref_filter", None) is not None:
-        return
-
-    class _PrefPageFilter(QObject):
-        def eventFilter(self, obj, event):
-            if (
-                event.type() == QEvent.Show
-                and isinstance(obj, QPushButton)
-                and obj.objectName() == "generateTokenButton"
-                and not obj.property("mcp_token_hooked")
-            ):
-                obj.setProperty("mcp_token_hooked", True)
-                obj.clicked.connect(
-                    lambda *_: generate_and_show_token(parent=obj.window())
-                )
-            if (
-                event.type() == QEvent.Show
-                and isinstance(obj, QPushButton)
-                and obj.objectName() == "setTokenButton"
-                and not obj.property("mcp_set_token_hooked")
-            ):
-                obj.setProperty("mcp_set_token_hooked", True)
-                obj.clicked.connect(
-                    lambda *_: set_pasted_token_from_dialog(
-                        parent=obj.window()
-                    )
-                )
-            if (
-                event.type() == QEvent.Show
-                and isinstance(obj, QPushButton)
-                and obj.objectName() == "generateCertButton"
-                and not obj.property("mcp_cert_hooked")
-            ):
-                obj.setProperty("mcp_cert_hooked", True)
-                obj.clicked.connect(
-                    lambda *_: generate_and_show_certificate(
-                        parent=obj.window()
-                    )
-                )
-            if (
-                event.type() == QEvent.Show
-                and isinstance(obj, QComboBox)
-                and obj.objectName() == "permissionModeComboBox"
-            ):
-                _show_mode_in_box(obj)
-            if (
-                event.type() == QEvent.Show
-                and isinstance(obj, QTextEdit)
-                and obj.objectName() == "listenAddressTextEdit"
-            ):
-                _bind_listen_page(obj)
-            if (
-                event.type() == QEvent.Show
-                and isinstance(obj, QLabel)
-                and obj.objectName() == "listenAddressNote"
-            ):
-                from freecad.mcp_bridge import config
-
-                obj.setText(
-                    _listen_address_note_text(config.tls_cert_file())
-                )
-            return False
-
-    flt = _PrefPageFilter(mw)
-    mw._mcp_pref_filter = flt
-    app.installEventFilter(flt)
-
-
 def ensure_startup_ui():
     """Wait for the main window, then inject and hook workbench changes."""
     import FreeCAD as App
@@ -1686,7 +1664,6 @@ def ensure_startup_ui():
         App.MCPBridgePrefGroup = App.ParamGet(PREF_GROUP)
         App.MCPBridgePrefObserver = _StatusBarPrefObserver()
         App.MCPBridgePrefGroup.Attach(App.MCPBridgePrefObserver)
-        _install_pref_page_filter(mw)
 
     App.MCPBridgeInjectUi()
 
@@ -1717,15 +1694,15 @@ if not getattr(App, "MCPBridgePrefAdded", False):
         config.migrate_legacy_port()
     except Exception:
         pass
-    _prefs_ui = preferences_ui_path()
-    if os.path.isfile(_prefs_ui):
-        try:
-            Gui.addPreferencePage(_prefs_ui, DISPLAY_NAME)
-            App.MCPBridgePrefAdded = True
-        except Exception as exc:
-            App.Console.PrintWarning(
-                f"{LOG_PREFIX} Could not add preference page: {exc}\n"
-            )
+    try:
+        from freecad.mcp_bridge.pref_pages import PreferencesPage
+
+        Gui.addPreferencePage(PreferencesPage, DISPLAY_NAME)
+        App.MCPBridgePrefAdded = True
+    except Exception as exc:
+        App.Console.PrintWarning(
+            f"{LOG_PREFIX} Could not add preference page: {exc}\n"
+        )
 
 if not getattr(App, "MCPBridgeManipulatorAdded", False):
     App.MCPBridgeManipulatorAdded = True
