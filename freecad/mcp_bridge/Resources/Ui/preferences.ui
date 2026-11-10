@@ -528,7 +528,7 @@
            </sizepolicy>
           </property>
           <property name="toolTip">
-           <string>Paste a token of at least 32 characters.</string>
+           <string>Paste a bearer token.</string>
           </property>
           <property name="text">
            <string>Set token</string>
