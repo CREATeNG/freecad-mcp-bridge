@@ -2300,15 +2300,31 @@ class PermissionModeTests(unittest.TestCase):
             def setProperty(self, name, value):
                 self.props[name] = value
 
+            def setItemIcon(self, _index, _icon):
+                pass
+
         box = Box()
-        with mock.patch(
-            "freecad.mcp_bridge.config.unrestricted", return_value=True
+        with (
+            mock.patch(
+                "freecad.mcp_bridge.config.unrestricted", return_value=True
+            ),
+            mock.patch(
+                "freecad.mcp_bridge.file_prompt.mode_icon",
+                return_value=object(),
+            ),
         ):
             init_gui._show_mode_in_box(box)
         self.assertEqual(box.index, 1)
         self.assertEqual(len(box.connected), 1)
-        with mock.patch(
-            "freecad.mcp_bridge.config.unrestricted", return_value=False
+        with (
+            mock.patch(
+                "freecad.mcp_bridge.config.unrestricted",
+                return_value=False,
+            ),
+            mock.patch(
+                "freecad.mcp_bridge.file_prompt.mode_icon",
+                return_value=object(),
+            ),
         ):
             init_gui._show_mode_in_box(box)
         self.assertEqual(box.index, 0)
@@ -2318,6 +2334,59 @@ class PermissionModeTests(unittest.TestCase):
         init_gui._on_mode_chosen = lambda b, index: chosen.append((b, index))
         box.connected[0](1)
         self.assertEqual(chosen, [(box, 1)])
+
+    def test_the_permission_mode_box_items_carry_their_icons(self):
+        """Ask and Unrestricted each carry that mode's icon."""
+        init_gui = _fresh_init_gui()
+        ask_icon = object()
+        unrestricted_icon = object()
+
+        class Box:
+            def __init__(self):
+                self.icons = {}
+                self.index = 0
+                self.props = {}
+                self.connected = []
+                self.activated = types.SimpleNamespace(
+                    connect=self.connected.append
+                )
+
+            def blockSignals(self, _on):
+                pass
+
+            def setCurrentIndex(self, index):
+                self.index = index
+
+            def property(self, name):
+                return self.props.get(name)
+
+            def setProperty(self, name, value):
+                self.props[name] = value
+
+            def setItemIcon(self, index, icon):
+                self.icons[index] = icon
+
+        def icon(unrestricted):
+            if unrestricted:
+                return unrestricted_icon
+            return ask_icon
+
+        box = Box()
+        with (
+            mock.patch(
+                "freecad.mcp_bridge.file_prompt.mode_icon",
+                side_effect=icon,
+            ),
+            mock.patch(
+                "freecad.mcp_bridge.config.unrestricted",
+                return_value=False,
+            ),
+        ):
+            init_gui._show_mode_in_box(box)
+        self.assertIsNotNone(box.icons[0])
+        self.assertIsNotNone(box.icons[1])
+        self.assertIs(box.icons[0], ask_icon)
+        self.assertIs(box.icons[1], unrestricted_icon)
 
     def test_choosing_the_mode_in_force_asks_nothing(self):
         """The Preferences box acts only on a change of mode."""
