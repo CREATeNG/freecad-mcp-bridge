@@ -1683,8 +1683,10 @@ def wait_for_finish():
         action.trigger()
     if orig_addr:
         params.SetString('ListenAddress', orig_addr)
+        params.SetBool('ListenListSaved', True)
     else:
         params.RemString('ListenAddress')
+        params.RemBool('ListenListSaved')
     if orig_accepted:
         params.SetString('AcceptedListenAddresses', orig_accepted)
     else:
@@ -1706,6 +1708,7 @@ def wait_for_finish():
         params.RemString('TlsKeyFile')
     if dock is not None and not was_visible:
         dock.hide()
+    QTimer.singleShot(50, lambda: dismiss_setup('restore_setup'))
     action.trigger()
     with open({seen_file!r}, 'w', encoding='utf-8') as handle:
         json.dump(seen, handle)
