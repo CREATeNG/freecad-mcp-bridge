@@ -61,18 +61,19 @@ The server is off until you toggle it on, each session — click the button agai
    is **Enabled**. On the Linux beta, the extension's tools default
    to **Needs approval**.
    - **On this machine:** Leave **Bearer token** and **TLS
-     certificate file (PEM)** blank. FreeCAD writes the token at
-     the first start to a file only you can read, and the extension
-     reads that file. It also reads `serving-cert.pem` in the same
+     certificate file (PEM)** blank, and turn on **Share with
+     Claude Desktop** in FreeCAD. The extension reads
+     `token-handover` in the bridge's folder, stores the token,
+     and deletes that file. After that it uses the stored token.
+     Paste into **Bearer token** when the store is empty, or when
+     you prefer the paste. That paste is not written to a file.
+     The extension also reads `serving-cert.pem` in the same
      folder, which the bridge writes at each start with TLS and
      removes at each start without. With that file the extension
-     uses HTTPS and trusts only it. Without it, HTTP. Paste a
-     token of at least 32 characters into **Bearer token** only to
-     replace that token file for every client, and a shorter one
-     is ignored.
+     uses HTTPS and trusts only it. Without it, HTTP.
    - **For another host:** Paste FreeCAD's bearer token into
      **Bearer token**. That pasted token is used by the extension
-     only and is not written to the local token file. Set **TLS
+     only and is not written back. Set **TLS
      certificate file (PEM)** to a copy of FreeCAD's certificate
      file, not the private key, so the extension connects over
      HTTPS and trusts only that certificate.

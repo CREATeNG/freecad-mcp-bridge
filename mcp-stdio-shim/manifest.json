@@ -59,7 +59,7 @@
       "type": "string",
       "sensitive": true,
       "title": "Bearer token",
-      "description": "On this machine, optional: the extension sends the token from the file FreeCAD writes at the first start. A paste of at least 32 characters replaces that token for every client, and a shorter one is ignored. For another host, required: the pasted token is used by the extension only.",
+      "description": "On this machine the extension stores the token from FreeCAD's Share with Claude Desktop hand-over, then uses that store: DPAPI on Windows, the Keychain on macOS, or a user-only file on Linux. Paste a token here when that store is empty, or when you prefer the paste. For another host, required: the pasted token is used by the extension only and is never written back.",
       "required": false
     },
     "tls_cert_file": {

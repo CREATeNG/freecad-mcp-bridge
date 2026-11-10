@@ -7,20 +7,19 @@
  * tools/call to the addon's endpoint on FREECAD_MCP_HOST (127.0.0.1 by
  * default; "localhost" in any letter case is taken as 127.0.0.1, and
  * 127.x.x.x and ::1 are treated as this machine). On this machine it
- * sends Authorization: Bearer from the token file in
- * FREECAD_MCP_TOKEN_DIR, or <home>/.freecad-mcp-bridge otherwise.
- * When serving-cert.pem is in that folder it connects over HTTPS and
- * trusts only that file. When the file is absent it connects over
- * HTTP. FREECAD_MCP_TLS_CERT_FILE is ignored on this machine. A pasted
- * token of at least 32 characters is written to the token file only
- * on this machine, only when its hash differs from the hash stored
- * beside the token, and only when the folder already exists. A
- * problem with that paste is a note on the tool result; the call is
- * still sent. For another host, the shim connects to
+ * sends Authorization: Bearer from its own store, filled from the
+ * hand-over file token-handover in FREECAD_MCP_TOKEN_DIR, or
+ * <home>/.freecad-mcp-bridge otherwise. It does not read or write a
+ * token file. A pasted token is never written back. On this machine
+ * the order is the hand-over file just taken, else the stored token,
+ * else the Bearer token setting. When serving-cert.pem is in that
+ * folder it connects over HTTPS and trusts only that file. When the
+ * file is absent it connects over HTTP. FREECAD_MCP_TLS_CERT_FILE is
+ * ignored on this machine. For another host, the shim connects to
  * https://<host>:<port>/mcp, requires both
  * FREECAD_MCP_TLS_CERT_FILE and FREECAD_MCP_TOKEN, trusts only that
- * certificate, and uses the pasted token without writing to the local
- * token file. The JSON reply is unwrapped and written back on stdout.
+ * certificate, and uses the pasted token only. The JSON reply is
+ * unwrapped and written back on stdout.
  *
  * The shim answers initialize and tools/list itself (tools.json is a
  * copy of the addon's tool list) and does not contact the bridge for
@@ -38,7 +37,7 @@
  * method. Node stdlib only (global fetch and node:https, >=18).
  */
 
-const crypto = require("crypto");
+const { spawnSync } = require("child_process");
 const fs = require("fs");
 const https = require("https");
 const net = require("net");
@@ -76,17 +75,15 @@ const URL_HOST = BARE_HOST.includes(":") ? `[${BARE_HOST}]` : BARE_HOST;
 const IS_DEFAULT_HOST = isLoopbackAddress(BARE_HOST);
 const PORT = envSetting("FREECAD_MCP_PORT") || "39280";
 const PASTED_TOKEN = envSetting("FREECAD_MCP_TOKEN");
-const MIN_TOKEN_LENGTH = 32;
 const TOKEN_DIR_NAME = ".freecad-mcp-bridge";
-const TOKEN_FILE_NAME = "token";
 const SERVING_CERT_NAME = "serving-cert.pem";
-const PASTE_RECORD_NAME = "pasted";
-const SHORT_TOKEN_MESSAGE =
-  "The bearer token pasted into the FreeCAD MCP Bridge extension was ignored because it's shorter than 32 characters.";
-const MISSING_FOLDER_MESSAGE =
-  "The token folder doesn't exist yet. Turn the bridge on in FreeCAD once, so it can create it.";
-const WRITE_FAILED_MESSAGE =
-  "The bearer token pasted into the FreeCAD MCP Bridge extension could not be written to the token file. Check that the folder is writable, then try again.";
+const HANDOVER_NAME = "token-handover";
+const DPAPI_NAME = "token.dpapi";
+const EXTENSION_TOKEN_NAME = "token.extension";
+const KEYCHAIN_SERVICE = "freecad-mcp-bridge";
+const NO_LOCAL_TOKEN_MESSAGE =
+  "No token for this machine. Turn on Share with Claude Desktop in FreeCAD's MCP Bridge preferences, or paste the token into Bearer token.";
+const MIN_TOKEN_LENGTH = 32;
 
 function tokenDir() {
   const override = envSetting("FREECAD_MCP_TOKEN_DIR");
@@ -94,12 +91,45 @@ function tokenDir() {
   return path.join(os.homedir(), TOKEN_DIR_NAME);
 }
 
-function tokenFilePath() {
-  return path.join(tokenDir(), TOKEN_FILE_NAME);
-}
-
 function servingCertPath() {
   return path.join(tokenDir(), SERVING_CERT_NAME);
+}
+
+function handoverPath() {
+  return path.join(tokenDir(), HANDOVER_NAME);
+}
+
+// file forces the Linux store, including on Windows, so a test can
+// exercise that path. Unset, the store follows the system.
+function storeKind() {
+  const forced = envSetting("FREECAD_MCP_EXTENSION_STORE");
+  if (forced === "file" || forced === "dpapi" || forced === "keychain") {
+    return forced;
+  }
+  if (process.platform === "win32") return "dpapi";
+  if (process.platform === "darwin") return "keychain";
+  return "file";
+}
+
+function storeLabel() {
+  const kind = storeKind();
+  if (kind === "dpapi") return `the DPAPI store at ${path.join(tokenDir(), DPAPI_NAME)}`;
+  if (kind === "keychain") return `the Keychain item ${KEYCHAIN_SERVICE}`;
+  return `the token file at ${path.join(tokenDir(), EXTENSION_TOKEN_NAME)}`;
+}
+
+function storeWriteMessage(err) {
+  return (
+    `Could not write the token to ${storeLabel()} (${err.message}). ` +
+    "Check that the store is writable by you, then try again."
+  );
+}
+
+function storeReadMessage(err) {
+  return (
+    `Could not read the token from ${storeLabel()} (${err.message}). ` +
+    "Check that the store is readable by you, then try again."
+  );
 }
 
 // On this machine HTTPS follows the bridge's copy, looked up per
@@ -120,30 +150,6 @@ function bridgeEndpoint() {
   const https = !IS_DEFAULT_HOST || localServingCert() !== "";
   const scheme = https ? "https" : "http";
   return `${scheme}://${URL_HOST}:${PORT}/mcp`;
-}
-
-function pasteRecordPath() {
-  return path.join(tokenDir(), PASTE_RECORD_NAME);
-}
-
-function pasteHash(token) {
-  return crypto.createHash("sha256").update(token, "utf8").digest("hex");
-}
-
-function readTokenFile() {
-  try {
-    return fs.readFileSync(tokenFilePath(), "utf8").trim();
-  } catch {
-    return "";
-  }
-}
-
-function readPasteRecord() {
-  try {
-    return fs.readFileSync(pasteRecordPath(), "utf8").trim();
-  } catch {
-    return "";
-  }
 }
 
 const retrySleep = new Int32Array(new SharedArrayBuffer(4));
@@ -186,33 +192,254 @@ function writeUserOnly(file, text) {
   }
 }
 
-let pastedNote = "";
-function applyPastedToken() {
-  pastedNote = "";
-  if (!IS_DEFAULT_HOST) return;
-  if (!PASTED_TOKEN) return;
-  if (PASTED_TOKEN.length < MIN_TOKEN_LENGTH) {
-    pastedNote = SHORT_TOKEN_MESSAGE;
-    return;
+function powershellExe() {
+  const windir = process.env.SystemRoot || "C:\\Windows";
+  return path.join(
+    windir,
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe"
+  );
+}
+
+function runPowerShell(op, b64) {
+  // -Command - runs only the first stdin line, so the script is encoded.
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    "Add-Type -AssemblyName System.Security",
+    "$raw = [Convert]::FromBase64String($env:FREECAD_MCP_DPAPI_B64)",
+    "if ($env:FREECAD_MCP_DPAPI_OP -eq 'protect') {",
+    "  $out = [Security.Cryptography.ProtectedData]::Protect(",
+    "    $raw, $null, 'CurrentUser')",
+    "} else {",
+    "  $out = [Security.Cryptography.ProtectedData]::Unprotect(",
+    "    $raw, $null, 'CurrentUser')",
+    "}",
+    "[Console]::Out.Write([Convert]::ToBase64String($out))",
+  ].join("\n");
+  const encoded = Buffer.from(script, "utf16le").toString("base64");
+  const result = spawnSync(
+    powershellExe(),
+    ["-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+    {
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 30000,
+      env: {
+        ...process.env,
+        FREECAD_MCP_DPAPI_OP: op,
+        FREECAD_MCP_DPAPI_B64: b64,
+      },
+    }
+  );
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    const detail = (result.stderr || result.stdout || "PowerShell failed").trim();
+    throw new Error(detail);
   }
-  const dir = tokenDir();
-  if (!fs.existsSync(dir)) {
-    pastedNote = MISSING_FOLDER_MESSAGE;
-    return;
+  return (result.stdout || "").trim();
+}
+
+function writeDpapi(token) {
+  const cipher = runPowerShell(
+    "protect",
+    Buffer.from(token, "utf8").toString("base64")
+  );
+  if (!cipher) throw new Error("PowerShell returned no ciphertext.");
+  fs.mkdirSync(tokenDir(), { recursive: true });
+  writeUserOnly(path.join(tokenDir(), DPAPI_NAME), `${cipher}\n`);
+}
+
+function readDpapi() {
+  const file = path.join(tokenDir(), DPAPI_NAME);
+  let cipher = "";
+  try {
+    cipher = fs.readFileSync(file, "utf8").trim();
+  } catch (err) {
+    if (err.code === "ENOENT") return "";
+    throw err;
+  }
+  if (!cipher) return "";
+  return Buffer.from(runPowerShell("unprotect", cipher), "base64").toString("utf8");
+}
+
+function keychainAccount() {
+  return os.userInfo().username;
+}
+
+function runSecurity(args) {
+  const result = spawnSync("security", args, {
+    encoding: "utf8",
+    timeout: 30000,
+  });
+  if (result.error) throw result.error;
+  return result;
+}
+
+function writeKeychain(token) {
+  const result = runSecurity([
+    "add-generic-password",
+    "-U",
+    "-s",
+    KEYCHAIN_SERVICE,
+    "-a",
+    keychainAccount(),
+    "-w",
+    token,
+  ]);
+  if (result.status !== 0) {
+    throw new Error((result.stderr || "security failed").trim());
+  }
+}
+
+function readKeychain() {
+  const result = runSecurity([
+    "find-generic-password",
+    "-s",
+    KEYCHAIN_SERVICE,
+    "-a",
+    keychainAccount(),
+    "-w",
+  ]);
+  if (result.status !== 0) {
+    const detail = (result.stderr || "").trim();
+    if (/could not be found/i.test(detail)) return "";
+    throw new Error(detail || "security failed");
+  }
+  return (result.stdout || "").replace(/\n$/, "");
+}
+
+function extensionTokenPath() {
+  return path.join(tokenDir(), EXTENSION_TOKEN_NAME);
+}
+
+function writeExtensionFile(token) {
+  fs.mkdirSync(tokenDir(), { recursive: true });
+  writeUserOnly(extensionTokenPath(), `${token}\n`);
+}
+
+function readExtensionFile() {
+  try {
+    return fs.readFileSync(extensionTokenPath(), "utf8").trim();
+  } catch (err) {
+    if (err.code === "ENOENT") return "";
+    throw err;
+  }
+}
+
+function writeStore(token) {
+  const kind = storeKind();
+  if (kind === "dpapi") writeDpapi(token);
+  else if (kind === "keychain") writeKeychain(token);
+  else writeExtensionFile(token);
+}
+
+function readStoreFile() {
+  const kind = storeKind();
+  if (kind === "dpapi") return readDpapi();
+  if (kind === "keychain") return readKeychain();
+  return readExtensionFile();
+}
+
+// A successful read is kept for the process. A failure is not, so the
+// next call can try again. The hand-over file is still looked up on
+// every call and replaces this memory when it is present.
+let storeLoaded = false;
+let storeToken = "";
+
+function rememberStore(token) {
+  storeLoaded = true;
+  storeToken = token || "";
+}
+
+function loadStore() {
+  if (storeLoaded) return { token: storeToken, error: "" };
+  try {
+    const token = readStoreFile();
+    rememberStore(token);
+    return { token, error: "" };
+  } catch (err) {
+    return { token: "", error: storeReadMessage(err) };
+  }
+}
+
+function readHandover() {
+  const file = handoverPath();
+  let stat;
+  try {
+    stat = fs.statSync(file);
+  } catch (err) {
+    if (err.code === "ENOENT") return { status: "absent" };
+    return { status: "error", error: err };
+  }
+  if (!stat.isFile()) {
+    const err = new Error("not a file");
+    err.code = "EISDIR";
+    return { status: "error", error: err };
   }
   try {
-    if (readPasteRecord() === pasteHash(PASTED_TOKEN)) return;
-    writeUserOnly(tokenFilePath(), `${PASTED_TOKEN}\n`);
-    writeUserOnly(pasteRecordPath(), `${pasteHash(PASTED_TOKEN)}\n`);
-  } catch {
-    pastedNote = WRITE_FAILED_MESSAGE;
+    const text = fs.readFileSync(file, "utf8").trim();
+    if (text.length < MIN_TOKEN_LENGTH) {
+      return { status: "short", file };
+    }
+    return { status: "present", token: text, file };
+  } catch (err) {
+    return { status: "error", error: err };
   }
 }
-try {
-  applyPastedToken();
-} catch {
-  pastedNote = WRITE_FAILED_MESSAGE;
+
+function handoverError(err) {
+  return (
+    `Could not read the hand-over file at ${handoverPath()} (${err.message}). ` +
+    "Check that the file is readable by you, then try again."
+  );
 }
+
+let activeToken = "";
+let activeSource = "";
+
+function resolveLocalToken() {
+  const handover = readHandover();
+  if (handover.status === "error") {
+    return { token: "", source: "", error: handoverError(handover.error) };
+  }
+  if (handover.status === "short") {
+    return {
+      token: "",
+      source: "",
+      error:
+        `The hand-over file at ${handover.file} holds fewer than 32 characters, so it was left in place. ` +
+        "Set a token of at least 32 characters in FreeCAD, or paste the token into Bearer token.",
+    };
+  }
+  if (handover.status === "present") {
+    try {
+      writeStore(handover.token);
+    } catch (err) {
+      return { token: "", source: "", error: storeWriteMessage(err) };
+    }
+    try {
+      fs.unlinkSync(handover.file);
+    } catch (err) {
+      return {
+        token: "",
+        source: "",
+        error:
+          `Could not delete the hand-over file at ${handover.file} (${err.message}). ` +
+          "Check that the file is writable by you, then try again.",
+      };
+    }
+    rememberStore(handover.token);
+    return { token: handover.token, source: "handover", error: "" };
+  }
+  const stored = loadStore();
+  if (stored.error) return { token: "", source: "", error: stored.error };
+  if (stored.token) return { token: stored.token, source: "store", error: "" };
+  if (PASTED_TOKEN) return { token: PASTED_TOKEN, source: "paste", error: "" };
+  return { token: "", source: "", error: NO_LOCAL_TOKEN_MESSAGE };
+}
+
 const TLS_CERT_FILE = envSetting("FREECAD_MCP_TLS_CERT_FILE");
 const HTTPS_ENDPOINT = `https://${URL_HOST}:${PORT}/mcp`;
 const PLAIN_HTTP_TO_HTTPS_MESSAGE =
@@ -238,31 +465,29 @@ function unauthorizedMessage() {
       "Check that Bearer token in the FreeCAD MCP Bridge extension settings matches FreeCAD's token."
     );
   }
-  const file = tokenFilePath();
-  let token = "";
-  let error = null;
-  try {
-    token = fs.readFileSync(file, "utf8").trim();
-  } catch (err) {
-    error = err;
-  }
-  if (token) {
+  const pasteAlso = Boolean(PASTED_TOKEN);
+  const storeAlso = Boolean(storeToken);
+  if (pasteAlso && storeAlso) {
+    if (activeSource === "paste") {
+      return (
+        "FreeCAD refused the token pasted into Bearer token. " +
+        "A token in the extension's store also exists."
+      );
+    }
     return (
-      `FreeCAD refused the token from ${file}. ` +
-      "FreeCAD and the extension must use the same token file. " +
-      "Check that FreeCAD runs as the same user, and that " +
-      "FREECAD_MCP_TOKEN_DIR, if set, is the same for both."
+      "FreeCAD refused the token from the extension's store. " +
+      "A token is also pasted into Bearer token."
     );
   }
-  if (error && error.code !== "ENOENT") {
+  if (activeSource === "paste") {
     return (
-      `Could not read the token file at ${file} (${error.message}). ` +
-      "Check that the file is readable by you, then try again."
+      "FreeCAD refused the token pasted into Bearer token. " +
+      "Check that Bearer token in the FreeCAD MCP Bridge extension settings matches FreeCAD's token."
     );
   }
   return (
-    `No token file at ${file}. ` +
-    "Turn the bridge on in FreeCAD once, or check FREECAD_MCP_TOKEN_DIR."
+    "FreeCAD refused the token from the extension's store. " +
+    "Turn on Share with Claude Desktop in FreeCAD's MCP Bridge preferences, or paste the token into Bearer token."
   );
 }
 
@@ -346,7 +571,7 @@ function sendErrorReply(message, errorText) {
       JSON.stringify({
         jsonrpc: "2.0",
         id: message.id,
-        result: withPastedNote(toolErrorResult(errorText)),
+        result: toolErrorResult(errorText),
       })
     );
   } else {
@@ -385,7 +610,7 @@ function bridgeHeaders(message) {
   // Stdio has no headers. The version the body already declares is the
   // one the bridge checks; a body with none is the legacy handshake.
   const headers = { "Content-Type": "application/json" };
-  const token = IS_DEFAULT_HOST ? readTokenFile() : PASTED_TOKEN;
+  const token = activeToken;
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
@@ -463,47 +688,12 @@ async function postBridge(message, rawLine, certFile) {
   };
 }
 
-function withPastedNote(result) {
-  if (!pastedNote || !result || typeof result !== "object") return result;
-  const content = Array.isArray(result.content)
-    ? result.content.map((item) => ({ ...item }))
-    : [];
-  if (result.isError && content[0] && content[0].type === "text") {
-    try {
-      const body = JSON.parse(content[0].text);
-      if (body && typeof body === "object" && !Array.isArray(body)) {
-        body.note = pastedNote;
-        content[0].text = JSON.stringify(body);
-        return { ...result, content };
-      }
-    } catch {
-      // The error text is not the shim's JSON. Add a text item below.
-    }
-  }
-  content.push({ type: "text", text: pastedNote });
-  return { ...result, content };
-}
-
 function writeResult(id, result) {
   writeLine(JSON.stringify({ jsonrpc: "2.0", id, result }));
 }
 
 function writeBridgeLine(payload) {
   if (!payload) return;
-  if (!pastedNote) {
-    writeLine(payload);
-    return;
-  }
-  try {
-    const message = JSON.parse(payload);
-    if (message.result && typeof message.result === "object") {
-      message.result = withPastedNote(message.result);
-      writeLine(JSON.stringify(message));
-      return;
-    }
-  } catch {
-    // The bridge line is not JSON. Leave it unchanged.
-  }
   writeLine(payload);
 }
 
@@ -544,11 +734,16 @@ async function forward(rawLine, message) {
       sendErrorReply(message, MISSING_REMOTE_TOKEN_MESSAGE);
       return;
     }
-  }
-  try {
-    applyPastedToken();
-  } catch {
-    pastedNote = WRITE_FAILED_MESSAGE;
+    activeToken = PASTED_TOKEN;
+    activeSource = "paste";
+  } else {
+    const resolved = resolveLocalToken();
+    if (resolved.error) {
+      sendErrorReply(message, resolved.error);
+      return;
+    }
+    activeToken = resolved.token;
+    activeSource = resolved.source;
   }
 
   const certFile = IS_DEFAULT_HOST ? localServingCert() : TLS_CERT_FILE;
@@ -584,7 +779,7 @@ async function forward(rawLine, message) {
       sendErrorReply(message, tlsErrorMessage(err));
       return;
     }
-    writeResult(message.id, withPastedNote(offlineResult(message, err)));
+    writeResult(message.id, offlineResult(message, err));
     return;
   }
 
