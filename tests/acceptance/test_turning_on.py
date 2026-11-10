@@ -392,7 +392,7 @@ def click_dialog_button(label, prefix, attempts=40):
         wanted = 'Accept and Start'
     for btn in dlg.buttons():
         if btn.text() == wanted:
-            if wanted not in ('OK', 'Cancel'):
+            if wanted not in ('OK', 'Cancel', 'Close'):
                 QTimer.singleShot(
                     50,
                     lambda: click_dialog_button(
@@ -888,9 +888,9 @@ class ListenAddressTests(unittest.TestCase):
                 )
                 _ = idle
 
-            # With a certificate configured, loopback also serves HTTPS,
-            # requires the bearer token, and writes serving-cert.pem beside
-            # the token file. Plain HTTP on loopback is refused.
+            # With a certificate configured, loopback also serves HTTPS
+            # and requires the bearer token. serving-cert.pem is written
+            # in the bridge's folder. Plain HTTP on loopback is refused.
             self.assertTrue(p1.get("serving_cert_matches"))
             loopback_http_url = f"http://127.0.0.1:{PORT}/mcp"
             loopback_https_url = f"https://127.0.0.1:{PORT}/mcp"
@@ -919,7 +919,10 @@ class ListenAddressTests(unittest.TestCase):
             node_bin = shutil.which("node")
             if node_bin is not None:
                 local_https_shim_out = _run_via_stdio_shim(
-                    node_bin, PORT, "print('desktop shim https on loopback')"
+                    node_bin,
+                    PORT,
+                    "print('desktop shim https on loopback')",
+                    token=token1,
                 )
                 self.assertEqual(
                     local_https_shim_out, "desktop shim https on loopback\n"
@@ -1009,7 +1012,10 @@ class ListenAddressTests(unittest.TestCase):
             self.assertEqual(lb_out, "loopback http with token2\n")
             if node_bin is not None:
                 shim_out = _run_via_stdio_shim(
-                    node_bin, PORT, "print('desktop shim unchanged')"
+                    node_bin,
+                    PORT,
+                    "print('desktop shim unchanged')",
+                    token=token2,
                 )
                 self.assertEqual(shim_out, "desktop shim unchanged\n")
             with self.assertRaises(Exception):
@@ -1083,14 +1089,14 @@ class ListenAddressTests(unittest.TestCase):
             "Code execution: any client with the bearer token", risk_text
         )
 
-        # 3. Token dialog shown once, names the token file, and is not
-        # shown again on restart. Generate new token shows it again.
+        # 3. Token dialog shown once, and not again on restart.
+        # Generate new token shows it again.
         self.assertTrue(seen.get("token1_dialog_found"))
         self.assertIn(
             "FreeCAD keeps a hash of it, not the token.",
             seen.get("token1_dialog_text", ""),
         )
-        self.assertIn(
+        self.assertNotIn(
             "You don't need to copy it.",
             seen.get("token1_dialog_text", ""),
         )

@@ -25,9 +25,9 @@ By default, the bridge listens on `127.0.0.1:39280`, and
 only while you toggle it on in your FreeCAD session. Adding a
 non-loopback entry in **Listen addresses** in **Edit → Preferences →
 MCP Bridge** exposes the endpoint beyond this machine. Every
-listener requires a bearer token, stored in
-`<home>/.freecad-mcp-bridge/token`, a file only you can read.
-Preferences do not keep a copy of it. When a TLS certificate file and
+listener requires a bearer token. FreeCAD keeps a SHA-256 hash of
+it, not the token. Nothing is written for an MCP client to read.
+When a TLS certificate file and
 private key file are set, every listener serves HTTPS, loopback
 included, and each start writes a copy of the serving certificate to
 `<home>/.freecad-mcp-bridge/serving-cert.pem` for the local Claude

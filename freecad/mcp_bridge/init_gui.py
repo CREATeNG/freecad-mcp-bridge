@@ -210,7 +210,7 @@ def _show_token_message(body, parent=None):
         host,
     )
     QDialog.setWindowTitle(box, title)
-    box.setObjectName("MCPBridgeTokenWriteFailureDialog")
+    box.setObjectName("MCPBridgeTokenMessageDialog")
     ok_btn = box.addButton("OK", QMessageBox.AcceptRole)
     box.setDefaultButton(ok_btn)
     box.setEscapeButton(ok_btn)
@@ -268,12 +268,11 @@ def set_pasted_token_from_dialog(parent=None):
         if dlg.exec() != QDialog.Accepted:
             return None
         text = edit.text().strip()
-        if len(text) < 32:
-            _show_token_message(
-                "A token must be at least 32 characters.", parent=host
-            )
+        try:
+            config.set_pasted_token(text)
+        except ValueError as exc:
+            _show_token_message(str(exc), parent=host)
             return None
-        config.store_token(text)
         # The pasted token is not shown again.
         return text
     finally:
@@ -804,18 +803,7 @@ class MCPBridgeCommand:
                     App.Console.PrintNotification(status + "\n")
                     return
                 if not config.token_hash():
-                    if generate_and_show_token() is None:
-                        status = f"{DISPLAY_NAME}: Offline"
-                        mw = Gui.getMainWindow()
-                        if mw:
-                            mw.statusBar().showMessage(status)
-                        show_toggle_state()
-                        App.Console.PrintWarning(
-                            f"{LOG_PREFIX} Could not store the bearer "
-                            "token. Check that the folder is writable, "
-                            "then try again.\n"
-                        )
-                        return
+                    generate_and_show_token()
                 bridge.start(
                     addresses=entries,
                     tls_cert_file=cert_file,

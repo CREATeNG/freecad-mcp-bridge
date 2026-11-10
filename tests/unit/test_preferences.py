@@ -932,6 +932,11 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                         self.assertNotIn(token2, str(val))
                     with self.assertRaises(ValueError):
                         config.set_pasted_token("short")
+                    pasted = "c" * 32
+                    digest = config.set_pasted_token(pasted)
+                    self.assertEqual(digest, config.hash_token(pasted))
+                    self.assertTrue(config.verify_token(pasted))
+                    self.assertNotIn(pasted, str(store.get("TokenHash")))
                     self.assertFalse((home / "token-handover").exists())
 
             # build_ssl_context passes an empty password callback so an
@@ -2106,24 +2111,19 @@ class TokenFileTests(unittest.TestCase):
             ):
                 self.assertEqual(token_file.token_dir(), Path(folder))
 
-    def test_the_acceptance_client_reads_the_same_override(self):
-        """mcp_client reads FREECAD_MCP_TOKEN_DIR, and the home folder otherwise."""
-        with tempfile.TemporaryDirectory() as folder:
-            (Path(folder) / "token").write_text(
-                "b" * 32 + "\n", encoding="utf-8"
-            )
-            with mock.patch.dict(
-                os.environ,
-                {
-                    "BRIDGE_URL": "http://127.0.0.1:9/mcp",
-                    "FREECAD_MCP_TOKEN_DIR": folder,
-                },
-            ):
-                sys.modules.pop("tests.acceptance.mcp_client", None)
-                client = importlib.import_module("tests.acceptance.mcp_client")
-                self.assertEqual(client._token_from_file(), "b" * 32)
-                self.assertEqual(client._token_dir(), Path(folder))
+    def test_the_acceptance_client_reads_the_token_from_the_environment(self):
+        """mcp_client sends the token in FREECAD_MCP_TOKEN."""
+        with mock.patch.dict(
+            os.environ,
+            {
+                "BRIDGE_URL": "http://127.0.0.1:9/mcp",
+                "FREECAD_MCP_TOKEN": "b" * 32,
+            },
+        ):
             sys.modules.pop("tests.acceptance.mcp_client", None)
+            client = importlib.import_module("tests.acceptance.mcp_client")
+            self.assertEqual(client._token(), "b" * 32)
+        sys.modules.pop("tests.acceptance.mcp_client", None)
 
     def test_a_windows_sharing_error_retries_the_replace(self):
         """A sharing error on Windows retries the replace, then the certificate is whole."""
@@ -3171,6 +3171,296 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
         ):
             self.assertIsNone(init_gui.generate_and_show_certificate())
         self.assertEqual(events, ["set", "restore", "dialog"])
+
+
+class SetTokenDialogTests(unittest.TestCase):
+    def test_set_token_stores_a_hash_refuses_a_short_one_and_cancel(self):
+        """A good paste is stored as a hash. A short one is refused.
+        Cancel stores nothing."""
+        config, _empty, _groups = fresh_config()
+        store = {}
+
+        class Params:
+            def GetString(self, name, default=""):
+                return store.get(name, default)
+
+            def SetString(self, name, value):
+                store[name] = value
+
+        config._params = lambda: Params()
+        sys.modules["freecad.mcp_bridge.config"] = config
+        sys.modules["FreeCAD"] = config.FreeCAD
+        import freecad.mcp_bridge as pkg
+
+        pkg.config = config
+        init_gui = _fresh_init_gui()
+        shown = []
+
+        class Edit:
+            text_value = ""
+
+            def __init__(self, parent=None):
+                pass
+
+            def setObjectName(self, _name):
+                pass
+
+            def setEchoMode(self, _mode):
+                pass
+
+            def text(self):
+                return Edit.text_value
+
+        class Dialog:
+            result = 1
+            names = []
+
+            def __init__(self, parent=None):
+                pass
+
+            def setObjectName(self, name):
+                Dialog.names.append(name)
+
+            def exec(self):
+                return Dialog.result
+
+            def accept(self):
+                pass
+
+            def reject(self):
+                pass
+
+            def setParent(self, _parent):
+                pass
+
+            def deleteLater(self):
+                pass
+
+            @staticmethod
+            def setWindowTitle(_dlg, _title):
+                pass
+
+        class ButtonBox:
+            def __init__(self, *_args):
+                self.accepted = types.SimpleNamespace(connect=lambda fn: None)
+                self.rejected = types.SimpleNamespace(connect=lambda fn: None)
+
+        class Label:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def setWordWrap(self, _on):
+                pass
+
+        class Layout:
+            def __init__(self, _parent=None):
+                pass
+
+            def addWidget(self, _widget):
+                pass
+
+        widgets = types.ModuleType("PySide.QtWidgets")
+        widgets.QDialog = Dialog
+        widgets.QDialog.Accepted = 1
+        widgets.QDialogButtonBox = ButtonBox
+        widgets.QDialogButtonBox.Ok = 1
+        widgets.QDialogButtonBox.Cancel = 2
+        widgets.QLabel = Label
+        widgets.QLineEdit = Edit
+        widgets.QLineEdit.Password = 2
+        widgets.QVBoxLayout = Layout
+        gui = types.ModuleType("FreeCADGui")
+        gui.getMainWindow = lambda: None
+
+        def show_message(body, parent=None):
+            shown.append(body)
+
+        init_gui._show_token_message = show_message
+        modules = {
+            "PySide": types.ModuleType("PySide"),
+            "PySide.QtWidgets": widgets,
+            "FreeCADGui": gui,
+        }
+        good = "d" * 32
+        with mock.patch.dict(sys.modules, modules):
+            Edit.text_value = good
+            Dialog.result = 1
+            self.assertEqual(
+                init_gui.set_pasted_token_from_dialog(), good
+            )
+            self.assertEqual(store.get("TokenHash"), config.hash_token(good))
+            self.assertNotIn(good, str(store.get("TokenHash")))
+            Edit.text_value = "short"
+            self.assertIsNone(init_gui.set_pasted_token_from_dialog())
+            self.assertEqual(
+                shown, ["A token must be at least 32 characters."]
+            )
+            Dialog.result = 0
+            Edit.text_value = "e" * 32
+            before = store.get("TokenHash")
+            self.assertIsNone(init_gui.set_pasted_token_from_dialog())
+            self.assertEqual(store.get("TokenHash"), before)
+
+    def test_the_set_token_button_hooks_when_the_page_opens(self):
+        """Showing Set token connects it once."""
+        init_gui = _fresh_init_gui()
+
+        class Event:
+            def type(self):
+                return "show"
+
+        class QEvent:
+            Show = "show"
+
+        class QObject:
+            def __init__(self, parent=None):
+                pass
+
+        class QPushButton:
+            def __init__(self):
+                self.props = {}
+                self.clicks = []
+                self.clicked = types.SimpleNamespace(
+                    connect=self.clicks.append
+                )
+
+            def objectName(self):
+                return "setTokenButton"
+
+            def property(self, name):
+                return self.props.get(name)
+
+            def setProperty(self, name, value):
+                self.props[name] = value
+
+            def window(self):
+                return "window"
+
+        class App:
+            def installEventFilter(self, _flt):
+                pass
+
+        class QApplication:
+            @staticmethod
+            def instance():
+                return App()
+
+        widgets = types.ModuleType("PySide.QtWidgets")
+        widgets.QPushButton = QPushButton
+        widgets.QApplication = QApplication
+        widgets.QComboBox = type("QComboBox", (), {})
+        widgets.QLabel = type("QLabel", (), {})
+        widgets.QTextEdit = type("QTextEdit", (), {})
+        core = types.ModuleType("PySide.QtCore")
+        core.QEvent = QEvent
+        core.QObject = QObject
+        mw = types.SimpleNamespace()
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "PySide": types.ModuleType("PySide"),
+                "PySide.QtWidgets": widgets,
+                "PySide.QtCore": core,
+            },
+        ):
+            init_gui._install_pref_page_filter(mw)
+            button = QPushButton()
+            mw._mcp_pref_filter.eventFilter(button, Event())
+            mw._mcp_pref_filter.eventFilter(button, Event())
+        self.assertEqual(len(button.clicks), 1)
+        called = []
+        init_gui.set_pasted_token_from_dialog = (
+            lambda parent=None: called.append(parent)
+        )
+        button.clicks[0]()
+        self.assertEqual(called, ["window"])
+
+    def test_copy_token_copies_and_leaves_the_dialog_open(self):
+        """Copy token puts the token on the clipboard. Close ends it."""
+        init_gui = _fresh_init_gui()
+        copied = []
+        clicks = []
+
+        class Button:
+            def __init__(self, label):
+                self.label = label
+
+        class Box:
+            def __init__(self, *_args, **_kwargs):
+                self.buttons = []
+
+            def setObjectName(self, _name):
+                pass
+
+            def setTextInteractionFlags(self, _flags):
+                pass
+
+            def addButton(self, label, _role):
+                button = Button(label)
+                self.buttons.append(button)
+                return button
+
+            def setDefaultButton(self, _button):
+                pass
+
+            def setEscapeButton(self, _button):
+                pass
+
+            def exec(self):
+                clicks.append("exec")
+                return 1
+
+            def clickedButton(self):
+                if len(clicks) == 1:
+                    return self.buttons[0]
+                return self.buttons[1]
+
+            def setParent(self, _parent):
+                pass
+
+            def deleteLater(self):
+                pass
+
+        class Clipboard:
+            def setText(self, text):
+                copied.append(text)
+
+        class QGuiApplication:
+            @staticmethod
+            def clipboard():
+                return Clipboard()
+
+        class QDialog:
+            @staticmethod
+            def setWindowTitle(_box, _title):
+                pass
+
+        widgets = types.ModuleType("PySide.QtWidgets")
+        widgets.QMessageBox = Box
+        widgets.QMessageBox.Information = 1
+        widgets.QMessageBox.NoButton = 0
+        widgets.QMessageBox.ActionRole = 2
+        widgets.QMessageBox.AcceptRole = 3
+        widgets.QDialog = QDialog
+        gui_mod = types.ModuleType("PySide.QtGui")
+        gui_mod.QGuiApplication = QGuiApplication
+        core = types.ModuleType("PySide.QtCore")
+        core.Qt = types.SimpleNamespace(TextSelectableByMouse=1)
+        fc_gui = types.ModuleType("FreeCADGui")
+        fc_gui.getMainWindow = lambda: None
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "PySide": types.ModuleType("PySide"),
+                "PySide.QtWidgets": widgets,
+                "PySide.QtGui": gui_mod,
+                "PySide.QtCore": core,
+                "FreeCADGui": fc_gui,
+            },
+        ):
+            init_gui._show_generated_token("f" * 32)
+        self.assertEqual(copied, ["f" * 32])
+        self.assertEqual(len(clicks), 2)
 
 
 if __name__ == "__main__":

@@ -665,8 +665,7 @@ def _http_exec_probe(code: str, timeout_ms: int) -> dict:
     def _post(payload):
         # A valid request in the bridge's protocol version: version, client
         # info and capabilities in _meta, mirrored in the headers.
-        # The token is the one FreeCAD wrote, from FREECAD_MCP_TOKEN_DIR
-        # or <home>/.freecad-mcp-bridge.
+        # The token is the one just stored, shown once in the dialog.
         params = payload["params"]
         params["_meta"] = {
             "io.modelcontextprotocol/protocolVersion": PROTOCOL_VERSION,

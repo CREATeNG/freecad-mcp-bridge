@@ -593,6 +593,23 @@ def find_toolbar_action():
     return None
 
 
+def _publish_shown_token(widget) -> None:
+    """Write the token the dialog showed, for the test process to export."""
+    path = os.environ.get("ACCEPTANCE_TOKEN_FILE", "").strip()
+    if not path:
+        return
+    token = ""
+    for line in widget.text().splitlines():
+        line = line.strip()
+        if len(line) >= 32 and " " not in line:
+            token = line
+            break
+    if not token:
+        return
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(token + "\n")
+
+
 def _click_bridge_dialog() -> bool:
     """Accept a start dialog, or dismiss the one-time token dialog."""
     from PySide.QtWidgets import QApplication, QMessageBox
@@ -607,7 +624,8 @@ def _click_bridge_dialog() -> bool:
     if name in ("MCPBridgeFirstStartDialog", "MCPBridgeRiskDialog"):
         labels = ("Accept and Start", "Accept Risks and Start")
     elif name == "MCPBridgeTokenDialog":
-        labels = ("OK",)
+        _publish_shown_token(widget)
+        labels = ("Close",)
     else:
         return False
     for btn in widget.buttons():

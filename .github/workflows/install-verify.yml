@@ -359,6 +359,7 @@ jobs:
           RUNNER_PYTHON: ${{ steps.runner_python.outputs.python-path }}
           ACCEPTANCE_READY_FILE: ${{ runner.temp }}/acceptance-ready
           ACCEPTANCE_STOP_FILE: ${{ runner.temp }}/acceptance-stop
+          ACCEPTANCE_TOKEN_FILE: ${{ runner.temp }}/acceptance-token
           ACCEPTANCE_TIMEOUT_S: "600"
           VERIFY_BUNDLE: "${{ inputs.verify_bundle }}"
           BUNDLE_MCPB: "${{ inputs.verify_bundle && format('{0}/bundle/freecad-mcp-bridge.mcpb', runner.temp) || '' }}"
@@ -380,6 +381,10 @@ jobs:
 
           tests_exit=1
           if [[ -n "${port}" ]]; then
+            if [[ -s "${ACCEPTANCE_TOKEN_FILE}" ]]; then
+              FREECAD_MCP_TOKEN="$(tr -d '\r\n' < "${ACCEPTANCE_TOKEN_FILE}")"
+              export FREECAD_MCP_TOKEN
+            fi
             BRIDGE_URL="http://127.0.0.1:${port}/mcp" \
               "${RUNNER_PYTHON}" -m unittest discover -s tests/acceptance -t . -v
             tests_exit=$?

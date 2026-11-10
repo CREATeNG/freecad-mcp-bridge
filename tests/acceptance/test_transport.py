@@ -85,7 +85,7 @@ class OriginTests(unittest.TestCase):
 
 class HostTests(unittest.TestCase):
     def _post(self, host_header):
-        token = mcp._token_from_file()
+        token = mcp._token()
         message = mcp.request("tools/list")
         body = json.dumps(message).encode("utf-8")
         headers = {

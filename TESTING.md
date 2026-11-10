@@ -87,9 +87,8 @@ for you to run, and the mode goes back to Ask when the suite ends.
 Tests restore preferences and bridge state on their normal paths; a
 failed test can leave that work unfinished.
 
-Set `FREECAD_MCP_TOKEN_DIR` too, to a new temporary folder, before
-you start FreeCAD, and use that same value for the test process, so
-a local run never touches the real token file. Install the addon
+Set `FREECAD_MCP_TOKEN` to the token FreeCAD showed, for the test
+process. FreeCAD writes no token file. Install the addon
 version under test, open a fresh FreeCAD GUI session with both
 variables set, and turn the bridge on with its toolbar button. Keep
 the GUI running while the suite runs. With Python 3.11 in a second
@@ -97,7 +96,7 @@ terminal, set the URL explicitly to that session's port (`39280`
 below is the default; use your port if it differs):
 
 ```bash
-export FREECAD_MCP_TOKEN_DIR="<the same temporary folder>"
+export FREECAD_MCP_TOKEN="<the token FreeCAD showed>"
 export BRIDGE_URL=http://127.0.0.1:39280/mcp
 python -m unittest discover -s tests/acceptance -t . -v
 ```
@@ -116,9 +115,9 @@ python scripts/list_requirements.py
 
 In CI, [install-verify.yml](.github/workflows/install-verify.yml) starts
 a third FreeCAD process with
-[acceptance_serve.py](scripts/acceptance_serve.py). FreeCAD and the
-test step both use `FREECAD_MCP_TOKEN_DIR`, a folder inside the run's
-isolated profile, so the token is not written to the runner's home.
+[acceptance_serve.py](scripts/acceptance_serve.py). The token dialog
+is closed, and its token is passed to the test step in
+`FREECAD_MCP_TOKEN`. Nothing is written for the extension to read.
 That process turns the installed bridge on through its toolbar
 action and writes its port
 to `ACCEPTANCE_READY_FILE`. The runner's Python runs the suite, then
@@ -141,7 +140,7 @@ repeatable checks.
 | Check | What to verify by hand |
 |-------|------------------------|
 | Toolbar hide across restart, and Customize category | Uncheck **MCP Bridge** in **View → Toolbars** (or the toolbar context menu), switch workbench and restart FreeCAD: the toolbar stays hidden while the status-bar button remains available. Check **MCP Bridge** again and restart FreeCAD: the toolbar stays shown. In **Tools → Customize**, the **MCP Bridge On/Off** command is listed under `MCP_Bridge`. |
-| Non-loopback listen address from another machine | Set **Listen addresses** in **Edit → Preferences → MCP Bridge** to `127.0.0.1:39280` and `<LAN_IP>:39280` (using this machine's LAN IPv4 address, on separate lines), and set **TLS certificate file (PEM)** and **TLS private key file (PEM)** to a certificate covering `<LAN_IP>` and its private key (or click **Generate certificate**). Click **MCP Bridge On/Off**: the risk dialog lists `<LAN_IP>:39280`, and from another machine on the LAN the port is closed until accepted. Click **Cancel**: the bridge stays off and the port remains closed. Click **MCP Bridge On/Off** again and click **Accept Risks and Start** (or **Accept and Start** on the first start): the bridge starts, warns in the status bar and **Report view**, writes `serving-cert.pem` beside the token file, and answers HTTPS MCP requests on both `https://<LAN_IP>:39280/mcp` and `https://127.0.0.1:39280/mcp` that carry `Authorization: Bearer <token>` from a client that trusts that certificate. Turn the bridge off and on again with the same list: it starts without showing the risk dialog again and warns in the status bar and **Report view**. |
+| Non-loopback listen address from another machine | Set **Listen addresses** in **Edit → Preferences → MCP Bridge** to `127.0.0.1:39280` and `<LAN_IP>:39280` (using this machine's LAN IPv4 address, on separate lines), and set **TLS certificate file (PEM)** and **TLS private key file (PEM)** to a certificate covering `<LAN_IP>` and its private key (or click **Generate certificate**). Click **MCP Bridge On/Off**: the risk dialog lists `<LAN_IP>:39280`, and from another machine on the LAN the port is closed until accepted. Click **Cancel**: the bridge stays off and the port remains closed. Click **MCP Bridge On/Off** again and click **Accept Risks and Start** (or **Accept and Start** on the first start): the bridge starts, warns in the status bar and **Report view**, writes `serving-cert.pem` in the bridge's folder, and answers HTTPS MCP requests on both `https://<LAN_IP>:39280/mcp` and `https://127.0.0.1:39280/mcp` that carry `Authorization: Bearer <token>` from a client that trusts that certificate. Turn the bridge off and on again with the same list: it starts without showing the risk dialog again and warns in the status bar and **Report view**. |
 | Claude Desktop extension reaching another machine | With the bridge listening on `<LAN_IP>:39280` as above, on the machine running Claude Desktop, in **Settings → Extensions → MCP Bridge for FreeCAD**, set **FreeCAD host** to `<LAN_IP>`, set **port** to `39280`, paste FreeCAD's bearer token into **Bearer token**, and set **TLS certificate file (PEM)** to a copy of FreeCAD's certificate file, not the private key. Run a tool call from Claude Desktop: it succeeds over HTTPS, and `<home>/.freecad-mcp-bridge/token` on that machine is not created or changed. |
 
 ## Install verification
