@@ -39,6 +39,7 @@ PAGE = ROOT / "freecad" / "mcp_bridge" / "Resources" / "Ui" / "preferences.ui"
 # Where a preference widget's prefPath is rooted in FreeCAD's parameters.
 PREF_ROOT = "User parameter:BaseApp/Preferences"
 SETTINGS = (
+    "HostNames",
     "ListenAddress",
     "TlsCertFile",
     "TlsKeyFile",
@@ -277,7 +278,8 @@ class UnsetPreferenceTests(unittest.TestCase):
         # PermissionMode, which only a confirmed choice writes.
         self.assertEqual(set(groups), {PREF_GROUP})
         self.assertEqual(
-            params.read, set(SETTINGS) | {"Port", "PermissionMode"}
+            params.read,
+            (set(SETTINGS) - {"HostNames"}) | {"Port", "PermissionMode"},
         )
 
 
@@ -1763,6 +1765,14 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 for host in ("127.0.0.1:39280", "localhost", "[::1]:39280"):
                     handler.headers = {"Host": host}
                     self.assertTrue(handler._host_ok(), host)
+                store["HostNames"] = "my-pc"
+                handler.headers = {"Host": "my-pc"}
+                self.assertTrue(handler._host_ok())
+                handler.headers = {"Host": "My-PC:39280"}
+                self.assertTrue(handler._host_ok())
+                handler.headers = {"Host": "other-pc"}
+                self.assertFalse(handler._host_ok())
+                store["HostNames"] = ""
                 handler.headers = {"Host": "192.168.1.50"}
                 self.assertFalse(handler._host_ok())
                 handler.server.bound_host = "192.168.1.50"

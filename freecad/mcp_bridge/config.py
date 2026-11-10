@@ -396,11 +396,33 @@ def certificate_expiry_date(cert_file: str) -> str | None:
     return dt.strftime("%Y-%m-%d")
 
 
+def host_names() -> list[str]:
+    """Host names accepted on the open listeners. None opens a listener."""
+    raw = _params().GetString("HostNames", "")
+    names: list[str] = []
+    seen: set[str] = set()
+    for item in re.split(r"[\s,;]+", (raw or "").strip()):
+        key = item.lower()
+        if item and key not in seen:
+            seen.add(key)
+            names.append(item)
+    return names
+
+
+def host_name_accepted(name: str) -> bool:
+    """True when `name` is one of the Host names."""
+    key = (name or "").strip().lower()
+    if not key:
+        return False
+    return any(item.lower() == key for item in host_names())
+
+
 def certificate_target_hosts(
     entries: list[str] | tuple[str, ...],
+    extra_names: list[str] | tuple[str, ...] | None = None,
 ) -> list[str]:
-    """Return `127.0.0.1`, `localhost`, and each distinct host beyond
-    loopback from `entries`, in order."""
+    """Return `127.0.0.1`, `localhost`, each host beyond loopback in
+    `entries`, then each name in `extra_names`, in order."""
     hosts: list[str] = ["127.0.0.1", "localhost"]
     seen: set[str] = set(hosts)
     for entry in entries:
@@ -411,6 +433,17 @@ def certificate_target_hosts(
             norm = str(ipaddress.ip_address(host))
         except ValueError:
             norm = host.lower()
+        if norm not in seen:
+            seen.add(norm)
+            hosts.append(norm)
+    for name in extra_names or ():
+        text = (name or "").strip()
+        if not text:
+            continue
+        try:
+            norm = str(ipaddress.ip_address(text))
+        except ValueError:
+            norm = text.lower()
         if norm not in seen:
             seen.add(norm)
             hosts.append(norm)

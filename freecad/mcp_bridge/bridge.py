@@ -30,3 +30,8 @@ def stop() -> None:
 def is_running() -> bool:
     """True while the server thread is alive."""
     return _server.is_running()
+
+
+def listening_entries() -> list[str] | None:
+    """Entries the bridge is listening on, or None when it is off."""
+    return _server.listening_entries()

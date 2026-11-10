@@ -421,6 +421,28 @@ No silent port increment. Dynamic port rejected — HTTP clients
 configure the endpoint URL directly; a changing port would require
 reconfiguration each session.
 
+Under **Listen addresses** the page lists this machine's addresses,
+one row each, labelled with the interface name. IPv4 comes first.
+Link-local IPv6 is left out. `::1` is a row. `127.0.0.1` is ticked
+by default and the other rows are off. Ticking adds `address:port`,
+using the port of the `127.0.0.1` entry, or 39280 when there is
+none. Unticking removes every entry for that address. A typed entry
+that matches a row shows the row ticked. **Refresh** reads the
+interfaces again.
+
+**Host names** holds this machine's own name as a row to tick, and
+other names typed one per line, in the `HostNames` preference. No
+name opens a listener. Each is accepted in the `Host` header on the
+listeners that are open, and **Generate certificate** covers each.
+A name that does not resolve to this machine is noted, and the
+bridge still starts. Names are looked up when the field loses focus
+and on **Refresh**.
+
+The page marks an entry that does not parse, a wildcard, an address
+this machine does not have, and an empty list. While the bridge is
+on, the page names where its list differs from what is listening,
+and says that OK, then turning the bridge off and on, applies it.
+
 **Session management**
 
 Stateless at the MCP transport layer — each POST is independent. The server does not assign
@@ -583,7 +605,7 @@ token** tells the user when the file cannot be written.
   generator (`tls_cert.py`). Either way, the certificate is
   self-signed (825-day validity, `CA:FALSE`, `digitalSignature` and
   `keyEncipherment`, `serverAuth`), covers `127.0.0.1`, `localhost`,
-  and every listed address beyond loopback, writes `tls-cert.pem` and
+  every listed address, and each host name, writes `tls-cert.pem` and
   `tls-key.pem` (`tls-key.pem` readable by the user only) in
   `<home>/.freecad-mcp-bridge` (or `FREECAD_MCP_TOKEN_DIR`), fills in
   the `TlsCertFile` and `TlsKeyFile` fields (asking first when either
@@ -592,7 +614,7 @@ token** tells the user when the file cannot be written.
   entry beyond loopback is configured without readable, valid
   certificate and key files, if a configured certificate is not yet
   valid or has expired, or if the certificate does not cover a
-  non-loopback address in the list, startup fails with an error naming
+  listed address, loopback included, startup fails with an error naming
   the problem and directing the user to select or generate the files
   in Edit → Preferences → MCP Bridge, and the bridge stays off.
 

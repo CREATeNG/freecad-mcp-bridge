@@ -155,6 +155,13 @@ change a model — for example:
   `127.0.0.1:39280`). Keep a `127.0.0.1:<PORT>` entry in the list if
   you use the Claude Desktop extension on the same machine (`127.0.0.1`
   is its default **FreeCAD host**).
+  Under the box, each address of this machine is a row you can tick.
+  `127.0.0.1` starts ticked. **Refresh** reads the addresses again.
+  **Host names** accepts this machine's name, and any other name you
+  type, on those addresses. A name does not open a listener.
+  The page marks an entry that will not start, and, while the bridge
+  is on, where the list differs from what is listening. Click **OK**,
+  then turn the bridge off and on, to apply that difference.
   An entry of `0.0.0.0`, `[::]`, or any other unspecified address is
   refused: enter a specific address of this machine. The first time
   you turn the bridge on, loopback included, FreeCAD asks you to
