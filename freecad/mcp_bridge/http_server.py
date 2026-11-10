@@ -78,6 +78,8 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         name = self._host_name()
         if not name:
             return False
+        if config.host_name_accepted(name):
+            return True
         bound = getattr(self.server, "bound_host", "") or ""
         if config.is_loopback_address(bound):
             return name.lower() in _LOOPBACK_HOSTS
@@ -379,6 +381,13 @@ class HttpServer:
     def __init__(self):
         self._servers = []
         self._executor = None
+        self._listen_entries: list[str] = []
+
+    def listening_entries(self) -> list[str] | None:
+        """Entries the bridge is listening on, or None when it is off."""
+        if not self.is_running():
+            return None
+        return list(self._listen_entries)
 
     def is_running(self) -> bool:
         return bool(self._servers) and all(
@@ -391,6 +400,7 @@ class HttpServer:
                 srv.shutdown()
             srv.server_close()
         self._servers = []
+        self._listen_entries = []
         if self._executor is not None:
             self._executor.shutdown()
         self._executor = None
@@ -446,7 +456,7 @@ class HttpServer:
         if use_tls:
             try:
                 ssl_context = config.build_ssl_context(
-                    cert_file, key_file, non_loopback
+                    cert_file, key_file, entries
                 )
             except ValueError as exc:
                 FreeCAD.Console.PrintDeveloperError(f"{LOG_PREFIX} {exc}\n")
@@ -482,6 +492,7 @@ class HttpServer:
                 self._executor.shutdown()
             self._servers = []
             self._executor = None
+            self._listen_entries = []
             FreeCAD.Console.PrintDeveloperError(
                 f"{LOG_PREFIX} Could not bind {failed_entry} ({exc}). "
                 "Change the listen addresses in Edit → Preferences → "
@@ -516,9 +527,11 @@ class HttpServer:
                 self._executor.shutdown()
             self._servers = []
             self._executor = None
+            self._listen_entries = []
             raise
 
         self._servers = started_servers
+        self._listen_entries = list(entries)
         try:
             if ssl_context is not None:
                 token_file.write_serving_cert(cert_file)

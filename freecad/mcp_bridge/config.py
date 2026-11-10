@@ -418,21 +418,52 @@ def certificate_expiry_date(cert_file: str) -> str | None:
     return dt.strftime("%Y-%m-%d")
 
 
+def host_names() -> list[str]:
+    """Host names accepted on the open listeners. No name opens a listener."""
+    raw = _params().GetString("HostNames", "")
+    names: list[str] = []
+    seen: set[str] = set()
+    for item in re.split(r"[\s,;]+", (raw or "").strip()):
+        key = item.lower()
+        if item and key not in seen:
+            seen.add(key)
+            names.append(item)
+    return names
+
+
+def host_name_accepted(name: str) -> bool:
+    """True when `name` is one of the Host names."""
+    key = (name or "").strip().lower()
+    if not key:
+        return False
+    return any(item.lower() == key for item in host_names())
+
+
 def certificate_target_hosts(
     entries: list[str] | tuple[str, ...],
+    extra_names: list[str] | tuple[str, ...] | None = None,
 ) -> list[str]:
-    """Return `127.0.0.1`, `localhost`, and each distinct host beyond
-    loopback from `entries`, in order."""
+    """Return `127.0.0.1`, `localhost`, every address in `entries`,
+    loopback included, then each name in `extra_names`, in order."""
     hosts: list[str] = ["127.0.0.1", "localhost"]
     seen: set[str] = set(hosts)
     for entry in entries:
         host, _ = parse_listen_entry(entry)
-        if is_loopback_address(host):
-            continue
         try:
             norm = str(ipaddress.ip_address(host))
         except ValueError:
             norm = host.lower()
+        if norm not in seen:
+            seen.add(norm)
+            hosts.append(norm)
+    for name in extra_names or ():
+        text = (name or "").strip()
+        if not text:
+            continue
+        try:
+            norm = str(ipaddress.ip_address(text))
+        except ValueError:
+            norm = text.lower()
         if norm not in seen:
             seen.add(norm)
             hosts.append(norm)
@@ -479,8 +510,8 @@ def build_ssl_context(
     """Build a server SSLContext from `cert_file` and `key_file`.
 
     `cert_file` must be valid now (neither before `notBefore` nor past
-    `notAfter`), and when `addresses` has entries beyond loopback, it
-    must cover every entry beyond loopback.
+    `notAfter`), and it must cover every listed address, loopback
+    included.
     """
     cert = (cert_file or "").strip()
     key = (key_file or "").strip()
@@ -524,14 +555,10 @@ def build_ssl_context(
             "Select or generate a certificate in Edit → Preferences → "
             "MCP Bridge."
         )
-    beyond_loopback = [
-        entry
-        for entry in (addresses or ())
-        if not is_loopback_address(entry)
-    ]
-    if beyond_loopback:
+    listed = list(addresses or ())
+    if listed:
         covered = _certificate_hosts_from_decoded(decoded)
-        for entry in beyond_loopback:
+        for entry in listed:
             host = _entry_host(entry)
             if not certificate_covers_host(covered, host):
                 raise ValueError(

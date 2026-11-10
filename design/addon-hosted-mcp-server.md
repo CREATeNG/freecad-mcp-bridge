@@ -421,6 +421,36 @@ No silent port increment. Dynamic port rejected — HTTP clients
 configure the endpoint URL directly; a changing port would require
 reconfiguration each session.
 
+Under **Listen addresses** the Preferences page lists this machine's
+addresses, one row for each interface that is up, labelled with the
+address and then the interface name. IPv4 comes first. Link-local
+IPv6 is left out. `::1` is a row. `127.0.0.1` is ticked by default
+and the other rows are off. An empty list is that default, so the
+`127.0.0.1` row stays ticked. Ticking adds `address:port`, using the
+port of the `127.0.0.1` entry, or 39280 when there is none.
+Unticking removes every entry for that address. A typed entry that
+matches a row shows the row ticked. **Refresh** reads the interfaces
+again.
+
+**Host names** holds this machine's own name as a row to tick,
+labelled "This machine: <name>", and other names typed one per line,
+in the `HostNames` preference. No name in **Host names** opens a
+listener. Each is accepted in the `Host` header on the listeners
+that are open, so a client can connect by name and keep working
+when the address changes, and **Generate certificate** covers each.
+A name that does not resolve to this machine is noted, and the
+bridge still starts. Names are looked up when the field loses focus
+and on **Refresh**.
+
+The page marks each entry it can tell will stop a start: one that
+does not parse, a wildcard, and an address this machine does not
+have. It notes an empty list, which starts the bridge on
+`127.0.0.1:39280`. A port already taken and the certificate's cover
+are found at the start. While the bridge is on and the lists
+differ, the page shows what the bridge is listening on beside its
+own list, and says that OK, then turning the bridge off and on,
+applies the list.
+
 **Session management**
 
 Stateless at the MCP transport layer — each POST is independent. The server does not assign
@@ -570,7 +600,7 @@ not sent. A refused token says the pasted token was refused.
   generator (`tls_cert.py`). Either way, the certificate is
   self-signed (825-day validity, `CA:FALSE`, `digitalSignature` and
   `keyEncipherment`, `serverAuth`), covers `127.0.0.1`, `localhost`,
-  and every listed address beyond loopback, writes `tls-cert.pem` and
+  every listed address, and each host name, writes `tls-cert.pem` and
   `tls-key.pem` (`tls-key.pem` readable by the user only) in
   `<home>/.freecad-mcp-bridge` (or `FREECAD_MCP_TOKEN_DIR`), fills in
   the `TlsCertFile` and `TlsKeyFile` fields (asking first when either
@@ -579,7 +609,7 @@ not sent. A refused token says the pasted token was refused.
   entry beyond loopback is configured without readable, valid
   certificate and key files, if a configured certificate is not yet
   valid or has expired, or if the certificate does not cover a
-  non-loopback address in the list, startup fails with an error naming
+  listed address, loopback included, startup fails with an error naming
   the problem and directing the user to select or generate the files
   in Edit → Preferences → MCP Bridge, and the bridge stays off.
 
@@ -606,8 +636,9 @@ only after the user has accepted it once.
 
 Any request that carries an `Origin` header is refused with `403`.
 A request is also refused when its `Host` header, port aside, names
-neither the address that listener is bound to nor a name its
-certificate covers. A missing `Host` is refused.
+neither the address that listener is bound to, nor a name its
+certificate covers, nor a name in **Host names**. A missing `Host`
+is refused.
 A loopback listener accepts `127.0.0.1`, `localhost` and `[::1]`.
 
 ---
@@ -742,6 +773,7 @@ automatically.
 | Parameter | Default | Notes |
 |-----------|---------|-------|
 | Listen addresses | `127.0.0.1:39280` | List of `address:port` entries (`[ipv6]:port` for IPv6) to bind; unspecified addresses such as `0.0.0.0` and `[::]` are refused; if unset, inherits a previously saved `Port` value; missing port or bind conflict at startup logs an error and leaves the bridge off; the first start asks once (`StartWarningAccepted`), including loopback; each later non-loopback entry requires acceptance once (`AcceptedListenAddresses`); every later start keeps a line in the status bar and Report view |
+| HostNames | `""` | Names accepted in the Host header on the open listeners, one per line. No name in Host names opens a listener. The page's own-name row is labelled "This machine: <name>". |
 | Bearer token hash | Preferences `TokenHash` | Every listener requires `Authorization: Bearer <token>`; FreeCAD stores only the SHA-256 hash, shows a generated token once, and reads the hash again before refusing a mismatch |
 | TLS certificate file (PEM) / TLS private key file (PEM) | `""` | When both `TlsCertFile` and `TlsKeyFile` are set, every listener serves HTTPS. Without them, loopback is HTTP and a start beyond loopback fails. **Generate certificate** writes `tls-cert.pem` and `tls-key.pem` in `<home>/.freecad-mcp-bridge` and fills both fields |
 | Permission mode | `0` (Ask) | `PermissionMode`, `0` for Ask and `1` for Unrestricted: in Ask, FreeCAD shows an agent's code, and a file's path with it, before it runs; in Unrestricted the code runs unseen; switched in Preferences or from the On/Off button's menu, with a confirmation to go Unrestricted; each switch writes it at once, and the Preferences box has no preference entry of its own, so FreeCAD's own OK writes nothing for it |

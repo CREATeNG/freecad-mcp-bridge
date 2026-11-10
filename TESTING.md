@@ -65,7 +65,7 @@ behaviors it checks are execution and file execution, stdout/stderr and
 tracebacks, output paging and replay, retention preferences, execution
 order, GUI event handling, the two supported MCP protocol versions,
 HTTP, Origin and Host validation, loopback and non-loopback
-listen-address binding, the bearer token on every listener, and
+listen-address binding, the bearer token on every listener,
 TLS on every listener once a certificate and key are set, the
 first-start dialog and per-entry risk acceptance, port changes
 and stopping the bridge with running or queued jobs. When `BUNDLE_MCPB`
@@ -73,7 +73,8 @@ names a packed `.mcpb`, `test_bundle_mcp.py` calls that shim
 over stdio, in both protocol versions, and then expects it
 to exit. With no bundle named, that test skips;
 `verify_bundle: true`, as release and pull-request runs
-set it, always names one.
+set it, always names one. The unit tests check the rows, ticks,
+marks and host names.
 
 Use a disposable FreeCAD session and an isolated test profile: set
 `FREECAD_USER_HOME` to a new temporary folder before you start

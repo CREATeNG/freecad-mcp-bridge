@@ -150,6 +150,12 @@ change a model — for example:
   `127.0.0.1:39280`). Keep a `127.0.0.1:<PORT>` entry in the list if
   you use the Claude Desktop extension on the same machine (`127.0.0.1`
   is its default **FreeCAD host**).
+  Under the box, each address of this machine is a row you can tick.
+  `127.0.0.1` starts ticked, and **Refresh** reads the addresses
+  again. The page marks an entry it can tell will stop the bridge
+  starting, and, while the bridge is on, shows where the list
+  differs from what the bridge is listening on. Click **OK**, then
+  turn the bridge off and on again, to apply the list.
   An entry of `0.0.0.0`, `[::]`, or any other unspecified address is
   refused: enter a specific address of this machine. The first time
   you turn the bridge on, loopback included, FreeCAD asks you to
@@ -159,6 +165,10 @@ change a model — for example:
   covers both. Each later start keeps a line in the status bar and
   **Report view**. A later new address beyond loopback asks once on
   its own.
+- **Host names** — names the bridge accepts on the addresses it
+  listens on, so an MCP client can connect by name. Tick this
+  machine's own name, or type others, one per line. A name there
+  opens no listener, and **Generate certificate** covers each.
 - **Max response timeout** — how long the bridge waits for a page
   (default 15 s). For code or a file an agent sends, that wait
   includes the dialog, counted from the call. Keep it below the
@@ -195,8 +205,9 @@ change a model — for example:
 - **Generate certificate** — under **or generate one**, this
   button creates `tls-cert.pem` and `tls-key.pem` (the key
   readable by you only) in `<home>/.freecad-mcp-bridge`, covering
-  `127.0.0.1`, `localhost`, and every address beyond loopback,
-  for 825 days, and fills in both fields. OK in Preferences saves
+  `127.0.0.1`, `localhost`, every listed address, loopback entries
+  such as `::1` included, and each host name, for 825 days, and
+  fills in both fields. OK in Preferences saves
   them. Where openssl, Git for Windows' copy, or Windows PowerShell
   is found, you choose the tool and **RSA 4096** or **ECDSA P-256**.
   Where none is found, FreeCAD says where to install one and uses
@@ -204,9 +215,9 @@ change a model — for example:
   certificate, then shows the path, the covered addresses, and the
   expiry.
 - A start fails when the certificate is not yet valid or has
-  expired, and a start with an entry beyond loopback also fails
-  when either file is not set or the certificate does not cover
-  the address.
+  expired, and a start also fails when either file is not set for
+  an entry beyond loopback, or the certificate does not cover a
+  listed address, loopback included.
 - **Permission mode** — **Ask** (the default) shows you an agent's
   code before it runs. **Unrestricted** runs it unseen, with your
   full permissions. [What the AI can do](#what-the-ai-can-do) has
@@ -261,8 +272,9 @@ MCP Bridge is designed for **local** control of FreeCAD.
 - The bridge rejects any request that carries an `Origin` header,
   so a browser page cannot reach it. It also rejects a request
   whose `Host` header, port aside, names neither the address that
-  listener is bound to nor a name its certificate covers. A loopback
-  listener accepts `127.0.0.1`, `localhost` and `[::1]`.
+  listener is bound to, nor a name its certificate covers, nor a
+  name in **Host names**. A loopback listener accepts `127.0.0.1`,
+  `localhost` and `[::1]`.
 
 For privacy questions or security reports, contact chris@createng.com
 or see [SECURITY.md](SECURITY.md).

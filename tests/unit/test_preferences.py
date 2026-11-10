@@ -39,6 +39,7 @@ PAGE = ROOT / "freecad" / "mcp_bridge" / "Resources" / "Ui" / "preferences.ui"
 # Where a preference widget's prefPath is rooted in FreeCAD's parameters.
 PREF_ROOT = "User parameter:BaseApp/Preferences"
 SETTINGS = (
+    "HostNames",
     "ListenAddress",
     "TlsCertFile",
     "TlsKeyFile",
@@ -276,6 +277,7 @@ class UnsetPreferenceTests(unittest.TestCase):
         # upgrade fallback when ListenAddress has never been saved, and
         # PermissionMode, which only a confirmed choice writes.
         self.assertEqual(set(groups), {PREF_GROUP})
+        self.assertEqual(config.host_names(), [])
         self.assertEqual(
             params.read,
             set(SETTINGS) | {"Port", "PermissionMode"},
@@ -1763,6 +1765,14 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 for host in ("127.0.0.1:39280", "localhost", "[::1]:39280"):
                     handler.headers = {"Host": host}
                     self.assertTrue(handler._host_ok(), host)
+                store["HostNames"] = "my-pc"
+                handler.headers = {"Host": "my-pc"}
+                self.assertTrue(handler._host_ok())
+                handler.headers = {"Host": "My-PC:39280"}
+                self.assertTrue(handler._host_ok())
+                handler.headers = {"Host": "other-pc"}
+                self.assertFalse(handler._host_ok())
+                store["HostNames"] = ""
                 handler.headers = {"Host": "192.168.1.50"}
                 self.assertFalse(handler._host_ok())
                 handler.server.bound_host = "192.168.1.50"
@@ -1851,14 +1861,16 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
     def test_non_loopback_start_fails_when_certificate_does_not_cover_address(
         self,
     ):
-        """A start with an entry beyond loopback fails naming the address when
-        the certificate does not cover it, and succeeds when every
-        non-loopback address in the list is covered."""
+        """A start fails naming the address when the certificate does not
+        cover it, loopback included, and succeeds when every address
+        in the list is covered."""
         config, _, _ = fresh_config()
         fake_decoded = {
             "subjectAltName": (
+                ("IP Address", "127.0.0.1"),
                 ("IP Address", "192.168.1.50"),
                 ("IP Address", "2001:DB8:0:0:0:0:0:5"),
+                ("DNS", "localhost"),
                 ("DNS", "freecad.local"),
                 ("DNS", "*.cad.example"),
             ),
@@ -1885,8 +1897,10 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             self.assertEqual(
                 covered,
                 {
+                    "127.0.0.1",
                     "192.168.1.50",
                     "2001:db8::5",
+                    "localhost",
                     "freecad.local",
                     "*.cad.example",
                 },
@@ -1922,6 +1936,29 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                     "[2001:db8::5]:39281",
                     "freecad.local:39282",
                 ],
+            )
+            # A loopback entry fails when the certificate does not name it.
+            bare = {
+                "subjectAltName": (("IP Address", "192.168.1.50"),),
+                "subject": ((("commonName", "192.168.1.50"),),),
+            }
+            with (
+                mock.patch.object(
+                    config.ssl._ssl,
+                    "_test_decode_cert",
+                    return_value=bare,
+                ),
+                self.assertRaises(ValueError) as loopback_only,
+            ):
+                config.build_ssl_context(
+                    "cert.pem",
+                    "key.pem",
+                    ["127.0.0.1:39280"],
+                )
+            self.assertEqual(
+                str(loopback_only.exception),
+                "The TLS certificate does not cover 127.0.0.1. Select or "
+                "generate a certificate in Edit → Preferences → MCP Bridge.",
             )
             with self.assertRaises(ValueError) as uncovered:
                 config.build_ssl_context(
@@ -2259,15 +2296,31 @@ class PermissionModeTests(unittest.TestCase):
             def setProperty(self, name, value):
                 self.props[name] = value
 
+            def setItemIcon(self, _index, _icon):
+                pass
+
         box = Box()
-        with mock.patch(
-            "freecad.mcp_bridge.config.unrestricted", return_value=True
+        with (
+            mock.patch(
+                "freecad.mcp_bridge.config.unrestricted", return_value=True
+            ),
+            mock.patch(
+                "freecad.mcp_bridge.file_prompt.mode_icon",
+                return_value=object(),
+            ),
         ):
             init_gui._show_mode_in_box(box)
         self.assertEqual(box.index, 1)
         self.assertEqual(len(box.connected), 1)
-        with mock.patch(
-            "freecad.mcp_bridge.config.unrestricted", return_value=False
+        with (
+            mock.patch(
+                "freecad.mcp_bridge.config.unrestricted",
+                return_value=False,
+            ),
+            mock.patch(
+                "freecad.mcp_bridge.file_prompt.mode_icon",
+                return_value=object(),
+            ),
         ):
             init_gui._show_mode_in_box(box)
         self.assertEqual(box.index, 0)
@@ -2277,6 +2330,59 @@ class PermissionModeTests(unittest.TestCase):
         init_gui._on_mode_chosen = lambda b, index: chosen.append((b, index))
         box.connected[0](1)
         self.assertEqual(chosen, [(box, 1)])
+
+    def test_the_permission_mode_box_items_carry_their_icons(self):
+        """Ask and Unrestricted each carry that mode's icon."""
+        init_gui = _fresh_init_gui()
+        ask_icon = object()
+        unrestricted_icon = object()
+
+        class Box:
+            def __init__(self):
+                self.icons = {}
+                self.index = 0
+                self.props = {}
+                self.connected = []
+                self.activated = types.SimpleNamespace(
+                    connect=self.connected.append
+                )
+
+            def blockSignals(self, _on):
+                pass
+
+            def setCurrentIndex(self, index):
+                self.index = index
+
+            def property(self, name):
+                return self.props.get(name)
+
+            def setProperty(self, name, value):
+                self.props[name] = value
+
+            def setItemIcon(self, index, icon):
+                self.icons[index] = icon
+
+        def icon(unrestricted):
+            if unrestricted:
+                return unrestricted_icon
+            return ask_icon
+
+        box = Box()
+        with (
+            mock.patch(
+                "freecad.mcp_bridge.file_prompt.mode_icon",
+                side_effect=icon,
+            ),
+            mock.patch(
+                "freecad.mcp_bridge.config.unrestricted",
+                return_value=False,
+            ),
+        ):
+            init_gui._show_mode_in_box(box)
+        self.assertIsNotNone(box.icons[0])
+        self.assertIsNotNone(box.icons[1])
+        self.assertIs(box.icons[0], ask_icon)
+        self.assertIs(box.icons[1], unrestricted_icon)
 
     def test_choosing_the_mode_in_force_asks_nothing(self):
         """The Preferences box acts only on a change of mode."""
@@ -2537,6 +2643,7 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                 [
                     "127.0.0.1",
                     "localhost",
+                    "::1",
                     "192.168.1.50",
                     "freecad.local",
                 ],
@@ -2814,15 +2921,20 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
             def setText(self, val):
                 self.text = val
 
+            def toPlainText(self):
+                return self.text
+
         class FakePrefPage:
             def __init__(self):
                 self.cert_chooser = FakeChooser()
                 self.key_chooser = FakeChooser()
                 self.note_label = FakeLabel()
+                self.names = FakeLabel()
                 self._children = {
                     "tlsCertFileChooser": self.cert_chooser,
                     "tlsKeyFileChooser": self.key_chooser,
                     "listenAddressNote": self.note_label,
+                    "hostNamesTextEdit": self.names,
                 }
 
             def findChild(self, _cls, name=""):
@@ -2871,12 +2983,30 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                 # and platform install hint, and fills both fields without
                 # saving preferences yet.
                 store["ListenAddress"] = "127.0.0.1:39280\n[::1]:39281"
+                store["HostNames"] = "my-pc"
+                page.names.text = "my-pc"
+                qt_widgets = types.ModuleType("PySide.QtWidgets")
+                qt_widgets.QTextEdit = object
+                qt_mod = types.ModuleType("PySide")
+                qt_mod.__path__ = []
+                sys.modules["PySide"] = qt_mod
+                sys.modules["PySide.QtWidgets"] = qt_widgets
+                sys.modules["freecad.mcp_bridge.config"] = config
+                if getattr(config, "FreeCAD", None) is not None:
+                    sys.modules["FreeCAD"] = config.FreeCAD
+                self.addCleanup(
+                    lambda: sys.modules.pop("PySide", None)
+                )
+                self.addCleanup(
+                    lambda: sys.modules.pop("PySide.QtWidgets", None)
+                )
                 result = init_gui.generate_and_show_certificate(parent=page)
                 expected_cert = str(Path(folder) / "tls-cert.pem")
                 expected_key = str(Path(folder) / "tls-key.pem")
                 self.assertEqual(result, (expected_cert, expected_key))
                 self.assertEqual(
-                    generated_hosts[-1], ["127.0.0.1", "localhost"]
+                    generated_hosts[-1],
+                    ["127.0.0.1", "localhost", "::1", "my-pc"],
                 )
                 self.assertEqual(page.cert_chooser.fileName(), expected_cert)
                 self.assertEqual(page.key_chooser.fileName(), expected_key)
@@ -2901,6 +3031,8 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                 # asks to replace; Yes generates covering 127.0.0.1,
                 # localhost, 192.168.1.50, and freecad.local.
                 messages.clear()
+                page.names.text = ""
+                store["HostNames"] = ""
                 store["ListenAddress"] = (
                     "127.0.0.1:39280\n192.168.1.50:39280\nfreecad.local:39281"
                 )
@@ -3171,7 +3303,6 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
         ):
             self.assertIsNone(init_gui.generate_and_show_certificate())
         self.assertEqual(events, ["set", "restore", "dialog"])
-
 
 class SetTokenDialogTests(unittest.TestCase):
     def test_set_token_stores_a_hash_refuses_a_short_one_and_cancel(self):
