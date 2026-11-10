@@ -634,7 +634,7 @@ class ListenAddressTests(unittest.TestCase):
         self.assertFalse(seen.get("no_port_running"))
         self.assertIn(address, seen.get("no_port_status", ""))
         self.assertIn(
-            "Change the listen addresses in Edit",
+            "not a listen address",
             seen.get("no_port_report", ""),
         )
         self.assertTrue(seen.get("decline_dialog_found"))

@@ -859,7 +859,9 @@ def _turn_bridge_on():
     need_tls = bool(non_loopback) and not (
         cert_file.strip() and key_file.strip()
     )
-    need_listen = not has_row
+    # A legacy row is not an empty list. The set-up dialog is only
+    # for a list with no rows at all.
+    need_listen = not rows
     if need_token or need_tls or need_listen:
         _show_setup_dialog(need_token, need_tls, need_listen)
         _offline_status()
