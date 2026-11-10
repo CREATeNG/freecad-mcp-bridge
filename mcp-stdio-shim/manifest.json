@@ -59,13 +59,13 @@
       "type": "string",
       "sensitive": true,
       "title": "Bearer token",
-      "description": "On this machine the extension stores the token from FreeCAD's Share with Claude Desktop hand-over, then uses that store: DPAPI on Windows, the Keychain on macOS, or a user-only file on Linux. Paste a token here when that store is empty, or when you prefer the paste. For another host, required: the pasted token is used by the extension only and is never written back.",
+      "description": "Required. Paste the token FreeCAD showed. The extension uses only this setting, on this machine and for another host, and writes nothing. A token is at least 32 characters.",
       "required": false
     },
     "tls_cert_file": {
       "type": "file",
       "title": "TLS certificate file (PEM)",
-      "description": "Used for another host only, where it is required. Set this to a copy of FreeCAD's certificate file, not the private key, so the extension connects over HTTPS and trusts only that certificate. On this machine the extension reads serving-cert.pem beside the token file, and uses HTTPS only when that file is present.",
+      "description": "Used for another host only, where it is required. Set this to a copy of FreeCAD's certificate file, not the private key, so the extension connects over HTTPS and trusts only that certificate. On this machine the extension reads serving-cert.pem in the bridge's folder, and uses HTTPS only when that file is present.",
       "required": false
     }
   }

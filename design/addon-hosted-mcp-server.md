@@ -548,18 +548,11 @@ token once. Preferences do not keep a hash. The old `TokenHash`,
 unread. A running bridge, when a request's token does not match,
 reads the file again before refusing.
 
-The Claude Desktop extension reads that file on each `tools/call`. A
-token pasted into its Bearer token setting is written to the file
-only when it is at least 32 characters, the folder already exists,
-and its SHA-256 differs from the hash stored in `pasted` beside the
-token. That record is user-only, like the token file, and holds the
-hash rather than a second copy of the token. A shorter token is not
-written. While the folder is missing, the extension tries the write
-again on each call and does not create the folder. A problem with
-the paste, including a write error, is a text item in the tool
-result. The shim's own error text carries that note beside `error`.
-The call is still sent, with the token from the file. **Generate new
-token** tells the user when the file cannot be written.
+The Claude Desktop extension takes the token only from its Bearer
+token setting, on this machine and for another host. It reads no
+token file and writes nothing. With no token set, or with a paste
+shorter than 32 characters, the tool result says so and the call is
+not sent. A refused token says the pasted token was refused.
 
 - **TLS beyond loopback (`TlsCertFile`, `TlsKeyFile`)** — non-loopback
   listeners serve HTTPS only, using the certificate file
@@ -637,22 +630,19 @@ and `::1` are treated as loopback), the port from `FREECAD_MCP_PORT`
 (default 39280), an optional pasted bearer token from
 `FREECAD_MCP_TOKEN`, and an optional PEM certificate path from
 `FREECAD_MCP_TLS_CERT_FILE` (all wired from `user_config` in
-`manifest.json`). On loopback, each `tools/call` sends
-`Authorization: Bearer` with the token in the token file. The folder
-is `FREECAD_MCP_TOKEN_DIR` when that is set, and
-`<home>/.freecad-mcp-bridge` otherwise. A pasted token of at least 32
-characters is written there only while `FREECAD_MCP_HOST` is on
-loopback, and only when its hash differs from the `pasted` file
-beside the token and the folder already exists. A shorter paste, a
-missing folder, or a write error is a note on the tool result, and
-the call is still sent. On loopback, the shim connects to
-`http://<host>:<port>/mcp` whatever `FREECAD_MCP_TLS_CERT_FILE`
-is set to.
+`manifest.json`). On this machine and for another host, each
+`tools/call` sends `Authorization: Bearer` with
+`FREECAD_MCP_TOKEN` only. The shim reads no token file and writes
+nothing. With no token set, or with a paste shorter than 32
+characters, the tool result says so and the call is not sent. On
+this machine, when `serving-cert.pem` is in `FREECAD_MCP_TOKEN_DIR`
+or `<home>/.freecad-mcp-bridge`, the shim connects over HTTPS and
+trusts only that file. When the file is absent it connects over
+HTTP, whatever `FREECAD_MCP_TLS_CERT_FILE` is set to.
 When `FREECAD_MCP_HOST` names an address or hostname beyond loopback,
-the shim connects to `https://<host>:<port>/mcp`, requires both
-`FREECAD_MCP_TLS_CERT_FILE` and `FREECAD_MCP_TOKEN`, trusts only that
-certificate (not the system's certificate authorities), and sends the
-pasted token without writing it back to the local token file.
+the shim connects to `https://<host>:<port>/mcp`, requires
+`FREECAD_MCP_TLS_CERT_FILE`, trusts only that certificate (not the
+system's certificate authorities), and sends the pasted token.
 Notifications (no `id`)
 get no reply and are not sent on. The shim answers `initialize`
 itself with `protocolVersion` `2025-11-25` and a tools capability
