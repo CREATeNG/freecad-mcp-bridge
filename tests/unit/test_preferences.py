@@ -1851,14 +1851,16 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
     def test_non_loopback_start_fails_when_certificate_does_not_cover_address(
         self,
     ):
-        """A start with an entry beyond loopback fails naming the address when
-        the certificate does not cover it, and succeeds when every
-        non-loopback address in the list is covered."""
+        """A start fails naming the address when the certificate does not
+        cover it, loopback included, and succeeds when every address
+        in the list is covered."""
         config, _, _ = fresh_config()
         fake_decoded = {
             "subjectAltName": (
+                ("IP Address", "127.0.0.1"),
                 ("IP Address", "192.168.1.50"),
                 ("IP Address", "2001:DB8:0:0:0:0:0:5"),
+                ("DNS", "localhost"),
                 ("DNS", "freecad.local"),
                 ("DNS", "*.cad.example"),
             ),
@@ -1885,8 +1887,10 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             self.assertEqual(
                 covered,
                 {
+                    "127.0.0.1",
                     "192.168.1.50",
                     "2001:db8::5",
+                    "localhost",
                     "freecad.local",
                     "*.cad.example",
                 },
@@ -1922,6 +1926,29 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                     "[2001:db8::5]:39281",
                     "freecad.local:39282",
                 ],
+            )
+            # A loopback entry fails when the certificate does not name it.
+            bare = {
+                "subjectAltName": (("IP Address", "192.168.1.50"),),
+                "subject": ((("commonName", "192.168.1.50"),),),
+            }
+            with (
+                mock.patch.object(
+                    config.ssl._ssl,
+                    "_test_decode_cert",
+                    return_value=bare,
+                ),
+                self.assertRaises(ValueError) as loopback_only,
+            ):
+                config.build_ssl_context(
+                    "cert.pem",
+                    "key.pem",
+                    ["127.0.0.1:39280"],
+                )
+            self.assertEqual(
+                str(loopback_only.exception),
+                "The TLS certificate does not cover 127.0.0.1. Select or "
+                "generate a certificate in Edit → Preferences → MCP Bridge.",
             )
             with self.assertRaises(ValueError) as uncovered:
                 config.build_ssl_context(

@@ -446,7 +446,7 @@ class HttpServer:
         if use_tls:
             try:
                 ssl_context = config.build_ssl_context(
-                    cert_file, key_file, non_loopback
+                    cert_file, key_file, entries
                 )
             except ValueError as exc:
                 FreeCAD.Console.PrintDeveloperError(f"{LOG_PREFIX} {exc}\n")

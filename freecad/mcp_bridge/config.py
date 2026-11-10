@@ -457,8 +457,8 @@ def build_ssl_context(
     """Build a server SSLContext from `cert_file` and `key_file`.
 
     `cert_file` must be valid now (neither before `notBefore` nor past
-    `notAfter`), and when `addresses` has entries beyond loopback, it
-    must cover every entry beyond loopback.
+    `notAfter`), and it must cover every listed address, loopback
+    included.
     """
     cert = (cert_file or "").strip()
     key = (key_file or "").strip()
@@ -502,14 +502,10 @@ def build_ssl_context(
             "Select or generate a certificate in Edit → Preferences → "
             "MCP Bridge."
         )
-    beyond_loopback = [
-        entry
-        for entry in (addresses or ())
-        if not is_loopback_address(entry)
-    ]
-    if beyond_loopback:
+    listed = list(addresses or ())
+    if listed:
         covered = _certificate_hosts_from_decoded(decoded)
-        for entry in beyond_loopback:
+        for entry in listed:
             host = _entry_host(entry)
             if not certificate_covers_host(covered, host):
                 raise ValueError(
