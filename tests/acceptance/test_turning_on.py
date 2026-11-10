@@ -707,7 +707,8 @@ class ListenAddressTests(unittest.TestCase):
                     "[dn]\n"
                     "CN = 10.255.255.1\n"
                     "[v3]\n"
-                    "subjectAltName = IP:10.255.255.1\n"
+                    "subjectAltName = IP:127.0.0.1,DNS:localhost,"
+                    "IP:10.255.255.1\n"
                 )
             subprocess.run(
                 [
@@ -1383,8 +1384,8 @@ def step_no_cert_then_start():
     seen['enc_key_status'] = mw.statusBar().currentMessage()
     seen['enc_key_report'] = report_view_text()[before_enc_key:]
 
-    # A certificate that does not cover the configured non-loopback
-    # address fails naming the address and leaves the bridge off.
+    # The certificate covers loopback and not the LAN address, so the
+    # start fails naming that address and leaves the bridge off.
     params.SetString('TlsCertFile', {uncovered_cert_path!r})
     params.SetString('TlsKeyFile', {uncovered_key_path!r})
     before_uncovered = len(report_view_text())
