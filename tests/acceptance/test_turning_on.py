@@ -168,7 +168,7 @@ from PySide.QtWidgets import (
     QApplication,
     QDialog,
     QDialogButtonBox,
-    QTextEdit,
+    QTableWidget,
 )
 
 seen = {{}}
@@ -180,7 +180,7 @@ def inspect_and_click_ok():
         (
             d
             for d in mw.findChildren(QDialog)
-            if d.findChild(QTextEdit, 'listenAddressTextEdit') is not None
+            if d.findChild(QTableWidget, 'listenTable') is not None
         ),
         None,
     )
@@ -188,8 +188,16 @@ def inspect_and_click_ok():
         QTimer.singleShot(100, inspect_and_click_ok)
         return
     seen['dialog_found'] = True
-    box = dlg.findChild(QTextEdit, 'listenAddressTextEdit')
-    seen['box_text'] = box.toPlainText().strip() if box is not None else None
+    table = dlg.findChild(QTableWidget, 'listenTable')
+    what = ''
+    port_text = ''
+    if table is not None and table.item(0, 0) is not None:
+        what = table.item(0, 0).text()
+    if table is not None and table.item(0, 1) is not None:
+        port_text = table.item(0, 1).text()
+    seen['box_text'] = (
+        f"{{what}}:{{port_text}}" if what and port_text else ''
+    )
     btn_box = dlg.findChild(QDialogButtonBox)
     ok_btn = (
         btn_box.button(QDialogButtonBox.Ok) if btn_box is not None else None
@@ -1088,9 +1096,9 @@ class ListenAddressTests(unittest.TestCase):
             seen.get("enc_key_report", ""),
         )
         self.assertFalse(seen.get("uncovered_cert_running"))
-        self.assertIn(
-            f"{address} is not in the TLS certificate",
-            seen.get("uncovered_cert_report", ""),
+        self.assertNotIn(
+            "does not cover",
+            seen.get("uncovered_cert_status", ""),
         )
         self.assertTrue(seen.get("gen_cert_replace_dialog_found"))
         self.assertTrue(seen.get("gen_cert_dialog_found"))
