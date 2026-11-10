@@ -115,9 +115,7 @@ def _show_generated_token(token, parent=None):
     import FreeCADGui as Gui
     from PySide.QtCore import Qt
     from PySide.QtGui import QGuiApplication
-    from PySide.QtWidgets import QCheckBox, QDialog, QMessageBox
-
-    from freecad.mcp_bridge import config
+    from PySide.QtWidgets import QDialog, QMessageBox
 
     title, body = _token_dialog_text(token)
     host = parent if parent is not None else Gui.getMainWindow()
