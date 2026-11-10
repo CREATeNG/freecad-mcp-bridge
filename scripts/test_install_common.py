@@ -760,6 +760,16 @@ def check_listening_status() -> None:
     log_notice(f"Status bar shows {expected!r}")
 
 
+def store_token_for_toolbar_start() -> str:
+    """Store a bearer token before the toolbar On/Off.
+
+    A start with no token opens the set-up dialog and starts nothing.
+    """
+    from freecad.mcp_bridge import config
+
+    return config.generate_and_store_token()
+
+
 def start_bridge() -> None:
     """Start the HTTP server by triggering the real toolbar button."""
     from freecad.mcp_bridge import bridge

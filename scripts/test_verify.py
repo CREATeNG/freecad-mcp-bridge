@@ -804,11 +804,8 @@ def _run() -> None:
     _verify_status_button_hide()
     _verify_mode_on_status_button()
     _verify_toolbar_hide()
-    # Turning the bridge on never makes a token. Store one first,
-    # the way Generate new token does, so this start can proceed.
-    from freecad.mcp_bridge import config
-
-    config.generate_and_store_token()
+    # Turning the bridge on never makes a token. Store one first.
+    common.store_token_for_toolbar_start()
     common.start_bridge()
     _assert_status_button(True)
     common.check_listening_status()

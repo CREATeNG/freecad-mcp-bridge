@@ -202,6 +202,8 @@ def _run() -> None:
     if not ready_file or not stop_file:
         common.fail("ACCEPTANCE_READY_FILE and ACCEPTANCE_STOP_FILE must be set")
 
+    # Turning the bridge on never makes a token. Store one first.
+    common.store_token_for_toolbar_start()
     common.start_bridge()
     entry = config.listen_addresses()[0]
     _, port = config.parse_listen_entry(entry)
