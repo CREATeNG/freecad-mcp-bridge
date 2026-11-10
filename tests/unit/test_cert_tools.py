@@ -9,6 +9,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from freecad.mcp_bridge import cert_tools
 
@@ -150,6 +151,42 @@ class CertToolTests(unittest.TestCase):
             for name in hosts:
                 version = _handshake(cert, key, name)
                 self.assertTrue(version)
+
+    def test_a_failing_tool_leaves_an_existing_pair_byte_for_byte(self):
+        """A tool that fails leaves the certificate and key already there."""
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            cert = root / "cert.pem"
+            key = root / "key.pem"
+            cert.write_bytes(b"cert-bytes")
+            key.write_bytes(b"key-bytes")
+            with (
+                mock.patch(
+                    "freecad.mcp_bridge.cert_tools.shutil.which",
+                    return_value="openssl",
+                ),
+                mock.patch.object(
+                    cert_tools,
+                    "_run",
+                    side_effect=cert_tools.CertToolError("boom"),
+                ),
+            ):
+                with self.assertRaises(cert_tools.CertToolError):
+                    cert_tools.generate(
+                        "openssl",
+                        cert_tools.KEY_RSA,
+                        ["freecad.local"],
+                        str(cert),
+                        str(key),
+                    )
+            self.assertEqual(cert.read_bytes(), b"cert-bytes")
+            self.assertEqual(key.read_bytes(), b"key-bytes")
+            leftovers = [
+                path.name
+                for path in root.iterdir()
+                if path.name not in ("cert.pem", "key.pem")
+            ]
+            self.assertEqual(leftovers, [])
 
 
 if __name__ == "__main__":

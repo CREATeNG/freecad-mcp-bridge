@@ -89,25 +89,58 @@ def generate(
     key = Path(key_path)
     _protect_created_directory(cert.parent)
     _protect_created_directory(key.parent)
-    # An empty user-only file first, so the tool overwrites it and
-    # keeps that access instead of creating a new file.
-    key.write_bytes(b"")
-    token_file._user_only(key, is_dir=False)
+    # The tool writes a temporary pair. The real files are replaced
+    # only after that succeeds, so a failure leaves them as they were.
+    cert_tmp = _temporary_output(cert)
+    key_tmp = _temporary_output(key)
+    try:
+        token_file._user_only(key_tmp, is_dir=False)
+        _generate_with(tool, key_type, cleaned, cert_tmp, key_tmp)
+        token_file._replace_file(cert_tmp, cert)
+        token_file._replace_file(key_tmp, key)
+    except Exception:
+        _discard(cert_tmp)
+        _discard(key_tmp)
+        raise
+
+
+def _temporary_output(dest: Path) -> Path:
+    descriptor, name = tempfile.mkstemp(
+        prefix=f".{dest.name}.", suffix=".tmp", dir=dest.parent
+    )
+    os.close(descriptor)
+    return Path(name)
+
+
+def _discard(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _generate_with(
+    tool: str,
+    key_type: str,
+    hosts: list[str],
+    cert: Path,
+    key: Path,
+) -> None:
     if tool == "openssl":
         binary = shutil.which("openssl")
         if not binary:
             raise CertToolError("openssl is not on PATH.")
-        _openssl_generate(binary, key_type, cleaned, cert, key)
+        _openssl_generate(binary, key_type, hosts, cert, key)
     elif tool == "git-openssl":
         binary = _git_openssl()
         if binary is None:
             raise CertToolError("Git for Windows openssl was not found.")
-        _openssl_generate(str(binary), key_type, cleaned, cert, key)
+        _openssl_generate(str(binary), key_type, hosts, cert, key)
     elif tool == "powershell":
         exe = _powershell_exe()
         if exe is None:
             raise CertToolError("Windows PowerShell was not found.")
-        _powershell_generate(exe, key_type, cleaned, cert, key)
+        _powershell_generate(exe, key_type, hosts, cert, key)
     else:
         raise CertToolError(f"Unknown certificate tool {tool}.")
 
@@ -231,7 +264,7 @@ def _openssl_generate(
         if key_type == KEY_ECDSA:
             # ecparam, then req -key, is accepted by OpenSSL and by
             # LibreSSL (macOS /usr/bin/openssl). -newkey ec -pkeyopt
-            # is not.
+            # may not be.
             _run([
                 binary,
                 "ecparam",
