@@ -1202,9 +1202,19 @@ def _show_mode_in_box(box):
     The box has no preference entry of its own, so FreeCAD's OK writes
     nothing for it: a confirmed choice is the only writer of the mode.
     A box this never reaches shows Ask and changes nothing.
+    Each item carries its mode's icon, the same files as the On/Off
+    button's menu. The closed box paints the current item's icon.
     """
     from freecad.mcp_bridge import config, file_prompt
+    from freecad.mcp_bridge.constants import (
+        PERMISSION_MODE_ASK,
+        PERMISSION_MODE_UNRESTRICTED,
+    )
 
+    box.setItemIcon(PERMISSION_MODE_ASK, file_prompt.mode_icon(False))
+    box.setItemIcon(
+        PERMISSION_MODE_UNRESTRICTED, file_prompt.mode_icon(True)
+    )
     file_prompt.set_mode_box_quietly(box, config.unrestricted())
     if box.property("mcp_mode_hooked"):
         return
