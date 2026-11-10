@@ -658,7 +658,7 @@ class ListenAddressTests(unittest.TestCase):
         self.assertTrue(seen.get("accepted_running"))
         self.assertEqual(
             json.loads(seen.get("accepted_saved", "[]")),
-            [f"{address}:{PORT}"],
+            [address],
         )
         expected_status = (
             f"MCP Bridge: Listening on 127.0.0.1:{PORT}, "
@@ -1089,12 +1089,7 @@ class ListenAddressTests(unittest.TestCase):
         )
         self.assertFalse(seen.get("uncovered_cert_running"))
         self.assertIn(
-            f"The TLS certificate does not cover {address}.",
-            seen.get("uncovered_cert_status", ""),
-        )
-        self.assertIn(
-            "Select or generate a certificate in Edit → "
-            "Preferences → MCP Bridge.",
+            f"{address} is not in the TLS certificate",
             seen.get("uncovered_cert_report", ""),
         )
         self.assertTrue(seen.get("gen_cert_replace_dialog_found"))
@@ -1442,11 +1437,27 @@ def step_no_cert_then_start():
     seen['enc_key_status'] = mw.statusBar().currentMessage()
     seen['enc_key_report'] = report_view_text()[before_enc_key:]
 
-    # The certificate covers loopback and not the LAN address, so the
-    # start fails naming that address and leaves the bridge off.
+    # The certificate covers loopback and not the LAN address. The
+    # start warns and still offers the risk dialog. Cancel leaves
+    # the bridge off.
     params.SetString('TlsCertFile', {uncovered_cert_path!r})
     params.SetString('TlsKeyFile', {uncovered_key_path!r})
     before_uncovered = len(report_view_text())
+
+    def cancel_risk(attempts=40):
+        for name in (
+            'MCPBridgeFirstStartDialog', 'MCPBridgeRiskDialog'
+        ):
+            dlg = mw.findChild(QMessageBox, name)
+            if dlg is not None and dlg.isVisible():
+                for btn in dlg.buttons():
+                    if btn.text() == 'Cancel':
+                        btn.click()
+                        return
+        if attempts > 0:
+            QTimer.singleShot(50, lambda: cancel_risk(attempts - 1))
+
+    QTimer.singleShot(50, cancel_risk)
     action.trigger()
     seen['uncovered_cert_running'] = bridge.is_running()
     seen['uncovered_cert_status'] = mw.statusBar().currentMessage()
