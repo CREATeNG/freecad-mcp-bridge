@@ -124,7 +124,7 @@ const PLAIN_HTTP_TO_HTTPS_MESSAGE =
   "On this machine the extension trusts serving-cert.pem in the bridge's folder, which is not there. Turn the bridge off and on again in FreeCAD, so it writes that file, and check that FREECAD_MCP_TOKEN_DIR, if set, is the same for both.";
 const MISSING_REMOTE_CERT_MESSAGE =
   `FreeCAD host is set to ${BARE_HOST}, which requires HTTPS. ` +
-  "Set Certificate (PEM) in the MCP Bridge for FreeCAD extension settings to a copy of FreeCAD's certificate file, not the private key.";
+  "Set TLS certificate file (PEM) in the MCP Bridge for FreeCAD extension settings to a copy of FreeCAD's certificate file, not the private key.";
 const LEGACY_PROTOCOL_VERSION = "2025-11-25";
 const MODERN_PROTOCOL_VERSION = "2026-07-28";
 const META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion";
@@ -190,7 +190,7 @@ function tlsErrorMessage(err) {
   }
   return (
     where +
-    `Check that Certificate (PEM) in the MCP Bridge for FreeCAD extension settings is a copy of FreeCAD's certificate file, not the private key, and covers ${BARE_HOST}.`
+    `Check that TLS certificate file (PEM) in the MCP Bridge for FreeCAD extension settings is a copy of FreeCAD's certificate file, not the private key, and covers ${BARE_HOST}.`
   );
 }
 

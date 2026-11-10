@@ -35,8 +35,9 @@ Desktop extension. When they are not set, loopback entries use
 HTTP, and a start with a non-loopback entry fails. **Generate
 self-signed certificate** creates `tls-cert.pem` and `tls-key.pem` in
 `<home>/.freecad-mcp-bridge/`, with `tls-key.pem` readable by you
-only, covering `127.0.0.1`, `localhost`, and any listed address
-beyond loopback. Any client that can reach an entry, with the
+only, covering `127.0.0.1`, `localhost`, every listed address,
+loopback entries such as `::1` included, and each host name. Any
+client that can reach an entry, with the
 bearer token, can run Python code in FreeCAD as your user account.
 The first start asks you to accept that, loopback included, and each
 later start warns in the status bar and **Report view**. In the
@@ -47,11 +48,14 @@ that code runs unseen, stays off until you confirm a second dialog.
 The On/Off button on the status bar shows the mode: a shield with a
 tick for Ask, or a warning triangle for Unrestricted. Its menu
 switches modes the same way as **Permission mode** under
-**Execution permission** in **Edit → Preferences → MCP Bridge**. While the
-mode is Unrestricted, the button is shown whatever
-**Show** says. A request that carries an `Origin`
-header is refused, as is a `Host` header that names neither the
-address that listener is bound to nor a name its certificate covers.
+**Execution permission** in **Edit → Preferences → MCP Bridge**.
+While the mode is Unrestricted, the button is shown whatever
+**Show** under **MCP Bridge status bar widget** says. A request
+that carries an `Origin` header is refused, as is a `Host`
+header that, port aside, names neither the address that listener
+is bound to, nor a name its certificate covers, nor a name in
+**Host names**. A loopback listener accepts `127.0.0.1`,
+`localhost` and `[::1]`.
 
 See [README § Privacy Policy](README.md#privacy-policy) for how the
 bridge (the MCP server inside FreeCAD) and your MCP client interact,

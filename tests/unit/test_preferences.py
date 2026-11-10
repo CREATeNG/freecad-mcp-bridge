@@ -1113,6 +1113,45 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
 
             init_gui._show_setup_dialog = fake_setup
 
+            # The start itself asks for a listen address when the
+            # saved list is empty, and when it holds host names only.
+            saved_store = dict(store)
+            listen_line = (
+                "A listen address. Under Listen addresses, "
+                "click + and add an adapter or a fixed IP address."
+            )
+
+            def ask_listen(host_names):
+                store.clear()
+                store.update(
+                    {
+                        "ListenAddress": "",
+                        "ListenAdapters": "",
+                        "HostNames": host_names,
+                        "ListenListSaved": True,
+                        "TokenHash": config.hash_token("ab"),
+                        "TlsCertFile": "",
+                        "TlsKeyFile": "",
+                    }
+                )
+                setup_calls.clear()
+                _status, started, _reported = (
+                    init_gui._turn_bridge_on()
+                )
+                self.assertFalse(started)
+                self.assertEqual(setup_calls[-1][2], True)
+                _title, body = init_gui._setup_dialog_text(
+                    *setup_calls[-1]
+                )
+                self.assertIn(listen_line, body)
+
+            ask_listen("")
+            ask_listen("studio.example")
+            store.clear()
+            store.update(saved_store)
+            setup_calls.clear()
+            warnings.clear()
+
             # Check risk dialog text: token and TLS are always required
             # beyond loopback, so only the code-execution risk remains.
             title, body_both = init_gui._risk_dialog_text(
@@ -1171,7 +1210,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 any("192.168.1.50" in item for item in warnings)
             )
             self.assertTrue(
-                any("needs a port" in item for item in warnings)
+                any("has no port" in item for item in warnings)
             )
 
             # 0b. With no certificate/key set, a non-loopback start fails
@@ -1984,11 +2023,13 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 warned,
                 [
                     "127.0.0.1 is not in the TLS certificate, and the "
-                    "certificate names no host. A client that checks "
-                    "the name will refuse it.",
+                    "certificate holds no host name. An MCP client "
+                    "that verifies the certificate will refuse to "
+                    "connect to 127.0.0.1.",
                     "10.0.0.9 is not in the TLS certificate, and the "
-                    "certificate names no host. A client that checks "
-                    "the name will refuse it.",
+                    "certificate holds no host name. An MCP client "
+                    "that verifies the certificate will refuse to "
+                    "connect to 10.0.0.9.",
                 ],
             )
 

@@ -476,7 +476,11 @@ test("manifest.json declares optional FreeCAD host, port, sensitive bearer token
   assert.doesNotMatch(cfg.token.description, /Keychain/);
   assert.equal(cfg.tls_cert_file.type, "file");
   assert.equal(cfg.tls_cert_file.required, false);
-  assert.equal(cfg.tls_cert_file.title, "Certificate (PEM)");
+  assert.equal(cfg.tls_cert_file.title, "TLS certificate file (PEM)");
+  assert.match(
+    cfg.host.description,
+    /For another host, also set TLS certificate file \(PEM\) below/
+  );
   assert.match(cfg.tls_cert_file.description, /Used for another host only/);
   assert.match(cfg.tls_cert_file.description, /copy of FreeCAD's certificate file, not the private key/);
   assert.match(cfg.tls_cert_file.description, /trusts only that certificate/);
@@ -1040,7 +1044,7 @@ test("for another machine, a tools/call without a certificate or without a paste
     assert.equal(
       JSON.parse(noCertCall.result.content[0].text).error,
       "FreeCAD host is set to freecad.lan, which requires HTTPS. " +
-        "Set Certificate (PEM) in the MCP Bridge for FreeCAD extension settings to a copy of FreeCAD's certificate file, not the private key."
+        "Set TLS certificate file (PEM) in the MCP Bridge for FreeCAD extension settings to a copy of FreeCAD's certificate file, not the private key."
     );
     assert.equal(fs.existsSync(noCert.tokenDir), false);
     await noCert.stop();

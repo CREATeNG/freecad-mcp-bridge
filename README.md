@@ -145,20 +145,23 @@ change a model — for example:
 **Edit → Preferences → MCP Bridge:**
 
 - **Listen addresses** — one list. **+** adds a row and **-** removes
-  the selected row, the last one included. A new page shows
-  `127.0.0.1:39280`. An adapter row listens on that adapter's IPv4
-  address at each start. A fixed IP address listens on exactly that
-  address. A host name opens no listener: the bridge accepts it on
-  every listener, and **Generate self-signed certificate** covers it.
-  Keep a `127.0.0.1` row if you use the Claude Desktop extension on
-  this machine. While the bridge is on, the page shows where the
-  list differs from what it is listening on. Click **OK**, then turn
-  the bridge off and on again, to apply the list. A fixed address
-  this machine does not have stops the start, and the status bar
-  and **Report view** name it. The first start asks you to accept
-  that connected agents can run code with your full permissions.
-  A later new address beyond loopback asks once, and a changed port
-  does not ask again.
+  the selected row, the last one included. With nothing saved, the
+  list shows `127.0.0.1:39280`. An adapter row listens on that
+  adapter's IPv4 address at each start. A fixed IP address listens
+  on exactly that address. A host name opens no listener: the
+  bridge accepts it on every listener, and **Generate self-signed
+  certificate** covers it. Keep a `127.0.0.1` row if you use the
+  Claude Desktop extension on this machine.
+- While the bridge is on, the page shows where the list differs
+  from what it is listening on. Click **OK**, then turn the bridge
+  off and on again, to apply the list. A fixed address this machine
+  does not have stops the start, and the status bar and **Report
+  view** name it.
+- The first start asks you to accept that connected agents can run
+  code with your full permissions. A later new address beyond
+  loopback asks once, and a changed port does not ask again. For an
+  adapter row, the warning shows once for each address the adapter
+  hasn't had before.
 - **Max response timeout** — how long the bridge waits for a page
   (default 15 s). For code or a file an agent sends, that wait
   includes the dialog, counted from the call. Keep it below the
@@ -208,14 +211,15 @@ change a model — for example:
 - A start fails when the certificate is not yet valid or has
   expired, and a start also fails when either file is not set for
   an entry beyond loopback. A listener whose address is not in
-  the certificate is a Report view warning when the certificate
+  the certificate draws a Report view warning when the certificate
   names no host, and the start still proceeds.
 - **Permission mode** — **Ask** (the default) shows you an agent's
   code before it runs. **Unrestricted** runs it unseen, with your
   full permissions. [What the AI can do](#what-the-ai-can-do) has
   the rest.
-- **Show** — under **MCP Bridge status bar widget**, shows or hides the bridge's On/Off
-  button on FreeCAD's status bar (on by default). While the
+- **Show** — under **MCP Bridge status bar widget**, shows or
+  hides the bridge's On/Off button on FreeCAD's status bar (on
+  by default). While the
   permission mode is Unrestricted, the button is shown whatever this
   says, so Unrestricted stays shown on the status bar. The
   **MCP Bridge** toolbar button stays either way.

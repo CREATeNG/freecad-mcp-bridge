@@ -563,8 +563,9 @@ def listener_coverage_warnings(
             continue
         warnings.append(
             f"{host} is not in the TLS certificate, and the "
-            "certificate names no host. A client that checks "
-            "the name will refuse it."
+            "certificate holds no host name. An MCP client "
+            "that verifies the certificate will refuse to "
+            f"connect to {host}."
         )
     return warnings
 

@@ -44,7 +44,7 @@
     "host": {
       "type": "string",
       "title": "FreeCAD host",
-      "description": "The address or hostname of the machine running FreeCAD (127.0.0.1 by default). localhost, ::1 and 127.x.x.x count as this machine. For another host, also set Bearer token and Certificate (PEM) below.",
+      "description": "The address or hostname of the machine running FreeCAD (127.0.0.1 by default). localhost, ::1 and 127.x.x.x count as this machine. For another host, also set TLS certificate file (PEM) below.",
       "default": "127.0.0.1",
       "required": false
     },
@@ -64,7 +64,7 @@
     },
     "tls_cert_file": {
       "type": "file",
-      "title": "Certificate (PEM)",
+      "title": "TLS certificate file (PEM)",
       "description": "Used for another host only, where it is required. Set this to a copy of FreeCAD's certificate file, not the private key, so the extension connects over HTTPS and trusts only that certificate. On this machine the extension reads serving-cert.pem in the bridge's folder, and uses HTTPS only when that file is present.",
       "required": false
     }

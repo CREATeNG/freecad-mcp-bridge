@@ -188,7 +188,7 @@ def cells(
         return (row.host, "", ROW_NAME)
     if row.kind == KIND_ADDRESS:
         return (row.host, str(row.port), ROW_FIXED)
-    return (row.raw, "", "Replace this")
+    return (row.raw, "", "Old entry")
 
 
 def row_note(
@@ -201,8 +201,8 @@ def row_note(
     if row.kind == KIND_ADDRESS and _unspecified(row.host):
         shown = "::" if ":" in row.host else "0.0.0.0"
         return (
-            f"{shown} is a wildcard. The bridge will not start "
-            "with it."
+            f"{shown} is a wildcard, so the bridge opens "
+            "no listener on it."
         )
     if row.kind == KIND_ADDRESS and not _on_machine(row.host, machine):
         return (
@@ -210,26 +210,32 @@ def row_note(
             "The bridge will not start with it."
         )
     if row.kind == KIND_ADAPTER and row.adapter not in adapter_names:
-        return f"{row.adapter} is not an adapter of this machine."
+        return (
+            f"{row.adapter} is down or is not an adapter of "
+            "this machine, so the bridge opens no listener "
+            "on it."
+        )
     if (
         row.kind == KIND_ADAPTER
         and ipv4_of is not None
         and row.adapter not in ipv4_of
     ):
         return (
-            f"{row.adapter} has no IPv4 address, so the bridge "
-            "is not listening for it."
+            f"{row.adapter} has no IPv4 address, so the "
+            "bridge opens no listener on it."
         )
     if row.kind == KIND_LEGACY:
         if _bare_ip(row.raw):
             return (
-                f"{row.raw} needs a port. Add it as a fixed IP "
-                f"address, such as {row.raw}:39280."
+                f"{row.raw} has no port. Remove this row, and "
+                f"add {row.raw} as a fixed IP address with its "
+                "port."
             )
         return (
-            f"Replace {row.raw}: a name with a port is not a listen "
-            "address. Add an adapter or a fixed IP address, and add "
-            "the name as a host name."
+            f"{row.raw} is a name with a port, which is not "
+            "a listen address. Remove this row, add an "
+            "adapter or a fixed IP address, and add the "
+            "name as a host name."
         )
     return ""
 
@@ -411,7 +417,7 @@ def start_notes(
             if row.adapter not in ipv4_of:
                 notes.append(
                     f"{row.adapter} has no IPv4 address, so the "
-                    "bridge is not listening for it."
+                    "bridge opens no listener on it."
                 )
                 continue
         note = row_note(row, machine, adapter_names, ipv4_of)

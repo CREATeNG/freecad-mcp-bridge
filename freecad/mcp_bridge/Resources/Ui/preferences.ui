@@ -90,7 +90,7 @@
              <string>+</string>
             </property>
             <property name="toolTip">
-             <string>Add a listen address.</string>
+             <string>Add a row.</string>
             </property>
            </widget>
           </item>

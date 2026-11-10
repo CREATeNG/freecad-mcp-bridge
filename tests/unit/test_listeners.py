@@ -162,8 +162,16 @@ class ListenListTests(unittest.TestCase):
         self.assertEqual(rows[0].kind, "legacy")
         self.assertEqual(bind_entries(rows, {}), [])
         notes = start_notes(rows, {}, set(), set())
-        self.assertTrue(notes)
-        self.assertIn("not a listen address", notes[0])
+        self.assertEqual(
+            notes,
+            [
+                "workshop-pc:39280 is a name with a port, which "
+                "is not a listen address. Remove this row, add "
+                "an adapter or a fixed IP address, and add the "
+                "name as a host name.",
+            ],
+        )
+        self.assertEqual(cells(rows[0], None)[2], "Old entry")
 
     def test_an_accepted_address_ignores_the_port(self):
         """A changed port does not ask again. The key is the address."""
@@ -197,9 +205,33 @@ class ListenListTests(unittest.TestCase):
 
         row = adapter_row("Ethernet 2", 39280)
         note = row_note(row, set(), {"Ethernet 2"}, {})
-        self.assertIn("no IPv4 address", note)
+        self.assertEqual(
+            note,
+            "Ethernet 2 has no IPv4 address, so the bridge "
+            "opens no listener on it.",
+        )
         self.assertEqual(bind_entries([row], {}), [])
-        self.assertEqual(start_notes([row], {}, set(), {"Ethernet 2"}), [note])
+        self.assertEqual(
+            start_notes([row], {}, set(), {"Ethernet 2"}), [note]
+        )
+        down = row_note(row, set(), set(), {})
+        self.assertEqual(
+            down,
+            "Ethernet 2 is down or is not an adapter of this "
+            "machine, so the bridge opens no listener on it.",
+        )
+        wild = address_row("0.0.0.0", 39280)
+        self.assertEqual(
+            row_note(wild, {"127.0.0.1"}, set(), {}),
+            "0.0.0.0 is a wildcard, so the bridge opens no "
+            "listener on it.",
+        )
+        bare = rows_from_store("10.0.0.5", "", "", True)[0]
+        self.assertEqual(
+            row_note(bare, set(), set(), {}),
+            "10.0.0.5 has no port. Remove this row, and add "
+            "10.0.0.5 as a fixed IP address with its port.",
+        )
 
     def test_the_same_address_and_port_is_one_listener(self):
         """An adapter and a fixed row of the same endpoint bind once."""
@@ -274,8 +306,16 @@ class ListenListTests(unittest.TestCase):
             "QTableWidgetItem",
         ):
             setattr(widgets, name, type(name, (), {}))
-        sys.modules["PySide"] = types.ModuleType("PySide")
-        sys.modules["PySide.QtWidgets"] = widgets
+        pyside = types.ModuleType("PySide")
+        with mock.patch.dict(
+            sys.modules,
+            {"PySide": pyside, "PySide.QtWidgets": widgets},
+        ):
+            self._page_round_trip()
+
+    def _page_round_trip(self):
+        """Load, save, cancel and open the page class again."""
+        from unittest import mock
 
         class Form:
             def findChild(self, _kind, _name=""):

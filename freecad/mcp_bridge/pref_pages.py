@@ -489,7 +489,9 @@ def ask_add(parent, choices, own_name: str, rows):
         value.addItem(label, name)
     address = QLineEdit(holder)
     name_box = QLineEdit(holder)
-    name_box.setPlaceholderText(own_name or "")
+    if own_name:
+        name_box.setText(own_name)
+        name_box.selectAll()
     for widget in (value, address, name_box):
         holder_layout.addWidget(widget)
     port = QSpinBox(dialog)
@@ -526,6 +528,7 @@ def ask_add(parent, choices, own_name: str, rows):
             value_label.setText("Address")
         else:
             value_label.setText("Name")
+            name_box.selectAll()
         error.setText("")
 
     def accept() -> None:
