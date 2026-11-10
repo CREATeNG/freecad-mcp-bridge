@@ -44,8 +44,10 @@ def set_port(port):
     if port == -1:
         params.RemInt('Port')
         params.RemString('ListenAddress')
+        params.RemBool('ListenListSaved')
     else:
         params.SetString('ListenAddress', f'127.0.0.1:{port}')
+        params.SetBool('ListenListSaved', True)
 """
 
 
@@ -189,6 +191,9 @@ def inspect_and_click_ok():
         return
     seen['dialog_found'] = True
     table = dlg.findChild(QTableWidget, 'listenTable')
+    if table is None or table.rowCount() < 1:
+        QTimer.singleShot(100, inspect_and_click_ok)
+        return
     what = ''
     port_text = ''
     if table is not None and table.item(0, 0) is not None:
