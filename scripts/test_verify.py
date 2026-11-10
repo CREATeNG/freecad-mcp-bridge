@@ -118,6 +118,9 @@ def _verify_command_category() -> None:
 
         commands = _commands_for_category(idx)
         if ("MCP_Bridge_Toggle", "MCP Bridge On/Off") not in commands:
+            common._drain_qt_events(500)
+            commands = _commands_for_category(idx)
+        if ("MCP_Bridge_Toggle", "MCP Bridge On/Off") not in commands:
             common.fail(
                 "Command 'MCP_Bridge_Toggle' not listed under Customize "
                 f"category 'MCP_Bridge' (found: {commands})"
