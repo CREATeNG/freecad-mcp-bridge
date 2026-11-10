@@ -758,7 +758,7 @@ test("plain HTTP against a loopback port that speaks HTTPS names the missing ser
     const endpoint = `https://127.0.0.1:${httpsBridge.port}/mcp`;
     assert.equal(
       error,
-      `FreeCAD MCP Bridge serves HTTPS at ${endpoint}, and this connection was plain HTTP. ` +
+      `MCP Bridge serves HTTPS at ${endpoint}, and this connection was plain HTTP. ` +
         "On this machine the extension trusts serving-cert.pem in the bridge's folder, which is not there. Turn the bridge off and on again in FreeCAD, so it writes that file, and check that FREECAD_MCP_TOKEN_DIR, if set, is the same for both."
     );
     assert.doesNotMatch(error, /isn't reachable/);
@@ -817,7 +817,7 @@ test("with no certificate set, an HTTPS port answers initialize and tools/list, 
     const error = JSON.parse(callReply.result.content[0].text).error;
     assert.equal(
       error,
-      `FreeCAD MCP Bridge serves HTTPS at ${endpoint}, and this connection was plain HTTP. ` +
+      `MCP Bridge serves HTTPS at ${endpoint}, and this connection was plain HTTP. ` +
         "On this machine the extension trusts serving-cert.pem in the bridge's folder, which is not there. Turn the bridge off and on again in FreeCAD, so it writes that file, and check that FREECAD_MCP_TOKEN_DIR, if set, is the same for both."
     );
     await shim.stop();
@@ -1027,7 +1027,7 @@ test("for another machine, a tools/call without a certificate or without a paste
     assert.equal(
       JSON.parse(noCertCall.result.content[0].text).error,
       "FreeCAD host is set to freecad.lan, which requires HTTPS. " +
-        "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to a copy of FreeCAD's certificate file, not the private key."
+        "Set TLS certificate file (PEM) in the MCP Bridge for FreeCAD extension settings to a copy of FreeCAD's certificate file, not the private key."
     );
     assert.equal(fs.existsSync(noCert.tokenDir), false);
     await noCert.stop();

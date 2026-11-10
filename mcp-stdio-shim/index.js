@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * FreeCAD MCP Bridge - Claude Desktop shim.
+ * MCP Bridge - Claude Desktop shim.
  *
  * A zero-dependency stdio <-> HTTP/HTTPS proxy. Claude Desktop speaks
  * MCP over stdio (newline-delimited JSON-RPC); this forwards each
@@ -120,11 +120,11 @@ function bridgeEndpoint() {
 const TLS_CERT_FILE = envSetting("FREECAD_MCP_TLS_CERT_FILE");
 const HTTPS_ENDPOINT = `https://${URL_HOST}:${PORT}/mcp`;
 const PLAIN_HTTP_TO_HTTPS_MESSAGE =
-  `FreeCAD MCP Bridge serves HTTPS at ${HTTPS_ENDPOINT}, and this connection was plain HTTP. ` +
+  `MCP Bridge serves HTTPS at ${HTTPS_ENDPOINT}, and this connection was plain HTTP. ` +
   "On this machine the extension trusts serving-cert.pem in the bridge's folder, which is not there. Turn the bridge off and on again in FreeCAD, so it writes that file, and check that FREECAD_MCP_TOKEN_DIR, if set, is the same for both.";
 const MISSING_REMOTE_CERT_MESSAGE =
   `FreeCAD host is set to ${BARE_HOST}, which requires HTTPS. ` +
-  "Set TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings to a copy of FreeCAD's certificate file, not the private key.";
+  "Set TLS certificate file (PEM) in the MCP Bridge for FreeCAD extension settings to a copy of FreeCAD's certificate file, not the private key.";
 const LEGACY_PROTOCOL_VERSION = "2025-11-25";
 const MODERN_PROTOCOL_VERSION = "2026-07-28";
 const META_PROTOCOL_VERSION = "io.modelcontextprotocol/protocolVersion";
@@ -181,16 +181,16 @@ function portServesHttps(port) {
 
 function tlsErrorMessage(err) {
   const detail = fetchErrorMessage(err);
-  const where = `FreeCAD MCP Bridge TLS connection failed at ${bridgeEndpoint()} (${detail}). `;
+  const where = `MCP Bridge TLS connection failed at ${bridgeEndpoint()} (${detail}). `;
   if (IS_DEFAULT_HOST) {
     return (
       where +
-      `Check that the bridge's certificate covers ${BARE_HOST}. If it does, turn the bridge off and on again in FreeCAD, so it rewrites serving-cert.pem beside the token file.`
+      `Check that the bridge's certificate covers ${BARE_HOST}. If it does, turn the bridge off and on again in FreeCAD, so it rewrites serving-cert.pem in the bridge's folder.`
     );
   }
   return (
     where +
-    `Check that TLS certificate file (PEM) in the FreeCAD MCP Bridge extension settings is a copy of FreeCAD's certificate file, not the private key, and covers ${BARE_HOST}.`
+    `Check that TLS certificate file (PEM) in the MCP Bridge for FreeCAD extension settings is a copy of FreeCAD's certificate file, not the private key, and covers ${BARE_HOST}.`
   );
 }
 
