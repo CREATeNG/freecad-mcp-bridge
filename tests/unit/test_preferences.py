@@ -1152,6 +1152,102 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             setup_calls.clear()
             warnings.clear()
 
+            # A fixed address this machine does not have is skipped.
+            # The start names it and listens on the rest. The same
+            # sentence is in the status bar for an adapter that is
+            # down or has no IPv4 address.
+            skipped = (
+                "10.9.9.9 is not an address of this machine, so "
+                "the bridge opens no listener on it."
+            )
+            down = (
+                "VPN is down or is not an adapter of this "
+                "machine, so the bridge opens no listener on it."
+            )
+            no_ipv4 = (
+                "Wi-Fi has no IPv4 address, so the bridge opens "
+                "no listener on it."
+            )
+            wild = (
+                "0.0.0.0 is a wildcard, so the bridge opens no "
+                "listener on it."
+            )
+
+            def skipped_start(address, adapters=""):
+                store.clear()
+                store.update(
+                    {
+                        "ListenAddress": address,
+                        "ListenAdapters": adapters,
+                        "HostNames": "",
+                        "ListenListSaved": True,
+                        "TokenHash": config.hash_token("ab"),
+                        "StartWarningAccepted": True,
+                        "TlsCertFile": "",
+                        "TlsKeyFile": "",
+                    }
+                )
+                warnings.clear()
+                start_calls.clear()
+                return init_gui._turn_bridge_on()
+
+            status, started, reported = skipped_start(
+                "127.0.0.1:39280\n10.9.9.9:39280"
+            )
+            self.assertTrue(started)
+            self.assertTrue(reported)
+            self.assertIn(skipped, status)
+            self.assertIn("Listening on 127.0.0.1:39280", status)
+            self.assertEqual(start_calls[-1], ["127.0.0.1:39280"])
+            self.assertEqual(
+                sum(skipped in item for item in warnings), 1
+            )
+            running = False
+
+            status, started, reported = skipped_start("10.9.9.9:39280")
+            self.assertFalse(started)
+            self.assertEqual(status, skipped)
+            self.assertEqual(start_calls, [])
+            self.assertEqual(
+                sum(skipped in item for item in warnings), 1
+            )
+
+            status, started, _reported = skipped_start(
+                "127.0.0.1:39280", "39280\tVPN"
+            )
+            self.assertTrue(started)
+            self.assertIn(down, status)
+            self.assertEqual(start_calls[-1], ["127.0.0.1:39280"])
+            running = False
+
+            records = init_gui._qt_interface_records
+            init_gui._qt_interface_records = lambda only_up=True: [
+                ("Ethernet", "192.168.1.50"),
+                ("Wi-Fi", "2001:db8::5"),
+            ]
+            try:
+                status, started, _reported = skipped_start(
+                    "127.0.0.1:39280", "39280\tWi-Fi"
+                )
+            finally:
+                init_gui._qt_interface_records = records
+            self.assertTrue(started)
+            self.assertIn(no_ipv4, status)
+            running = False
+
+            status, started, _reported = skipped_start(
+                "127.0.0.1:39280\n0.0.0.0:39280"
+            )
+            self.assertTrue(started)
+            self.assertIn(wild, status)
+            self.assertEqual(start_calls[-1], ["127.0.0.1:39280"])
+            running = False
+
+            store.clear()
+            store.update(saved_store)
+            setup_calls.clear()
+            warnings.clear()
+
             # Check risk dialog text: token and TLS are always required
             # beyond loopback, so only the code-execution risk remains.
             title, body_both = init_gui._risk_dialog_text(

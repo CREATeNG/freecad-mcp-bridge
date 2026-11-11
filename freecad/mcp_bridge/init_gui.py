@@ -837,20 +837,14 @@ def _turn_bridge_on():
     from freecad.mcp_bridge.pref_pages import _machine
 
     machine = _machine(every)
-    from freecad.mcp_bridge.listeners import blocking_fixed_notes
 
     def warn(note: str) -> None:
         App.Console.PrintWarning(f"{LOG_PREFIX} WARNING: {note}\n")
 
-    blocked = blocking_fixed_notes(rows, machine)
-    if blocked:
-        warn(blocked[0])
-        _show_status(blocked[0])
-        return blocked[0], False, True
     notes = start_notes(rows, ipv4, machine, names)
     for note in notes:
         warn(note)
-    entries = bind_entries(rows, ipv4)
+    entries = bind_entries(rows, ipv4, machine)
     can_listen = any(
         row.kind in (KIND_ADDRESS, KIND_ADAPTER) for row in rows
     )
@@ -876,7 +870,7 @@ def _turn_bridge_on():
         _offline_status()
         return f"{DISPLAY_NAME}: Offline", False, False
     if not entries and not need_listen:
-        reason = notes[0] if notes else (
+        reason = " ".join(notes) if notes else (
             "The bridge has no listen address it can open."
         )
         _show_status(reason)
@@ -886,7 +880,7 @@ def _turn_bridge_on():
     if cert_file.strip():
         for line in config.listener_coverage_warnings(cert_file, entries):
             App.Console.PrintWarning(f"{LOG_PREFIX} WARNING: {line}\n")
-    pending = _unaccepted(rows, ipv4)
+    pending = _unaccepted(rows, ipv4, machine)
     lines = [line for _key, line in pending]
     first_start = not config.start_warning_accepted()
     if first_start:
@@ -911,11 +905,13 @@ def _turn_bridge_on():
     )
     if non_loopback:
         warning += f"; beyond loopback: {', '.join(non_loopback)}"
-    return (
-        f"{DISPLAY_NAME}: Listening on {endpoints} (warning: {warning})",
-        True,
-        False,
+    status = (
+        f"{DISPLAY_NAME}: Listening on {endpoints} "
+        f"(warning: {warning})"
     )
+    if notes:
+        status = f"{status} {' '.join(notes)}"
+    return status, True, bool(notes)
 
 
 def _offline_status() -> None:
@@ -935,7 +931,7 @@ def _show_status(text: str) -> None:
     show_toggle_state()
 
 
-def _unaccepted(rows, ipv4):
+def _unaccepted(rows, ipv4, machine):
     """`(stored IP, dialog line)` for listeners not yet accepted.
 
     The stored form is the IP address alone, for both kinds of row.
@@ -946,12 +942,14 @@ def _unaccepted(rows, ipv4):
     from freecad.mcp_bridge.listeners import (
         KIND_ADAPTER,
         KIND_ADDRESS,
+        bind_entries,
         format_entry,
         host_already_accepted,
         risk_line,
     )
 
     stored = config.accepted_listen_addresses()
+    bound = set(bind_entries(rows, ipv4, machine))
     pending = []
     seen_entry = set()
     seen_ip = set()
@@ -967,7 +965,7 @@ def _unaccepted(rows, ipv4):
             entry = format_entry(row.host, row.port)
         else:
             continue
-        if entry in seen_entry:
+        if entry not in bound or entry in seen_entry:
             continue
         seen_entry.add(entry)
         if config.is_loopback_address(entry):

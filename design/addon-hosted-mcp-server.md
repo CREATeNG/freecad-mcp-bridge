@@ -430,12 +430,13 @@ a client can connect by name and keep working when the address
 changes. The bridge accepts a host name on every listener, and
 **Generate self-signed certificate** covers it. An empty saved
 list stays empty. A fixed address this machine does not have
-stops the start before the risk dialog, and the status bar and
-Report view name that row. An adapter that is down or has no
-IPv4 address is skipped, and the bridge starts on the rest. A
-saved wildcard opens no listener. While the bridge is on, the
-page compares its rows, an empty list included, with what the
-bridge is listening on.
+is skipped. The page marks that row, and the start names it in
+the status bar and in one Report view warning, then listens on
+the rest. An adapter that is down or has no IPv4 address, and a
+wildcard, are named the same way. A port another program has
+taken fails the whole start, and the reason is shown. While
+the bridge is on, the page compares its rows, an empty list
+included, with what the bridge is listening on.
 
 **Session management**
 
@@ -523,10 +524,14 @@ adapter's IPv4 address. A fixed IP address listens on exactly
 that address. A host name opens no listener, so a client can
 connect by name and keep working when the address changes. A
 saved wildcard opens no listener. A fixed address this machine
-does not have stops the start. If a listener cannot be bound,
-the bound listeners are closed and the bridge stays off. The
-server binds one listener for each address it can open and shares
-a single main-thread execution queue across them. Loopback is
+does not have is skipped, and the bridge listens on the rest.
+The page marks that row, and the start names it in the status
+bar and in one Report view warning. An adapter that is down or
+has no IPv4 address is named the same way. If a listener
+cannot be bound, the bound listeners are closed and the bridge
+stays off. The server binds one listener for each address it
+can open and shares a single main-thread execution queue across
+them. Loopback is
 bound only when it is in the list. The Claude Desktop shim
 connects to `127.0.0.1` on its configured port.
 
@@ -762,7 +767,7 @@ in Edit → Preferences → MCP Bridge. FreeCAD calls its save and load.
 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
-| Listen addresses | `127.0.0.1:39280` | One list. An adapter row stores the port and the adapter's name and listens on that adapter's IPv4 address. A fixed IP address is `address:port`, or `[ipv6]:port` for IPv6. A host name opens no listener, so a client can connect by name and keep working when the address changes. A saved wildcard opens no listener. With nothing saved, the list shows `127.0.0.1:39280`, using a previously saved `Port` when that differs. An empty saved list stays empty. A fixed address this machine does not have stops the start. A missing port or a bind conflict logs an error and leaves the bridge off. The first start asks once (`StartWarningAccepted`), including loopback. Each later new address beyond loopback asks once (`AcceptedListenAddresses`), and a changed port does not ask again. For an adapter row, the warning shows once for each address the adapter hasn't had before. Every later start keeps a line in the status bar and Report view |
+| Listen addresses | `127.0.0.1:39280` | One list. An adapter row stores the port and the adapter's name and listens on that adapter's IPv4 address. A fixed IP address is `address:port`, or `[ipv6]:port` for IPv6. A host name opens no listener, so a client can connect by name and keep working when the address changes. A saved wildcard opens no listener. With nothing saved, the list shows `127.0.0.1:39280`, using a previously saved `Port` when that differs. An empty saved list stays empty. A fixed address this machine does not have is skipped, and the bridge listens on the rest. The page marks that row, and the start names it in the status bar and in one Report view warning. An adapter that is down or has no IPv4 address, and a wildcard, are named the same way. A missing port or a bind conflict logs an error and leaves the bridge off. The first start asks once (`StartWarningAccepted`), including loopback. Each later new address beyond loopback asks once (`AcceptedListenAddresses`), and a changed port does not ask again. For an adapter row, the warning shows once for each address the adapter hasn't had before. Every later start keeps a line in the status bar and Report view |
 | HostNames | `""` | Host name rows, one a line. No host name opens a listener. |
 | ListenAdapters | `""` | One adapter a line: the port, a tab, then the adapter's name. |
 | ListenListSaved | false | Set when the page is saved, so an empty list stays empty. |

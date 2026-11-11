@@ -46,6 +46,7 @@ from freecad.mcp_bridge.listeners import (
     host_already_accepted,
     name_row,
     risk_line,
+    row_note,
     rows_from_store,
     start_notes,
     with_row,
@@ -184,20 +185,27 @@ class ListenListTests(unittest.TestCase):
         self.assertTrue(host_already_accepted(stored, "192.168.1.20"))
         self.assertFalse(host_already_accepted(stored, "10.0.0.1"))
 
-    def test_a_fixed_address_off_this_machine_blocks_before_the_dialog(self):
-        """The start names that row and does not treat it as a listener."""
-        from freecad.mcp_bridge.listeners import blocking_fixed_notes
-
+    def test_a_fixed_address_off_this_machine_is_skipped(self):
+        """The row is named, and the bridge listens on the rest."""
         row = address_row("10.9.9.9", 39280)
-        notes = blocking_fixed_notes([row], {"192.168.1.20"})
-        self.assertEqual(
-            notes,
-            [
-                "10.9.9.9 is not an address of this machine. "
-                "The bridge will not start with it."
-            ],
+        kept = address_row("127.0.0.1", 39280)
+        note = (
+            "10.9.9.9 is not an address of this machine, so "
+            "the bridge opens no listener on it."
         )
-        self.assertEqual(bind_entries([row], {}), ["10.9.9.9:39280"])
+        self.assertEqual(
+            row_note(row, {"192.168.1.20"}, set(), {}), note
+        )
+        self.assertEqual(
+            start_notes(
+                [row, kept], {}, {"192.168.1.20"}, set()
+            ),
+            [note],
+        )
+        self.assertEqual(
+            bind_entries([row, kept], {}, {"192.168.1.20"}),
+            ["127.0.0.1:39280"],
+        )
 
     def test_an_adapter_with_no_ipv4_is_skipped_and_marked(self):
         """An up adapter with no IPv4 is not a listener, and the row says so."""

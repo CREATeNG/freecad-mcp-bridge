@@ -384,8 +384,8 @@ class PreferencesPage:
                 "listeningDifferenceLabel", exc, with_trace=True
             )
             listening = None
-        ipv4, _names, _machine = self._facts()
-        bound = bind_entries(self.rows, ipv4)
+        ipv4, _names, machine = self._facts()
+        bound = bind_entries(self.rows, ipv4, machine)
         try:
             _set_label(label, difference_text(bound, listening))
         except RuntimeError as exc:

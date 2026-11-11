@@ -206,8 +206,8 @@ def row_note(
         )
     if row.kind == KIND_ADDRESS and not _on_machine(row.host, machine):
         return (
-            f"{row.host} is not an address of this machine. "
-            "The bridge will not start with it."
+            f"{row.host} is not an address of this machine, "
+            "so the bridge opens no listener on it."
         )
     if row.kind == KIND_ADAPTER and row.adapter not in adapter_names:
         return (
@@ -349,17 +349,25 @@ def without_index(rows: list[ListenRow], index: int) -> list[ListenRow]:
 
 
 def bind_entries(
-    rows: list[ListenRow], ipv4_of: dict[str, str]
+    rows: list[ListenRow],
+    ipv4_of: dict[str, str],
+    machine: set[str] | None = None,
 ) -> list[str]:
     """`address:port` for every listener the bridge can open.
 
-    An adapter listens on the IPv4 address it has now. A host name
-    and a legacy row open nothing.
+    An adapter listens on the IPv4 address it has now. A host name,
+    a legacy row, a wildcard, and a fixed address this machine does
+    not have open nothing. `machine` is that check; without it, a
+    fixed address is kept.
     """
     entries = []
     for row in rows:
         if row.kind == KIND_ADDRESS:
             if _unspecified(row.host):
+                continue
+            if machine is not None and not _on_machine(
+                row.host, machine
+            ):
                 continue
             entry = format_entry(row.host, row.port)
         elif row.kind == KIND_ADAPTER:
@@ -509,7 +517,7 @@ def _on_machine(host: str, machine: set[str]) -> bool:
         ip = ipaddress.ip_address(host)
     except ValueError:
         return False
-    if ip.version == 4 and ip in ipaddress.ip_network("127.0.0.0/8"):
+    if ip.is_loopback:
         return True
     return str(ip) in machine
 
@@ -565,25 +573,6 @@ def _address_refusal(value: str) -> str:
             "address of this machine."
         )
     return ""
-
-
-def blocking_fixed_notes(
-    rows: list[ListenRow], machine: set[str]
-) -> list[str]:
-    """Notes for fixed addresses this machine does not have.
-
-    The start stops on these before the risk dialog.
-    """
-    notes = []
-    for row in rows:
-        if row.kind != KIND_ADDRESS or _unspecified(row.host):
-            continue
-        if _on_machine(row.host, machine):
-            continue
-        note = row_note(row, machine, set())
-        if note and note not in notes:
-            notes.append(note)
-    return notes
 
 
 def difference_text(

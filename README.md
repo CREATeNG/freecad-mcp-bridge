@@ -154,9 +154,13 @@ change a model — for example:
   Claude Desktop extension on this machine.
 - While the bridge is on, the page shows where the list differs
   from what it is listening on. Click **OK**, then turn the bridge
-  off and on again, to apply the list. A fixed address this machine
-  does not have stops the start, and the status bar and **Report
-  view** name it.
+  off and on again, to apply the list. A fixed address this
+  machine does not have is skipped. The page marks that row, and
+  the start names it in the status bar and in one **Report view**
+  warning, then listens on the rest. An adapter that is down or
+  has no IPv4 address, and a wildcard, are named the same way. A
+  port another program has taken fails the whole start, and the
+  reason is shown.
 - The first start asks you to accept that connected agents can run
   code with your full permissions. A later new address beyond
   loopback asks once, and a changed port does not ask again. For an
