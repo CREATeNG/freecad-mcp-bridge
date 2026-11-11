@@ -65,22 +65,25 @@ The server is off until you toggle it on, each session — click the button agai
      token file. It reads `serving-cert.pem` in the bridge's
      folder, which the bridge writes at each start with TLS and
      removes at each start without. With that file the extension
-     uses HTTPS and trusts only it. Without it, it uses HTTP.
+     uses HTTPS and checks that the certificate the bridge
+     presents has the same SHA-256 fingerprint before sending the
+     request. Without it, it uses HTTP.
    - **For another host:** Paste the token FreeCAD showed into
      **Bearer token**. The extension writes nothing. Set **TLS
      certificate file (PEM)** to a copy of FreeCAD's certificate
      file, not the private key, so the extension connects over
-     HTTPS and trusts only that certificate.
+     HTTPS and checks that the bridge's certificate matches that
+     copy's SHA-256 fingerprint before sending the request.
 
 Claude Desktop can't open an HTTP endpoint the way Claude Code and
 others can, so the extension runs a small stdio↔HTTP/HTTPS relay (the
 shim in [`mcp-stdio-shim/`](mcp-stdio-shim/)). On this machine the
 extension forwards to `http://<HOST>:<PORT>/mcp` unless
 `serving-cert.pem` is in the bridge's folder, in which case it
-forwards to `https://<HOST>:<PORT>/mcp` and trusts only that file.
-`localhost` is taken as `127.0.0.1`. The certificate setting is
-ignored on this machine. For another host it forwards to
-`https://<HOST>:<PORT>/mcp`.
+forwards to `https://<HOST>:<PORT>/mcp` and pins that file's
+certificate by its SHA-256 fingerprint. `localhost` is taken as
+`127.0.0.1`. The certificate setting is ignored on this machine.
+For another host it forwards to `https://<HOST>:<PORT>/mcp`.
 
 Alternatively, stdio clients can run the shim directly with node, instead of installing the bundle.
 
@@ -200,7 +203,7 @@ change a model — for example:
 - An MCP client other than the Claude Desktop extension on this
   machine needs a copy of the certificate file, not the private
   key. The extension on this machine reads `serving-cert.pem` and
-  trusts only that file.
+  pins that file's certificate by its SHA-256 fingerprint.
 - **Generate self-signed certificate** — this
   button creates `tls-cert.pem` and `tls-key.pem` (the key
   readable by you only) in `<home>/.freecad-mcp-bridge`, covering

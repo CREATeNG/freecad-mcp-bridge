@@ -7,6 +7,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { spawn, execFileSync } = require("node:child_process");
+const crypto = require("node:crypto");
 const { builtinModules } = require("node:module");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -22,6 +23,7 @@ const readJson = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
 // A stand-in bridge: records each request, answers with reply(request).
 async function startBridge(reply, tlsOptions = null, host = "127.0.0.1") {
   const requests = [];
+  const rawChunks = [];
   const handler = (req, res) => {
     let body = "";
     req.on("data", (chunk) => (body += chunk));
@@ -35,8 +37,22 @@ async function startBridge(reply, tlsOptions = null, host = "127.0.0.1") {
     });
   };
   const server = tlsOptions ? https.createServer(tlsOptions, handler) : http.createServer(handler);
+  const openTlsSockets = new Set();
+  if (tlsOptions) {
+    server.on("secureConnection", (tlsSocket) => {
+      openTlsSockets.add(tlsSocket);
+      tlsSocket.on("close", () => openTlsSockets.delete(tlsSocket));
+      tlsSocket.on("data", (chunk) => rawChunks.push(chunk));
+    });
+  }
   await new Promise((resolve) => server.listen(0, host, resolve));
-  return { port: server.address().port, requests, close: () => server.close() };
+  return {
+    port: server.address().port,
+    requests,
+    rawChunks,
+    openTlsSockets,
+    close: () => server.close(),
+  };
 }
 
 // A port nothing listens on.
@@ -414,7 +430,7 @@ function makeSelfSignedCert(dir, prefix, sanIp = "127.0.0.1", sanDns = "") {
   if (sanDns) sanEntries.push(`DNS:${sanDns}`);
   fs.writeFileSync(
     cnfPath,
-    `[req]\ndistinguished_name = dn\nx509_extensions = v3\nprompt = no\n[dn]\nCN = ${sanDns || sanIp}\n[v3]\nsubjectAltName = ${sanEntries.join(",")}\n`,
+    `[req]\ndistinguished_name = dn\nx509_extensions = v3\nprompt = no\n[dn]\nCN = ${sanDns || sanIp}\n[v3]\nbasicConstraints = critical,CA:FALSE\nkeyUsage = critical,digitalSignature,keyEncipherment\nextendedKeyUsage = serverAuth\nsubjectAltName = ${sanEntries.join(",")}\n`,
     "utf8"
   );
   execFileSync(
@@ -731,26 +747,32 @@ test("on this machine, with serving-cert.pem present, the shim uses HTTPS trusti
 });
 
 test("on this machine, a stale serving-cert.pem with nothing listening says the bridge is unreachable", async () => {
-  const port = await closedPort();
-  const shim = startShim(port, {}, { seedToken: TOKEN_OK });
-  fs.writeFileSync(path.join(shim.tokenDir, "serving-cert.pem"), "not a certificate\n");
-  shim.send(
-    JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "tools/call",
-      params: { name: "execute_python", arguments: { code: "print(1)" } },
-    }) + "\n"
-  );
-  const [reply] = await shim.waitForLines(1);
-  const error = JSON.parse(reply.result.content[0].text).error;
-  assert.equal(
-    error,
-    "FreeCAD isn't reachable. Start FreeCAD and turn the bridge on with the MCP Bridge toolbar button, then try again. " +
-      `(https://127.0.0.1:${port}/mcp: connect ECONNREFUSED 127.0.0.1:${port})`
-  );
-  assert.doesNotMatch(error, /TLS certificate file/);
-  await shim.stop();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shim-stale-cert-"));
+  try {
+    const staleCert = makeSelfSignedCert(tmpDir, "stale", "127.0.0.1");
+    const port = await closedPort();
+    const shim = startShim(port, {}, { seedToken: TOKEN_OK });
+    fs.copyFileSync(staleCert.certPath, path.join(shim.tokenDir, "serving-cert.pem"));
+    shim.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "execute_python", arguments: { code: "print(1)" } },
+      }) + "\n"
+    );
+    const [reply] = await shim.waitForLines(1);
+    const error = JSON.parse(reply.result.content[0].text).error;
+    assert.equal(
+      error,
+      "FreeCAD isn't reachable. Start FreeCAD and turn the bridge on with the MCP Bridge toolbar button, then try again. " +
+        `(https://127.0.0.1:${port}/mcp: connect ECONNREFUSED 127.0.0.1:${port})`
+    );
+    assert.doesNotMatch(error, /TLS certificate file/);
+    await shim.stop();
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test("plain HTTP against a loopback port that speaks HTTPS names the missing serving-cert.pem, and a closed port does not", async () => {
@@ -1081,19 +1103,22 @@ test("for another machine, a tools/call without a certificate or without a paste
   }
 });
 
-test("for another machine, an untrusted certificate, an uncovered host, or a 401 names the remote setting", async () => {
+test("for another machine, a mismatched certificate, a missing or invalid certificate file, or a 401 names the remote setting", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shim-remote-fail-"));
+  const servers = [];
+  const shims = [];
   try {
     const preload = makeDnsPreload(tmpDir, "freecad.lan", "127.0.0.1");
     const serverCert = makeSelfSignedCert(tmpDir, "remote", "127.0.0.1", "freecad.lan");
     const otherCert = makeSelfSignedCert(tmpDir, "other", "127.0.0.1", "freecad.lan");
-    const uncoveredCert = makeSelfSignedCert(tmpDir, "uncovered", "192.0.2.1");
 
-    // 1. Different certificate than the bridge serves.
+    // 1. Different certificate than the bridge serves: refused before any
+    // HTTP request bytes are sent.
     const httpsBridge = await startBridge(echo, {
       cert: serverCert.cert,
       key: serverCert.key,
     });
+    servers.push(httpsBridge);
     const untrusted = startShim(
       httpsBridge.port,
       {
@@ -1103,6 +1128,7 @@ test("for another machine, an untrusted certificate, an uncovered host, or a 401
       },
       { prepareTokenDir: false, nodeArgs: ["--require", preload] }
     );
+    shims.push(untrusted);
     untrusted.send(
       JSON.stringify({
         jsonrpc: "2.0",
@@ -1113,26 +1139,28 @@ test("for another machine, an untrusted certificate, an uncovered host, or a 401
     );
     const [untrustedReply] = await untrusted.waitForLines(1);
     const untrustedError = JSON.parse(untrustedReply.result.content[0].text).error;
-    assert.match(untrustedError, /TLS connection failed/);
-    assert.match(untrustedError, /covers freecad\.lan/);
-    await untrusted.stop();
-    httpsBridge.close();
+    assert.equal(
+      untrustedError,
+      `MCP Bridge TLS connection failed at https://freecad.lan:${httpsBridge.port}/mcp: the bridge's certificate does not match TLS certificate file (PEM) at ${otherCert.certPath}. ` +
+        "Set TLS certificate file (PEM) in the MCP Bridge for FreeCAD extension settings to a copy of FreeCAD's current certificate file, not the private key."
+    );
+    assert.equal(httpsBridge.requests.length, 0);
+    assert.equal(Buffer.concat(httpsBridge.rawChunks).length, 0);
 
-    // 2. Certificate does not cover the configured host.
-    const uncoveredBridge = await startBridge(echo, {
-      cert: uncoveredCert.cert,
-      key: uncoveredCert.key,
-    });
-    const uncovered = startShim(
-      uncoveredBridge.port,
+    // 2. TLS failure of another kind (plain HTTP server on the remote port).
+    const plainRemoteBridge = await startBridge(echo, null, "127.0.0.1");
+    servers.push(plainRemoteBridge);
+    const nonTls = startShim(
+      plainRemoteBridge.port,
       {
         FREECAD_MCP_HOST: "freecad.lan",
         FREECAD_MCP_TOKEN: TOKEN_OK,
-        FREECAD_MCP_TLS_CERT_FILE: uncoveredCert.certPath,
+        FREECAD_MCP_TLS_CERT_FILE: serverCert.certPath,
       },
       { prepareTokenDir: false, nodeArgs: ["--require", preload] }
     );
-    uncovered.send(
+    shims.push(nonTls);
+    nonTls.send(
       JSON.stringify({
         jsonrpc: "2.0",
         id: 2,
@@ -1140,18 +1168,23 @@ test("for another machine, an untrusted certificate, an uncovered host, or a 401
         params: { name: "execute_python", arguments: { code: "print(1)" } },
       }) + "\n"
     );
-    const [uncoveredReply] = await uncovered.waitForLines(1);
-    const uncoveredError = JSON.parse(uncoveredReply.result.content[0].text).error;
-    assert.match(uncoveredError, /TLS connection failed/);
-    assert.match(uncoveredError, /covers freecad\.lan/);
-    await uncovered.stop();
-    uncoveredBridge.close();
+    const [nonTlsReply] = await nonTls.waitForLines(1);
+    const nonTlsError = JSON.parse(nonTlsReply.result.content[0].text).error;
+    assert.match(
+      nonTlsError,
+      new RegExp(`^MCP Bridge TLS connection failed at https://freecad\\.lan:${plainRemoteBridge.port}/mcp \\([\\s\\S]+\\)\\. `)
+    );
+    assert.match(
+      nonTlsError,
+      /Check that FreeCAD is serving HTTPS at that address and that TLS certificate file \(PEM\) in the MCP Bridge for FreeCAD extension settings is a copy of FreeCAD's certificate file, not the private key\./
+    );
 
     // 3. 401 Unauthorized from the remote bridge.
     const authBridge = await startBridge(
       () => ({ status: 401, type: "text/plain", text: "Unauthorized\n" }),
       { cert: serverCert.cert, key: serverCert.key }
     );
+    servers.push(authBridge);
     const unauthorized = startShim(
       authBridge.port,
       {
@@ -1161,6 +1194,7 @@ test("for another machine, an untrusted certificate, an uncovered host, or a 401
       },
       { prepareTokenDir: false, nodeArgs: ["--require", preload] }
     );
+    shims.push(unauthorized);
     unauthorized.send(
       JSON.stringify({
         jsonrpc: "2.0",
@@ -1175,9 +1209,285 @@ test("for another machine, an untrusted certificate, an uncovered host, or a 401
       authError,
       "FreeCAD refused the pasted token. Check that it matches FreeCAD's token."
     );
-    await unauthorized.stop();
-    authBridge.close();
   } finally {
+    for (const s of shims) await s.stop();
+    for (const b of servers) b.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("1. a server with a self-signed certificate marked CA false is reached when its certificate is the pinned copy", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shim-pin-ca-false-"));
+  let bridge = null;
+  let shim = null;
+  try {
+    const serverCert = makeSelfSignedCert(tmpDir, "ca-false", "192.0.2.1");
+    const extraCert = makeSelfSignedCert(tmpDir, "extra", "127.0.0.1");
+    const x509 = new crypto.X509Certificate(serverCert.cert);
+    assert.equal(x509.ca, false);
+
+    bridge = await startBridge(echo, {
+      cert: serverCert.cert,
+      key: serverCert.key,
+    });
+    shim = startShim(bridge.port, {}, { seedToken: TOKEN_OK });
+    // Even with a second certificate appended in serving-cert.pem and a SAN
+    // that does not name 127.0.0.1, pinning the first certificate's SHA-256
+    // fingerprint succeeds.
+    fs.writeFileSync(
+      path.join(shim.tokenDir, "serving-cert.pem"),
+      Buffer.concat([serverCert.cert, extraCert.cert])
+    );
+    shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call" }) + "\n");
+    const [reply] = await shim.waitForLines(1);
+    assert.equal(reply.result.echoed, "tools/call");
+    assert.equal(bridge.requests.length, 1);
+    assert.equal(bridge.requests[0].headers["authorization"], `Bearer ${TOKEN_OK}`);
+    assert.ok(Buffer.concat(bridge.rawChunks).length > 0);
+    // One connection carries one request, and the shim, still running,
+    // holds none open after the reply.
+    assert.equal(bridge.requests[0].headers["connection"], "close");
+    for (let i = 0; i < 40 && bridge.openTlsSockets.size > 0; i++) {
+      await delay(50);
+    }
+    assert.equal(bridge.openTlsSockets.size, 0);
+  } finally {
+    if (shim) await shim.stop();
+    if (bridge) bridge.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("2. a server presenting a different certificate is refused, and the server receives no request bytes", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shim-pin-mismatch-"));
+  let bridge = null;
+  let shim = null;
+  try {
+    const serverCert = makeSelfSignedCert(tmpDir, "server", "127.0.0.1");
+    const pinnedCert = makeSelfSignedCert(tmpDir, "pinned", "127.0.0.1");
+    bridge = await startBridge(echo, {
+      cert: serverCert.cert,
+      key: serverCert.key,
+    });
+    shim = startShim(bridge.port, { FREECAD_MCP_TOKEN: TOKEN_OK });
+    const servingCertPath = path.join(shim.tokenDir, "serving-cert.pem");
+    fs.copyFileSync(pinnedCert.certPath, servingCertPath);
+    shim.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "execute_python", arguments: { code: "print(1)" } },
+      }) + "\n"
+    );
+    const [reply] = await shim.waitForLines(1);
+    await delay(50);
+    assert.equal(reply.result.isError, true);
+    const error = JSON.parse(reply.result.content[0].text).error;
+    assert.equal(
+      error,
+      `MCP Bridge TLS connection failed at https://127.0.0.1:${bridge.port}/mcp: the bridge's certificate does not match serving-cert.pem at ${servingCertPath}. ` +
+        "Turn the bridge off and on again in FreeCAD, so it rewrites serving-cert.pem in the bridge's folder, then try again."
+    );
+    assert.equal(bridge.requests.length, 0);
+    assert.equal(Buffer.concat(bridge.rawChunks).length, 0);
+  } finally {
+    if (shim) await shim.stop();
+    if (bridge) bridge.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("3. a copy that is missing, unreadable, or not a certificate gives the right error", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shim-pin-bad-copy-"));
+  let bridge = null;
+  const shims = [];
+  try {
+    const serverCert = makeSelfSignedCert(tmpDir, "server", "127.0.0.1");
+    bridge = await startBridge(echo, {
+      cert: serverCert.cert,
+      key: serverCert.key,
+    });
+
+    // 1. On this machine, serving-cert.pem is not a PEM certificate (plain text
+    // or a private key).
+    for (const badContent of ["not a certificate\n", serverCert.key.toString("utf8"), "-----BEGIN CERTIFICATE-----\nnot-der\n-----END CERTIFICATE-----\n"]) {
+      const shim = startShim(bridge.port, { FREECAD_MCP_TOKEN: TOKEN_OK });
+      shims.push(shim);
+      const servingCertPath = path.join(shim.tokenDir, "serving-cert.pem");
+      fs.writeFileSync(servingCertPath, badContent, "utf8");
+      shim.send(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: { name: "execute_python", arguments: { code: "print(1)" } },
+        }) + "\n"
+      );
+      const [reply] = await shim.waitForLines(1);
+      assert.equal(reply.result.isError, true);
+      const error = JSON.parse(reply.result.content[0].text).error;
+      assert.equal(
+        error,
+        `serving-cert.pem at ${servingCertPath} for https://127.0.0.1:${bridge.port}/mcp is not a PEM certificate. ` +
+          "Turn the bridge off and on again in FreeCAD, so it rewrites serving-cert.pem in the bridge's folder."
+      );
+    }
+
+    // 2. On this machine, serving-cert.pem cannot be read (e.g. is a directory).
+    const dirShim = startShim(bridge.port, { FREECAD_MCP_TOKEN: TOKEN_OK });
+    shims.push(dirShim);
+    const dirCertPath = path.join(dirShim.tokenDir, "serving-cert.pem");
+    fs.mkdirSync(dirCertPath, { recursive: true });
+    dirShim.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: { name: "execute_python", arguments: { code: "print(1)" } },
+      }) + "\n"
+    );
+    const [dirReply] = await dirShim.waitForLines(1);
+    assert.equal(dirReply.result.isError, true);
+    const dirError = JSON.parse(dirReply.result.content[0].text).error;
+    assert.match(
+      dirError,
+      new RegExp(
+        `^Could not read serving-cert\\.pem at .+ for https://127\\.0\\.0\\.1:${bridge.port}/mcp \\(.*EISDIR.*\\)\\. ` +
+          "Turn the bridge off and on again in FreeCAD, so it writes that file, and check that it is readable by you\\.$"
+      )
+    );
+
+    // 3. For another host, TLS certificate file (PEM) is missing.
+    const missingPath = path.join(tmpDir, "missing-cert.pem");
+    const missingRemote = startShim(
+      bridge.port,
+      {
+        FREECAD_MCP_HOST: "freecad.lan",
+        FREECAD_MCP_TOKEN: TOKEN_OK,
+        FREECAD_MCP_TLS_CERT_FILE: missingPath,
+      },
+      { prepareTokenDir: false }
+    );
+    shims.push(missingRemote);
+    missingRemote.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 3,
+        method: "tools/call",
+        params: { name: "execute_python", arguments: { code: "print(1)" } },
+      }) + "\n"
+    );
+    const [missingReply] = await missingRemote.waitForLines(1);
+    assert.equal(missingReply.result.isError, true);
+    const missingError = JSON.parse(missingReply.result.content[0].text).error;
+    assert.match(
+      missingError,
+      new RegExp(
+        `^Could not read TLS certificate file \\(PEM\\) at .+ for https://freecad\\.lan:${bridge.port}/mcp \\(.*ENOENT.*\\)\\. ` +
+          "Set TLS certificate file \\(PEM\\) in the MCP Bridge for FreeCAD extension settings to a readable copy of FreeCAD's certificate file, not the private key\\.$"
+      )
+    );
+
+    // 4. For another host, TLS certificate file (PEM) is not a certificate (e.g. private key).
+    const keyRemote = startShim(
+      bridge.port,
+      {
+        FREECAD_MCP_HOST: "freecad.lan",
+        FREECAD_MCP_TOKEN: TOKEN_OK,
+        FREECAD_MCP_TLS_CERT_FILE: serverCert.keyPath,
+      },
+      { prepareTokenDir: false }
+    );
+    shims.push(keyRemote);
+    keyRemote.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 4,
+        method: "tools/call",
+        params: { name: "execute_python", arguments: { code: "print(1)" } },
+      }) + "\n"
+    );
+    const [keyReply] = await keyRemote.waitForLines(1);
+    assert.equal(keyReply.result.isError, true);
+    const keyError = JSON.parse(keyReply.result.content[0].text).error;
+    assert.equal(
+      keyError,
+      `TLS certificate file (PEM) at ${serverCert.keyPath} for https://freecad.lan:${bridge.port}/mcp is not a PEM certificate. ` +
+        "Set TLS certificate file (PEM) in the MCP Bridge for FreeCAD extension settings to a copy of FreeCAD's certificate file, not the private key."
+    );
+
+    assert.equal(bridge.requests.length, 0);
+    assert.equal(Buffer.concat(bridge.rawChunks).length, 0);
+  } finally {
+    for (const s of shims) await s.stop();
+    if (bridge) bridge.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("4. the another-host setting takes the same fingerprint-pinning path", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shim-pin-remote-"));
+  let bridge = null;
+  const shims = [];
+  try {
+    const preload = makeDnsPreload(tmpDir, "freecad.lan", "127.0.0.1");
+    // Certificate marked CA:FALSE whose SAN does not list freecad.lan.
+    const serverCert = makeSelfSignedCert(tmpDir, "remote-ca-false", "192.0.2.1");
+    const otherCert = makeSelfSignedCert(tmpDir, "other", "192.0.2.1");
+    assert.equal(new crypto.X509Certificate(serverCert.cert).ca, false);
+
+    bridge = await startBridge(echo, {
+      cert: serverCert.cert,
+      key: serverCert.key,
+    });
+
+    // Wrong pinned certificate on another host: refused with 0 request bytes sent.
+    const wrongShim = startShim(
+      bridge.port,
+      {
+        FREECAD_MCP_HOST: "freecad.lan",
+        FREECAD_MCP_TOKEN: TOKEN_OK,
+        FREECAD_MCP_TLS_CERT_FILE: otherCert.certPath,
+      },
+      { prepareTokenDir: false, nodeArgs: ["--require", preload] }
+    );
+    shims.push(wrongShim);
+    wrongShim.send(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "execute_python", arguments: { code: "print(1)" } },
+      }) + "\n"
+    );
+    const [wrongReply] = await wrongShim.waitForLines(1);
+    await delay(50);
+    assert.equal(wrongReply.result.isError, true);
+    assert.equal(bridge.requests.length, 0);
+    assert.equal(Buffer.concat(bridge.rawChunks).length, 0);
+
+    // Matching pinned certificate on another host: succeeds despite CA:FALSE and
+    // unlisted host name.
+    const okShim = startShim(
+      bridge.port,
+      {
+        FREECAD_MCP_HOST: "freecad.lan",
+        FREECAD_MCP_TOKEN: TOKEN_NEW,
+        FREECAD_MCP_TLS_CERT_FILE: serverCert.certPath,
+      },
+      { prepareTokenDir: false, nodeArgs: ["--require", preload] }
+    );
+    shims.push(okShim);
+    okShim.send(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call" }) + "\n");
+    const [okReply] = await okShim.waitForLines(1);
+    assert.equal(okReply.result.echoed, "tools/call");
+    assert.equal(bridge.requests.length, 1);
+    assert.equal(bridge.requests[0].headers["authorization"], `Bearer ${TOKEN_NEW}`);
+    assert.ok(Buffer.concat(bridge.rawChunks).length > 0);
+  } finally {
+    for (const s of shims) await s.stop();
+    if (bridge) bridge.close();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });

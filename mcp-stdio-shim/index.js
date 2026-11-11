@@ -11,12 +11,13 @@
  * host. The shim reads no token file and writes nothing. When
  * serving-cert.pem is in FREECAD_MCP_TOKEN_DIR, or
  * <home>/.freecad-mcp-bridge otherwise, it connects over HTTPS and
- * trusts only that file. When the file is absent it connects over
- * HTTP. FREECAD_MCP_TLS_CERT_FILE is ignored on this machine. For
- * another host, the shim connects to https://<host>:<port>/mcp,
- * requires FREECAD_MCP_TLS_CERT_FILE, trusts only that certificate,
- * and uses the same pasted token. The JSON reply is unwrapped and
- * written back on stdout.
+ * pins that file's certificate by its SHA-256 fingerprint. When the
+ * file is absent it connects over HTTP. FREECAD_MCP_TLS_CERT_FILE is
+ * ignored on this machine. For another host, the shim connects to
+ * https://<host>:<port>/mcp, requires FREECAD_MCP_TLS_CERT_FILE,
+ * pins that certificate by its SHA-256 fingerprint, and uses the
+ * same pasted token. The JSON reply is unwrapped and written back on
+ * stdout.
  *
  * The shim answers initialize and tools/list itself (tools.json is a
  * copy of the addon's tool list) and does not contact the bridge for
@@ -30,9 +31,10 @@
  * error says which. A ping is answered locally with an empty result.
  * A notification is not sent and gets no reply. Any other method gets
  * a method-not-found error naming the method. Node stdlib only
- * (global fetch and node:https, >=18).
+ * (global fetch, node:crypto, node:https and node:tls, >=18).
  */
 
+const crypto = require("crypto");
 const fs = require("fs");
 const https = require("https");
 const net = require("net");
@@ -141,7 +143,9 @@ function writeLine(text) {
 }
 
 function fetchErrorMessage(err) {
-  return err.cause && err.cause.message ? `${err.message}: ${err.cause.message}` : err.message;
+  const raw =
+    err.cause && err.cause.message ? `${err.message}: ${err.cause.message}` : err.message;
+  return String(raw || "").trim();
 }
 
 function errorCode(err) {
@@ -179,18 +183,59 @@ function portServesHttps(port) {
   });
 }
 
+function certFileErrorMessage(err, certFile) {
+  const endpoint = bridgeEndpoint();
+  if (err && err.certFileProblem === "invalid") {
+    if (IS_DEFAULT_HOST) {
+      return (
+        `serving-cert.pem at ${certFile} for ${endpoint} is not a PEM certificate. ` +
+        "Turn the bridge off and on again in FreeCAD, so it rewrites serving-cert.pem in the bridge's folder."
+      );
+    }
+    return (
+      `TLS certificate file (PEM) at ${certFile} for ${endpoint} is not a PEM certificate. ` +
+      "Set TLS certificate file (PEM) in the MCP Bridge for FreeCAD extension settings to a copy of FreeCAD's certificate file, not the private key."
+    );
+  }
+  const detail = fetchErrorMessage(err);
+  if (IS_DEFAULT_HOST) {
+    return (
+      `Could not read serving-cert.pem at ${certFile} for ${endpoint} (${detail}). ` +
+      "Turn the bridge off and on again in FreeCAD, so it writes that file, and check that it is readable by you."
+    );
+  }
+  return (
+    `Could not read TLS certificate file (PEM) at ${certFile} for ${endpoint} (${detail}). ` +
+    "Set TLS certificate file (PEM) in the MCP Bridge for FreeCAD extension settings to a readable copy of FreeCAD's certificate file, not the private key."
+  );
+}
+
+function certMismatchMessage(certFile) {
+  const endpoint = bridgeEndpoint();
+  if (IS_DEFAULT_HOST) {
+    return (
+      `MCP Bridge TLS connection failed at ${endpoint}: the bridge's certificate does not match serving-cert.pem at ${certFile}. ` +
+      "Turn the bridge off and on again in FreeCAD, so it rewrites serving-cert.pem in the bridge's folder, then try again."
+    );
+  }
+  return (
+    `MCP Bridge TLS connection failed at ${endpoint}: the bridge's certificate does not match TLS certificate file (PEM) at ${certFile}. ` +
+    "Set TLS certificate file (PEM) in the MCP Bridge for FreeCAD extension settings to a copy of FreeCAD's current certificate file, not the private key."
+  );
+}
+
 function tlsErrorMessage(err) {
   const detail = fetchErrorMessage(err);
   const where = `MCP Bridge TLS connection failed at ${bridgeEndpoint()} (${detail}). `;
   if (IS_DEFAULT_HOST) {
     return (
       where +
-      `Check that the bridge's certificate covers ${BARE_HOST}. If it does, turn the bridge off and on again in FreeCAD, so it rewrites serving-cert.pem in the bridge's folder.`
+      "Turn the bridge off and on again in FreeCAD, so it rewrites serving-cert.pem in the bridge's folder, then try again."
     );
   }
   return (
     where +
-    `Check that TLS certificate file (PEM) in the MCP Bridge for FreeCAD extension settings is a copy of FreeCAD's certificate file, not the private key, and covers ${BARE_HOST}.`
+    "Check that FreeCAD is serving HTTPS at that address and that TLS certificate file (PEM) in the MCP Bridge for FreeCAD extension settings is a copy of FreeCAD's certificate file, not the private key."
   );
 }
 
@@ -275,46 +320,167 @@ function bridgeHeaders(message) {
   return headers;
 }
 
+function derCertificateLength(der) {
+  if (!Buffer.isBuffer(der) || der.length < 4 || der[0] !== 0x30) return -1;
+  const lenByte = der[1];
+  let headerLen = 2;
+  let contentLen = 0;
+  if ((lenByte & 0x80) === 0) {
+    contentLen = lenByte;
+  } else {
+    const count = lenByte & 0x7f;
+    if (count < 1 || count > 4 || der.length < 2 + count) return -1;
+    headerLen = 2 + count;
+    for (let i = 0; i < count; i++) {
+      contentLen = contentLen * 256 + der[2 + i];
+    }
+  }
+  if (headerLen + contentLen !== der.length) return -1;
+  if (der.length <= headerLen || der[headerLen] !== 0x30) return -1;
+  return der.length;
+}
+
+function readCertFingerprint(certFile) {
+  let pem;
+  try {
+    pem = fs.readFileSync(certFile, "utf8");
+  } catch (err) {
+    err.code = err.code || "ERR_CERT_READ";
+    err.certFileProblem = "unreadable";
+    throw err;
+  }
+  const match =
+    /-----BEGIN CERTIFICATE-----([\s\S]*?)-----END CERTIFICATE-----/.exec(pem);
+  const b64 = match ? match[1].replace(/\s+/g, "") : "";
+  if (!b64 || b64.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(b64)) {
+    const err = new Error("no PEM certificate found");
+    err.code = "ERR_INVALID_CERT_FILE";
+    err.certFileProblem = "invalid";
+    throw err;
+  }
+  const der = Buffer.from(b64, "base64");
+  if (derCertificateLength(der) < 0) {
+    const err = new Error("invalid DER certificate");
+    err.code = "ERR_INVALID_CERT_FILE";
+    err.certFileProblem = "invalid";
+    throw err;
+  }
+  return crypto.createHash("sha256").update(der).digest();
+}
+
+// A matching SHA-256 fingerprint is the whole check: the extension does
+// no chain building, no host-name check, and no check of the
+// certificate's dates. The trusted file is a copy of the bridge's own
+// certificate, and completing the TLS handshake proves the bridge holds
+// that certificate's private key.
+//
+// Complete the handshake and verify the fingerprint on the TLS socket
+// before creating the HTTP request, so not one byte of the HTTP request
+// (the bearer token included) is queued or written before they match.
+//
+// One connection carries one request. The request says Connection:
+// close, and the socket is destroyed when the reply ends and on any
+// failure, so the extension holds no connection open between calls.
 function postHttps(headers, body, certFile) {
   return new Promise((resolve, reject) => {
-    let ca;
+    let expectedFingerprint;
     try {
-      ca = fs.readFileSync(certFile);
+      expectedFingerprint = readCertFingerprint(certFile);
     } catch (err) {
       reject(err);
       return;
     }
-    const payload = Buffer.from(body, "utf8");
-    const req = https.request(
-      bridgeEndpoint(),
-      {
-        method: "POST",
-        headers: { ...headers, "Content-Length": String(payload.length) },
-        ca,
-        rejectUnauthorized: true,
-        agent: false,
-      },
-      (res) => {
-        if (res.statusCode >= 300 && res.statusCode < 400) {
-          res.resume();
-          const err = new Error("redirect mode is set to 'error': unexpected redirect");
-          err.code = "ERR_UNEXPECTED_REDIRECT";
-          reject(err);
-          return;
-        }
-        const chunks = [];
-        res.on("data", (chunk) => chunks.push(chunk));
-        res.on("end", () => {
-          const text = Buffer.concat(chunks).toString("utf8");
-          resolve({
-            status: res.statusCode || 0,
-            text: async () => text,
-          });
-        });
+    let settled = false;
+    let socket = null;
+    function fail(err) {
+      if (socket) socket.destroy();
+      if (settled) return;
+      settled = true;
+      reject(err);
+    }
+    const connectOptions = {
+      host: BARE_HOST,
+      port: Number(PORT),
+      rejectUnauthorized: false,
+      checkServerIdentity: () => undefined,
+    };
+    if (net.isIP(BARE_HOST) === 0) {
+      connectOptions.servername = BARE_HOST;
+    }
+    socket = tls.connect(connectOptions);
+    const onPreRequestClose = () => {
+      const err = new Error("TLS connection closed before handshake completed");
+      err.code = "ECONNRESET";
+      fail(err);
+    };
+    // This listener stays for the socket's whole life, so an error on
+    // it at any moment fails the call and never goes unhandled.
+    socket.on("error", fail);
+    socket.on("close", onPreRequestClose);
+    socket.once("secureConnect", () => {
+      if (settled) {
+        socket.destroy();
+        return;
       }
-    );
-    req.on("error", reject);
-    req.end(payload);
+      const peer = socket.getPeerCertificate(false);
+      const raw = peer && Buffer.isBuffer(peer.raw) ? peer.raw : null;
+      const actualFingerprint =
+        raw && raw.length > 0
+          ? crypto.createHash("sha256").update(raw).digest()
+          : null;
+      if (
+        !actualFingerprint ||
+        actualFingerprint.length !== expectedFingerprint.length ||
+        !crypto.timingSafeEqual(actualFingerprint, expectedFingerprint)
+      ) {
+        socket.removeListener("close", onPreRequestClose);
+        socket.destroy();
+        const err = new Error("certificate fingerprint mismatch");
+        err.code = "ERR_CERT_MISMATCH";
+        fail(err);
+        return;
+      }
+      socket.removeListener("close", onPreRequestClose);
+      const payload = Buffer.from(body, "utf8");
+      const req = https.request(
+        bridgeEndpoint(),
+        {
+          method: "POST",
+          headers: {
+            ...headers,
+            "Content-Length": String(payload.length),
+            Connection: "close",
+          },
+          createConnection: () => socket,
+        },
+        (res) => {
+          if (res.statusCode >= 300 && res.statusCode < 400) {
+            res.resume();
+            const err = new Error(
+              "redirect mode is set to 'error': unexpected redirect"
+            );
+            err.code = "ERR_UNEXPECTED_REDIRECT";
+            fail(err);
+            return;
+          }
+          const chunks = [];
+          res.on("data", (chunk) => chunks.push(chunk));
+          res.on("end", () => {
+            socket.destroy();
+            if (settled) return;
+            settled = true;
+            const text = Buffer.concat(chunks).toString("utf8");
+            resolve({
+              status: res.statusCode || 0,
+              text: async () => text,
+            });
+          });
+          res.on("error", fail);
+        }
+      );
+      req.on("error", fail);
+      req.end(payload);
+    });
   });
 }
 
@@ -402,15 +568,12 @@ async function forward(rawLine, message) {
       return;
     }
     if (certFile && !refused && !redirect) {
-      if (
-        IS_DEFAULT_HOST &&
-        (code === "ENOENT" || code === "EACCES" || code === "EPERM")
-      ) {
-        sendErrorReply(
-          message,
-          `Could not read serving-cert.pem at ${certFile} (${fetchErrorMessage(err)}). ` +
-            "Check that the file is readable by you, then try again."
-        );
+      if (err && err.certFileProblem) {
+        sendErrorReply(message, certFileErrorMessage(err, certFile));
+        return;
+      }
+      if (code === "ERR_CERT_MISMATCH") {
+        sendErrorReply(message, certMismatchMessage(certFile));
         return;
       }
       sendErrorReply(message, tlsErrorMessage(err));

@@ -31,7 +31,11 @@ When **Certificate (PEM)** and
 **Private key (PEM)** are set, every listener serves HTTPS, loopback
 included, and each start writes a copy of the serving certificate to
 `<home>/.freecad-mcp-bridge/serving-cert.pem` for the local Claude
-Desktop extension. When they are not set, loopback entries use
+Desktop extension. Over HTTPS, the extension pins the bridge's
+certificate by its SHA-256 fingerprint against `serving-cert.pem` on
+this machine, or against **TLS certificate file (PEM)** for another
+host, and sends no request bytes (the bearer token included) until
+they match. When they are not set, loopback entries use
 HTTP, and a start with a non-loopback entry fails. **Generate
 self-signed certificate** creates `tls-cert.pem` and `tls-key.pem` in
 `<home>/.freecad-mcp-bridge/`, with `tls-key.pem` readable by you

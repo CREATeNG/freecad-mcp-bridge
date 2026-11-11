@@ -665,8 +665,9 @@ cannot use the shim. Stdio carries no headers, so the shim sets
 field is present, and to `2025-11-25` when it is not. When the
 version is `2026-07-28` it also sets `Mcp-Method` from the message's
 method and, for `tools/call`, `Mcp-Name` from `params.name`. Node
-stdlib only (global `fetch` and `node:https`, Node ≥ 18); Claude
-Desktop bundles Node.js, so no user-side runtime install is needed.
+stdlib only (global `fetch`, `node:crypto`, `node:https` and
+`node:tls`, Node ≥ 18); Claude Desktop bundles Node.js, so no
+user-side runtime install is needed.
 The shim reads the host from `FREECAD_MCP_HOST` (default `127.0.0.1`;
 `localhost` in any letter case is taken as `127.0.0.1`, and `127.x.x.x`
 and `::1` are treated as loopback), the port from `FREECAD_MCP_PORT`
@@ -680,13 +681,37 @@ nothing. With no token set, or with a paste that is not a bearer
 token, the tool result says so and the call is not sent. On
 this machine, when `serving-cert.pem` is in `FREECAD_MCP_TOKEN_DIR`
 or `<home>/.freecad-mcp-bridge`, the shim connects over HTTPS and
-trusts only that file. When the file is absent it connects over
-HTTP, whatever `FREECAD_MCP_TLS_CERT_FILE` is set to.
-`FREECAD_MCP_TLS_CERT_FILE` is for another host only.
-When `FREECAD_MCP_HOST` names an address or hostname beyond loopback,
-the shim connects to `https://<host>:<port>/mcp`, requires
-`FREECAD_MCP_TLS_CERT_FILE`, trusts only that certificate (not the
-system's certificate authorities), and sends the pasted token.
+pins that file's certificate by its SHA-256 fingerprint. When the
+file is absent it connects over HTTP, whatever
+`FREECAD_MCP_TLS_CERT_FILE` is set to. `FREECAD_MCP_TLS_CERT_FILE`
+is for another host only. When `FREECAD_MCP_HOST` names an address
+or hostname beyond loopback, the shim connects to
+`https://<host>:<port>/mcp`, requires `FREECAD_MCP_TLS_CERT_FILE`,
+pins that certificate by its SHA-256 fingerprint (not the system's
+certificate authorities), and sends the pasted token.
+
+Over HTTPS, on this machine and for another host, the shim takes
+the SHA-256 fingerprint of the first certificate in the trusted
+file (`serving-cert.pem` or `FREECAD_MCP_TLS_CERT_FILE`), completes
+the TLS handshake with `node:tls`, and compares the SHA-256
+fingerprint of the certificate the bridge presents with that
+fingerprint before creating the HTTP request or sending a single
+byte (the bearer token included). On a mismatch it closes the
+connection and returns an error. A matching fingerprint is the
+whole check: the shim does no chain building, no host-name check,
+and no check of the certificate's dates, because the trusted file
+is a copy of the bridge's own certificate and completing the
+handshake proves the bridge holds its key, while Claude Desktop's
+built-in Node refuses a self-signed certificate marked `CA:FALSE`
+when passed as a certificate authority. For the Addon Index
+requirement that "traffic is always encrypted, using Python's `ssl`
+module or another maintained library rather than the addon's own
+code, and the client verifies the server, for example with a pinned
+certificate or a pre-shared key (TLS-PSK); an unchecked self-signed
+certificate does not count;", Python's `ssl` module and Node's
+`node:tls` do the encrypting and the TLS handshake, and the
+fingerprint compare is the shim's own code.
+
 Notifications (no `id`)
 get no reply and are not sent on. The shim answers `initialize`
 itself with `protocolVersion` `2025-11-25` and a tools capability
