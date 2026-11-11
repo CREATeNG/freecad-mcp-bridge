@@ -144,14 +144,15 @@ change a model — for example:
 
 **Edit → Preferences → MCP Bridge:**
 
-- **Listen addresses** — one list. **+** adds a row and **-** removes
-  the selected row, the last one included. With nothing saved, the
+- **Listen addresses** — one list. **+** adds a row, **-** removes
+  the selected row, the last one included, and **Edit** (or
+  double-clicking a row) edits it in place. With nothing saved, the
   list shows `127.0.0.1:39280`. An adapter row listens on that
   adapter's IPv4 address at each start. A fixed IP address listens
-  on exactly that address. A host name opens no listener: the
-  bridge accepts it on every listener, and **Generate self-signed
-  certificate** covers it. Keep a `127.0.0.1` row if you use the
-  Claude Desktop extension on this machine.
+  on exactly that address. A host name should resolve to one of the
+  listen addresses. It adds no listener of its own, and **Generate
+  self-signed certificate** covers it. Keep a `127.0.0.1` row if you
+  use the Claude Desktop extension on this machine.
 - While the bridge is on, the page shows where the list differs
   from what it is listening on. Click **OK**, then turn the bridge
   off and on again, to apply the list. A fixed address this

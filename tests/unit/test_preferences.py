@@ -229,6 +229,27 @@ class PreferencePageTests(unittest.TestCase):
             widgets_by_name["certTrustLabel"]["text"],
             "An MCP client must trust this certificate.",
         )
+        self.assertEqual(
+            widgets_by_name["addListenButton"]["text"], "+"
+        )
+        self.assertEqual(
+            widgets_by_name["addListenButton"]["toolTip"],
+            "Add a row.",
+        )
+        self.assertEqual(
+            widgets_by_name["removeListenButton"]["text"], "-"
+        )
+        self.assertEqual(
+            widgets_by_name["removeListenButton"]["toolTip"],
+            "Remove the selected row.",
+        )
+        self.assertEqual(
+            widgets_by_name["editListenButton"]["text"], "Edit"
+        )
+        self.assertEqual(
+            widgets_by_name["editListenButton"]["toolTip"],
+            "Edit the selected row.",
+        )
         self.assertIn(
             "and beyond loopback one is required.",
             widgets_by_name["clientHttpsNote"]["text"],

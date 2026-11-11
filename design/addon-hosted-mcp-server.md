@@ -421,14 +421,18 @@ is no silent port increment. A dynamic port is rejected: an HTTP
 client configures the endpoint URL directly, and a changing port
 would require reconfiguration each session.
 
-**+** opens **MCP Bridge: Add to Listen addresses** and **-**
-removes the selected row. An adapter row stores the port and the
-adapter's name, and at each start the bridge listens on that
-adapter's IPv4 address. A fixed IP address listens on exactly
-that address. A host name has no port and opens no listener, so
-a client can connect by name and keep working when the address
-changes. The bridge accepts a host name on every listener, and
-**Generate self-signed certificate** covers it. An empty saved
+**+** opens **MCP Bridge: Add to Listen addresses**, **-**
+removes the selected row, and **Edit** or double-clicking a row
+opens **MCP Bridge: Edit row** filled with that row (**Save**
+replaces it in place and refuses a duplicate or anything **Add**
+refuses; an **Old entry** row cannot be edited, only removed).
+An adapter row stores the port and the adapter's name, and at
+each start the bridge listens on that adapter's IPv4 address. A
+fixed IP address listens on exactly that address. A host name
+has no port and adds no listener of its own: it is accepted on
+every listener, so a client can connect by name and keep working
+when the address changes, and **Generate self-signed
+certificate** covers it. An empty saved
 list stays empty. A fixed address this machine does not have
 is skipped. The page marks that row, and the start names it in
 the status bar and in one Report view warning, then listens on
@@ -519,11 +523,13 @@ By default, the server binds to `127.0.0.1:39280` only. It starts only
 when the user activates the toggle, and stops when they deactivate it.
 
 In Preferences, **Listen addresses** is one list. With nothing
-saved it shows `127.0.0.1:39280`. An adapter row listens on that
-adapter's IPv4 address. A fixed IP address listens on exactly
-that address. A host name opens no listener, so a client can
-connect by name and keep working when the address changes. A
-saved wildcard opens no listener. A fixed address this machine
+saved it shows `127.0.0.1:39280`. Rows are added, edited in
+place, or removed. An adapter row listens on that adapter's IPv4
+address. A fixed IP address listens on exactly that address. A
+host name has no port and adds no listener of its own: it is
+accepted on every listener, so a client can connect by name and
+keep working when the address changes. A saved wildcard opens no
+listener. A fixed address this machine
 does not have is skipped, and the bridge listens on the rest.
 The page marks that row, and the start names it in the status
 bar and in one Report view warning. An adapter that is down or
@@ -767,8 +773,8 @@ in Edit → Preferences → MCP Bridge. FreeCAD calls its save and load.
 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
-| Listen addresses | `127.0.0.1:39280` | One list. An adapter row stores the port and the adapter's name and listens on that adapter's IPv4 address. A fixed IP address is `address:port`, or `[ipv6]:port` for IPv6. A host name opens no listener, so a client can connect by name and keep working when the address changes. A saved wildcard opens no listener. With nothing saved, the list shows `127.0.0.1:39280`, using a previously saved `Port` when that differs. An empty saved list stays empty. A fixed address this machine does not have is skipped, and the bridge listens on the rest. The page marks that row, and the start names it in the status bar and in one Report view warning. An adapter that is down or has no IPv4 address, and a wildcard, are named the same way. A missing port or a bind conflict logs an error and leaves the bridge off. The first start asks once (`StartWarningAccepted`), including loopback. Each later new address beyond loopback asks once (`AcceptedListenAddresses`), and a changed port does not ask again. For an adapter row, the warning shows once for each address the adapter hasn't had before. Every later start keeps a line in the status bar and Report view |
-| HostNames | `""` | Host name rows, one a line. No host name opens a listener. |
+| Listen addresses | `127.0.0.1:39280` | One list. Rows are added, edited in place (except an `Old entry` row, which can only be removed), or removed. An adapter row stores the port and the adapter's name and listens on that adapter's IPv4 address. A fixed IP address is `address:port`, or `[ipv6]:port` for IPv6. A host name has no port and adds no listener of its own: it is accepted on every listener, so a client can connect by name and keep working when the address changes. A saved wildcard opens no listener. With nothing saved, the list shows `127.0.0.1:39280`, using a previously saved `Port` when that differs. An empty saved list stays empty. A fixed address this machine does not have is skipped, and the bridge listens on the rest. The page marks that row, and the start names it in the status bar and in one Report view warning. An adapter that is down or has no IPv4 address, and a wildcard, are named the same way. A missing port or a bind conflict logs an error and leaves the bridge off. The first start asks once (`StartWarningAccepted`), including loopback. Each later new address beyond loopback asks once (`AcceptedListenAddresses`), and a changed port does not ask again. For an adapter row, the warning shows once for each address the adapter hasn't had before. Every later start keeps a line in the status bar and Report view |
+| HostNames | `""` | Host name rows, one a line. Each has no port and adds no listener of its own. |
 | ListenAdapters | `""` | One adapter a line: the port, a tab, then the adapter's name. |
 | ListenListSaved | false | Set when the page is saved, so an empty list stays empty. |
 | Bearer token hash | Preferences `TokenHash` | Every listener requires `Authorization: Bearer <token>`; FreeCAD stores only the SHA-256 hash, shows a generated token once, and reads the hash again before refusing a mismatch |

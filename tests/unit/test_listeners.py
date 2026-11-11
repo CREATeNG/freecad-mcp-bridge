@@ -30,6 +30,8 @@ def tearDownModule():
     sys.modules.pop("FreeCAD", None)
 
 from freecad.mcp_bridge.listeners import (
+    DUPLICATE_ROW_REFUSAL,
+    HOST_NAME_LINE,
     KIND_ADAPTER,
     KIND_ADDRESS,
     KIND_NAME,
@@ -40,11 +42,15 @@ from freecad.mcp_bridge.listeners import (
     address_row,
     already_listed,
     bind_entries,
+    can_edit,
     cells,
     default_rows,
     dump_adapters,
+    edit_refusal,
     host_already_accepted,
+    legacy_row,
     name_row,
+    replace_row,
     risk_line,
     row_note,
     rows_from_store,
@@ -354,6 +360,13 @@ class ListenListTests(unittest.TestCase):
             ):
                 first.add_listen()
             self.assertEqual(len(first.rows), 2)
+            with mock.patch.object(
+                pref_pages,
+                "ask_edit",
+                return_value=adapter_row("Ethernet 2", 4500),
+            ):
+                first.edit_listen()
+            self.assertEqual(first.rows[0].port, 4500)
             first.remove_listen()
             self.assertEqual(len(first.rows), 1)
             second = pref_pages.PreferencesPage()
@@ -367,3 +380,443 @@ class ListenListTests(unittest.TestCase):
             third.loadSettings()
         self.assertEqual(third.rows[0].adapter, "Ethernet 2")
         self.assertEqual(third.rows[0].port, 4000)
+
+    def test_host_name_line_matches_agreed_words(self):
+        """The Add and Edit dialog's host name note is the agreed sentence."""
+        self.assertEqual(
+            HOST_NAME_LINE,
+            "A host name should resolve to one of the listen addresses, "
+            "and a generated self-signed certificate includes it.",
+        )
+
+    def test_edit_refuses_what_add_refuses_and_a_duplicate(self):
+        """Save refuses every Add refusal plus a duplicate of another row."""
+        rows = [
+            address_row("127.0.0.1", 39280),
+            adapter_row("Ethernet 2", 39280),
+            name_row("workshop-pc"),
+            address_row("192.168.1.20", 39280),
+        ]
+        choices = ["Ethernet 2", "Loopback"]
+        for kind, val, port, substr in (
+            (KIND_ADDRESS, "0.0.0.0", "39280", "wildcard"),
+            (KIND_ADDRESS, "::", "39280", "wildcard"),
+            (KIND_ADDRESS, "1.2", "39280", "can't be read"),
+            (KIND_ADDRESS, "2001:db8:::1", "39280", "can't be read"),
+            (KIND_ADDRESS, "workshop-pc", "39280", "not a name"),
+            (KIND_ADDRESS, "myhost:39280", "39280", "not a name"),
+            (KIND_ADDRESS, "", "39280", "Enter an IP address"),
+            (KIND_ADDRESS, "10.0.0.1", "0", "port"),
+            (KIND_NAME, "", "39280", "Enter a host name."),
+            (KIND_NAME, "my pc", "39280", "without a space"),
+            (KIND_NAME, "a,b", "39280", "comma"),
+            (KIND_NAME, "a;b", "39280", "semicolon"),
+            (KIND_ADAPTER, "", "39280", "Choose an adapter."),
+            (KIND_ADAPTER, "VPN", "39280", "not an adapter"),
+        ):
+            self.assertIn(
+                substr,
+                edit_refusal(kind, val, port, choices, rows, 3),
+            )
+        # Changing row 3 (192.168.1.20:39280) to match row 0, 1 or 2 is
+        # refused as a duplicate.
+        self.assertEqual(
+            edit_refusal(
+                KIND_ADDRESS, "127.0.0.1", "39280", choices, rows, 3
+            ),
+            DUPLICATE_ROW_REFUSAL,
+        )
+        self.assertEqual(
+            edit_refusal(
+                KIND_ADAPTER, "Ethernet 2", "39280", choices, rows, 3
+            ),
+            DUPLICATE_ROW_REFUSAL,
+        )
+        self.assertEqual(
+            edit_refusal(
+                KIND_NAME, "WORKSHOP-PC", "39280", choices, rows, 3
+            ),
+            DUPLICATE_ROW_REFUSAL,
+        )
+        # Saving row 3 unchanged (or with a new port) is allowed.
+        self.assertEqual(
+            edit_refusal(
+                KIND_ADDRESS, "192.168.1.20", "39280", choices, rows, 3
+            ),
+            "",
+        )
+        self.assertEqual(
+            edit_refusal(
+                KIND_ADDRESS, "192.168.1.20", "4000", choices, rows, 3
+            ),
+            "",
+        )
+        self.assertTrue(can_edit(rows[0]))
+        self.assertTrue(can_edit(rows[1]))
+        self.assertTrue(can_edit(rows[2]))
+        self.assertFalse(can_edit(legacy_row("workshop-pc:39280")))
+        self.assertFalse(can_edit(legacy_row("10.0.0.5")))
+        replaced = replace_row(rows, 1, adapter_row("Ethernet 2", 4100))
+        self.assertEqual(replaced[1].port, 4100)
+        self.assertEqual(replaced[0].host, "127.0.0.1")
+        self.assertEqual(replaced[2].host, "workshop-pc")
+
+    def test_edit_dialog_ways_through(self):
+        """Open filled, Save, Cancel, refusals, changed kind, and Old entry."""
+        import sys
+        import types
+        from unittest import mock
+
+        opened = []
+        on_exec = []
+
+        class Signal:
+            def __init__(self):
+                self._slots = []
+
+            def connect(self, slot):
+                self._slots.append(slot)
+
+            def emit(self, *args):
+                for slot in list(self._slots):
+                    slot(*args)
+
+        class Widget:
+            def __init__(self, parent=None):
+                self.parent = parent
+                self.visible = True
+                self._props = {}
+
+            def setVisible(self, vis):
+                self.visible = bool(vis)
+
+            def property(self, name):
+                return self._props.get(name)
+
+            def setProperty(self, name, val):
+                self._props[name] = val
+
+            def setFixedSize(self, *_args):
+                pass
+
+            def setFixedHeight(self, *_args):
+                pass
+
+            def setSizePolicy(self, *_args):
+                pass
+
+        class Dialog(Widget):
+            Accepted = 1
+            Rejected = 0
+
+            def __init__(self, parent=None):
+                super().__init__(parent)
+                self.title = ""
+                self.obj_name = ""
+                self.result = Dialog.Rejected
+                self.widgets = []
+                opened.append(self)
+
+            def setWindowTitle(self, title):
+                self.title = title
+
+            def setObjectName(self, name):
+                self.obj_name = name
+
+            def done(self, code):
+                self.result = code
+                self._closed = True
+
+            def reject(self):
+                self.done(Dialog.Rejected)
+
+            def exec(self):
+                self._closed = False
+                if on_exec:
+                    step = on_exec.pop(0)
+                    step(self)
+                return self.result
+
+        class ComboBox(Widget):
+            def __init__(self, parent=None):
+                super().__init__(parent)
+                self.items = []
+                self.index = 0
+                self.currentIndexChanged = Signal()
+                if isinstance(parent, Dialog):
+                    parent.kind_box = self
+                elif parent is not None and isinstance(
+                    parent.parent, Dialog
+                ):
+                    parent.parent.adapter_box = self
+
+            def addItem(self, label, data=None):
+                self.items.append((label, data))
+
+            def setCurrentIndex(self, idx):
+                self.index = idx
+                self.currentIndexChanged.emit(idx)
+
+            def currentData(self):
+                if 0 <= self.index < len(self.items):
+                    return self.items[self.index][1]
+                return None
+
+        class LineEdit(Widget):
+            def __init__(self, parent=None):
+                super().__init__(parent)
+                self._text = ""
+                self.selected_all = False
+                if parent is not None and isinstance(
+                    parent.parent, Dialog
+                ):
+                    dlg = parent.parent
+                    if not hasattr(dlg, "address_box"):
+                        dlg.address_box = self
+                    else:
+                        dlg.name_box = self
+
+            def setText(self, text):
+                self._text = text
+
+            def text(self):
+                return self._text
+
+            def selectAll(self):
+                self.selected_all = True
+
+        class SpinBox(Widget):
+            def __init__(self, parent=None):
+                super().__init__(parent)
+                self._val = 0
+                if isinstance(parent, Dialog):
+                    parent.port_box = self
+
+            def setRange(self, _low, _high):
+                pass
+
+            def setValue(self, val):
+                self._val = int(val)
+
+            def value(self):
+                return self._val
+
+        class Label(Widget):
+            def __init__(self, text="", parent=None):
+                super().__init__(parent)
+                self._text = text
+                if isinstance(parent, Dialog):
+                    parent.widgets.append(self)
+
+            def setText(self, text):
+                self._text = text
+
+            def text(self):
+                return self._text
+
+            def setWordWrap(self, _wrap):
+                pass
+
+        class Button(Widget):
+            def __init__(self, label):
+                super().__init__()
+                self.label = label
+                self.clicked = Signal()
+
+        class ButtonBox(Widget):
+            Cancel = 1
+            AcceptRole = 2
+
+            def __init__(self, _std, parent=None):
+                super().__init__(parent)
+                self.rejected = Signal()
+                self.accept_button = None
+                if isinstance(parent, Dialog):
+                    parent.button_box = self
+
+            def addButton(self, label, _role):
+                self.accept_button = Button(label)
+                return self.accept_button
+
+        class BoxLayout:
+            def __init__(self, _parent=None):
+                pass
+
+            def setContentsMargins(self, *_args):
+                pass
+
+            def addWidget(self, _widget):
+                pass
+
+            def addLayout(self, _layout):
+                pass
+
+        class FormLayout:
+            def addRow(self, *_args):
+                pass
+
+        widgets = types.ModuleType("PySide.QtWidgets")
+        widgets.QDialog = Dialog
+        widgets.QComboBox = ComboBox
+        widgets.QLineEdit = LineEdit
+        widgets.QSpinBox = SpinBox
+        widgets.QLabel = Label
+        widgets.QDialogButtonBox = ButtonBox
+        widgets.QVBoxLayout = BoxLayout
+        widgets.QFormLayout = FormLayout
+        widgets.QWidget = Widget
+        widgets.QTableWidget = Widget
+        widgets.QPushButton = Button
+        widgets.QToolButton = Button
+        widgets.QSizePolicy = types.SimpleNamespace(Fixed=0)
+        widgets.QTableWidgetItem = Widget
+        pyside = types.ModuleType("PySide")
+
+        from freecad.mcp_bridge import pref_pages
+
+        choices = [
+            ("Ethernet 2 (192.168.1.20)", "Ethernet 2"),
+            ("Loopback (127.0.0.1)", "Loopback"),
+        ]
+        with mock.patch.dict(
+            sys.modules,
+            {"PySide": pyside, "PySide.QtWidgets": widgets},
+        ):
+            rows = [
+                address_row("127.0.0.1", 39280),
+                adapter_row("Loopback", 4100),
+                name_row("studio.example"),
+                legacy_row("old-host:39280"),
+            ]
+
+            # 1. Open filled for an adapter row, change port, Save replaces.
+            def save_adapter(dlg):
+                self.assertEqual(dlg.title, "MCP Bridge: Edit row")
+                self.assertEqual(
+                    dlg.button_box.accept_button.label, "Save"
+                )
+                self.assertEqual(dlg.kind_box.currentData(), KIND_ADAPTER)
+                self.assertEqual(
+                    dlg.adapter_box.currentData(), "Loopback"
+                )
+                self.assertEqual(dlg.port_box.value(), 4100)
+                dlg.port_box.setValue(4200)
+                dlg.button_box.accept_button.clicked.emit()
+
+            on_exec.append(save_adapter)
+            edited = pref_pages.ask_edit(
+                None, choices, "my-pc", rows, 1
+            )
+            self.assertEqual(edited.kind, KIND_ADAPTER)
+            self.assertEqual(edited.adapter, "Loopback")
+            self.assertEqual(edited.port, 4200)
+
+            # 2. Open filled for a fixed address row, Cancel leaves None.
+            def cancel_address(dlg):
+                self.assertEqual(dlg.kind_box.currentData(), KIND_ADDRESS)
+                self.assertEqual(dlg.address_box.text(), "127.0.0.1")
+                self.assertEqual(dlg.port_box.value(), 39280)
+                dlg.address_box.setText("192.168.1.99")
+                dlg.button_box.rejected.emit()
+
+            on_exec.append(cancel_address)
+            self.assertIsNone(
+                pref_pages.ask_edit(None, choices, "my-pc", rows, 0)
+            )
+
+            # 3. Open filled for a host name row; test refusals and duplicate,
+            # then change kind to a fixed address and Save.
+            def edit_name_and_change_kind(dlg):
+                self.assertEqual(dlg.kind_box.currentData(), KIND_NAME)
+                self.assertEqual(dlg.name_box.text(), "studio.example")
+                self.assertTrue(dlg.name_box.selected_all)
+                explain = dlg.widgets[2]
+                error = dlg.widgets[3]
+                self.assertEqual(explain.text(), HOST_NAME_LINE)
+                # Empty name refused.
+                dlg.name_box.setText("")
+                dlg.button_box.accept_button.clicked.emit()
+                self.assertEqual(error.text(), "Enter a host name.")
+                self.assertFalse(dlg._closed)
+                # Change kind to fixed IP address (index 1).
+                dlg.kind_box.setCurrentIndex(1)
+                self.assertEqual(error.text(), "")
+                # Wildcard refused.
+                dlg.address_box.setText("0.0.0.0")
+                dlg.port_box.setValue(39280)
+                dlg.button_box.accept_button.clicked.emit()
+                self.assertIn("wildcard", error.text())
+                self.assertFalse(dlg._closed)
+                # Duplicate of row 0 (127.0.0.1:39280) refused.
+                dlg.address_box.setText("127.0.0.1")
+                dlg.port_box.setValue(39280)
+                dlg.button_box.accept_button.clicked.emit()
+                self.assertEqual(error.text(), DUPLICATE_ROW_REFUSAL)
+                self.assertFalse(dlg._closed)
+                # Valid new fixed address succeeds.
+                dlg.address_box.setText("192.168.1.50")
+                dlg.port_box.setValue(4300)
+                dlg.button_box.accept_button.clicked.emit()
+                self.assertTrue(dlg._closed)
+
+            on_exec.append(edit_name_and_change_kind)
+            changed = pref_pages.ask_edit(
+                None, choices, "my-pc", rows, 2
+            )
+            self.assertEqual(changed.kind, KIND_ADDRESS)
+            self.assertEqual(changed.host, "192.168.1.50")
+            self.assertEqual(changed.port, 4300)
+
+            # 4. An "Old entry" row does not open the dialog at all.
+            opened.clear()
+            self.assertIsNone(
+                pref_pages.ask_edit(None, choices, "my-pc", rows, 3)
+            )
+            self.assertEqual(opened, [])
+
+            # 5. Page edit_listen: Old entry does not open; Cancel on the
+            # page drops an edit; double-click and Edit button both route
+            # to edit_listen.
+            class Form:
+                def findChild(self, _kind, _name=""):
+                    return None
+
+                def findChildren(self, _kind):
+                    return []
+
+            with mock.patch.object(
+                pref_pages, "load_form", return_value=Form()
+            ):
+                page = pref_pages.PreferencesPage()
+                page._show_mode = lambda: None
+                page._choices = lambda: choices
+                page._own_name = lambda: "my-pc"
+                page._fill = lambda: None
+                page.rows = list(rows)
+                current_row = {"index": 3}
+                page._table = lambda: type(
+                    "T",
+                    (),
+                    {"currentRow": lambda _self: current_row["index"]},
+                )()
+                # Selecting Old entry (index 3) does not open the dialog.
+                page.edit_listen()
+                page.edit_listen(3)
+                self.assertEqual(opened, [])
+                self.assertEqual(page.rows[3].raw, "old-host:39280")
+                # Selecting row 0 and clicking Save in the dialog updates
+                # page.rows[0] in memory; closing the page without
+                # saveSettings() drops the edit on the next open.
+                current_row["index"] = 0
+                on_exec.append(
+                    lambda dlg: (
+                        dlg.port_box.setValue(4900),
+                        dlg.button_box.accept_button.clicked.emit(),
+                    )
+                )
+                page.edit_listen(False)
+                self.assertEqual(page.rows[0].port, 4900)
+                reopened = pref_pages.PreferencesPage()
+                reopened._show_mode = lambda: None
+                reopened.loadSettings()
+                self.assertEqual(reopened.rows[0].port, 39280)

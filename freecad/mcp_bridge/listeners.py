@@ -61,9 +61,10 @@ ROW_FIXED = "Fixed IP address"
 ROW_NAME = "Host name"
 
 HOST_NAME_LINE = (
-    "A host name opens no listener. The bridge accepts it on "
-    "every listener, and a generated certificate covers it."
+    "A host name should resolve to one of the listen addresses, "
+    "and a generated self-signed certificate includes it."
 )
+DUPLICATE_ROW_REFUSAL = "That row is already in Listen addresses."
 
 
 class ListenRow:
@@ -328,6 +329,31 @@ def make_row(kind: str, value: str, port_text: str) -> ListenRow:
     return address_row(value, port)
 
 
+def can_edit(row: ListenRow) -> bool:
+    """True when `row` can be opened in the edit dialog."""
+    return row.kind in (KIND_ADAPTER, KIND_ADDRESS, KIND_NAME)
+
+
+def edit_refusal(
+    kind: str,
+    value: str,
+    port_text: str,
+    choices: list[str],
+    rows: list[ListenRow],
+    index: int,
+) -> str:
+    """Why Save refuses when editing row `index`, or ''."""
+    reason = add_refusal(kind, value, port_text, choices)
+    if reason:
+        return reason
+    row = make_row(kind, value, port_text)
+    key = row.identity()
+    for number, item in enumerate(rows):
+        if number != index and item.identity() == key:
+            return DUPLICATE_ROW_REFUSAL
+    return ""
+
+
 def already_listed(rows: list[ListenRow], row: ListenRow) -> bool:
     """True when `row` is already in `rows`."""
     key = row.identity()
@@ -339,6 +365,17 @@ def with_row(rows: list[ListenRow], row: ListenRow) -> list[ListenRow]:
     if already_listed(rows, row):
         return list(rows)
     return [*rows, row]
+
+
+def replace_row(
+    rows: list[ListenRow], index: int, row: ListenRow
+) -> list[ListenRow]:
+    """`rows` with `row` in place of the row at `index`."""
+    if index < 0 or index >= len(rows):
+        return list(rows)
+    updated = list(rows)
+    updated[index] = row
+    return updated
 
 
 def without_index(rows: list[ListenRow], index: int) -> list[ListenRow]:

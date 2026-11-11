@@ -14,7 +14,8 @@ paging and replay, MCP request validation and result formatting,
 preference defaults and controls, source-only distribution, the copy
 installer, agreement among the three release-version files, and
 the changelog section for the version being released. The unit
-tests check the listen list, its rows and its marks. These
+tests check the listen list, adding, editing and removing its
+rows, and its marks. These
 checks include fake clocks, output queues and a stand-in parameter
 store where those replace the running application.
 

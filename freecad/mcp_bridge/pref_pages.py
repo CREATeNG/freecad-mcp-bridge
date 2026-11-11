@@ -26,7 +26,10 @@ from freecad.mcp_bridge.listeners import (
     KIND_NAME_LABEL,
     add_refusal,
     already_listed,
+    can_edit,
+    edit_refusal,
     make_row,
+    replace_row,
     with_row,
     without_index,
 )
@@ -160,6 +163,13 @@ def bind_page(form, page) -> None:
         lambda button: button.clicked.connect(page.remove_listen),
     )
     _hook(
+        form_child(form, QToolButton, "editListenButton"),
+        "editListenButton",
+        lambda button: button.clicked.connect(
+            lambda *_args: page.edit_listen()
+        ),
+    )
+    _hook(
         form_child(form, QPushButton, "generateTokenButton"),
         "generateTokenButton",
         lambda button: button.clicked.connect(page.generate_token),
@@ -175,13 +185,16 @@ def bind_page(form, page) -> None:
         lambda button: button.clicked.connect(page.generate_certificate),
     )
     table = form_child(form, QTableWidget, "listenTable")
-    _hook(
-        table,
-        "listenTable",
-        lambda widget: widget.itemSelectionChanged.connect(
-            page.show_selected_note
-        ),
-    )
+
+    def _connect_table(widget) -> None:
+        widget.itemSelectionChanged.connect(page.show_selected_note)
+        double_clicked = getattr(widget, "cellDoubleClicked", None)
+        if double_clicked is not None:
+            double_clicked.connect(
+                lambda row, _col: page.edit_listen(row)
+            )
+
+    _hook(table, "listenTable", _connect_table)
     box = form_child(form, QComboBox, "permissionModeComboBox")
     if box is not None:
         remember_mode_box(box)
@@ -212,15 +225,22 @@ class PreferencesPage:
         bind_page(self.form, self)
 
     def _square_buttons(self) -> None:
-        """Keep + and - small squares. A layout will not stretch them."""
+        """Keep +, - and Edit compact so a layout does not stretch them."""
         from PySide.QtWidgets import QSizePolicy, QWidget
 
-        for name in ("addListenButton", "removeListenButton"):
+        for name in (
+            "addListenButton",
+            "removeListenButton",
+            "editListenButton",
+        ):
             button = form_child(self.form, QWidget, name)
             if button is None:
                 continue
             try:
-                button.setFixedSize(22, 22)
+                if name == "editListenButton":
+                    button.setFixedHeight(22)
+                else:
+                    button.setFixedSize(22, 22)
                 button.setSizePolicy(
                     QSizePolicy.Fixed, QSizePolicy.Fixed
                 )
@@ -254,6 +274,30 @@ class PreferencesPage:
         if added is None:
             return
         self.rows = with_row(self.rows, added)
+        self.form._listen_rows = self.rows
+        self._fill()
+
+    def edit_listen(self, index: int | None = None) -> None:
+        """Edit the selected or double-clicked row in place."""
+        if index is None or isinstance(index, bool):
+            table = self._table()
+            if table is None:
+                return
+            index = table.currentRow()
+        if index < 0 or index >= len(self.rows):
+            return
+        if not can_edit(self.rows[index]):
+            return
+        edited = ask_edit(
+            self.form,
+            self._choices(),
+            self._own_name(),
+            self.rows,
+            index,
+        )
+        if edited is None:
+            return
+        self.rows = replace_row(self.rows, index, edited)
         self.form._listen_rows = self.rows
         self._fill()
 
@@ -461,6 +505,26 @@ def ask_add(parent, choices, own_name: str, rows):
 
     A row that is already in `rows` changes nothing.
     """
+    return _ask_row(parent, choices, own_name, rows)
+
+
+def ask_edit(parent, choices, own_name: str, rows, index: int):
+    """The Edit dialog for row `index`. Return the replacement, or None.
+
+    An Old entry row is not editable and returns None without opening.
+    """
+    if index < 0 or index >= len(rows) or not can_edit(rows[index]):
+        return None
+    return _ask_row(parent, choices, own_name, rows, index=index)
+
+
+def _ask_row(
+    parent,
+    choices,
+    own_name: str,
+    rows,
+    index: int | None = None,
+):
     from PySide.QtWidgets import (
         QComboBox,
         QDialog,
@@ -473,8 +537,22 @@ def ask_add(parent, choices, own_name: str, rows):
         QWidget,
     )
 
+    current = None if index is None else rows[index]
+    dialog_choices = list(choices)
+    if (
+        current is not None
+        and current.kind == KIND_ADAPTER
+        and current.adapter
+        and all(name != current.adapter for _label, name in dialog_choices)
+    ):
+        dialog_choices.append((current.adapter, current.adapter))
     dialog = QDialog(parent)
-    dialog.setWindowTitle(f"{DISPLAY_NAME}: Add to Listen addresses")
+    title = (
+        f"{DISPLAY_NAME}: Edit row"
+        if current is not None
+        else f"{DISPLAY_NAME}: Add to Listen addresses"
+    )
+    dialog.setWindowTitle(title)
     dialog.setObjectName("MCPBridgeAddListenDialog")
     kind = QComboBox(dialog)
     kind.addItem(KIND_ADAPTER_LABEL, KIND_ADAPTER)
@@ -485,7 +563,7 @@ def ask_add(parent, choices, own_name: str, rows):
     holder_layout = QVBoxLayout(holder)
     holder_layout.setContentsMargins(0, 0, 0, 0)
     value = QComboBox(holder)
-    for label, name in choices:
+    for label, name in dialog_choices:
         value.addItem(label, name)
     address = QLineEdit(holder)
     name_box = QLineEdit(holder)
@@ -497,13 +575,32 @@ def ask_add(parent, choices, own_name: str, rows):
     port = QSpinBox(dialog)
     port.setRange(1, 65535)
     port.setValue(DEFAULT_PORT)
+    if current is not None:
+        if current.kind == KIND_ADAPTER:
+            kind.setCurrentIndex(0)
+            for idx, (_label, name) in enumerate(dialog_choices):
+                if name == current.adapter:
+                    value.setCurrentIndex(idx)
+                    break
+            port.setValue(current.port)
+        elif current.kind == KIND_ADDRESS:
+            kind.setCurrentIndex(1)
+            address.setText(current.host)
+            port.setValue(current.port)
+        elif current.kind == KIND_NAME:
+            kind.setCurrentIndex(2)
+            name_box.setText(current.host)
+            name_box.selectAll()
     port_label = QLabel("Port", dialog)
     explain = QLabel(HOST_NAME_LINE, dialog)
     explain.setWordWrap(True)
     error = QLabel("", dialog)
     error.setWordWrap(True)
     buttons = QDialogButtonBox(QDialogButtonBox.Cancel, parent=dialog)
-    add_button = buttons.addButton("Add", QDialogButtonBox.AcceptRole)
+    button_label = "Save" if current is not None else "Add"
+    accept_button = buttons.addButton(
+        button_label, QDialogButtonBox.AcceptRole
+    )
     layout = QVBoxLayout(dialog)
     form = QFormLayout()
     form.addRow("Kind", kind)
@@ -539,22 +636,32 @@ def ask_add(parent, choices, own_name: str, rows):
             entered = address.text()
         else:
             entered = name_box.text()
-        names = [item for _label, item in choices]
-        reason = add_refusal(
-            selected, entered, str(port.value()), names
-        )
+        names = [item for _label, item in dialog_choices]
+        if current is None:
+            reason = add_refusal(
+                selected, entered, str(port.value()), names
+            )
+        else:
+            reason = edit_refusal(
+                selected,
+                entered,
+                str(port.value()),
+                names,
+                rows,
+                index,
+            )
         if reason:
             error.setText(reason)
             return
         row = make_row(selected, entered, str(port.value()))
-        if already_listed(rows, row):
+        if current is None and already_listed(rows, row):
             dialog.done(QDialog.Rejected)
             return
         dialog.added = row
         dialog.done(QDialog.Accepted)
 
     kind.currentIndexChanged.connect(lambda *_args: show_kind())
-    add_button.clicked.connect(accept)
+    accept_button.clicked.connect(accept)
     buttons.rejected.connect(dialog.reject)
     show_kind()
     dialog.added = None
