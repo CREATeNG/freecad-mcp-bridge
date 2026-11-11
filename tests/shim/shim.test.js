@@ -1309,13 +1309,26 @@ test("3. a copy that is missing, unreadable, or not a certificate gives the righ
       key: serverCert.key,
     });
 
-    // 1. On this machine, serving-cert.pem is not a PEM certificate (plain text
-    // or a private key).
-    for (const badContent of ["not a certificate\n", serverCert.key.toString("utf8"), "-----BEGIN CERTIFICATE-----\nnot-der\n-----END CERTIFICATE-----\n"]) {
+    // 1. On this machine, serving-cert.pem is not a PEM certificate: plain
+    // text, a private key, a block that is not base64, the four bytes
+    // 30 02 30 00 wrapped as a PEM certificate (a DER sequence that is not
+    // a certificate), or the server's own certificate as bare DER.
+    const notACertificate =
+      "-----BEGIN CERTIFICATE-----\n" +
+      Buffer.from([0x30, 0x02, 0x30, 0x00]).toString("base64") +
+      "\n-----END CERTIFICATE-----\n";
+    const bareDer = new crypto.X509Certificate(serverCert.cert).raw;
+    for (const badContent of [
+      "not a certificate\n",
+      serverCert.key.toString("utf8"),
+      "-----BEGIN CERTIFICATE-----\nnot-der\n-----END CERTIFICATE-----\n",
+      notACertificate,
+      bareDer,
+    ]) {
       const shim = startShim(bridge.port, { FREECAD_MCP_TOKEN: TOKEN_OK });
       shims.push(shim);
       const servingCertPath = path.join(shim.tokenDir, "serving-cert.pem");
-      fs.writeFileSync(servingCertPath, badContent, "utf8");
+      fs.writeFileSync(servingCertPath, badContent);
       shim.send(
         JSON.stringify({
           jsonrpc: "2.0",

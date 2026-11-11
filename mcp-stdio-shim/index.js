@@ -320,26 +320,11 @@ function bridgeHeaders(message) {
   return headers;
 }
 
-function derCertificateLength(der) {
-  if (!Buffer.isBuffer(der) || der.length < 4 || der[0] !== 0x30) return -1;
-  const lenByte = der[1];
-  let headerLen = 2;
-  let contentLen = 0;
-  if ((lenByte & 0x80) === 0) {
-    contentLen = lenByte;
-  } else {
-    const count = lenByte & 0x7f;
-    if (count < 1 || count > 4 || der.length < 2 + count) return -1;
-    headerLen = 2 + count;
-    for (let i = 0; i < count; i++) {
-      contentLen = contentLen * 256 + der[2 + i];
-    }
-  }
-  if (headerLen + contentLen !== der.length) return -1;
-  if (der.length <= headerLen || der[headerLen] !== 0x30) return -1;
-  return der.length;
-}
-
+// Node's own parser reads the trusted copy: crypto.X509Certificate
+// takes the first certificate in the file, and its raw property is that
+// certificate's DER bytes. That parser also takes a bare DER file, and
+// the trusted copy is PEM, so the BEGIN CERTIFICATE line is asked for
+// first. Whatever the parser refuses is reported as not a certificate.
 function readCertFingerprint(certFile) {
   let pem;
   try {
@@ -349,23 +334,21 @@ function readCertFingerprint(certFile) {
     err.certFileProblem = "unreadable";
     throw err;
   }
-  const match =
-    /-----BEGIN CERTIFICATE-----([\s\S]*?)-----END CERTIFICATE-----/.exec(pem);
-  const b64 = match ? match[1].replace(/\s+/g, "") : "";
-  if (!b64 || b64.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(b64)) {
+  let raw = null;
+  if (pem.includes("-----BEGIN CERTIFICATE-----")) {
+    try {
+      raw = new crypto.X509Certificate(pem).raw;
+    } catch (_err) {
+      raw = null;
+    }
+  }
+  if (!Buffer.isBuffer(raw) || raw.length === 0) {
     const err = new Error("no PEM certificate found");
     err.code = "ERR_INVALID_CERT_FILE";
     err.certFileProblem = "invalid";
     throw err;
   }
-  const der = Buffer.from(b64, "base64");
-  if (derCertificateLength(der) < 0) {
-    const err = new Error("invalid DER certificate");
-    err.code = "ERR_INVALID_CERT_FILE";
-    err.certFileProblem = "invalid";
-    throw err;
-  }
-  return crypto.createHash("sha256").update(der).digest();
+  return crypto.createHash("sha256").update(raw).digest();
 }
 
 // A matching SHA-256 fingerprint is the whole check: the extension does

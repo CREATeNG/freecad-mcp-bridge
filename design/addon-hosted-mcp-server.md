@@ -690,27 +690,34 @@ or hostname beyond loopback, the shim connects to
 pins that certificate by its SHA-256 fingerprint (not the system's
 certificate authorities), and sends the pasted token.
 
-Over HTTPS, on this machine and for another host, the shim takes
-the SHA-256 fingerprint of the first certificate in the trusted
-file (`serving-cert.pem` or `FREECAD_MCP_TLS_CERT_FILE`), completes
-the TLS handshake with `node:tls`, and compares the SHA-256
-fingerprint of the certificate the bridge presents with that
-fingerprint before creating the HTTP request or sending a single
-byte (the bearer token included). On a mismatch it closes the
-connection and returns an error. A matching fingerprint is the
-whole check: the shim does no chain building, no host-name check,
-and no check of the certificate's dates, because the trusted file
-is a copy of the bridge's own certificate and completing the
-handshake proves the bridge holds its key, while Claude Desktop's
-built-in Node refuses a self-signed certificate marked `CA:FALSE`
-when passed as a certificate authority. For the Addon Index
-requirement that "traffic is always encrypted, using Python's `ssl`
-module or another maintained library rather than the addon's own
-code, and the client verifies the server, for example with a pinned
-certificate or a pre-shared key (TLS-PSK); an unchecked self-signed
-certificate does not count;", Python's `ssl` module and Node's
-`node:tls` do the encrypting and the TLS handshake, and the
-fingerprint compare is the shim's own code.
+Over HTTPS, on this machine and for another host, the shim reads
+the trusted file (`serving-cert.pem` or `FREECAD_MCP_TLS_CERT_FILE`)
+with Node's `crypto.X509Certificate`, which takes the first
+certificate in the file, and takes that certificate's SHA-256
+fingerprint. A file with no `-----BEGIN CERTIFICATE-----` line, or
+one that class refuses, is reported as not a PEM certificate, and
+nothing is sent. The shim completes the TLS handshake with
+`node:tls`, and compares the SHA-256 fingerprint of the certificate
+the bridge presents with that fingerprint before creating the HTTP
+request or sending a single byte (the bearer token included). On a
+mismatch it closes the connection and returns an error. A matching
+fingerprint is the whole check: the shim does no chain building, no
+host-name check, and no check of the certificate's dates, because
+the trusted file is a copy of the bridge's own certificate and
+completing the handshake proves the bridge holds its key, and
+pinning by fingerprint does not depend on whether a Node runtime
+accepts a `CA:FALSE` certificate as a trust anchor. Each
+`tools/call` opens its own TLS connection (`Connection: close`) and
+destroys the socket when the reply ends or on any failure. For the
+Addon Index requirement that "traffic is always encrypted, using
+Python's `ssl` module or another maintained library rather than the
+addon's own code, and the client verifies the server, for example
+with a pinned certificate or a pre-shared key (TLS-PSK); an
+unchecked self-signed certificate does not count;", Python's `ssl`
+module and Node's `node:tls` do the encrypting and the TLS
+handshake, Node's `node:crypto` reads the certificate from the
+trusted file and computes both fingerprints, and the compare of the
+two fingerprints is the shim's own code.
 
 Notifications (no `id`)
 get no reply and are not sent on. The shim answers `initialize`
