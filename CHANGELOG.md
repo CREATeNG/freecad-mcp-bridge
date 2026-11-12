@@ -35,7 +35,7 @@
   FreeCAD with software OpenGL. The release checklist now puts a read
   of the release notes before the version pull request merges.
 
-Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini (Google) and Codex (OpenAI), with Cursor among their tools.
+Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini (Google) and Codex (OpenAI).
 
 ## 0.1.26
 
@@ -64,7 +64,7 @@ Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini
   refusal, the tool titles and annotations, and the version in the port
   field's help line.
 
-Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini (Google) and Codex (OpenAI), with Cursor among their tools.
+Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini (Google) and Codex (OpenAI).
 
 ## 0.1.25
 
@@ -89,7 +89,7 @@ Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini
   port with address reuse, the case that let a taken port on Windows go
   unnoticed.
 
-Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini (Google) and Codex (OpenAI), with Cursor among their tools.
+Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini (Google) and Codex (OpenAI).
 
 ## 0.1.24
 
@@ -100,7 +100,7 @@ Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini
 - **Stdio clients, and the Claude Desktop extension:** when the bridge streams a reply as several events, each now reaches the client as its own message. Before, they were joined into one line the client couldn't read. Update the extension from the attached `freecad-mcp-bridge.mcpb`, or update the shim (`mcp-stdio-shim/`) to this release, to get this.
 - **Behind the scenes:** a release refuses to publish without its notes in `CHANGELOG.md`, and the release checklist now includes a check of the extension in Claude Desktop. TESTING.md matches the current test scripts and workflows.
 
-Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini (Google) and Codex (OpenAI), with Cursor among their tools.
+Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini (Google) and Codex (OpenAI).
 
 ## 0.1.23
 
@@ -111,7 +111,7 @@ Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini
 - **Docs:** the README says more about installing the Claude Desktop extension, and says in full what code run by an agent can reach. Security issues can be reported privately through the repository's **Report a vulnerability** form.
 - **Behind the scenes:** each release now tests the packed Claude Desktop extension against the real bridge on Linux, macOS and Windows before tagging, and attaches that same file. A unit test keeps the three version files in step, and TESTING.md describes how testing works. Before this release, the extension was also checked by hand in Claude Desktop on Linux.
 
-Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini (Google) and Codex (OpenAI), with Cursor among their tools.
+Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini (Google) and Codex (OpenAI).
 
 ## 0.1.22
 
