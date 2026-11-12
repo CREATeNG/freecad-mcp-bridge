@@ -47,6 +47,11 @@ repaints happen, but no other job can slip in. Nothing preempts it; it
 runs until it is done. Its own output can never interleave with another
 job's, because jobs run one at a time.
 
+What the job changes is one undo step, "MCP Bridge: run", across every
+document, kept whether the job succeeds or fails. *One undo step per
+job* in [addon-hosted-mcp-server.md](addon-hosted-mcp-server.md) says
+how.
+
 ## 5. Finished
 
 Success or error, the same ending: a failure becomes traceback text on the

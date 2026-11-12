@@ -11,6 +11,19 @@ Stopping the bridge shuts the executor down: jobs still in the queue are
 dropped and never run; a job already running finishes.
 Output is teed to the page-buffer queue and FreeCAD's Report View as it is
 produced.
+
+Each job is one undo step. An application-wide transaction, "MCP Bridge:
+run", is open while the code runs, so Edit → Undo takes back what the job
+changed in every document at once. A job that fails keeps what ran: the
+transaction is closed, not aborted. Code that opens, commits or aborts a
+transaction of its own ends ours, so for the job's length a document
+observer opens a fresh one, "MCP Bridge: run, continued", each time a
+transaction closes. Whether the code commits or aborts its own
+transactions, what the job changes then stays in undo as a chain of
+steps, apart from what the code's own abort takes back and the limits
+that follow. What the code changes after turning a document's UndoMode
+off, or after calling App.closeActiveTransaction before anything has
+changed, is not undoable.
 """
 
 import sys
@@ -21,7 +34,11 @@ import FreeCAD
 from PySide.QtCore import QCoreApplication, QObject, Qt, QThread, Signal
 
 from freecad.mcp_bridge import config, paging
+from freecad.mcp_bridge.constants import LOG_PREFIX
 from freecad.mcp_bridge.job_gate import JobGate, JobLine
+
+UNDO_STEP_NAME = "MCP Bridge: run"
+UNDO_STEP_CONTINUED_NAME = "MCP Bridge: run, continued"
 
 
 class TeeWriter:
@@ -38,6 +55,88 @@ class TeeWriter:
 
     def flush(self):
         pass
+
+
+class _ReopenAfterClose:
+    """Document observer for one job's length.
+
+    FreeCAD calls slotCloseTransaction once a transaction has closed in
+    every document, committed or aborted. While this observer is on,
+    that means the job's code ended ours by opening, committing or
+    aborting one of its own, so ours opens again and what the code
+    changes next is still in an undo step. It is turned off before the
+    job's own transaction is closed, since that close calls it too.
+    slotAbortTransaction is not used: FreeCAD calls it part-way through
+    aborting several documents, and opening ours there would commit the
+    documents not yet aborted.
+    """
+
+    def __init__(self, open_step):
+        self._open_step = open_step
+        self.on = True
+
+    def slotCloseTransaction(self, _abort):
+        if self.on:
+            self._open_step(UNDO_STEP_CONTINUED_NAME)
+
+
+class _UndoStep:
+    """Make one job one undo step, across every document it touches.
+
+    open() and close() never raise. A FreeCAD without these calls runs
+    the job as before. One that refuses them runs it too, and the
+    Report view says the run may not be one undo step.
+    """
+
+    def __init__(self, app):
+        self._app = app
+        self._observer = None
+        self._opened = False
+
+    def open(self):
+        app = self._app
+        set_active = getattr(app, "setActiveTransaction", None)
+        if set_active is None or not hasattr(app, "closeActiveTransaction"):
+            return
+        try:
+            set_active(UNDO_STEP_NAME)
+            self._opened = True
+            observer = _ReopenAfterClose(self._reopen)
+            app.addDocumentObserver(observer)
+            self._observer = observer
+        except Exception as exc:
+            self._warn(exc)
+
+    def _reopen(self, name):
+        try:
+            self._app.setActiveTransaction(name)
+        except Exception as exc:
+            self._warn(exc)
+
+    def close(self):
+        """Stop watching, then close the step, keeping what ran."""
+        observer, self._observer = self._observer, None
+        if observer is not None:
+            observer.on = False
+            try:
+                self._app.removeDocumentObserver(observer)
+            except Exception as exc:
+                self._warn(exc)
+        if self._opened:
+            self._opened = False
+            try:
+                self._app.closeActiveTransaction()
+            except Exception as exc:
+                self._warn(exc)
+
+    def _warn(self, exc):
+        try:
+            self._app.Console.PrintWarning(
+                f"{LOG_PREFIX} This run may not be one step in Edit → Undo "
+                f"({exc}).\n"
+            )
+        except Exception:
+            pass
 
 
 class Executor(QObject):
@@ -142,7 +241,8 @@ class Executor(QObject):
         self._gate.clear()
 
     def _run(self, code, output_queue, filepath=None, token=None):
-        """Run one job to completion: exec, traceback on error, sentinel."""
+        """Run one job to completion as one undo step: exec, traceback on
+        error, sentinel. On error the step keeps what ran."""
         import FreeCADGui
 
         stdout_tee = TeeWriter(output_queue, "stdout")
@@ -160,6 +260,8 @@ class Executor(QObject):
         }
         if filepath is not None:
             env["__file__"] = filepath
+        undo_step = _UndoStep(FreeCAD)
+        undo_step.open()
         try:
             exec(code, env)
         except BaseException:
@@ -167,6 +269,7 @@ class Executor(QObject):
             # other error instead of escaping and stalling the queue.
             stderr_tee.write("\n" + traceback.format_exc())
         finally:
+            undo_step.close()
             sys.stdout, sys.stderr = old_out, old_err
             paging.note_execution_finished(
                 token,

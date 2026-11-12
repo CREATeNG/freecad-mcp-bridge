@@ -501,6 +501,41 @@ and one-at-a-time are enforced by the structure (single queue, single consumer l
 rather than assumed of Qt's queued-signal delivery. Sequential execution remains the
 correct semantics: concurrent scripts would interfere with each other's session state.
 
+**One undo step per job**
+
+Each job runs inside an application-wide transaction named
+`MCP Bridge: run`, opened with `App.setActiveTransaction` just
+before the code runs and closed with `App.closeActiveTransaction`
+after it. **Edit → Undo** then takes back what the job changed in
+every document at once. A job that fails keeps what ran: the
+transaction is closed, not aborted, whether the code raised or
+called `sys.exit`.
+
+Code that opens, commits or aborts a transaction of its own ends
+the job's. So for the job's length a document observer watches
+every document, and each time a transaction closes it opens a
+fresh one named `MCP Bridge: run, continued`. Whether the code
+commits or aborts its own transactions, what the job changes stays
+in undo as a chain of named steps, apart from what the code's own
+abort takes back and the limits below. The observer listens for
+`slotCloseTransaction`, which FreeCAD calls once every document's
+part of a transaction has closed. `slotAbortTransaction` comes
+part-way through aborting several documents, and opening a
+transaction there would commit the documents not yet aborted.
+Closing the job's own transaction calls the observer too, so it
+is turned off and removed first, whatever the job did. A FreeCAD
+without these calls runs the job as before. One that refuses them
+runs it too, and the Report view says the run may not be one undo
+step.
+
+What the code changes after either of two things, in the same job,
+is not undoable: turning a document's `UndoMode` off, which stops
+that document recording undo; and calling
+`App.closeActiveTransaction` before anything has changed, which
+ends the job's transaction without FreeCAD calling
+`slotCloseTransaction`, so the observer opens no other. Creating,
+opening or closing a document, and saving one, are not undone.
+
 A plain-language walkthrough of execution — the life of a job from submission through
 page history retention — is in [job-lifecycle.md](job-lifecycle.md).
 

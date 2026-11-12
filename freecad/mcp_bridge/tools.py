@@ -16,7 +16,11 @@ EXECUTE_PYTHON = {
         "waits up to the response timeout for their answer. If "
         "the answer has not come by then, the call returns a "
         "job_token, and get_output_page returns the output once "
-        "they answer, or the decline as an error."
+        "they answer, or the decline as an error. "
+        "Each call is one step in FreeCAD's Edit → Undo, named "
+        "\"MCP Bridge: run\". Code that opens its own transactions "
+        "splits the call into a chain of named steps, so leave "
+        "transactions alone."
     ),
     "inputSchema": {
         "type": "object",
@@ -47,7 +51,11 @@ EXECUTE_PYTHON_FILE = {
         "waits up to the response timeout for their answer. If "
         "the answer has not come by then, the call returns a "
         "job_token, and get_output_page returns the output once "
-        "they answer, or the decline as an error."
+        "they answer, or the decline as an error. "
+        "Each call is one step in FreeCAD's Edit → Undo, named "
+        "\"MCP Bridge: run\". Code that opens its own transactions "
+        "splits the call into a chain of named steps, so leave "
+        "transactions alone."
     ),
     "inputSchema": {
         "type": "object",
