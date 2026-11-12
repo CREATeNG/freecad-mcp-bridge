@@ -81,6 +81,10 @@ The server is off until you toggle it on, each session — click the button agai
      HTTPS and checks that the bridge's certificate matches that
      copy's SHA-256 fingerprint before sending the request.
 
+   Reinstalling the extension clears **Bearer token**. After you
+   paste or change the token, quit Claude Desktop fully and start it
+   again: the extension reads the token only when it starts.
+
 Claude Desktop can't open an HTTP endpoint the way Claude Code and
 others can, so the extension runs a small stdio↔HTTP/HTTPS relay (the
 shim in [`mcp-stdio-shim/`](mcp-stdio-shim/)). On this machine the

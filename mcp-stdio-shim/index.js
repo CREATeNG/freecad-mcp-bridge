@@ -80,11 +80,11 @@ const PASTED_TOKEN = envSetting("FREECAD_MCP_TOKEN");
 const TOKEN_DIR_NAME = ".freecad-mcp-bridge";
 const SERVING_CERT_NAME = "serving-cert.pem";
 const NO_TOKEN_MESSAGE =
-  "Make a bearer token in the MCP Bridge addon in FreeCAD: Edit → Preferences → MCP Bridge → Generate new token, or Set token if you already have a bearer token to use. Paste that same token into the Bearer token field of the MCP Bridge for FreeCAD extension in Claude Desktop: Settings → Desktop App → Extensions → Manage → MCP Bridge for FreeCAD → Configure → Bearer token.";
+  "Make a bearer token in the MCP Bridge addon in FreeCAD: Edit → Preferences → MCP Bridge → Generate new token, or Set token if you already have a bearer token to use. Paste that same token into the Bearer token field of the MCP Bridge for FreeCAD extension in Claude Desktop: Settings → Desktop App → Extensions → Manage → MCP Bridge for FreeCAD → Configure → Bearer token. Then quit Claude Desktop fully and start it again: the extension reads the token only when it starts.";
 const INVALID_TOKEN_MESSAGE =
-  "The token in Bearer token is not a valid bearer token. Only letters, digits and - . _ ~ + / are allowed, with = at the end. Paste the token again, or make a new one with Generate new token in FreeCAD's MCP Bridge preferences and paste that into Bearer token.";
+  "The token in Bearer token is not a valid bearer token. Only letters, digits and - . _ ~ + / are allowed, with = at the end. Paste the token again, or make a new one with Generate new token in FreeCAD's MCP Bridge preferences and paste that into Bearer token. Then quit Claude Desktop fully and start it again: the extension reads the token only when it starts.";
 const REFUSED_TOKEN_MESSAGE =
-  "FreeCAD refused the token in Bearer token. Make a new one with Generate new token in FreeCAD's MCP Bridge preferences, and paste it into Bearer token.";
+  "FreeCAD refused the token in Bearer token. Make a new one with Generate new token in FreeCAD's MCP Bridge preferences, and paste it into Bearer token. Then quit Claude Desktop fully and start it again: the extension reads the token only when it starts.";
 const BEARER_TOKEN = /^[A-Za-z0-9._~+/-]+={0,}$/;
 
 function pastedTokenProblem() {

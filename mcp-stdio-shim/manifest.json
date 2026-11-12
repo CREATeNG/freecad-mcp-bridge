@@ -51,7 +51,7 @@
     "port": {
       "type": "number",
       "title": "MCP Bridge port",
-      "description": "Requires the MCP Bridge addon installed and switched on in FreeCAD. Must match the port of the entry you connect to in FreeCAD's Edit → Preferences → MCP Bridge → Listen addresses. Extension 0.1.27.",
+      "description": "Requires the MCP Bridge addon installed and switched on in FreeCAD. Must match the port of the entry you connect to in FreeCAD's Edit → Preferences → MCP Bridge → Listen addresses.",
       "default": 39280,
       "required": false
     },
@@ -59,7 +59,7 @@
       "type": "string",
       "sensitive": true,
       "title": "Bearer token",
-      "description": "Required. Paste the token FreeCAD showed. The extension uses only this setting, on this machine and for another host, and writes nothing. A bearer token uses letters, digits and - . _ ~ + /, with = at the end.",
+      "description": "Required: the bearer token configured in the MCP Bridge addon in FreeCAD. After changing the token, quit Claude Desktop fully and start it again: the extension reads the token only when it starts. The extension uses only this setting, on this machine and for another host, and writes nothing. A bearer token uses letters, digits and - . _ ~ + /, with = at the end.",
       "required": false
     },
     "tls_cert_file": {

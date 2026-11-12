@@ -499,7 +499,9 @@ test("manifest.json declares optional FreeCAD host, port, sensitive bearer token
   assert.equal(cfg.token.sensitive, true);
   assert.equal(cfg.token.required, false);
   assert.equal(cfg.token.title, "Bearer token");
-  assert.match(cfg.token.description, /Paste the token FreeCAD showed/);
+  assert.match(cfg.token.description, /^Required: the bearer token configured in the MCP Bridge addon in FreeCAD\. /);
+  assert.doesNotMatch(cfg.token.description, /Paste the token FreeCAD showed/);
+  assert.match(cfg.token.description, /After changing the token, quit Claude Desktop fully and start it again: the extension reads the token only when it starts\./);
   assert.match(cfg.token.description, /uses only this setting/);
   assert.match(cfg.token.description, /on this machine and for another host/);
   assert.match(cfg.token.description, /writes nothing/);
@@ -537,11 +539,11 @@ function pastedText(result) {
 const TOKEN_OK = "0123456789abcdef0123456789abcdef";
 const TOKEN_NEW = "fedcba9876543210fedcba9876543210";
 const NO_TOKEN_MESSAGE =
-  "Make a bearer token in the MCP Bridge addon in FreeCAD: Edit → Preferences → MCP Bridge → Generate new token, or Set token if you already have a bearer token to use. Paste that same token into the Bearer token field of the MCP Bridge for FreeCAD extension in Claude Desktop: Settings → Desktop App → Extensions → Manage → MCP Bridge for FreeCAD → Configure → Bearer token.";
+  "Make a bearer token in the MCP Bridge addon in FreeCAD: Edit → Preferences → MCP Bridge → Generate new token, or Set token if you already have a bearer token to use. Paste that same token into the Bearer token field of the MCP Bridge for FreeCAD extension in Claude Desktop: Settings → Desktop App → Extensions → Manage → MCP Bridge for FreeCAD → Configure → Bearer token. Then quit Claude Desktop fully and start it again: the extension reads the token only when it starts.";
 const INVALID_TOKEN_MESSAGE =
-  "The token in Bearer token is not a valid bearer token. Only letters, digits and - . _ ~ + / are allowed, with = at the end. Paste the token again, or make a new one with Generate new token in FreeCAD's MCP Bridge preferences and paste that into Bearer token.";
+  "The token in Bearer token is not a valid bearer token. Only letters, digits and - . _ ~ + / are allowed, with = at the end. Paste the token again, or make a new one with Generate new token in FreeCAD's MCP Bridge preferences and paste that into Bearer token. Then quit Claude Desktop fully and start it again: the extension reads the token only when it starts.";
 const REFUSED_TOKEN_MESSAGE =
-  "FreeCAD refused the token in Bearer token. Make a new one with Generate new token in FreeCAD's MCP Bridge preferences, and paste it into Bearer token.";
+  "FreeCAD refused the token in Bearer token. Make a new one with Generate new token in FreeCAD's MCP Bridge preferences, and paste it into Bearer token. Then quit Claude Desktop fully and start it again: the extension reads the token only when it starts.";
 
 test("with no token in Bearer token, a tool call says to paste the token FreeCAD showed or generate a new one", async () => {
   const bridge = await startBridge(echo);
@@ -1388,7 +1390,7 @@ test("for another machine, a tools/call without a certificate or without a paste
     assert.equal(noTokenCall.result.isError, true);
     assert.equal(
       JSON.parse(noTokenCall.result.content[0].text).error,
-      "Make a bearer token in the MCP Bridge addon in FreeCAD: Edit → Preferences → MCP Bridge → Generate new token, or Set token if you already have a bearer token to use. Paste that same token into the Bearer token field of the MCP Bridge for FreeCAD extension in Claude Desktop: Settings → Desktop App → Extensions → Manage → MCP Bridge for FreeCAD → Configure → Bearer token."
+      "Make a bearer token in the MCP Bridge addon in FreeCAD: Edit → Preferences → MCP Bridge → Generate new token, or Set token if you already have a bearer token to use. Paste that same token into the Bearer token field of the MCP Bridge for FreeCAD extension in Claude Desktop: Settings → Desktop App → Extensions → Manage → MCP Bridge for FreeCAD → Configure → Bearer token. Then quit Claude Desktop fully and start it again: the extension reads the token only when it starts."
     );
     assert.equal(bridge.requests.length, 0);
     await noToken.stop();
@@ -1502,7 +1504,7 @@ test("for another machine, a mismatched certificate, a missing or invalid certif
     const authError = JSON.parse(authReply.result.content[0].text).error;
     assert.equal(
       authError,
-      "FreeCAD refused the token in Bearer token. Make a new one with Generate new token in FreeCAD's MCP Bridge preferences, and paste it into Bearer token."
+      "FreeCAD refused the token in Bearer token. Make a new one with Generate new token in FreeCAD's MCP Bridge preferences, and paste it into Bearer token. Then quit Claude Desktop fully and start it again: the extension reads the token only when it starts."
     );
   } finally {
     for (const s of shims) await s.stop();
