@@ -66,12 +66,14 @@ The server is off until you toggle it on, each session — click the button agai
      folder, which the bridge writes at each start with TLS and
      removes at each start without. With that file the extension
      uses HTTPS and checks that the certificate the bridge
-     presents has the same SHA-256 fingerprint before sending the
-     request. Without it, it uses HTTP. Leave **TLS certificate
-     file (PEM)** empty, unless the bridge's copy isn't where the
-     extension looks: when that setting is set, the extension
-     uses HTTPS with that file in place of `serving-cert.pem`,
-     and never HTTP.
+     presents has the same SHA-256 fingerprint as that file
+     before sending the request. Without it, it uses HTTP. Leave
+     **TLS certificate file (PEM)** empty, unless a tool call says
+     the bridge serves HTTPS and the extension found no
+     `serving-cert.pem`: then set it to a copy of FreeCAD's
+     certificate file, not the private key. When that setting is
+     set, the extension uses HTTPS with that file in place of
+     `serving-cert.pem`, and never HTTP.
    - **For another host:** Paste the token FreeCAD showed into
      **Bearer token**. The extension writes nothing. Set **TLS
      certificate file (PEM)** to a copy of FreeCAD's certificate

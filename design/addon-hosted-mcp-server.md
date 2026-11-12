@@ -728,7 +728,10 @@ unchecked self-signed certificate does not count;", Python's `ssl`
 module and Node's `node:tls` do the encrypting and the TLS
 handshake, Node's `node:crypto` reads the certificate from the
 trusted file and computes both fingerprints, and the compare of the
-two fingerprints is the shim's own code.
+two fingerprints is the shim's own code. So on every address beyond
+loopback, where the rule applies, the traffic is encrypted by those
+maintained libraries rather than the addon's own code, and the
+client verifies the server with a pinned certificate.
 
 Notifications (no `id`)
 get no reply and are not sent on. The shim answers `initialize`
