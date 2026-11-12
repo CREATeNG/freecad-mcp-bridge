@@ -84,7 +84,8 @@ The server is off until you toggle it on, each session — click the button agai
    Reinstalling the extension clears the **Bearer token** setting,
    so paste the token again. After you paste or change the token,
    quit Claude Desktop fully and start it again: the extension reads
-   the token only when it starts.
+   the token only when it starts. Closing its window can leave Claude
+   Desktop running in the tray, so quit it from the tray icon's menu.
 
 Claude Desktop can't open an HTTP endpoint the way Claude Code and
 others can, so the extension runs a small stdio↔HTTP/HTTPS relay (the
