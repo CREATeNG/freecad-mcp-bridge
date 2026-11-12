@@ -359,19 +359,27 @@ def _invalid_request():
     )
 
 
-def _non_loopback_warning(
-    entries: list[str],
-    non_loopback: list[str],
-) -> str:
+def _listening_line(entries: list[str], tls_on: bool) -> str:
+    """The Report view line at every start, true of that start."""
     endpoints = ", ".join(entries)
-    non_loopback_endpoints = ", ".join(non_loopback)
-    who = "Any client with the bearer token"
+    how = "over HTTPS, with TLS" if tls_on else "over HTTP, without TLS"
     return (
-        f"{LOG_PREFIX} WARNING: listening on {endpoints}. TLS is "
-        "required beyond loopback, and the bearer token everywhere. "
-        f"{who} that can reach these addresses can run Python code "
-        "in FreeCAD as your user account: "
-        f"{non_loopback_endpoints}.\n"
+        f"{LOG_PREFIX} Listening on {endpoints} {how}. Every call "
+        "needs the bearer token.\n"
+    )
+
+
+def _beyond_loopback_line(non_loopback: list[str]) -> str:
+    """The Report view line naming the listeners beyond loopback.
+
+    It is a notice and not a warning: the user accepted each of
+    these addresses in a dialog before its first start.
+    """
+    endpoints = ", ".join(non_loopback)
+    return (
+        f"{LOG_PREFIX} {endpoints} can be reached from your network. "
+        "Any client with the bearer token that connects there can run "
+        "Python code in FreeCAD as your user account.\n"
     )
 
 
@@ -560,9 +568,12 @@ class HttpServer:
         FreeCAD.Console.PrintMessage(
             f"{LOG_PREFIX} HTTP server listening on {endpoints_with_path}\n"
         )
+        FreeCAD.Console.PrintMessage(
+            _listening_line(entries, ssl_context is not None)
+        )
         if non_loopback:
-            FreeCAD.Console.PrintWarning(
-                _non_loopback_warning(entries, non_loopback)
+            FreeCAD.Console.PrintMessage(
+                _beyond_loopback_line(non_loopback)
             )
 
     def stop(self) -> None:

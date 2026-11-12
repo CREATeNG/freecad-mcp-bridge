@@ -1647,6 +1647,15 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 srv.start()
                 self.assertEqual(bound, [("127.0.0.1", 39280)])
                 self.assertEqual(warnings, [])
+                self.assertEqual(
+                    messages[-1],
+                    "[MCP Bridge] Listening on 127.0.0.1:39280 over "
+                    "HTTP, without TLS. Every call needs the bearer "
+                    "token.\n",
+                )
+                self.assertFalse(
+                    any("can be reached" in line for line in messages)
+                )
                 self.assertTrue(srv._servers[0][0].require_token)
                 self.assertEqual(
                     srv._servers[0][0].bound_host, "127.0.0.1"
@@ -1739,16 +1748,22 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                     serving_cert.read_text(encoding="utf-8"),
                     "CUSTOM-CERT-PEM\n",
                 )
-                self.assertEqual(len(warnings), 1)
+                # The start is two ordinary Report view lines, and
+                # no warning: where it listens, with TLS, and the
+                # listener beyond loopback alone.
+                self.assertEqual(warnings, [])
                 self.assertEqual(
-                    warnings[-1],
-                    "[MCP Bridge] WARNING: listening on 127.0.0.1:39280, "
-                    "192.168.1.50:39281, [::1]:39282. TLS is required "
-                    "beyond loopback, and the bearer token everywhere. "
-                    "Any client with the "
-                    "bearer token that can reach these addresses can run "
-                    "Python code in FreeCAD as your user account: "
-                    "192.168.1.50:39281.\n",
+                    messages[-2:],
+                    [
+                        "[MCP Bridge] Listening on 127.0.0.1:39280, "
+                        "192.168.1.50:39281, [::1]:39282 over HTTPS, "
+                        "with TLS. Every call needs the bearer "
+                        "token.\n",
+                        "[MCP Bridge] 192.168.1.50:39281 can be reached "
+                        "from your network. Any client with the bearer "
+                        "token that connects there can run Python code "
+                        "in FreeCAD as your user account.\n",
+                    ],
                 )
                 srv.stop()
                 # Stopping leaves serving-cert.pem in place until a start
@@ -1791,6 +1806,12 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 )
                 self.assertTrue(serving_cert.exists())
                 self.assertEqual(warnings, [])
+                self.assertEqual(
+                    messages[-1],
+                    "[MCP Bridge] Listening on 127.0.0.1:39280 over "
+                    "HTTPS, with TLS. Every call needs the bearer "
+                    "token.\n",
+                )
                 srv.stop()
 
                 bound.clear()
@@ -1829,7 +1850,19 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 store["ListenAddress"] = "192.168.1.50:39280"
                 srv.start()
                 self.assertEqual(bound, [("192.168.1.50", 39280)])
-                self.assertEqual(len(warnings), 1)
+                self.assertEqual(warnings, [])
+                self.assertEqual(
+                    messages[-2:],
+                    [
+                        "[MCP Bridge] Listening on 192.168.1.50:39280 "
+                        "over HTTPS, with TLS. Every call needs the "
+                        "bearer token.\n",
+                        "[MCP Bridge] 192.168.1.50:39280 can be reached "
+                        "from your network. Any client with the bearer "
+                        "token that connects there can run Python code "
+                        "in FreeCAD as your user account.\n",
+                    ],
+                )
                 srv.stop()
 
                 # 4. Entry without port: raises ValueError before binding.

@@ -856,16 +856,19 @@ class ListenAddressTests(unittest.TestCase):
             "code with your full permissions; beyond loopback: "
             f"{address}:{PORT})"
         )
-        expected_warning = (
-            f"[MCP Bridge] WARNING: listening on 127.0.0.1:{PORT}, "
-            f"{address}:{PORT}. TLS is required beyond loopback, and "
-            "the bearer token everywhere. Any client with the "
-            "bearer token that can reach these addresses can run "
-            "Python code in FreeCAD as your user account: "
-            f"{address}:{PORT}."
+        expected_listening = (
+            f"[MCP Bridge] Listening on 127.0.0.1:{PORT}, "
+            f"{address}:{PORT} over HTTPS, with TLS. Every call needs "
+            "the bearer token."
+        )
+        expected_beyond = (
+            f"[MCP Bridge] {address}:{PORT} can be reached from your "
+            "network. Any client with the bearer token that connects "
+            "there can run Python code in FreeCAD as your user account."
         )
         self.assertEqual(seen.get("accepted_status"), expected_status)
-        self.assertIn(expected_warning, seen.get("accepted_report", ""))
+        self.assertIn(expected_listening, seen.get("accepted_report", ""))
+        self.assertIn(expected_beyond, seen.get("accepted_report", ""))
 
         self.assertFalse(seen.get("second_start_dialog_found"))
         self.assertTrue(seen.get("second_running"))
@@ -1332,16 +1335,19 @@ class ListenAddressTests(unittest.TestCase):
             "code with your full permissions; beyond loopback: "
             f"{address}:{PORT})"
         )
-        expected_warning = (
-            f"[MCP Bridge] WARNING: listening on 127.0.0.1:{PORT}, "
-            f"{address}:{PORT}. TLS is required beyond loopback, and "
-            "the bearer token everywhere. Any client with the bearer "
-            "token that can reach "
-            "these addresses can run Python code in FreeCAD as your user "
-            f"account: {address}:{PORT}."
+        expected_listening = (
+            f"[MCP Bridge] Listening on 127.0.0.1:{PORT}, "
+            f"{address}:{PORT} over HTTPS, with TLS. Every call needs "
+            "the bearer token."
+        )
+        expected_beyond = (
+            f"[MCP Bridge] {address}:{PORT} can be reached from your "
+            "network. Any client with the bearer token that connects "
+            "there can run Python code in FreeCAD as your user account."
         )
         self.assertEqual(seen.get("started_status"), expected_status)
-        self.assertIn(expected_warning, seen.get("started_report", ""))
+        self.assertIn(expected_listening, seen.get("started_report", ""))
+        self.assertIn(expected_beyond, seen.get("started_report", ""))
 
         # 6. The old Apply-to-loopback preference does not make loopback
         # need a certificate. The start stays HTTP, shows no risk dialog
