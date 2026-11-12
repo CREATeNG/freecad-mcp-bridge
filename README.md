@@ -67,7 +67,11 @@ The server is off until you toggle it on, each session — click the button agai
      removes at each start without. With that file the extension
      uses HTTPS and checks that the certificate the bridge
      presents has the same SHA-256 fingerprint before sending the
-     request. Without it, it uses HTTP.
+     request. Without it, it uses HTTP. Leave **TLS certificate
+     file (PEM)** empty, unless the bridge's copy isn't where the
+     extension looks: when that setting is set, the extension
+     uses HTTPS with that file in place of `serving-cert.pem`,
+     and never HTTP.
    - **For another host:** Paste the token FreeCAD showed into
      **Bearer token**. The extension writes nothing. Set **TLS
      certificate file (PEM)** to a copy of FreeCAD's certificate
@@ -82,8 +86,10 @@ extension forwards to `http://<HOST>:<PORT>/mcp` unless
 `serving-cert.pem` is in the bridge's folder, in which case it
 forwards to `https://<HOST>:<PORT>/mcp` and pins that file's
 certificate by its SHA-256 fingerprint. `localhost` is taken as
-`127.0.0.1`. The certificate setting is ignored on this machine.
-For another host it forwards to `https://<HOST>:<PORT>/mcp`.
+`127.0.0.1`. When **TLS certificate file (PEM)** is set, on this
+machine too, it forwards to `https://<HOST>:<PORT>/mcp` and pins
+that file's certificate, and never uses HTTP. For another host it
+forwards to `https://<HOST>:<PORT>/mcp`.
 
 Alternatively, stdio clients can run the shim directly with node, instead of installing the bundle.
 

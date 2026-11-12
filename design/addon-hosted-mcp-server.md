@@ -678,17 +678,22 @@ and `::1` are treated as loopback), the port from `FREECAD_MCP_PORT`
 `tools/call` sends `Authorization: Bearer` with
 `FREECAD_MCP_TOKEN` only. The shim reads no token file and writes
 nothing. With no token set, or with a paste that is not a bearer
-token, the tool result says so and the call is not sent. On
-this machine, when `serving-cert.pem` is in `FREECAD_MCP_TOKEN_DIR`
-or `<home>/.freecad-mcp-bridge`, the shim connects over HTTPS and
-pins that file's certificate by its SHA-256 fingerprint. When the
-file is absent it connects over HTTP, whatever
-`FREECAD_MCP_TLS_CERT_FILE` is set to. `FREECAD_MCP_TLS_CERT_FILE`
-is for another host only. When `FREECAD_MCP_HOST` names an address
-or hostname beyond loopback, the shim connects to
+token, the tool result says so and the call is not sent.
+`FREECAD_MCP_TLS_CERT_FILE` is honoured on every host: when it is
+set, the shim connects over HTTPS, pins that file's certificate by
+its SHA-256 fingerprint (not the system's certificate authorities),
+and never falls back to HTTP, so the token is not sent in the clear
+when the user has named a certificate. On this machine it wins over
+`serving-cert.pem`. When it is empty on this machine and
+`serving-cert.pem` is in `FREECAD_MCP_TOKEN_DIR` or
+`<home>/.freecad-mcp-bridge`, the shim connects over HTTPS and pins
+that file's certificate the same way, and when that file is absent
+it connects over HTTP. When `FREECAD_MCP_HOST` names an address or
+hostname beyond loopback, the shim connects to
 `https://<host>:<port>/mcp`, requires `FREECAD_MCP_TLS_CERT_FILE`,
-pins that certificate by its SHA-256 fingerprint (not the system's
-certificate authorities), and sends the pasted token.
+and sends the pasted token. A failure's message names the file in
+use: the setting when it is set, and `serving-cert.pem` when the
+bridge's copy is in use.
 
 Over HTTPS, on this machine and for another host, the shim reads
 the trusted file (`serving-cert.pem` or `FREECAD_MCP_TLS_CERT_FILE`)

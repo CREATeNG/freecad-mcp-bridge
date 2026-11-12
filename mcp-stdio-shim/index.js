@@ -9,15 +9,16 @@
  * 127.x.x.x and ::1 are treated as this machine). The bearer token
  * comes only from FREECAD_MCP_TOKEN, on this machine and for another
  * host. The shim reads no token file and writes nothing. When
+ * FREECAD_MCP_TLS_CERT_FILE is set, on any host, it connects over
+ * HTTPS and pins that file's certificate by its SHA-256 fingerprint,
+ * and never falls back to HTTP. With it empty on this machine, when
  * serving-cert.pem is in FREECAD_MCP_TOKEN_DIR, or
  * <home>/.freecad-mcp-bridge otherwise, it connects over HTTPS and
- * pins that file's certificate by its SHA-256 fingerprint. When the
- * file is absent it connects over HTTP. FREECAD_MCP_TLS_CERT_FILE is
- * ignored on this machine. For another host, the shim connects to
- * https://<host>:<port>/mcp, requires FREECAD_MCP_TLS_CERT_FILE,
- * pins that certificate by its SHA-256 fingerprint, and uses the
- * same pasted token. The JSON reply is unwrapped and written back on
- * stdout.
+ * pins that file's certificate the same way, and when the file is
+ * absent it connects over HTTP. For another host, the shim connects
+ * to https://<host>:<port>/mcp, requires FREECAD_MCP_TLS_CERT_FILE,
+ * and uses the same pasted token. The JSON reply is unwrapped and
+ * written back on stdout.
  *
  * The shim answers initialize and tools/list itself (tools.json is a
  * copy of the addon's tool list) and does not contact the bridge for
@@ -98,9 +99,10 @@ function servingCertPath() {
   return path.join(tokenDir(), SERVING_CERT_NAME);
 }
 
-// On this machine HTTPS follows the bridge's copy, looked up per
-// call so a later start is picked up. The extension's certificate
-// setting is for another host only.
+const TLS_CERT_FILE = envSetting("FREECAD_MCP_TLS_CERT_FILE");
+
+// With the certificate setting empty, on this machine HTTPS follows
+// the bridge's copy, looked up per call so a later start is picked up.
 function localServingCert() {
   if (!IS_DEFAULT_HOST) return "";
   const file = servingCertPath();
@@ -112,14 +114,21 @@ function localServingCert() {
   return "";
 }
 
+// The certificate file a call pins. The extension's certificate
+// setting wins on every host: with it set the call is HTTPS, and
+// there is no plain HTTP. With it empty, this machine uses the
+// bridge's copy when it is there, and another host has no file.
+function certFileInUse() {
+  if (TLS_CERT_FILE) return TLS_CERT_FILE;
+  return localServingCert();
+}
+
 function bridgeEndpoint() {
-  const https = !IS_DEFAULT_HOST || localServingCert() !== "";
+  const https = !IS_DEFAULT_HOST || certFileInUse() !== "";
   const scheme = https ? "https" : "http";
   return `${scheme}://${URL_HOST}:${PORT}/mcp`;
 }
 
-
-const TLS_CERT_FILE = envSetting("FREECAD_MCP_TLS_CERT_FILE");
 const HTTPS_ENDPOINT = `https://${URL_HOST}:${PORT}/mcp`;
 const PLAIN_HTTP_TO_HTTPS_MESSAGE =
   `MCP Bridge serves HTTPS at ${HTTPS_ENDPOINT}, and this connection was plain HTTP. ` +
@@ -183,10 +192,13 @@ function portServesHttps(port) {
   });
 }
 
+// A failure names the file in use: the certificate setting's wording
+// when the setting is set, on this machine too, and serving-cert.pem's
+// when the bridge's copy is in use.
 function certFileErrorMessage(err, certFile) {
   const endpoint = bridgeEndpoint();
   if (err && err.certFileProblem === "invalid") {
-    if (IS_DEFAULT_HOST) {
+    if (!TLS_CERT_FILE) {
       return (
         `serving-cert.pem at ${certFile} for ${endpoint} is not a PEM certificate. ` +
         "Turn the bridge off and on again in FreeCAD, so it rewrites serving-cert.pem in the bridge's folder."
@@ -198,7 +210,7 @@ function certFileErrorMessage(err, certFile) {
     );
   }
   const detail = fetchErrorMessage(err);
-  if (IS_DEFAULT_HOST) {
+  if (!TLS_CERT_FILE) {
     return (
       `Could not read serving-cert.pem at ${certFile} for ${endpoint} (${detail}). ` +
       "Turn the bridge off and on again in FreeCAD, so it writes that file, and check that it is readable by you."
@@ -212,7 +224,7 @@ function certFileErrorMessage(err, certFile) {
 
 function certMismatchMessage(certFile) {
   const endpoint = bridgeEndpoint();
-  if (IS_DEFAULT_HOST) {
+  if (!TLS_CERT_FILE) {
     return (
       `MCP Bridge TLS connection failed at ${endpoint}: the bridge's certificate does not match serving-cert.pem at ${certFile}. ` +
       "Turn the bridge off and on again in FreeCAD, so it rewrites serving-cert.pem in the bridge's folder, then try again."
@@ -227,7 +239,7 @@ function certMismatchMessage(certFile) {
 function tlsErrorMessage(err) {
   const detail = fetchErrorMessage(err);
   const where = `MCP Bridge TLS connection failed at ${bridgeEndpoint()} (${detail}). `;
-  if (IS_DEFAULT_HOST) {
+  if (!TLS_CERT_FILE) {
     return (
       where +
       "Turn the bridge off and on again in FreeCAD, so it rewrites serving-cert.pem in the bridge's folder, then try again."
@@ -532,7 +544,7 @@ async function forward(rawLine, message) {
   }
   activeToken = PASTED_TOKEN;
 
-  const certFile = IS_DEFAULT_HOST ? localServingCert() : TLS_CERT_FILE;
+  const certFile = certFileInUse();
   let res;
   try {
     res = await postBridge(message, rawLine, certFile);

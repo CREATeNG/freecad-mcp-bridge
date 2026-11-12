@@ -65,7 +65,7 @@
     "tls_cert_file": {
       "type": "file",
       "title": "TLS certificate file (PEM)",
-      "description": "Used for another host only, where it is required. Set this to a copy of FreeCAD's certificate file, not the private key, so the extension connects over HTTPS and trusts only that certificate. On this machine the extension reads serving-cert.pem in the bridge's folder, and uses HTTPS only when that file is present.",
+      "description": "Leave this empty on this machine: the extension then reads serving-cert.pem in the bridge's folder, and uses HTTPS only when that file is present. Set it for another host, where it is required, or when the bridge's copy isn't where the extension looks. Set it to a copy of FreeCAD's certificate file, not the private key. When it is set, the extension connects over HTTPS and trusts only that certificate.",
       "required": false
     }
   }
