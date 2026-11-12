@@ -3765,17 +3765,83 @@ class SetTokenDialogTests(unittest.TestCase):
 
     def test_copy_token_copies_and_leaves_the_dialog_open(self):
         """Copy token puts the token on the clipboard. Close ends it."""
+        seen = self._run_token_dialog(disconnects=True)
+        self.assertEqual(seen["copied"], ["f" * 32])
+        # The dialog is run once: Copy token no longer closes it.
+        self.assertEqual(len(seen["clicks"]), 1)
+        self.assertEqual(seen["closed_by_copy"], 0)
+        self.assertEqual(seen["signal_calls"], ["disconnect", "connect"])
+        self.assertEqual(
+            seen["labels"], ["Copy token", "Copied", "Copy token"]
+        )
+        self.assertEqual(seen["shown_ms"], [1500])
+
+    def test_copy_token_still_copies_where_the_button_cannot_be_freed(self):
+        """Where Copy token still closes the box, the box opens again."""
+        seen = self._run_token_dialog(disconnects=False)
+        self.assertEqual(seen["copied"], ["f" * 32])
+        self.assertEqual(seen["closed_by_copy"], 1)
+        self.assertEqual(len(seen["clicks"]), 2)
+
+    def _run_token_dialog(self, disconnects):
+        """Show the token dialog to a stand-in user: Copy token, then
+        Close. Return what the user and the clipboard saw."""
         init_gui = _fresh_init_gui()
         copied = []
         clicks = []
+        timers = []
+        seen = {
+            "copied": copied,
+            "clicks": clicks,
+            "closed_by_copy": 0,
+            "labels": [],
+            "shown_ms": [],
+        }
+        closes_the_box = object()
+
+        class Signal:
+            def __init__(self):
+                self.slots = [closes_the_box]
+                self.calls = []
+
+            def disconnect(self):
+                if not disconnects:
+                    raise RuntimeError("Failed to disconnect signal")
+                self.calls.append("disconnect")
+                self.slots.clear()
+
+            def connect(self, slot):
+                self.calls.append("connect")
+                self.slots.append(slot)
 
         class Button:
             def __init__(self, label):
                 self.label = label
+                self.clicked = Signal()
+
+            def setText(self, label):
+                self.label = label
+
+            def width(self):
+                return 80
+
+            def setMinimumWidth(self, _width):
+                pass
+
+            def click(self):
+                """True when the click closed the box."""
+                closed = False
+                for slot in list(self.clicked.slots):
+                    if slot is closes_the_box:
+                        closed = True
+                    else:
+                        slot()
+                return closed
 
         class Box:
             def __init__(self, *_args, **_kwargs):
                 self.buttons = []
+                self.clicked_button = None
 
             def setObjectName(self, _name):
                 pass
@@ -3796,12 +3862,24 @@ class SetTokenDialogTests(unittest.TestCase):
 
             def exec(self):
                 clicks.append("exec")
+                copy_btn, close_btn = self.buttons
+                if len(clicks) == 1:
+                    seen["signal_calls"] = copy_btn.clicked.calls
+                    seen["labels"].append(copy_btn.label)
+                    self.clicked_button = copy_btn
+                    if copy_btn.click():
+                        seen["closed_by_copy"] += 1
+                        return 1
+                    seen["labels"].append(copy_btn.label)
+                    for delay, call in timers:
+                        seen["shown_ms"].append(delay)
+                        call()
+                    seen["labels"].append(copy_btn.label)
+                self.clicked_button = close_btn
                 return 1
 
             def clickedButton(self):
-                if len(clicks) == 1:
-                    return self.buttons[0]
-                return self.buttons[1]
+                return self.clicked_button
 
             def setParent(self, _parent):
                 pass
@@ -3834,6 +3912,9 @@ class SetTokenDialogTests(unittest.TestCase):
         gui_mod.QGuiApplication = QGuiApplication
         core = types.ModuleType("PySide.QtCore")
         core.Qt = types.SimpleNamespace(TextSelectableByMouse=1)
+        core.QTimer = types.SimpleNamespace(
+            singleShot=lambda delay, call: timers.append((delay, call))
+        )
         fc_gui = types.ModuleType("FreeCADGui")
         fc_gui.getMainWindow = lambda: None
         with mock.patch.dict(
@@ -3847,8 +3928,7 @@ class SetTokenDialogTests(unittest.TestCase):
             },
         ):
             init_gui._show_generated_token("f" * 32)
-        self.assertEqual(copied, ["f" * 32])
-        self.assertEqual(len(clicks), 2)
+        return seen
 
 
 if __name__ == "__main__":

@@ -79,6 +79,9 @@ def _confirm_non_loopback_risk(entries):
         box.deleteLater()
 
 
+_COPIED_SHOWN_MS = 1500
+
+
 def _token_dialog_text(token):
     """Return (title, text) for the one-time bearer token dialog."""
     title = f"{DISPLAY_NAME}: Bearer token"
@@ -101,9 +104,13 @@ def _token_dialog_text(token):
 
 
 def _show_generated_token(token, parent=None):
-    """Display `token` once, with Copy token and Close."""
+    """Display `token` once, with Copy token and Close.
+
+    Copy token copies and leaves the dialog open, and reads "Copied"
+    for a moment. Close and Escape end it.
+    """
     import FreeCADGui as Gui
-    from PySide.QtCore import Qt
+    from PySide.QtCore import Qt, QTimer
     from PySide.QtGui import QGuiApplication
     from PySide.QtWidgets import QDialog, QMessageBox
 
@@ -123,13 +130,40 @@ def _show_generated_token(token, parent=None):
     close_btn = box.addButton("Close", QMessageBox.AcceptRole)
     box.setDefaultButton(close_btn)
     box.setEscapeButton(close_btn)
+    copies = []
+
+    def show_copy_token(count):
+        if count != len(copies):
+            return
+        try:
+            copy_btn.setText("Copy token")
+        except RuntimeError:
+            pass
+
+    def copy_token(*_args):
+        clipboard = QGuiApplication.clipboard()
+        if clipboard is not None:
+            clipboard.setText(token)
+        copies.append(None)
+        count = len(copies)
+        copy_btn.setMinimumWidth(copy_btn.width())
+        copy_btn.setText("Copied")
+        QTimer.singleShot(
+            _COPIED_SHOWN_MS, lambda: show_copy_token(count)
+        )
+
+    # A message box closes on a click of any of its buttons. Copy token
+    # is taken off that, so it copies and the dialog stays open.
+    stays_open = True
+    try:
+        copy_btn.clicked.disconnect()
+    except (RuntimeError, TypeError):
+        stays_open = False
+    copy_btn.clicked.connect(copy_token)
     try:
         while True:
             box.exec()
-            if box.clickedButton() is copy_btn:
-                clipboard = QGuiApplication.clipboard()
-                if clipboard is not None:
-                    clipboard.setText(token)
+            if not stays_open and box.clickedButton() is copy_btn:
                 continue
             break
     finally:
