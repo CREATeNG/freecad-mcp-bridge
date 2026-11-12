@@ -2,64 +2,68 @@
 
 **What's new since 0.1.27**
 
-- **FreeCAD shows an agent's code before it runs:** in the new
-  default mode, **Ask**, `execute_python` and `execute_python_file`
-  bring up a dialog with the code, and for a file its path, with
-  **Run**, **Don't run** (the default) and **Unrestricted!**. The
-  **Unrestricted** mode runs code unseen, and asks "Are you really
-  sure?" first. The On/Off button on the status bar shows the mode,
-  and its menu switches it.
+### The MCP Bridge addon
+
+- **FreeCAD shows an agent's code before it runs:** in the new default
+  mode, **Ask**, `execute_python` and `execute_python_file` bring up a
+  dialog with the code, and for a file its path, with **Run**, **Don't
+  run** (the default) and **Unrestricted!**. The **Unrestricted** mode
+  runs code unseen, and asks "Are you really sure?" first. The On/Off
+  button on the status bar shows the mode, and its menu switches it.
 - **One undo step per run:** each run of `execute_python` or
   `execute_python_file` is one step in **Edit → Undo**, named "MCP
-  Bridge: run", across every document it changes. A run that fails
-  keeps what ran. Code that opens its own transactions makes the run
-  a chain of named steps. What the code changes after either of two
-  things, in the same run, can't be undone: turning a document's undo
-  off, or closing FreeCAD's active transaction before the run has
-  changed anything. Opening, closing and saving documents aren't
-  undone.
+  Bridge: run", across every document it changes. A run that fails keeps
+  what ran. Code that opens its own transactions makes the run a chain
+  of named steps. What the code changes after either of two things, in
+  the same run, can't be undone: turning a document's undo off, or
+  closing FreeCAD's active transaction before the run has changed
+  anything. Opening, closing and saving documents aren't undone.
 - **The bearer token on every listener:** every listener, loopback
-  included, now requires the token, and **Require bearer token** and
-  **Apply to loopback** are gone. FreeCAD still keeps only its SHA-256
-  hash. **Generate new token** shows a new token once, with **Copy
-  token**, and **Set token** takes one made elsewhere. Paste it into
-  the Claude Desktop extension's **Bearer token** setting, then quit
-  Claude Desktop fully and start it again.
+  included, requires the token. FreeCAD keeps only its SHA-256 hash.
+  **Generate new token** shows a new token once, with **Copy token**,
+  and **Set token** takes one made elsewhere.
 - **One list of listen addresses:** **Listen addresses** is now a list
-  you edit with **+**, **-** and **Edit**, on one **MCP Bridge**
-  Preferences page. A row can be an adapter, which follows that
-  adapter's address, a fixed address, or a host name. Wildcard
-  addresses such as `0.0.0.0` are refused. The first start asks you to
-  accept that connected agents can run code with your full
+  you edit with **+**, **-** and **Edit**. A row can be an adapter,
+  which follows that adapter's address, a fixed address, or a host name.
+  Wildcard addresses such as `0.0.0.0` are refused. The first start asks
+  you to accept that connected agents can run code with your full
   permissions, and a later new address beyond this machine asks once.
-- **HTTPS on every listener:** with a certificate and private key set,
-  every listener serves HTTPS, loopback included, and **Require TLS
-  (HTTPS)** is gone. A listener beyond this machine needs them.
-  **Generate self-signed certificate** makes both with a tool already
-  on the machine: openssl, Git for Windows' openssl, or Windows
-  PowerShell.
-- **The extension checks the certificate:** over HTTPS, the Claude
-  Desktop extension sends nothing until the bridge's certificate
-  matches its copy by SHA-256 fingerprint. With **TLS certificate
-  file (PEM)** set, it uses that file on every host, this machine
-  included. With that setting empty on this machine, the extension
-  uses the copy the bridge writes in the bridge's folder, and HTTP
-  when there is none. With a new **FreeCAD host** setting, the
-  extension reaches FreeCAD on another machine, over HTTPS only.
+- **HTTPS:** set a certificate and private key, and the bridge serves
+  HTTPS on every address it listens on, loopback included. Without them
+  it serves HTTP on this machine only, and won't start while an address
+  beyond it is listed. **Generate self-signed certificate** makes both
+  with a tool the machine already has: openssl, Git for Windows' openssl
+  or Windows PowerShell.
 - **Browsers refused:** the bridge refuses a request that carries an
-  `Origin` header. It accepts a `Host` that names the listener's
-  address (on loopback, also `127.0.0.1`, `localhost` and `[::1]`), a
-  host name in **Listen addresses**, or, beyond this machine, a name
-  the certificate covers, and refuses any other.
+  `Origin` header. It accepts a `Host` that names the listener's address
+  (on loopback, also `127.0.0.1`, `localhost` and `[::1]`), a host name
+  in **Listen addresses**, or, beyond this machine, a name the
+  certificate covers, and refuses any other.
 - **Start lines:** each start writes one line in the **Report view**
   saying where the bridge listens, with a notice for addresses beyond
   this machine. The status bar shows, at every start, that connected
-  agents can run code with your full permissions. The extension logs
-  where it calls when it starts.
-- **New name in Claude Desktop:** the extension is now **MCP Bridge
-  for FreeCAD**.
+  agents can run code with your full permissions.
 
-Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini (Google) and Codex (OpenAI), with Cursor among their tools.
+### The Claude Desktop extension
+
+- **New name:** the extension is now **MCP Bridge for FreeCAD**.
+- **The bearer token:** paste the bridge's token, from **Generate new
+  token** or one you set with **Set token**, into the extension's
+  **Bearer token** setting, then quit Claude Desktop fully and start it
+  again: the extension reads the token only when it starts.
+- **The certificate check:** over HTTPS, the extension sends nothing
+  until the bridge's certificate matches its copy by SHA-256
+  fingerprint. With **TLS certificate file (PEM)** set, it uses that
+  file on every host, this machine included. With that setting empty on
+  this machine, the extension uses the copy the bridge writes in the
+  bridge's folder, and HTTP when there is none. With a new **FreeCAD
+  host** setting, the extension reaches FreeCAD on another machine, over
+  HTTPS only.
+- **Start line:** when it starts, the extension logs the address it
+  calls, the certificate file it pins, and whether a bearer token was
+  given, never the token.
+
+Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini (Google) and Codex (OpenAI).
 
 ## 0.1.27
 
