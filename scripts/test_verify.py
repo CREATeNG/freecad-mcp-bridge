@@ -450,7 +450,7 @@ def _answer_unrestricted_dialog(label: str) -> None:
 
 def _verify_mode_on_status_button() -> None:
     """The On/Off button carries the permission mode: its menu switches
-    it, its width keeps, and Unrestricted keeps the button in sight."""
+    it, its width keeps, and Show alone decides whether it is there."""
     import FreeCAD as App
 
     from freecad.mcp_bridge import config
@@ -489,24 +489,38 @@ def _verify_mode_on_status_button() -> None:
                 "in Unrestricted)"
             )
 
-        # Unrestricted stays shown on the status bar.
+        # Show alone decides, in either mode.
         params.SetBool("ShowStatusButton", False)
         try:
-            if _status_button() is None:
+            if _status_button() is not None:
                 common.fail(
-                    "Status-bar button was hidden while Unrestricted"
+                    "Status-bar button remained present in Unrestricted "
+                    "with ShowStatusButton=False"
                 )
-            # Ask is at once, and the preference applies again.
-            _status_button()._permissions_menu.actions()[0].trigger()
-            if config.unrestricted():
-                common.fail("Choosing Ask did not switch the mode at once")
+            config.set_unrestricted(False)
             if _status_button() is not None:
                 common.fail(
                     "Status-bar button remained present in Ask with "
                     "ShowStatusButton=False"
                 )
+            config.set_unrestricted(True)
+            if _status_button() is not None:
+                common.fail(
+                    "Status-bar button came back on switching to "
+                    "Unrestricted with ShowStatusButton=False"
+                )
         finally:
             params.RemBool("ShowStatusButton")
+        # With Show back on, the button is there in Unrestricted, and
+        # Ask from its menu is at once.
+        if _status_button() is None:
+            common.fail(
+                "Status-bar button did not come back with "
+                "ShowStatusButton=True"
+            )
+        _status_button()._permissions_menu.actions()[0].trigger()
+        if config.unrestricted():
+            common.fail("Choosing Ask did not switch the mode at once")
     finally:
         config.set_unrestricted(False)
     _assert_status_button(False)

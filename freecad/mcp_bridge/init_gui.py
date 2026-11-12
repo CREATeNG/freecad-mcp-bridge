@@ -1209,9 +1209,7 @@ def _ensure_status_button(mw):
 
     bar = mw.statusBar()
     button = bar.findChild(QToolButton, STATUS_BUTTON_OBJECT_NAME)
-    if not file_prompt.status_button_shown(
-        config.show_status_button(), config.unrestricted()
-    ):
+    if not config.show_status_button():
         if button is not None:
             bar.removeWidget(button)
             button.setParent(None)
