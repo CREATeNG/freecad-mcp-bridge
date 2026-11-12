@@ -38,19 +38,19 @@
   **Generate self-signed certificate** makes both with a tool already
   on the machine: openssl, Git for Windows' openssl, or Windows
   PowerShell.
-- **The extension checks the certificate:** the Claude Desktop
-  extension sends nothing until the bridge's certificate matches its
-  copy by SHA-256 fingerprint. With **TLS certificate file (PEM)**
-  set, it uses that file on every host, this machine included. With
-  it empty on this machine, it uses the copy the bridge writes in the
-  bridge's folder, and HTTP when there is none. With a new **FreeCAD
-  host** setting, the extension reaches FreeCAD on another machine,
-  over HTTPS only.
+- **The extension checks the certificate:** over HTTPS, the Claude
+  Desktop extension sends nothing until the bridge's certificate
+  matches its copy by SHA-256 fingerprint. With **TLS certificate
+  file (PEM)** set, it uses that file on every host, this machine
+  included. With that setting empty on this machine, the extension
+  uses the copy the bridge writes in the bridge's folder, and HTTP
+  when there is none. With a new **FreeCAD host** setting, the
+  extension reaches FreeCAD on another machine, over HTTPS only.
 - **Browsers refused:** the bridge refuses a request that carries an
   `Origin` header. It accepts a `Host` that names the listener's
-  address (on loopback, also `localhost`), a host name in **Listen
-  addresses**, or, beyond this machine, a name the certificate covers,
-  and refuses any other.
+  address (on loopback, also `127.0.0.1`, `localhost` and `[::1]`), a
+  host name in **Listen addresses**, or, beyond this machine, a name
+  the certificate covers, and refuses any other.
 - **Start lines:** each start writes one line in the **Report view**
   saying where the bridge listens, with a notice for addresses beyond
   this machine. The status bar shows, at every start, that connected
