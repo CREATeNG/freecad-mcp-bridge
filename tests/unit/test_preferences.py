@@ -31,7 +31,6 @@ from freecad.mcp_bridge.file_prompt import (
     MENU_PREFERENCES,
     MENU_UNRESTRICTED,
     MODE_TOOLTIP,
-    status_button_shown,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -2723,18 +2722,250 @@ class PermissionModeTests(unittest.TestCase):
         self.assertIn("button._permissions_menu = permissions", menu_src)
         self.assertIn("button._menu = menu", menu_src)
 
-    def test_unrestricted_shows_the_button_whatever_the_preference(self):
-        """Show the On/Off button hides the button only in Ask mode, so
-        Unrestricted stays shown on the status bar."""
-        self.assertIs(status_button_shown(True, False), True)
-        self.assertIs(status_button_shown(False, False), False)
-        self.assertIs(status_button_shown(False, True), True)
-        self.assertIs(status_button_shown(True, True), True)
+
+
+class StatusBarStandIn:
+    """FreeCAD's main window and status bar, with the On/Off button on
+    it or not, and stand-ins for the Qt and FreeCAD modules the button's
+    code imports. A new button being built fails the test at once, so
+    any path that re-adds the button shows up."""
+
+    def __init__(self, button_present):
+        from freecad.mcp_bridge.constants import (
+            STATUS_BUTTON_OBJECT_NAME,
+            STATUS_BUTTON_RIGHT,
+        )
+
+        stand_in = self
+        self.removed = []
+
+        class Button:
+            def __init__(self):
+                self.props = {"mcp_position": STATUS_BUTTON_RIGHT}
+
+            def property(self, name):
+                return self.props.get(name)
+
+            def setParent(self, _parent):
+                pass
+
+            def deleteLater(self):
+                pass
+
+            def setText(self, _text):
+                pass
+
+            def setToolTip(self, _tip):
+                pass
+
+            def setIcon(self, _icon):
+                pass
+
+            def setStyleSheet(self, _sheet):
+                pass
+
+        class NewButton:
+            def __init__(self, *_args):
+                raise AssertionError("the On/Off button was added again")
+
+        class Bar:
+            def findChild(self, _kind, name):
+                assert name == STATUS_BUTTON_OBJECT_NAME
+                return stand_in.button
+
+            def removeWidget(self, widget):
+                stand_in.removed.append(widget)
+                stand_in.button = None
+
+        bar = Bar()
+        self.button = Button() if button_present else None
+        self.first_button = self.button
+        main_window = types.SimpleNamespace(statusBar=lambda: bar)
+        qtcore = types.ModuleType("PySide.QtCore")
+        qtcore.QEvent = types.SimpleNamespace(PaletteChange=0, StyleChange=1)
+        qtcore.QObject = type("QObject", (), {})
+        qtcore.Qt = types.SimpleNamespace(ToolButtonTextBesideIcon=0)
+        qtcore.QTimer = types.SimpleNamespace(singleShot=lambda *_: None)
+        qtgui = types.ModuleType("PySide.QtGui")
+        qtgui.QIcon = lambda *_args: None
+        qtgui.QPalette = types.SimpleNamespace(Window=0)
+        qtwidgets = types.ModuleType("PySide.QtWidgets")
+        qtwidgets.QToolButton = NewButton
+        qtwidgets.QMenu = NewButton
+        pyside = types.ModuleType("PySide")
+        pyside.QtCore = qtcore
+        pyside.QtGui = qtgui
+        pyside.QtWidgets = qtwidgets
+        self.modules = {
+            "FreeCAD": types.SimpleNamespace(
+                MCPBridgeCommand=COMMAND_ID,
+                Console=types.SimpleNamespace(
+                    PrintWarning=lambda *_: None,
+                    PrintDeveloperError=lambda *_: None,
+                ),
+            ),
+            "FreeCADGui": types.SimpleNamespace(
+                getMainWindow=lambda: main_window,
+                Command=types.SimpleNamespace(get=lambda _name: None),
+            ),
+            "PySide": pyside,
+            "PySide.QtCore": qtcore,
+            "PySide.QtGui": qtgui,
+            "PySide.QtWidgets": qtwidgets,
+        }
+
+
+class StatusButtonShowTests(unittest.TestCase):
+    """Show, under MCP Bridge status bar widget, alone decides whether
+    the On/Off button is on the status bar, in Ask and in Unrestricted.
+    Every path that places the button goes through _ensure_status_button:
+    show_toggle_state, inject_ui, the saved-preference observer, a mode
+    chosen in the button's menu, in Preferences or in the code dialog,
+    a theme change, and the bridge's start and stop messages."""
+
+    def _run(self, show, unrestricted, button_present, action):
+        """Run `action(init_gui, file_prompt, mode)` against a stand-in
+        status bar. `mode` holds the permission mode, as a one-item
+        list the patched config reads and writes."""
+        from freecad.mcp_bridge import file_prompt
+
+        init_gui = _fresh_init_gui()
+        stand_in = StatusBarStandIn(button_present)
+        mode = [unrestricted]
+        with (
+            mock.patch.dict(
+                sys.modules,
+                {
+                    **stand_in.modules,
+                    "freecad.mcp_bridge.init_gui": init_gui,
+                },
+            ),
+            mock.patch.object(
+                init_gui,
+                "bridge",
+                types.SimpleNamespace(is_running=lambda: False),
+            ),
+            mock.patch(
+                "freecad.mcp_bridge.config.show_status_button",
+                return_value=show,
+            ),
+            mock.patch(
+                "freecad.mcp_bridge.config.status_button_position",
+                return_value=0,
+            ),
+            mock.patch(
+                "freecad.mcp_bridge.config.unrestricted",
+                side_effect=lambda: mode[0],
+            ),
+            mock.patch(
+                "freecad.mcp_bridge.config.set_unrestricted",
+                side_effect=lambda enabled: mode.__setitem__(0, enabled),
+            ),
+            mock.patch.object(init_gui, "_sync_open_mode_box"),
+            mock.patch(
+                "freecad.mcp_bridge.file_prompt._ask_unrestricted",
+                return_value="Yes",
+            ),
+            mock.patch("freecad.mcp_bridge.resources.mode_icon_path"),
+        ):
+            result = action(init_gui, file_prompt, mode)
+        return stand_in, mode, result
+
+    def test_show_alone_decides_whether_the_button_is_there_in_either_mode(
+        self,
+    ):
+        """Show ticked keeps the On/Off button on the status bar, and
+        Show unticked takes it off, in Ask and in Unrestricted alike."""
+
+        def ensure(init_gui, _file_prompt, _mode):
+            return init_gui._ensure_status_button(
+                sys.modules["FreeCADGui"].getMainWindow()
+            )
+
+        for unrestricted in (False, True):
+            with self.subTest(unrestricted=unrestricted, show=True):
+                bar, _, button = self._run(True, unrestricted, True, ensure)
+                self.assertIs(button, bar.first_button)
+                self.assertEqual(bar.removed, [])
+            with self.subTest(unrestricted=unrestricted, show=False):
+                bar, _, button = self._run(False, unrestricted, True, ensure)
+                self.assertIsNone(button)
+                self.assertEqual(bar.removed, [bar.first_button])
+            with self.subTest(unrestricted=unrestricted, refresh=True):
+                bar, _, _ = self._run(
+                    False,
+                    unrestricted,
+                    True,
+                    lambda init_gui, *_: init_gui.show_toggle_state(),
+                )
+                self.assertEqual(bar.removed, [bar.first_button])
         self.assertEqual(
             page_settings()["ShowStatusButton"]["toolTip"],
-            "Display toggle button in the status bar. Always shown "
-            "in Unrestricted mode.",
+            "Display toggle button in the status bar.",
         )
+
+    def test_unrestricted_from_the_buttons_menu_leaves_a_hidden_button_hidden(
+        self,
+    ):
+        """With Show unticked, choosing Unrestricted in the On/Off
+        button's menu switches the mode and adds no button."""
+        bar, mode, _ = self._run(
+            False,
+            False,
+            False,
+            lambda init_gui, *_: init_gui._on_mode_menu(True),
+        )
+        self.assertIs(mode[0], True)
+        self.assertIsNone(bar.button)
+
+    def test_unrestricted_from_preferences_leaves_a_hidden_button_hidden(self):
+        """With Show unticked, choosing Unrestricted in Preferences
+        switches the mode and adds no button."""
+        bar, mode, _ = self._run(
+            False,
+            False,
+            False,
+            lambda init_gui, *_: init_gui._apply_mode_choice(True, None),
+        )
+        self.assertIs(mode[0], True)
+        self.assertIsNone(bar.button)
+
+    def test_unrestricted_from_the_code_dialog_leaves_a_hidden_button_hidden(
+        self,
+    ):
+        """With Show unticked, Unrestricted! in the dialog that shows an
+        agent's code switches the mode and adds no button."""
+
+        def go_unrestricted(_init_gui, file_prompt, _mode):
+            with mock.patch.object(
+                file_prompt, "_ask_run", return_value="Unrestricted!"
+            ):
+                with mock.patch.object(
+                    file_prompt,
+                    "decide",
+                    side_effect=lambda ask, unrestricted, go_unrestricted: (
+                        go_unrestricted()
+                    ),
+                ):
+                    file_prompt.confirm(None, "print(1)")
+
+        bar, mode, _ = self._run(False, False, False, go_unrestricted)
+        self.assertIs(mode[0], True)
+        self.assertIsNone(bar.button)
+
+    def test_a_saved_mode_change_leaves_a_hidden_button_hidden(self):
+        """With Show unticked, FreeCAD saving PermissionMode as
+        Unrestricted, which calls the bridge's preference observer, adds
+        no button."""
+        bar, _, _ = self._run(
+            False,
+            True,
+            False,
+            lambda init_gui, *_: init_gui._StatusBarPrefObserver().onChange(
+                None, "PermissionMode"
+            ),
+        )
+        self.assertIsNone(bar.button)
 
 
 class TlsCertificateTests(unittest.TestCase):

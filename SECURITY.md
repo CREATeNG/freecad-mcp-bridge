@@ -53,10 +53,8 @@ that code runs unseen, stays off until you confirm a second dialog.
 The On/Off button on the status bar shows the mode: a shield with a
 tick for Ask, or a warning triangle for Unrestricted. Its menu
 switches modes the same way as **Permission mode** under
-**Execution permission** in **Edit → Preferences → MCP Bridge**.
-While the mode is Unrestricted, the button is shown whatever
-**Show** under **MCP Bridge status bar widget** says. A request
-that carries an `Origin` header is refused, as is a `Host`
+**Execution permission** in **Edit → Preferences → MCP Bridge**. A
+request that carries an `Origin` header is refused, as is a `Host`
 header that, port aside, names neither the address that listener
 is bound to, nor a name its certificate covers, nor a name in
 **Host names**. A loopback listener accepts the address it is

@@ -249,11 +249,8 @@ change a model — for example:
   code before it runs. **Unrestricted** runs it unseen, with your
   full permissions. [What the AI can do](#what-the-ai-can-do) has
   the rest.
-- **Show** — under **MCP Bridge status bar widget**, shows or
-  hides the bridge's On/Off button on FreeCAD's status bar (on
-  by default). While the
-  permission mode is Unrestricted, the button is shown whatever this
-  says, so Unrestricted stays shown on the status bar. The
+- **Show** — under **MCP Bridge status bar widget**, shows or hides the
+  bridge's On/Off button on FreeCAD's status bar (on by default). The
   **MCP Bridge** toolbar button stays either way.
 - **Position** — where the On/Off button sits among the right-hand
   status-bar items: right of FreeCAD's items (default) or left.

@@ -62,9 +62,7 @@ it. Choosing a mode there switches the same way as the
 **Permission mode** preference under **Execution permission**: a
 confirmation to go Unrestricted, and back to Ask at once. A click
 on the button, its icon or its words, turns the bridge on or off.
-It does nothing else. While the mode is Unrestricted, the button
-is shown whatever **Show** under **MCP Bridge status bar widget**
-says.
+It does nothing else.
 
 **Result shape**
 

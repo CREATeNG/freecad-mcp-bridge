@@ -40,15 +40,6 @@ MODE_BODY = (
 )
 
 
-def status_button_shown(show_preference: bool, unrestricted: bool) -> bool:
-    """Whether the On/Off button is on the status bar.
-
-    The button carries the mode's icon, so Unrestricted shows it
-    whatever the Show the On/Off button preference says.
-    """
-    return bool(show_preference) or bool(unrestricted)
-
-
 def mode_icon(unrestricted: bool):
     """The mode's icon: the shield with a tick, or the warning triangle."""
     from PySide.QtGui import QIcon
