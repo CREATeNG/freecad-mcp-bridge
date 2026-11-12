@@ -693,7 +693,13 @@ hostname beyond loopback, the shim connects to
 `https://<host>:<port>/mcp`, requires `FREECAD_MCP_TLS_CERT_FILE`,
 and sends the pasted token. A failure's message names the file in
 use: the setting when it is set, and `serving-cert.pem` when the
-bridge's copy is in use.
+bridge's copy is in use. At start the shim writes one line to its
+stderr, which Claude Desktop keeps as the extension's log: the
+endpoint, the certificate file it pins, and whether it was given a
+bearer token, never the token. With the setting empty on this
+machine the line says the choice is made at each call and what it
+is now, and one more line is written whenever a call's choice
+differs from the last call's.
 
 Over HTTPS, on this machine and for another host, the shim reads
 the trusted file (`serving-cert.pem` or `FREECAD_MCP_TLS_CERT_FILE`)

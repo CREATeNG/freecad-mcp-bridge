@@ -104,6 +104,11 @@ function startShim(port, extraEnv = {}, options = {}) {
   const lines = [];
   let partial = "";
   let waiter = null;
+  let stderrText = "";
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (chunk) => {
+    stderrText += chunk;
+  });
   child.stdout.setEncoding("utf8");
   child.stdout.on("data", (chunk) => {
     partial += chunk;
@@ -118,6 +123,17 @@ function startShim(port, extraEnv = {}, options = {}) {
     tokenDir,
     tokenFile,
     send: (text) => child.stdin.write(text),
+    stderr: () => stderrText,
+    // Resolve with stderr once it holds `count` lines, or fail after a timeout.
+    async waitForStderrLines(count, ms = 10000) {
+      const deadline = Date.now() + ms;
+      for (;;) {
+        const got = stderrText.split("\n").filter((line) => line !== "");
+        if (got.length >= count) return got;
+        if (Date.now() > deadline) throw new Error(`timed out; stderr: ${stderrText}`);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+    },
     // Resolve once `count` lines have arrived, or fail after a timeout.
     waitForLines(count, ms = 10000) {
       return new Promise((resolve, reject) => {
@@ -689,18 +705,33 @@ async function startPlainPort(host = "127.0.0.1") {
 
 test("on this machine, with the certificate setting set and no serving-cert.pem, a port serving plain HTTP fails and nothing, the token included, is sent", async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shim-loopback-cert-set-"));
+  const plains = [];
+  const shims = [];
   try {
     const serverCert = makeSelfSignedCert(tmpDir, "server", "127.0.0.1");
-    const plain = await startPlainPort();
-    for (const host of ["127.0.0.1", "localhost", "127.0.0.2"]) {
-      const shim = startShim(
-        plain.port,
-        {
-          FREECAD_MCP_HOST: host === "127.0.0.2" ? "127.0.0.1" : host,
-          FREECAD_MCP_TOKEN: TOKEN_OK,
-          FREECAD_MCP_TLS_CERT_FILE: serverCert.certPath,
-        }
-      );
+    // Each host is dialled at its own address: 127.0.0.2 gets a port
+    // bound on 127.0.0.2, where the system lets it be bound.
+    const cases = [
+      { host: "127.0.0.1", bind: "127.0.0.1", url: "127\\.0\\.0\\.1" },
+      { host: "localhost", bind: "127.0.0.1", url: "127\\.0\\.0\\.1" },
+      { host: "127.0.0.2", bind: "127.0.0.2", url: "127\\.0\\.0\\.2" },
+      { host: "::1", bind: "::1", url: "\\[::1\\]" },
+    ];
+    let dialled = 0;
+    for (const { host, bind, url } of cases) {
+      let plain = null;
+      try {
+        plain = await startPlainPort(bind);
+      } catch {
+        continue; // this system has no such loopback address to bind
+      }
+      plains.push(plain);
+      const shim = startShim(plain.port, {
+        FREECAD_MCP_HOST: host,
+        FREECAD_MCP_TOKEN: TOKEN_OK,
+        FREECAD_MCP_TLS_CERT_FILE: serverCert.certPath,
+      });
+      shims.push(shim);
       assert.equal(
         fs.existsSync(path.join(shim.tokenDir, "serving-cert.pem")),
         false
@@ -712,27 +743,31 @@ test("on this machine, with the certificate setting set and no serving-cert.pem,
       assert.match(
         error,
         new RegExp(
-          `^MCP Bridge TLS connection failed at https://127\\.0\\.0\\.1:${plain.port}/mcp \\(.+\\)\\. ` +
+          `^MCP Bridge TLS connection failed at https://${url}:${plain.port}/mcp \\(.+\\)\\. ` +
             "Check that FreeCAD is serving HTTPS at that address and that TLS certificate file \\(PEM\\) in the MCP Bridge for FreeCAD extension settings is a copy of FreeCAD's certificate file, not the private key\\.$"
         )
       );
       assert.doesNotMatch(error, /serving-cert\.pem/);
-      await shim.stop();
+      // The port was sent a TLS hello, and no HTTP request.
+      const received = plain.received();
+      assert.notEqual(received.length, 0);
+      assert.equal(received.includes(TOKEN_OK), false);
+      assert.equal(received.includes("POST"), false);
+      assert.equal(received.includes("Authorization"), false);
+      dialled += 1;
     }
-    // The port was sent a TLS hello each time, and no HTTP request.
-    const received = plain.received();
-    assert.notEqual(received.length, 0);
-    assert.equal(received.includes(TOKEN_OK), false);
-    assert.equal(received.includes("POST"), false);
-    assert.equal(received.includes("Authorization"), false);
+    // 127.0.0.1, localhost and ::1 always run; 127.0.0.2 where it binds.
+    assert.ok(dialled >= 3);
 
     // A certificate file that is not there is an error, not plain HTTP.
+    const plain = plains[0];
     const before = plain.received().length;
     const missingPath = path.join(tmpDir, "does-not-exist.pem");
     const missingCertShim = startShim(
       plain.port,
       { FREECAD_MCP_TOKEN: TOKEN_OK, FREECAD_MCP_TLS_CERT_FILE: missingPath }
     );
+    shims.push(missingCertShim);
     missingCertShim.send(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/call" }) + "\n");
     const [missingReply] = await missingCertShim.waitForLines(1);
     assert.equal(missingReply.result.isError, true);
@@ -745,29 +780,158 @@ test("on this machine, with the certificate setting set and no serving-cert.pem,
       )
     );
     assert.equal(plain.received().length, before);
-    await missingCertShim.stop();
-    plain.close();
-
-    const plainV6 = await startPlainPort("::1");
-    const shimV6 = startShim(
-      plainV6.port,
-      {
-        FREECAD_MCP_HOST: "::1",
-        FREECAD_MCP_TOKEN: TOKEN_OK,
-        FREECAD_MCP_TLS_CERT_FILE: serverCert.certPath,
-      }
-    );
-    shimV6.send(JSON.stringify({ jsonrpc: "2.0", id: 3, method: "tools/call" }) + "\n");
-    const [replyV6] = await shimV6.waitForLines(1);
-    assert.equal(replyV6.result.isError, true);
-    assert.match(
-      JSON.parse(replyV6.result.content[0].text).error,
-      new RegExp(`^MCP Bridge TLS connection failed at https://\\[::1\\]:${plainV6.port}/mcp `)
-    );
-    assert.equal(plainV6.received().includes(TOKEN_OK), false);
-    await shimV6.stop();
-    plainV6.close();
   } finally {
+    for (const s of shims) await s.stop();
+    for (const p of plains) p.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("a certificate file whose path contains the word redirect still gets the certificate file's message", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shim-redirect-path-"));
+  const plain = await startPlainPort();
+  let shim = null;
+  try {
+    const missingPath = path.join(tmpDir, "redirect", "does-not-exist.pem");
+    shim = startShim(plain.port, {
+      FREECAD_MCP_TOKEN: TOKEN_OK,
+      FREECAD_MCP_TLS_CERT_FILE: missingPath,
+    });
+    shim.send(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call" }) + "\n");
+    const [reply] = await shim.waitForLines(1);
+    assert.equal(reply.result.isError, true);
+    assert.match(
+      JSON.parse(reply.result.content[0].text).error,
+      /^Could not read TLS certificate file \(PEM\) at .+redirect.+ \(.*ENOENT.*\)\. /
+    );
+    assert.equal(plain.received().length, 0);
+  } finally {
+    if (shim) await shim.stop();
+    plain.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+// A token with no run of six characters likely to occur elsewhere in a
+// log line, so a leak of any part of it is caught.
+const LOG_TOKEN = "Zq9XwK7vTt3LmPn8RsYbHc2JdFgQe5Ua";
+
+function assertNoPartOfToken(text, token) {
+  for (let i = 0; i + 6 <= token.length; i++) {
+    const part = token.slice(i, i + 6);
+    assert.equal(text.includes(part), false, `stderr holds "${part}" from the token`);
+  }
+}
+
+const TOKEN_GIVEN = "A bearer token was given.";
+const TOKEN_MISSING =
+  "No bearer token was given, so each tool call returns the message saying where to paste it.";
+const TOKEN_INVALID =
+  "The bearer token given is not a valid bearer token, so each tool call returns the message saying so.";
+
+test("at start the extension logs, on stderr, the endpoint, the certificate file it pins, and whether it was given a token, never any part of the token", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shim-start-log-"));
+  const shims = [];
+  try {
+    const serverCert = makeSelfSignedCert(tmpDir, "server", "127.0.0.1");
+    const port = await closedPort();
+
+    // The setting set, on this machine: that file, the whole story.
+    const set = startShim(port, {
+      FREECAD_MCP_TOKEN: LOG_TOKEN,
+      FREECAD_MCP_TLS_CERT_FILE: serverCert.certPath,
+    });
+    shims.push(set);
+    assert.deepEqual(await set.waitForStderrLines(1), [
+      `[freecad-mcp-bridge shim] Calls https://127.0.0.1:${port}/mcp, pinning TLS certificate file (PEM) at ${serverCert.certPath}. ${TOKEN_GIVEN}`,
+    ]);
+
+    // The setting empty, for another host: the error it will give.
+    const remote = startShim(port, {
+      FREECAD_MCP_HOST: "freecad.lan",
+      FREECAD_MCP_TOKEN: LOG_TOKEN,
+    });
+    shims.push(remote);
+    assert.deepEqual(await remote.waitForStderrLines(1), [
+      `[freecad-mcp-bridge shim] Calls https://freecad.lan:${port}/mcp. TLS certificate file (PEM) is empty, and another host requires it, so each tool call returns that error. ${TOKEN_GIVEN}`,
+    ]);
+
+    // The setting empty, on this machine: chosen at each call.
+    const local = startShim(port, { FREECAD_MCP_TOKEN: "" });
+    shims.push(local);
+    const servingCert = path.join(local.tokenDir, "serving-cert.pem");
+    assert.deepEqual(await local.waitForStderrLines(1), [
+      `[freecad-mcp-bridge shim] Calls FreeCAD on this machine, choosing at each tool call: https://127.0.0.1:${port}/mcp, pinning serving-cert.pem at ${servingCert}, while that file is there, ` +
+        `and plain HTTP to http://127.0.0.1:${port}/mcp while it is not. Now: plain HTTP. ${TOKEN_MISSING}`,
+    ]);
+
+    // A token that is not a bearer token is named as such, and not shown.
+    const badToken = `${LOG_TOKEN.slice(0, 16)} ${LOG_TOKEN.slice(16)}`;
+    const bad = startShim(port, {
+      FREECAD_MCP_TOKEN: badToken,
+      FREECAD_MCP_TLS_CERT_FILE: serverCert.certPath,
+    });
+    shims.push(bad);
+    const [badLine] = await bad.waitForStderrLines(1);
+    assert.ok(badLine.endsWith(` ${TOKEN_INVALID}`), badLine);
+
+    for (const shim of shims) assertNoPartOfToken(shim.stderr(), LOG_TOKEN);
+  } finally {
+    for (const s of shims) await s.stop();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("with the setting empty on this machine, the extension logs a line when serving-cert.pem appears and when it goes, and none while the choice holds", async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "shim-choice-log-"));
+  let shim = null;
+  try {
+    const serverCert = makeSelfSignedCert(tmpDir, "server", "127.0.0.1");
+    const port = await closedPort();
+    shim = startShim(port, { FREECAD_MCP_TOKEN: LOG_TOKEN });
+    const servingCert = path.join(shim.tokenDir, "serving-cert.pem");
+    const call = async (id) => {
+      shim.send(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id,
+          method: "tools/call",
+          params: { name: "execute_python", arguments: { code: "print(1)" } },
+        }) + "\n"
+      );
+      await shim.waitForLines(id);
+    };
+    assert.equal((await shim.waitForStderrLines(1)).length, 1);
+
+    // No file at start, none at the first call: no further line.
+    await call(1);
+    await delay(100);
+    assert.equal((await shim.waitForStderrLines(1)).length, 1);
+
+    // The file appears: one line, and none at the next call.
+    fs.copyFileSync(serverCert.certPath, servingCert);
+    await call(2);
+    let lines = await shim.waitForStderrLines(2);
+    assert.equal(
+      lines[1],
+      `[freecad-mcp-bridge shim] serving-cert.pem is now at ${servingCert}: tool calls go to https://127.0.0.1:${port}/mcp, pinning it.`
+    );
+    await call(3);
+    await delay(100);
+    assert.equal((await shim.waitForStderrLines(2)).length, 2);
+
+    // The file goes: one more line.
+    fs.rmSync(servingCert);
+    await call(4);
+    lines = await shim.waitForStderrLines(3);
+    assert.equal(
+      lines[2],
+      `[freecad-mcp-bridge shim] serving-cert.pem is no longer at ${servingCert}: tool calls go over plain HTTP to http://127.0.0.1:${port}/mcp.`
+    );
+    assert.equal(lines.length, 3);
+    assertNoPartOfToken(shim.stderr(), LOG_TOKEN);
+  } finally {
+    if (shim) await shim.stop();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });

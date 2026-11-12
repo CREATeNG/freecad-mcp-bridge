@@ -31,7 +31,11 @@
  * serving-cert.pem, returning 401, or failing TLS, the tool result's
  * error says which. A ping is answered locally with an empty result.
  * A notification is not sent and gets no reply. Any other method gets
- * a method-not-found error naming the method. Node stdlib only
+ * a method-not-found error naming the method. At start one line on
+ * stderr names the endpoint, the certificate file pinned, and whether
+ * a bearer token was given, never the token. With the setting empty
+ * on this machine, a further line follows whenever a call's choice
+ * of certificate differs from the last call's. Node stdlib only
  * (global fetch, node:crypto, node:https and node:tls, >=18).
  */
 
@@ -130,6 +134,58 @@ function bridgeEndpoint() {
 }
 
 const HTTPS_ENDPOINT = `https://${URL_HOST}:${PORT}/mcp`;
+const HTTP_ENDPOINT = `http://${URL_HOST}:${PORT}/mcp`;
+const LOG_PREFIX = "[freecad-mcp-bridge shim]";
+
+// The extension's log is its stderr, which Claude Desktop keeps.
+function logLine(text) {
+  process.stderr.write(`${LOG_PREFIX} ${text}\n`);
+}
+
+// Whether a bearer token was given. Never the token, nor any part of it.
+function tokenLogText() {
+  if (!PASTED_TOKEN) {
+    return "No bearer token was given, so each tool call returns the message saying where to paste it.";
+  }
+  if (!BEARER_TOKEN.test(PASTED_TOKEN)) {
+    return "The bearer token given is not a valid bearer token, so each tool call returns the message saying so.";
+  }
+  return "A bearer token was given.";
+}
+
+// With the setting empty on this machine, the certificate is chosen at
+// each call. This is the last call's choice: the bridge's copy, or "".
+let lastLocalChoice = "";
+
+function choosesPerCall() {
+  return IS_DEFAULT_HOST && !TLS_CERT_FILE;
+}
+
+function startLogLine() {
+  if (TLS_CERT_FILE) {
+    return `Calls ${HTTPS_ENDPOINT}, pinning TLS certificate file (PEM) at ${TLS_CERT_FILE}. ${tokenLogText()}`;
+  }
+  if (!IS_DEFAULT_HOST) {
+    return `Calls ${HTTPS_ENDPOINT}. TLS certificate file (PEM) is empty, and another host requires it, so each tool call returns that error. ${tokenLogText()}`;
+  }
+  lastLocalChoice = localServingCert();
+  const now = lastLocalChoice ? "HTTPS" : "plain HTTP";
+  return (
+    `Calls FreeCAD on this machine, choosing at each tool call: ${HTTPS_ENDPOINT}, pinning serving-cert.pem at ${servingCertPath()}, while that file is there, ` +
+    `and plain HTTP to ${HTTP_ENDPOINT} while it is not. Now: ${now}. ${tokenLogText()}`
+  );
+}
+
+// One more line when a call's choice differs from the last call's.
+function noteLocalChoice(certFile) {
+  if (!choosesPerCall() || certFile === lastLocalChoice) return;
+  lastLocalChoice = certFile;
+  if (certFile) {
+    logLine(`serving-cert.pem is now at ${certFile}: tool calls go to ${HTTPS_ENDPOINT}, pinning it.`);
+  } else {
+    logLine(`serving-cert.pem is no longer at ${servingCertPath()}: tool calls go over plain HTTP to ${HTTP_ENDPOINT}.`);
+  }
+}
 const PLAIN_HTTP_TO_HTTPS_MESSAGE =
   `MCP Bridge serves HTTPS at ${HTTPS_ENDPOINT}, and this connection was plain HTTP. ` +
   "On this machine the extension trusts serving-cert.pem in the bridge's folder, which is not there. Turn the bridge off and on again in FreeCAD, so it writes that file, and check that FREECAD_MCP_TOKEN_DIR, if set, is the same for both.";
@@ -545,10 +601,15 @@ async function forward(rawLine, message) {
   activeToken = PASTED_TOKEN;
 
   const certFile = certFileInUse();
+  noteLocalChoice(certFile);
   let res;
   try {
     res = await postBridge(message, rawLine, certFile);
   } catch (err) {
+    if (certFile && err && err.certFileProblem) {
+      sendErrorReply(message, certFileErrorMessage(err, certFile));
+      return;
+    }
     const code = errorCode(err);
     const redirect = /redirect/i.test(fetchErrorMessage(err));
     const refused = code === "ECONNREFUSED";
@@ -563,10 +624,6 @@ async function forward(rawLine, message) {
       return;
     }
     if (certFile && !refused && !redirect) {
-      if (err && err.certFileProblem) {
-        sendErrorReply(message, certFileErrorMessage(err, certFile));
-        return;
-      }
       if (code === "ERR_CERT_MISMATCH") {
         sendErrorReply(message, certMismatchMessage(certFile));
         return;
@@ -606,4 +663,4 @@ process.stdin.on("data", (chunk) => {
 });
 process.stdin.on("end", () => process.exit(0));
 
-process.stderr.write(`[freecad-mcp-bridge shim] proxying stdio -> ${bridgeEndpoint()}\n`);
+logLine(startLogLine());
