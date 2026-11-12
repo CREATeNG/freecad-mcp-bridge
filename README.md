@@ -123,7 +123,7 @@ it changes. Code that opens its own transactions makes the run a
 chain of named steps, so an agent's code should leave transactions
 alone. What the code changes after either of two things, in the same
 run, can't be undone: turning a document's undo off, or closing
-FreeCAD's active transaction before it has changed anything.
+FreeCAD's active transaction before the run has changed anything.
 Opening, closing and saving documents aren't undone.
 
 For both `execute_python` and `execute_python_file`: in the **Ask**

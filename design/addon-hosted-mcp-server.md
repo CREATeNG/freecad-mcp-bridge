@@ -514,10 +514,10 @@ called `sys.exit`.
 Code that opens, commits or aborts a transaction of its own ends
 the job's. So for the job's length a document observer watches
 every document, and each time a transaction closes it opens a
-fresh one named `MCP Bridge: run, continued`. What the job changes
-stays in undo, apart from what the code's own abort takes back,
-whether the code commits or aborts its own transactions, and the
-job shows as a chain of named steps. The observer listens for
+fresh one named `MCP Bridge: run, continued`. Whether the code
+commits or aborts its own transactions, what the job changes stays
+in undo as a chain of named steps, apart from what the code's own
+abort takes back and the limits below. The observer listens for
 `slotCloseTransaction`, which FreeCAD calls once every document's
 part of a transaction has closed. `slotAbortTransaction` comes
 part-way through aborting several documents, and opening a

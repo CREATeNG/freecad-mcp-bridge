@@ -18,11 +18,12 @@ changed in every document at once. A job that fails keeps what ran: the
 transaction is closed, not aborted. Code that opens, commits or aborts a
 transaction of its own ends ours, so for the job's length a document
 observer opens a fresh one, "MCP Bridge: run, continued", each time a
-transaction closes. What the job changes then stays in undo, as a chain
-of steps, apart from what the code's own abort takes back, whether the
-code commits or aborts its own transactions. What the code changes after
-turning a document's UndoMode off, or after calling
-App.closeActiveTransaction before anything has changed, is not undoable.
+transaction closes. Whether the code commits or aborts its own
+transactions, what the job changes then stays in undo as a chain of
+steps, apart from what the code's own abort takes back and the limits
+that follow. What the code changes after turning a document's UndoMode
+off, or after calling App.closeActiveTransaction before anything has
+changed, is not undoable.
 """
 
 import sys
