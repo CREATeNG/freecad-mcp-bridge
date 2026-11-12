@@ -594,10 +594,9 @@ is not sent. A refused token says the pasted token was refused.
   `cert_tools.find_tools()` to find certificate tools on the machine
   (such as `openssl`, including Git for Windows' copy on Windows).
   Where tools are found, it offers a choice of tool and key type
-  (`RSA 4096` or `ECDSA P-256`) and calls `cert_tools.generate()`;
-  where none is found, it states where to install one for the
-  platform and falls back to the built-in pure-Python RSA 2048
-  generator (`tls_cert.py`). Either way, the certificate is
+  (`RSA 4096` or `ECDSA P-256`) and calls `cert_tools.generate()`.
+  Where none is found, it makes nothing and states where to install
+  openssl for the platform. The certificate is
   self-signed (825-day validity, `CA:FALSE`, `digitalSignature` and
   `keyEncipherment`, `serverAuth`), covers `127.0.0.1`, `localhost`,
   every listed address, and each host name, writes `tls-cert.pem` and
@@ -617,8 +616,12 @@ is not sent. A refused token says the pasted token was refused.
 
 **Security posture — noted trade-offs**
 
-FreeCAD's Python has no library that creates a certificate, so the
-addon's own generator runs only where no tool is found.
+FreeCAD's Python has no library that creates a certificate, so
+**Generate self-signed certificate** needs a certificate tool on the
+machine. Where none is found, the user installs one or enters their
+own certificate files. An addon generator of its own, in pure
+Python, was considered and rejected: keys and certificates are made
+by a maintained tool, not by the addon's code.
 
 On loopback (`127.0.0.1`), the TCP port is accessible to any local
 process while active. Named sockets (Windows named pipes / UNIX domain

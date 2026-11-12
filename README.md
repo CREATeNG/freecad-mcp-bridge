@@ -223,10 +223,11 @@ change a model — for example:
   `127.0.0.1`, `localhost`, every listed address, loopback entries
   such as `::1` included, and each host name, for 825 days, and
   fills in both fields. OK in Preferences saves
-  them. Where openssl, Git for Windows' copy, or Windows PowerShell
-  is found, you choose the tool and **RSA 4096** or **ECDSA P-256**.
-  Where none is found, FreeCAD says where to install one and uses
-  its own RSA 2048 generator. It asks before replacing the current
+  them. It uses a certificate tool on this machine: openssl, Git
+  for Windows' openssl, or Windows PowerShell. You choose the tool
+  and **RSA 4096** or **ECDSA P-256**. Where none is found, it makes
+  nothing and says where to install openssl. You can also enter your
+  own certificate files. It asks before replacing the current
   certificate, then shows the path, the covered addresses, and the
   expiry.
 - A start fails when the certificate is not yet valid or has

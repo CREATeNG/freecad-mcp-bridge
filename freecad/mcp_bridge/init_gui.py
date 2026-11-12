@@ -420,8 +420,8 @@ def _key_type_id(key_type):
 
 
 def _cert_tool_install_hint(platform_name=None):
-    """Return a platform-specific note explaining where to install a
-    certificate tool when none was found on this machine."""
+    """Return the message for no certificate tool on this machine:
+    nothing was made, and where to install one for the platform."""
     plat = sys.platform if platform_name is None else platform_name
     if plat == "win32":
         where = (
@@ -440,10 +440,10 @@ def _cert_tool_install_hint(platform_name=None):
             "dnf install openssl)."
         )
     return (
-        "No certificate tool was found on this machine, so this "
-        "certificate was generated with the built-in RSA 2048 "
-        f"fallback. To generate RSA 4096 or ECDSA P-256 certificates: "
-        f"{where}"
+        "No certificate tool was found on this machine, so no "
+        f"certificate was made. {where} Then click Generate "
+        "self-signed certificate again, or enter your own certificate "
+        "files."
     )
 
 
@@ -491,9 +491,7 @@ def _cert_replace_dialog_text():
     )
 
 
-def _cert_generated_dialog_text(
-    cert_file, hosts, expiry_date="", install_hint=""
-):
+def _cert_generated_dialog_text(cert_file, hosts, expiry_date=""):
     """Return `(title, body)` after generating a TLS certificate and private
     key."""
     addr_lines = "\n".join(f"  {host}" for host in hosts)
@@ -506,8 +504,6 @@ def _cert_generated_dialog_text(
         f"Addresses covered:\n{addr_lines}\n\n"
         f"Expires:\n  {expiry_line}\n\n"
     )
-    if install_hint:
-        body += f"{install_hint}\n\n"
     body += (
         "Click OK in Preferences to use it. The Claude Desktop "
         "extension on this machine takes the certificate by itself "
@@ -719,8 +715,10 @@ def _choose_cert_tool_and_key_type(tools, parent=None):
 def generate_and_show_certificate(parent=None):
     """Generate a self-signed TLS certificate and private key covering
     `127.0.0.1`, `localhost`, every listed address, loopback included,
-    and each host name. Fill both TLS file fields, and show the path,
-    the covered addresses, and the expiry."""
+    and each host name, with a certificate tool on this machine. Fill
+    both TLS file fields, and show the path, the covered addresses,
+    and the expiry. With no tool found, say where to install one and
+    make nothing."""
     from freecad.mcp_bridge import config, tls_cert, token_file
 
     host = parent
@@ -752,20 +750,25 @@ def generate_and_show_certificate(parent=None):
         )
         return None
 
+    cert_tools_mod, tools = _find_cert_tools()
+    if not tools or cert_tools_mod is None:
+        _show_cert_message(
+            f"{DISPLAY_NAME}: TLS certificate",
+            _cert_tool_install_hint(),
+            warning=True,
+            object_name="MCPBridgeCertNoToolDialog",
+            parent=host,
+        )
+        return None
+
     if _cert_would_replace(host) and not _confirm_replace_certificate(
         parent=host
     ):
         return None
 
-    cert_tools_mod, tools = _find_cert_tools()
-    install_hint = ""
-    chosen = None
-    if tools and cert_tools_mod is not None:
-        chosen = _choose_cert_tool_and_key_type(tools, parent=host)
-        if chosen is None:
-            return None
-    else:
-        install_hint = _cert_tool_install_hint()
+    chosen = _choose_cert_tool_and_key_type(tools, parent=host)
+    if chosen is None:
+        return None
 
     wait_cursor = False
     try:
@@ -779,24 +782,20 @@ def generate_and_show_certificate(parent=None):
     except Exception:
         app = None
     try:
-        if chosen is not None and cert_tools_mod is not None:
-            chosen_tool, chosen_key_type = chosen
-            c_path = tls_cert.cert_path()
-            k_path = tls_cert.key_path()
-            folder = c_path.parent
-            folder.mkdir(mode=0o700, parents=True, exist_ok=True)
-            token_file._user_only(folder, is_dir=True)
-            cert_tools_mod.generate(
-                _tool_id(chosen_tool),
-                _key_type_id(chosen_key_type),
-                hosts,
-                str(c_path),
-                str(k_path),
-            )
-            token_file._user_only(k_path, is_dir=False)
-        else:
-            c_path, k_path = tls_cert.generate_and_store_certificate(hosts)
-            token_file._user_only(k_path, is_dir=False)
+        chosen_tool, chosen_key_type = chosen
+        c_path = tls_cert.cert_path()
+        k_path = tls_cert.key_path()
+        folder = c_path.parent
+        folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+        token_file._user_only(folder, is_dir=True)
+        cert_tools_mod.generate(
+            _tool_id(chosen_tool),
+            _key_type_id(chosen_key_type),
+            hosts,
+            str(c_path),
+            str(k_path),
+        )
+        token_file._user_only(k_path, is_dir=False)
     except Exception as exc:
         if wait_cursor:
             try:
@@ -825,7 +824,7 @@ def generate_and_show_certificate(parent=None):
     _set_chooser_file_name(host, "tlsKeyFileChooser", k_str)
     expiry_date = config.certificate_expiry_date(c_str) or ""
     title, body = _cert_generated_dialog_text(
-        c_str, hosts, expiry_date=expiry_date, install_hint=install_hint
+        c_str, hosts, expiry_date=expiry_date
     )
     _show_cert_message(
         title,

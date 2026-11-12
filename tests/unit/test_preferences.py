@@ -2702,18 +2702,24 @@ class PermissionModeTests(unittest.TestCase):
         )
 
 
-class TlsCertificateGeneratorTests(unittest.TestCase):
+class TlsCertificateTests(unittest.TestCase):
+    """The TLS checks, and the Generate self-signed certificate button.
+
+    The addon makes no certificate of its own, so these tests take
+    theirs from a certificate tool on this machine, through
+    cert_tools, as the button does. With no tool found they skip.
+    """
+
     @classmethod
     def setUpClass(cls):
         import datetime
 
-        _, _, _ = fresh_config()
-        from freecad.mcp_bridge import tls_cert
+        config, _, _ = fresh_config()
+        from freecad.mcp_bridge import cert_tools
 
-        cls.tls_cert = tls_cert
-        cls.now = datetime.datetime(
-            2026, 11, 10, 0, 0, 0, tzinfo=datetime.timezone.utc
-        )
+        tools = cert_tools.find_tools()
+        if not tools:
+            raise unittest.SkipTest("no certificate tool on this machine")
         cls.hosts = [
             "127.0.0.1",
             "localhost",
@@ -2721,111 +2727,41 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
             "2001:db8::5",
             "freecad.local",
         ]
-        cls.cert_pem, cls.key_pem, cls.meta = (
-            tls_cert.generate_self_signed_cert(cls.hosts, now=cls.now)
-        )
-        cls.other_cert_pem, cls.other_key_pem, _ = (
-            tls_cert.generate_self_signed_cert(
-                ["192.168.1.99", "other.local"], now=cls.now
+        cls.made_on = datetime.datetime.now(datetime.timezone.utc).date()
+        cls.pair_dir = tempfile.TemporaryDirectory()
+        folder = Path(cls.pair_dir.name)
+
+        def make(name, hosts):
+            cert = folder / f"{name}-cert.pem"
+            key = folder / f"{name}-key.pem"
+            cert_tools.generate(
+                tools[0]["id"], cert_tools.KEY_ECDSA, hosts, str(cert),
+                str(key),
             )
+            return (
+                cert.read_text(encoding="utf-8"),
+                key.read_text(encoding="utf-8"),
+            )
+
+        cls.cert_pem, cls.key_pem = make("server", cls.hosts)
+        cls.other_cert_pem, cls.other_key_pem = make(
+            "other", ["192.168.1.99", "other.local"]
         )
+        cls.cert_file = folder / "server-cert.pem"
+        cls.expiry = config.certificate_expiry_date(str(cls.cert_file))
 
-    def test_generated_rsa_key_arithmetic_permissions_and_openssl_check(
-        self,
-    ):
-        """The generator produces a 2048-bit RSA keypair with valid arithmetic
-        and writes tls-key.pem readable by the user only."""
-        import math
-        import shutil
-        import subprocess
+    @classmethod
+    def tearDownClass(cls):
+        cls.pair_dir.cleanup()
 
-        key = self.meta["key"]
-        self.assertEqual(key["e"], 65537)
-        self.assertNotEqual(key["p"], key["q"])
-        self.assertEqual(key["p"].bit_length(), 1024)
-        self.assertEqual(key["q"].bit_length(), 1024)
-        self.assertEqual(key["p"] >> 1022, 3)
-        self.assertEqual(key["q"] >> 1022, 3)
-        self.assertEqual(math.gcd(key["p"] - 1, key["e"]), 1)
-        self.assertEqual(math.gcd(key["q"] - 1, key["e"]), 1)
-        self.assertEqual(key["n"], key["p"] * key["q"])
-        self.assertEqual(key["n"].bit_length(), 2048)
-        lam = math.lcm(key["p"] - 1, key["q"] - 1)
-        self.assertEqual((key["d"] * key["e"]) % lam, 1)
-
-        with tempfile.TemporaryDirectory() as folder:
-            with mock.patch.object(
-                self.tls_cert,
-                "generate_self_signed_cert",
-                return_value=(self.cert_pem, self.key_pem, self.meta),
-            ):
-                c_path, k_path = (
-                    self.tls_cert.generate_and_store_certificate(
-                        self.hosts, directory=Path(folder)
-                    )
-                )
-            self.assertEqual(c_path, Path(folder) / "tls-cert.pem")
-            self.assertEqual(k_path, Path(folder) / "tls-key.pem")
-            if os.name == "nt":
-                self.assertEqual(_windows_ace_count(k_path), 1)
-            else:
-                mode = stat.S_IMODE(k_path.stat().st_mode)
-                self.assertEqual(mode, 0o600)
-            openssl_bin = shutil.which("openssl")
-            if openssl_bin is not None:
-                res = subprocess.run(
-                    [
-                        openssl_bin,
-                        "rsa",
-                        "-in",
-                        str(k_path),
-                        "-check",
-                        "-noout",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                self.assertEqual(res.returncode, 0, res.stderr)
-                self.assertIn("RSA key ok", res.stdout + res.stderr)
-
-    def test_certificate_signature_validity_and_openssl_verify(self):
-        """The certificate is signed with PKCS#1 v1.5 SHA-256 over the TBS
-        bytes, valid for 825 days from one day back, and covers each address
-        beyond loopback."""
+    def test_certificate_hosts_expiry_and_openssl_verify(self):
+        """The bridge reads a generated certificate's hosts and its expiry,
+        825 days on, and the certificate verifies against itself."""
         import datetime
-        import hashlib
         import shutil
         import subprocess
 
         config, _, _ = fresh_config()
-        key = self.meta["key"]
-        tbs_der = self.meta["tbs_der"]
-        sig_bytes = self.meta["signature"]
-        self.assertEqual(len(sig_bytes), 256)
-        recovered = pow(
-            int.from_bytes(sig_bytes, "big"), key["e"], key["n"]
-        ).to_bytes(256, "big")
-        self.assertEqual(recovered[:2], b"\x00\x01")
-        sep = recovered.index(b"\x00", 2)
-        self.assertGreaterEqual(sep - 2, 8)
-        self.assertEqual(recovered[2:sep], b"\xff" * (sep - 2))
-        digest_info = recovered[sep + 1 :]
-        expected_prefix = bytes.fromhex(
-            "3031300d060960864801650304020105000420"
-        )
-        self.assertEqual(
-            digest_info,
-            expected_prefix + hashlib.sha256(tbs_der).digest(),
-        )
-        self.assertEqual(
-            self.meta["not_before"],
-            self.now - datetime.timedelta(days=1),
-        )
-        self.assertEqual(
-            self.meta["not_after"] - self.meta["not_before"],
-            datetime.timedelta(days=825),
-        )
         with tempfile.TemporaryDirectory() as folder:
             c_path = Path(folder) / "tls-cert.pem"
             c_path.write_text(self.cert_pem, encoding="utf-8")
@@ -2839,9 +2775,11 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                     "freecad.local",
                 },
             )
-            self.assertEqual(
-                config.certificate_expiry_date(str(c_path)),
-                "2029-02-11",
+            expiry = datetime.date.fromisoformat(
+                config.certificate_expiry_date(str(c_path))
+            )
+            self.assertIn(
+                (expiry - self.made_on).days, (824, 825, 826)
             )
             self.assertEqual(
                 config.certificate_target_hosts(["127.0.0.1:39280"]),
@@ -3028,9 +2966,9 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
         """Preferences put the user's own certificate and key fields first with
         'or generate one' beside Generate certificate; the button covers
         127.0.0.1, localhost, and any beyond-loopback entries, uses cert_tools
-        when available (RSA 4096 or ECDSA P-256) or falls back to tls_cert with
-        an install hint, asks before replacing, and fills both fields without
-        saving preferences until OK."""
+        (RSA 4096 or ECDSA P-256), makes nothing and says where to install
+        a tool when none is found, asks before replacing, and fills both
+        fields without saving preferences until OK."""
         tree = ET.parse(PAGE)
         tls_group = next(
             widget
@@ -3191,9 +3129,19 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
             lambda parent=None: replace_answers.pop(0)
         )
 
-        def fake_generate_self_signed(hosts, now=None):
+        def write_pair(tool, key_type, hosts, cert_path, key_path):
             generated_hosts.append(list(hosts))
-            return self.cert_pem, self.key_pem, self.meta
+            Path(cert_path).write_text(self.cert_pem, encoding="utf-8")
+            Path(key_path).write_text(self.key_pem, encoding="utf-8")
+
+        a_tool = types.SimpleNamespace(
+            find_tools=lambda: [{"id": "openssl", "label": "openssl"}],
+            generate=write_pair,
+        )
+        init_gui._choose_cert_tool_and_key_type = (
+            lambda tools, parent=None: (tools[0], "ECDSA P-256")
+        )
+        expiry = self.expiry
 
         with tempfile.TemporaryDirectory() as folder:
             with (
@@ -3203,19 +3151,13 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                 mock.patch.object(
                     config, "_params", return_value=DictParams()
                 ),
-                mock.patch.object(
-                    self.tls_cert,
-                    "generate_self_signed_cert",
-                    side_effect=fake_generate_self_signed,
-                ),
                 mock.patch.dict(
                     sys.modules, {"freecad.mcp_bridge.cert_tools": None}
                 ),
             ):
-                # 1. Loopback only with no external tool found -> falls back
-                # to tls_cert covering 127.0.0.1 and localhost, names expiry
-                # and platform install hint, and fills both fields without
-                # saving preferences yet.
+                # 1. No certificate tool found -> makes nothing, writes no
+                # file and fills no field, asks nothing, and says where to
+                # install one for the platform.
                 store["ListenAddress"] = "127.0.0.1:39280\n[::1]:39281"
                 store["HostNames"] = "my-pc"
                 page.names.text = "my-pc"
@@ -3234,9 +3176,45 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                 self.addCleanup(
                     lambda: sys.modules.pop("PySide.QtWidgets", None)
                 )
-                result = init_gui.generate_and_show_certificate(parent=page)
                 expected_cert = str(Path(folder) / "tls-cert.pem")
                 expected_key = str(Path(folder) / "tls-key.pem")
+                self.assertIsNone(
+                    init_gui.generate_and_show_certificate(parent=page)
+                )
+                self.assertEqual(generated_hosts, [])
+                self.assertFalse(Path(expected_cert).exists())
+                self.assertFalse(Path(expected_key).exists())
+                self.assertEqual(page.cert_chooser.fileName(), "")
+                self.assertEqual(page.key_chooser.fileName(), "")
+                self.assertNotIn("TlsCertFile", store)
+                self.assertNotIn("TlsKeyFile", store)
+                self.assertEqual(
+                    messages,
+                    [
+                        (
+                            "MCP Bridge: TLS certificate",
+                            init_gui._cert_tool_install_hint(),
+                            True,
+                            "MCPBridgeCertNoToolDialog",
+                        )
+                    ],
+                )
+                self.assertIn(
+                    "No certificate tool was found on this machine, so no "
+                    "certificate was made.",
+                    messages[-1][1],
+                )
+
+                # 1b. A tool found, loopback only -> covers 127.0.0.1,
+                # localhost, ::1 and the host name, names the expiry, and
+                # fills both fields without saving preferences yet.
+                messages.clear()
+                with mock.patch.dict(
+                    sys.modules, {"freecad.mcp_bridge.cert_tools": a_tool}
+                ):
+                    result = init_gui.generate_and_show_certificate(
+                        parent=page
+                    )
                 self.assertEqual(result, (expected_cert, expected_key))
                 self.assertEqual(
                     generated_hosts[-1],
@@ -3254,10 +3232,9 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                 self.assertIn(expected_cert, messages[-1][1])
                 self.assertIn("127.0.0.1", messages[-1][1])
                 self.assertIn("localhost", messages[-1][1])
-                self.assertIn("2029-02-11 (825 days)", messages[-1][1])
-                self.assertIn(
-                    "No certificate tool was found on this machine",
-                    messages[-1][1],
+                self.assertIn(f"{expiry} (825 days)", messages[-1][1])
+                self.assertNotIn(
+                    "No certificate tool was found", messages[-1][1]
                 )
 
                 # 2. Address beyond loopback, existing files from step 1 ->
@@ -3270,7 +3247,12 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                     "127.0.0.1:39280\n192.168.1.50:39280\nfreecad.local:39281"
                 )
                 replace_answers.append(True)
-                result = init_gui.generate_and_show_certificate(parent=page)
+                with mock.patch.dict(
+                    sys.modules, {"freecad.mcp_bridge.cert_tools": a_tool}
+                ):
+                    result = init_gui.generate_and_show_certificate(
+                        parent=page
+                    )
                 self.assertEqual(result, (expected_cert, expected_key))
                 self.assertEqual(
                     generated_hosts[-1],
@@ -3307,9 +3289,12 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                 )
                 messages.clear()
                 replace_answers.append(False)
-                self.assertIsNone(
-                    init_gui.generate_and_show_certificate(parent=page)
-                )
+                with mock.patch.dict(
+                    sys.modules, {"freecad.mcp_bridge.cert_tools": a_tool}
+                ):
+                    self.assertIsNone(
+                        init_gui.generate_and_show_certificate(parent=page)
+                    )
                 self.assertEqual(messages, [])
                 self.assertEqual(page.cert_chooser.fileName(), "/old/cert.pem")
                 self.assertEqual(page.key_chooser.fileName(), "/old/key.pem")
@@ -3320,7 +3305,12 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                     "keep-existing",
                 )
                 replace_answers.append(True)
-                result2 = init_gui.generate_and_show_certificate(parent=page)
+                with mock.patch.dict(
+                    sys.modules, {"freecad.mcp_bridge.cert_tools": a_tool}
+                ):
+                    result2 = init_gui.generate_and_show_certificate(
+                        parent=page
+                    )
                 self.assertEqual(result2, (expected_cert, expected_key))
                 self.assertEqual(page.cert_chooser.fileName(), expected_cert)
                 self.assertEqual(page.key_chooser.fileName(), expected_key)
@@ -3345,7 +3335,7 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                 # key_type ("rsa-4096" or "ecdsa-p256") in
                 # cert_tools.generate(tool, key_type, hosts, cert_path,
                 # key_path), applies user-only permissions to tls-key.pem,
-                # and omits the fallback install hint.
+                # and omits the no-tool message.
                 sys.modules.pop("freecad.mcp_bridge.cert_tools", None)
                 from freecad.mcp_bridge import cert_tools as real_cert_tools
 
@@ -3438,7 +3428,7 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                             messages[-1][1],
                         )
                         self.assertIn(
-                            "2029-02-11 (825 days)", messages[-1][1]
+                            f"{expiry} (825 days)", messages[-1][1]
                         )
 
             # 5. End-to-end check against real cert_tools module: the button's
@@ -3515,7 +3505,17 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
         core = types.ModuleType("PySide.QtCore")
         core.Qt = Qt
         init_gui._cert_would_replace = lambda host: False
-        init_gui._find_cert_tools = lambda: (None, [])
+
+        def fail_to_write(*_args):
+            raise OSError("disk full")
+
+        init_gui._find_cert_tools = lambda: (
+            types.SimpleNamespace(generate=fail_to_write),
+            [{"id": "openssl", "label": "openssl"}],
+        )
+        init_gui._choose_cert_tool_and_key_type = (
+            lambda tools, parent=None: (tools[0], "RSA 4096")
+        )
 
         def show(*_args, **_kwargs):
             events.append("dialog")
@@ -3526,10 +3526,8 @@ class TlsCertificateGeneratorTests(unittest.TestCase):
                 sys.modules,
                 {"PySide.QtWidgets": widgets, "PySide.QtCore": core},
             ),
-            mock.patch.object(
-                self.tls_cert,
-                "generate_and_store_certificate",
-                side_effect=OSError("disk full"),
+            mock.patch.dict(
+                os.environ, {"FREECAD_MCP_TOKEN_DIR": self.pair_dir.name}
             ),
         ):
             self.assertIsNone(init_gui.generate_and_show_certificate())
