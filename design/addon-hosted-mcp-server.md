@@ -501,6 +501,29 @@ and one-at-a-time are enforced by the structure (single queue, single consumer l
 rather than assumed of Qt's queued-signal delivery. Sequential execution remains the
 correct semantics: concurrent scripts would interfere with each other's session state.
 
+**One undo step per job**
+
+Each job runs inside an application-wide transaction named
+`MCP Bridge: run`, opened with `App.setActiveTransaction` just
+before the code runs and closed with `App.closeActiveTransaction`
+after it. **Edit → Undo** then takes back what the job changed in
+every document at once. A job that fails keeps what ran: the
+transaction is closed, not aborted, whether the code raised or
+called `sys.exit`.
+
+Code that opens or commits a transaction of its own ends the
+job's. So for the job's length a document observer watches every
+document, and after each commit it opens a fresh transaction named
+`MCP Bridge: run (cont.)`. Nothing the job changes is left out of
+undo, and the job shows as a chain of named steps. Closing the
+job's own transaction is also a commit, so the observer is turned
+off and removed first, whatever the job did. A FreeCAD without
+these calls runs the job as before. One that refuses them runs it
+too, and the Report view says the run may not be one undo step.
+
+Creating, opening or closing a document, and saving one, are not
+undone.
+
 A plain-language walkthrough of execution — the life of a job from submission through
 page history retention — is in [job-lifecycle.md](job-lifecycle.md).
 

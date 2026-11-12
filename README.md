@@ -117,6 +117,11 @@ Once connected, the agent has these tools:
   `__file__` set to the path.
 - **`get_output_page(job_token, page_no)`** — fetch the next page of a long-running script's output. The agent calls it while a response says `has_more: true`, as the tool's description tells it to.
 
+Each run of `execute_python` or `execute_python_file` is one step
+in **Edit → Undo**, named "MCP Bridge: run", across every document
+it changes. Code that opens its own transactions makes the run a
+chain of named steps, so code should leave transactions alone.
+
 For both `execute_python` and `execute_python_file`: in the **Ask**
 permission mode, the default, FreeCAD shows the code in a dialog
 before it runs, and for a file its path and whole text. The dialog

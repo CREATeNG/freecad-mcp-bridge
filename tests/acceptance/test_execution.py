@@ -166,6 +166,56 @@ class ExecutionContextTests(unittest.TestCase):
         self.assertEqual(output, f"{written}\n")
 
 
+class UndoStepTests(unittest.TestCase):
+    def test_each_run_is_one_undo_step_and_a_commit_by_the_code_continues_it(self):
+        """Each run is one step in Edit → Undo, "MCP Bridge: run", across every document it changes; code that commits a transaction of its own makes the run a chain of named steps."""
+        created = mcp.run(
+            "a = App.newDocument('AcceptanceUndoA')\n"
+            "b = App.newDocument('AcceptanceUndoB')\n"
+            "print(a.Name)\n"
+            "print(b.Name)\n"
+        )
+        a_name, b_name = created.splitlines()
+        try:
+            mcp.run(
+                f"App.getDocument({a_name!r}).addObject('App::FeaturePython', 'A1')\n"
+                f"App.getDocument({b_name!r}).addObject('App::FeaturePython', 'B1')\n"
+            )
+            # FreeCAD marks the entry of a transaction that spans documents
+            # with "-> " in every document but one.
+            after_one = mcp.run(
+                f"print(App.getDocument({a_name!r}).UndoNames[0])\n"
+                f"print(App.getDocument({b_name!r}).UndoNames[0])\n"
+            )
+            self.assertEqual(
+                [name.removeprefix("-> ") for name in after_one.splitlines()],
+                ["MCP Bridge: run", "MCP Bridge: run"],
+                after_one,
+            )
+            mcp.run(
+                f"doc = App.getDocument({a_name!r})\n"
+                "doc.addObject('App::FeaturePython', 'A2')\n"
+                "doc.openTransaction('inner')\n"
+                "doc.addObject('App::FeaturePython', 'A3')\n"
+                "doc.commitTransaction()\n"
+                "doc.addObject('App::FeaturePython', 'A4')\n"
+            )
+            chain = mcp.run(
+                f"for name in App.getDocument({a_name!r}).UndoNames[:3]:\n"
+                "    print(name)\n"
+            )
+            self.assertEqual(
+                chain.splitlines(),
+                ["MCP Bridge: run (cont.)", "inner", "MCP Bridge: run"],
+                chain,
+            )
+        finally:
+            mcp.run(
+                f"for name in ({a_name!r}, {b_name!r}):\n"
+                "    if name in App.listDocuments():\n"
+                "        App.closeDocument(name)\n"
+            )
+
 class ScriptFileTests(unittest.TestCase):
     def test_a_local_file_runs_in_the_same_context_and_sees_its_own_absolute_path(self):
         """execute_python_file runs a local .py file given by absolute path, in the same context as inline code, with __file__ set to that path."""
