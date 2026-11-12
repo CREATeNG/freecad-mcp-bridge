@@ -360,8 +360,12 @@ def _invalid_request():
 
 
 def _listening_line(entries: list[str], tls_on: bool) -> str:
-    """The Report view line at every start, true of that start."""
-    endpoints = ", ".join(entries)
+    """The Report view line at every start, true of that start.
+
+    It names each listener with the endpoint's path, which is the
+    one place a user sees that path.
+    """
+    endpoints = ", ".join(f"{entry}{ENDPOINT_PATH}" for entry in entries)
     how = "over HTTPS, with TLS" if tls_on else "over HTTP, without TLS"
     return (
         f"{LOG_PREFIX} Listening on {endpoints} {how}. Every call "
@@ -562,12 +566,6 @@ class HttpServer:
                 "Check that the folder is writable, then turn the "
                 "bridge off and on again.\n"
             )
-        endpoints_with_path = ", ".join(
-            f"{entry}{ENDPOINT_PATH}" for entry in entries
-        )
-        FreeCAD.Console.PrintMessage(
-            f"{LOG_PREFIX} HTTP server listening on {endpoints_with_path}\n"
-        )
         FreeCAD.Console.PrintMessage(
             _listening_line(entries, ssl_context is not None)
         )

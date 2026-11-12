@@ -320,11 +320,13 @@ def page_settings_flow(cert_path, key_path, seen_file):
     the page shows, sets 8 minutes, fills the two certificate fields as
     Generate self-signed certificate fills them, and clicks OK. In the
     second it records what the page shows, sets 9 minutes, and clicks
-    Cancel. It records what is saved after each, then puts every
-    setting it touched back.
+    Cancel. It records what is saved after each, then puts back the
+    eleven settings OK writes as they were found: a value that was
+    saved is saved again, and one that was not is removed.
     """
     return PREFERENCES + f"""
 import json
+import traceback
 from PySide.QtWidgets import (
     QApplication,
     QDialog,
@@ -336,14 +338,40 @@ from PySide.QtWidgets import (
 from freecad.mcp_bridge import init_gui
 
 MINUTES = 'MaxHistoryRetentionMinutes'
-LIST_STRINGS = ('ListenAddress', 'ListenAdapters', 'HostNames')
+# Every setting OK writes: the page's seven, and the listen list's four.
+WRITTEN = (
+    ('Int', 'MaxResponseTimeoutSeconds'),
+    ('Int', 'MaxPageSize'),
+    ('Int', MINUTES),
+    ('Bool', 'ShowStatusButton'),
+    ('Int', 'StatusButtonPosition'),
+    ('String', 'TlsCertFile'),
+    ('String', 'TlsKeyFile'),
+    ('String', 'ListenAddress'),
+    ('String', 'ListenAdapters'),
+    ('String', 'HostNames'),
+    ('Bool', 'ListenListSaved'),
+)
+UNSET = {{
+    'Int': (-123457, -765431),
+    'Bool': (True, False),
+    'String': ('<unset-a>', '<unset-b>'),
+}}
 seen = {{}}
 mw = Gui.getMainWindow()
-orig_minutes = params.GetInt(MINUTES, -1)
-orig_cert = params.GetString('TlsCertFile', '')
-orig_key = params.GetString('TlsKeyFile', '')
-orig_list = {{name: params.GetString(name, '') for name in LIST_STRINGS}}
-orig_list_saved = params.GetBool('ListenListSaved', False)
+
+
+def saved_or_none(kind, name):
+    # The saved value, or None when nothing is saved under `name`: a
+    # read with two different defaults gives one answer only when a
+    # value is saved.
+    get = getattr(params, 'Get' + kind)
+    first, second = UNSET[kind]
+    value = get(name, first)
+    return value if value == get(name, second) else None
+
+
+found = {{name: (kind, saved_or_none(kind, name)) for kind, name in WRITTEN}}
 
 
 def page_dialog():
@@ -357,7 +385,12 @@ def page_dialog():
 def when_open(then, tries=100):
     dlg = page_dialog()
     if dlg is not None:
-        then(dlg)
+        try:
+            then(dlg)
+        except Exception:
+            # Record it and close the page, so the run goes on.
+            seen.setdefault('errors', []).append(traceback.format_exc())
+            dlg.reject()
         return
     if tries > 0:
         QTimer.singleShot(100, lambda: when_open(then, tries - 1))
@@ -414,24 +447,15 @@ def saved(key):
 
 
 def put_back():
-    if orig_minutes == -1:
-        params.RemInt(MINUTES)
-    else:
-        params.SetInt(MINUTES, orig_minutes)
-    for name, value in (('TlsCertFile', orig_cert), ('TlsKeyFile', orig_key)):
-        if value:
-            params.SetString(name, value)
+    for name, (kind, value) in found.items():
+        if value is None:
+            getattr(params, 'Rem' + kind)(name)
         else:
-            params.RemString(name)
-    for name, value in orig_list.items():
-        if value:
-            params.SetString(name, value)
-        else:
-            params.RemString(name)
-    if orig_list_saved:
-        params.SetBool('ListenListSaved', True)
-    else:
-        params.RemBool('ListenListSaved')
+            getattr(params, 'Set' + kind)(name, value)
+    seen['left_as_found'] = all(
+        saved_or_none(kind, name) == value
+        for name, (kind, value) in found.items()
+    )
 
 
 def step_open_twice():
@@ -445,8 +469,13 @@ def step_open_twice():
         QTimer.singleShot(250, lambda: when_open(second_open))
         Gui.showPreferences('MCP Bridge', 0)
         saved('after_cancel')
+    except Exception:
+        seen.setdefault('errors', []).append(traceback.format_exc())
     finally:
-        put_back()
+        try:
+            put_back()
+        except Exception:
+            seen.setdefault('errors', []).append(traceback.format_exc())
         with open({seen_file!r}, 'w', encoding='utf-8') as handle:
             json.dump(seen, handle)
 
@@ -470,6 +499,7 @@ class PreferencePageTests(unittest.TestCase):
             with open(seen_file, encoding="utf-8") as handle:
                 seen = json.load(handle)
         self.assertNotIn("page_not_found", seen)
+        self.assertEqual(seen.get("errors", []), [])
         # The first open shows the saved 7 minutes, not the form's 5,
         # and both certificate fields empty.
         self.assertEqual(seen.get("first_minutes"), 7)
@@ -487,6 +517,8 @@ class PreferencePageTests(unittest.TestCase):
         self.assertEqual(seen.get("after_cancel_minutes"), 8)
         self.assertEqual(seen.get("after_cancel_cert"), cert_path)
         self.assertEqual(seen.get("after_cancel_key"), key_path)
+        # Every setting OK wrote is back as it was found.
+        self.assertIs(seen.get("left_as_found"), True)
 
 
 def non_loopback_flow(
@@ -857,9 +889,9 @@ class ListenAddressTests(unittest.TestCase):
             f"{address}:{PORT})"
         )
         expected_listening = (
-            f"[MCP Bridge] Listening on 127.0.0.1:{PORT}, "
-            f"{address}:{PORT} over HTTPS, with TLS. Every call needs "
-            "the bearer token."
+            f"[MCP Bridge] Listening on 127.0.0.1:{PORT}/mcp, "
+            f"{address}:{PORT}/mcp over HTTPS, with TLS. Every call "
+            "needs the bearer token."
         )
         expected_beyond = (
             f"[MCP Bridge] {address}:{PORT} can be reached from your "
@@ -873,7 +905,8 @@ class ListenAddressTests(unittest.TestCase):
         self.assertFalse(seen.get("second_start_dialog_found"))
         self.assertTrue(seen.get("second_running"))
         self.assertEqual(seen.get("second_status"), expected_status)
-        self.assertIn(expected_warning, seen.get("second_report", ""))
+        self.assertIn(expected_listening, seen.get("second_report", ""))
+        self.assertIn(expected_beyond, seen.get("second_report", ""))
 
         self.assertTrue(seen.get("lan_only_running"))
         self.assertTrue(seen.get("lan_only_lan_open"))
@@ -1336,9 +1369,9 @@ class ListenAddressTests(unittest.TestCase):
             f"{address}:{PORT})"
         )
         expected_listening = (
-            f"[MCP Bridge] Listening on 127.0.0.1:{PORT}, "
-            f"{address}:{PORT} over HTTPS, with TLS. Every call needs "
-            "the bearer token."
+            f"[MCP Bridge] Listening on 127.0.0.1:{PORT}/mcp, "
+            f"{address}:{PORT}/mcp over HTTPS, with TLS. Every call "
+            "needs the bearer token."
         )
         expected_beyond = (
             f"[MCP Bridge] {address}:{PORT} can be reached from your "

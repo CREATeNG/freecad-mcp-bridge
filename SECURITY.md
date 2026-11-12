@@ -45,7 +45,7 @@ loopback entries such as `::1` included, and each host name. Any
 client that can reach an entry, with the
 bearer token, can run Python code in FreeCAD as your user account.
 The first start asks you to accept that, loopback included, and each
-later start warns in the status bar and **Report view**. In the
+later start warns in the status bar. In the
 **Ask** permission mode, the default, FreeCAD shows code an agent
 sends in a dialog before it runs. A file also shows its path.
 **Don't run** is the default. The **Unrestricted** mode, in which

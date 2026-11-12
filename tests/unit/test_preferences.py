@@ -1649,7 +1649,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 self.assertEqual(warnings, [])
                 self.assertEqual(
                     messages[-1],
-                    "[MCP Bridge] Listening on 127.0.0.1:39280 over "
+                    "[MCP Bridge] Listening on 127.0.0.1:39280/mcp over "
                     "HTTP, without TLS. Every call needs the bearer "
                     "token.\n",
                 )
@@ -1755,9 +1755,9 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 self.assertEqual(
                     messages[-2:],
                     [
-                        "[MCP Bridge] Listening on 127.0.0.1:39280, "
-                        "192.168.1.50:39281, [::1]:39282 over HTTPS, "
-                        "with TLS. Every call needs the bearer "
+                        "[MCP Bridge] Listening on 127.0.0.1:39280/mcp, "
+                        "192.168.1.50:39281/mcp, [::1]:39282/mcp over "
+                        "HTTPS, with TLS. Every call needs the bearer "
                         "token.\n",
                         "[MCP Bridge] 192.168.1.50:39281 can be reached "
                         "from your network. Any client with the bearer "
@@ -1808,7 +1808,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 self.assertEqual(warnings, [])
                 self.assertEqual(
                     messages[-1],
-                    "[MCP Bridge] Listening on 127.0.0.1:39280 over "
+                    "[MCP Bridge] Listening on 127.0.0.1:39280/mcp over "
                     "HTTPS, with TLS. Every call needs the bearer "
                     "token.\n",
                 )
@@ -1854,7 +1854,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 self.assertEqual(
                     messages[-2:],
                     [
-                        "[MCP Bridge] Listening on 192.168.1.50:39280 "
+                        "[MCP Bridge] Listening on 192.168.1.50:39280/mcp "
                         "over HTTPS, with TLS. Every call needs the "
                         "bearer token.\n",
                         "[MCP Bridge] 192.168.1.50:39280 can be reached "
