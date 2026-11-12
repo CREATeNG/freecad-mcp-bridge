@@ -646,7 +646,7 @@ neither the address that listener is bound to, nor a name its
 certificate covers, nor a name in **Host names**. A missing `Host`
 is refused.
 A loopback listener accepts the address it is bound to, `127.0.0.1`,
-`localhost` and `[::1]`, and no name its certificate covers.
+`localhost` and `[::1]`, but not a name its certificate covers.
 
 ---
 

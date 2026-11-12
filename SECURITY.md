@@ -59,8 +59,9 @@ While the mode is Unrestricted, the button is shown whatever
 that carries an `Origin` header is refused, as is a `Host`
 header that, port aside, names neither the address that listener
 is bound to, nor a name its certificate covers, nor a name in
-**Host names**. A loopback listener accepts `127.0.0.1`,
-`localhost` and `[::1]`.
+**Host names**. A loopback listener accepts the address it is
+bound to, `127.0.0.1`, `localhost` and `[::1]`, but not a name its
+certificate covers.
 
 See [README § Privacy Policy](README.md#privacy-policy) for how the
 bridge (the MCP server inside FreeCAD) and your MCP client interact,

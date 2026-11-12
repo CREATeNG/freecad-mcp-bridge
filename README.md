@@ -291,8 +291,9 @@ MCP Bridge is designed for **local** control of FreeCAD.
   so a browser page cannot reach it. It also rejects a request
   whose `Host` header, port aside, names neither the address that
   listener is bound to, nor a name its certificate covers, nor a
-  name in **Host names**. A loopback listener accepts `127.0.0.1`,
-  `localhost` and `[::1]`.
+  name in **Host names**. A loopback listener accepts the address
+  it is bound to, `127.0.0.1`, `localhost` and `[::1]`, but not a
+  name its certificate covers.
 
 For privacy questions or security reports, contact chris@createng.com
 or see [SECURITY.md](SECURITY.md).
