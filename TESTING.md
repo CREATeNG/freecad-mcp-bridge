@@ -13,7 +13,9 @@ The [unit suite](tests/unit/) runs without FreeCAD or Qt. It checks
 paging and replay, MCP request validation and result formatting,
 preference defaults and controls, source-only distribution, the copy
 installer, agreement among the three release-version files, and
-the changelog section for the version being released. These
+the changelog section for the version being released. The unit
+tests check the listen list, adding, editing and removing its
+rows, and its marks. These
 checks include fake clocks, output queues and a stand-in parameter
 store where those replace the running application.
 
@@ -65,10 +67,10 @@ behaviors it checks are execution and file execution, stdout/stderr and
 tracebacks, output paging and replay, retention preferences, execution
 order, GUI event handling, the two supported MCP protocol versions,
 HTTP, Origin and Host validation, loopback and non-loopback
-listen-address binding, the bearer token on every listener and TLS
-on non-loopback entries, the first-start dialog and per-entry risk
-acceptance, port changes and stopping the bridge with running or
-queued jobs. When `BUNDLE_MCPB`
+listen-address binding, the bearer token on every listener,
+TLS on every listener once a certificate and key are set, the
+first-start dialog and per-entry risk acceptance, port changes
+and stopping the bridge with running or queued jobs. When `BUNDLE_MCPB`
 names a packed `.mcpb`, `test_bundle_mcp.py` calls that shim
 over stdio, in both protocol versions, and then expects it
 to exit. With no bundle named, that test skips;
@@ -87,9 +89,8 @@ for you to run, and the mode goes back to Ask when the suite ends.
 Tests restore preferences and bridge state on their normal paths; a
 failed test can leave that work unfinished.
 
-Set `FREECAD_MCP_TOKEN_DIR` too, to a new temporary folder, before
-you start FreeCAD, and use that same value for the test process, so
-a local run never touches the real token file. Install the addon
+Set `FREECAD_MCP_TOKEN` to the token FreeCAD showed, for the test
+process. FreeCAD writes no token file. Install the addon
 version under test, open a fresh FreeCAD GUI session with both
 variables set, and turn the bridge on with its toolbar button. Keep
 the GUI running while the suite runs. With Python 3.11 in a second
@@ -97,7 +98,7 @@ terminal, set the URL explicitly to that session's port (`39280`
 below is the default; use your port if it differs):
 
 ```bash
-export FREECAD_MCP_TOKEN_DIR="<the same temporary folder>"
+export FREECAD_MCP_TOKEN="<the token FreeCAD showed>"
 export BRIDGE_URL=http://127.0.0.1:39280/mcp
 python -m unittest discover -s tests/acceptance -t . -v
 ```
@@ -116,9 +117,10 @@ python scripts/list_requirements.py
 
 In CI, [install-verify.yml](.github/workflows/install-verify.yml) starts
 a third FreeCAD process with
-[acceptance_serve.py](scripts/acceptance_serve.py). FreeCAD and the
-test step both use `FREECAD_MCP_TOKEN_DIR`, a folder inside the run's
-isolated profile, so the token is not written to the runner's home.
+[acceptance_serve.py](scripts/acceptance_serve.py). That process
+stores a bearer token before the toolbar click and writes it to
+`ACCEPTANCE_TOKEN_FILE`. The test step reads that file into
+`FREECAD_MCP_TOKEN`. Nothing is written for the extension to read.
 That process turns the installed bridge on through its toolbar
 action and writes its port
 to `ACCEPTANCE_READY_FILE`. The runner's Python runs the suite, then
@@ -141,7 +143,8 @@ repeatable checks.
 | Check | What to verify by hand |
 |-------|------------------------|
 | Toolbar hide across restart, and Customize category | Uncheck **MCP Bridge** in **View → Toolbars** (or the toolbar context menu), switch workbench and restart FreeCAD: the toolbar stays hidden while the status-bar button remains available. Check **MCP Bridge** again and restart FreeCAD: the toolbar stays shown. In **Tools → Customize**, the **MCP Bridge On/Off** command is listed under `MCP_Bridge`. |
-| Non-loopback listen address from another machine | Set **Listen addresses** in **Edit → Preferences → MCP Bridge** to `127.0.0.1:39280` and `<LAN_IP>:39280` (using this machine's LAN IPv4 address, for example on separate lines). Click **MCP Bridge On/Off**: the risk dialog lists `<LAN_IP>:39280`, and from another machine on the LAN the port is closed until accepted. Click **Cancel**: the bridge stays off and the port remains closed. Click **MCP Bridge On/Off** again and click **Accept Risks and Start**: the bridge starts, warns in the status bar and **Report view**, answers MCP requests from the other machine on `<LAN_IP>:39280/mcp`, and answers on `127.0.0.1:39280/mcp` (including the Claude Desktop shim). Turn the bridge off and on again with the same list: it starts without showing the dialog again and warns in the status bar and **Report view**. |
+| Non-loopback listen address from another machine | Under **Listen addresses** in **Edit → Preferences → MCP Bridge**, add a fixed row `127.0.0.1` with port `39280` and a fixed row `<LAN_IP>` with port `39280` (this machine's LAN IPv4 address). Set **Certificate (PEM)** and **Private key (PEM)** to a certificate covering `<LAN_IP>` and its private key (or click **Generate self-signed certificate**). Click **MCP Bridge On/Off**: the risk dialog lists `<LAN_IP>:39280`, and from another machine on the LAN the port is closed until accepted. Click **Cancel**: the bridge stays off and the port remains closed. Click **MCP Bridge On/Off** again and click **Accept Risks and Start** (or **Accept and Start** on the first start): the bridge starts, warns in the status bar, writes `serving-cert.pem` in the bridge's folder, and answers HTTPS MCP requests on both `https://<LAN_IP>:39280/mcp` and `https://127.0.0.1:39280/mcp` that carry `Authorization: Bearer <token>` from a client that trusts that certificate. Turn the bridge off and on again with the same list: it starts without showing the risk dialog again and warns in the status bar. |
+| Claude Desktop extension reaching another machine | With the bridge listening on `<LAN_IP>:39280` as above, on the machine running Claude Desktop, in **Settings → Extensions → MCP Bridge for FreeCAD**, set **FreeCAD host** to `<LAN_IP>`, set **port** to `39280`, paste FreeCAD's bearer token into **Bearer token**, and set **TLS certificate file (PEM)** to a copy of FreeCAD's certificate file, not the private key. Run a tool call from Claude Desktop: it succeeds over HTTPS, and no token file is created or changed on that machine. |
 
 ## Install verification
 
@@ -348,10 +351,10 @@ FreeCAD process after restart. Does **not** call `App.MCPBridgeInjectUi()` — i
 | Preferences page | The installed `preferences.ui` contains the line telling the user how to start or stop the bridge |
 | Toolbar injection | The **MCP Bridge On/Off** toolbar action is found without manual injection |
 | Off at startup | The bridge is not running, its button is unchecked and nothing answers on its port before the first click |
-| Status-bar button | The permanent status-bar split button sits on the right by default, has the permission mode's icon, has the menu items `Permissions: Ask`, `Permissions: Unrestricted` and `MCP Bridge Preferences`, each with an icon and none of them checkable, and shows `MCP Off` at startup and after stop, and `MCP On` while running, with matching tooltip and toolbar state |
-| Permission mode on the button | Choosing `Permissions: Unrestricted` in the button's menu asks for confirmation: **No** keeps Ask and **Yes** switches, and the button's icon follows the mode. The button's width is the same in both modes. While the mode is Unrestricted, setting **Show the On/Off button** (`ShowStatusButton`) to `False` leaves the button in place. Choosing `Permissions: Ask` switches at once and then removes it |
+| Status-bar button | The permanent status-bar split button sits on the right by default, has the permission mode's icon, has the menu items `Permissions` (with `Ask` and `Unrestricted`) and `MCP Bridge Preferences`, each with an icon and none of them checkable, and shows `MCP Off` at startup and after stop, and `MCP On` while running, with matching tooltip and toolbar state |
+| Permission mode on the button | Choosing `Unrestricted` under `Permissions` asks for confirmation: **No** keeps Ask and **Yes** switches, and the button's icon follows the mode. The button's width is the same in both modes. While the mode is Unrestricted, setting **Show** (`ShowStatusButton`) to `False` leaves the button in place. Choosing `Ask` switches at once and then removes it |
 | Move status-bar button | Setting **Position** (`StatusButtonPosition`) to `1` (**Left of FreeCAD's items**) moves the status-bar button to the left of FreeCAD's permanent status-bar items without a restart, and removing the setting, so the default applies, puts the button back on the right |
-| Hide status-bar button | Setting **Show the On/Off button** (`ShowStatusButton`) to `False` removes the status-bar button without a restart, leaving the toolbar button in place, and removing the setting, so the default applies, puts the button back |
+| Hide status-bar button | Setting **Show** (`ShowStatusButton`) to `False` removes the status-bar button without a restart, leaving the toolbar button in place, and removing the setting, so the default applies, puts the button back |
 | Hide toolbar | Unchecking **MCP Bridge** (`toggleViewAction().trigger()`) hides the toolbar and keeps it hidden across a workbench switch, with `False` saved in FreeCAD's `MainWindow/Toolbars` parameters and the status-bar button still shown. Checking **MCP Bridge** again shows the toolbar and keeps it shown across a workbench switch, with `True` saved in `MainWindow/Toolbars` |
 | Start bridge | First toolbar click starts the HTTP server |
 | Listening status | The status bar shows the configured listen addresses and ports |

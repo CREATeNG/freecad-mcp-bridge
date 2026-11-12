@@ -1,9 +1,9 @@
 {
   "manifest_version": "0.3",
   "name": "freecad-mcp-bridge",
-  "display_name": "FreeCAD MCP Bridge",
+  "display_name": "MCP Bridge for FreeCAD",
   "version": "0.1.27",
-  "description": "Connect to a running FreeCAD session through the FreeCAD MCP Bridge addon.",
+  "description": "Connect to a running FreeCAD session through the MCP Bridge addon.",
   "long_description": "Connects to an open FreeCAD session, so Claude can run Python in FreeCAD and read the output.\n\nNeeds FreeCAD's MCP Bridge addon. Setup instructions are in the [README on GitHub](https://github.com/CREATeNG/freecad-mcp-bridge#readme).",
   "icon": "icon.png",
   "author": {
@@ -33,6 +33,7 @@
       "command": "node",
       "args": ["${__dirname}/index.js"],
       "env": {
+        "FREECAD_MCP_HOST": "${user_config.host}",
         "FREECAD_MCP_PORT": "${user_config.port}",
         "FREECAD_MCP_TOKEN": "${user_config.token}",
         "FREECAD_MCP_TLS_CERT_FILE": "${user_config.tls_cert_file}"
@@ -40,10 +41,17 @@
     }
   },
   "user_config": {
+    "host": {
+      "type": "string",
+      "title": "FreeCAD host",
+      "description": "The address or hostname of the machine running FreeCAD (127.0.0.1 by default). localhost, ::1 and 127.x.x.x count as this machine. For another host, also set TLS certificate file (PEM) below.",
+      "default": "127.0.0.1",
+      "required": false
+    },
     "port": {
       "type": "number",
-      "title": "FreeCAD MCP Bridge port",
-      "description": "Requires the MCP Bridge addon installed and switched on in FreeCAD. Must match the port of a 127.0.0.1 entry in FreeCAD's Edit → Preferences → MCP Bridge → Listen addresses. Extension 0.1.27.",
+      "title": "MCP Bridge port",
+      "description": "Requires the MCP Bridge addon installed and switched on in FreeCAD. Must match the port of the entry you connect to in FreeCAD's Edit → Preferences → MCP Bridge → Listen addresses.",
       "default": 39280,
       "required": false
     },
@@ -51,13 +59,13 @@
       "type": "string",
       "sensitive": true,
       "title": "Bearer token",
-      "description": "Optional. The extension sends the token from the file FreeCAD writes at the first start. Paste a token of at least 32 characters only to replace that token, for every client. A shorter token is ignored.",
+      "description": "Required: the bearer token configured in the MCP Bridge addon in FreeCAD. After changing the token, quit Claude Desktop fully and start it again: the extension reads the token only when it starts. The extension uses only this setting, on this machine and for another host, and writes nothing. A bearer token uses letters, digits and - . _ ~ + /, with = at the end.",
       "required": false
     },
     "tls_cert_file": {
       "type": "file",
       "title": "TLS certificate file (PEM)",
-      "description": "Not used yet. The extension connects to 127.0.0.1, where the bridge serves HTTP, so leave this blank. A certificate set against plain HTTP makes the connection fail.",
+      "description": "Leave this empty on this machine: the extension then reads serving-cert.pem in the bridge's folder, and uses HTTPS only when that file is present. Set it for another host, where it is required, or on this machine when a tool call says the bridge serves HTTPS and the extension found no serving-cert.pem. Set it to a copy of FreeCAD's certificate file, not the private key. When it is set, the extension connects over HTTPS and trusts only that certificate.",
       "required": false
     }
   }

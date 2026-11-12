@@ -1,0 +1,843 @@
+"""The MCP Bridge preference page.
+
+The page is one class. It owns its form, finds every control on
+that form, and connects each signal once. A caught error names the
+control and is a Report view warning. Nothing here is installed on
+the application.
+"""
+
+from __future__ import annotations
+
+import os
+import traceback
+
+from freecad.mcp_bridge.constants import (
+    DEFAULT_PORT,
+    DISPLAY_NAME,
+    LOG_PREFIX,
+)
+from freecad.mcp_bridge.listeners import (
+    HOST_NAME_LINE,
+    KIND_ADAPTER,
+    KIND_ADAPTER_LABEL,
+    KIND_ADDRESS,
+    KIND_FIXED_LABEL,
+    KIND_NAME,
+    KIND_NAME_LABEL,
+    add_refusal,
+    already_listed,
+    can_edit,
+    edit_refusal,
+    make_row,
+    replace_row,
+    with_row,
+    without_index,
+)
+
+_MODE_BOXES = []
+
+_PREF_ROOT = "User parameter:BaseApp/Preferences"
+_PREF_SPIN = "Gui::PrefSpinBox"
+_PREF_CHECK = "Gui::PrefCheckBox"
+_PREF_COMBO = "Gui::PrefComboBox"
+_PREF_FILE = "Gui::PrefFileChooser"
+_PREF_KINDS = (_PREF_SPIN, _PREF_CHECK, _PREF_COMBO, _PREF_FILE)
+
+
+def ui_path() -> str:
+    """Absolute path to the one preferences page."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(here, "Resources", "Ui", "preferences.ui").replace(
+        "\\", "/"
+    )
+
+
+def load_form():
+    """Load the page's form. FreeCAD builds the preference widgets."""
+    import FreeCADGui as Gui
+
+    return Gui.PySideUic.loadUi(ui_path())
+
+
+def report_wiring(
+    control: str, exc: BaseException, with_trace: bool = False
+) -> None:
+    """One Report view warning, naming `control`.
+
+    A `RuntimeError` is a widget that has gone. A wider catch adds
+    the traceback, so a coding fault is not reduced to one line.
+    """
+    try:
+        import FreeCAD as App
+    except Exception:
+        return
+    console = getattr(App, "Console", None)
+    if console is None or not hasattr(console, "PrintWarning"):
+        return
+    detail = f"{exc}"
+    if with_trace:
+        detail = traceback.format_exc().rstrip()
+    try:
+        console.PrintWarning(
+            f"{LOG_PREFIX} The Preferences page could not wire "
+            f"{control} ({detail}).\n"
+        )
+    except Exception:
+        return
+
+
+def form_child(form, kind, name: str):
+    """The child `name` on `form`, or None when it is missing or gone."""
+    if form is None:
+        return None
+    try:
+        return form.findChild(kind, name)
+    except RuntimeError as exc:
+        report_wiring(name, exc)
+        return None
+
+
+def report_unhandled(control: str, reason: str) -> None:
+    """One Report view warning: the page leaves `control` alone."""
+    try:
+        import FreeCAD as App
+    except Exception:
+        return
+    console = getattr(App, "Console", None)
+    if console is None or not hasattr(console, "PrintWarning"):
+        return
+    try:
+        console.PrintWarning(
+            f"{LOG_PREFIX} The Preferences page does not load or save "
+            f"{control}: {reason}.\n"
+        )
+    except Exception:
+        return
+
+
+def restore_prefs(form) -> None:
+    """Show each preference widget's saved value, or its default.
+
+    FreeCAD loads and saves these widgets itself only for a page
+    registered as a .ui file. This page is a Python class, and
+    Python cannot call a widget's onRestore or onSave, so the page
+    reads and writes each setting here: under the widget's own
+    prefPath and prefEntry, in the type FreeCAD's widget uses.
+    """
+    _each_pref(form, saving=False)
+
+
+def save_prefs(form) -> None:
+    """Write each preference widget's value to its setting."""
+    _each_pref(form, saving=True)
+
+
+def _pref_text(value) -> str:
+    """A widget property as text.
+
+    PySide gives prefEntry and prefPath as a QByteArray. A string
+    or bytes is taken too.
+    """
+    data = getattr(value, "data", None)
+    if callable(data):
+        value = data()
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return bytes(value).decode("utf-8", "replace").strip()
+    if isinstance(value, str):
+        return value.strip()
+    return ""
+
+
+def _shown(widget, kind: str):
+    """What a widget of FreeCAD class `kind` shows now."""
+    if kind == _PREF_SPIN:
+        return int(widget.value())
+    if kind == _PREF_CHECK:
+        return bool(widget.isChecked())
+    if kind == _PREF_COMBO:
+        return int(widget.currentIndex())
+    return _pref_text(widget.property("fileName"))
+
+
+def _restore_one(widget, kind: str, group, entry: str, default) -> None:
+    """Show the saved value of `entry`, or `default` with none saved."""
+    if kind == _PREF_SPIN:
+        widget.setValue(int(group.GetInt(entry, default)))
+    elif kind == _PREF_CHECK:
+        widget.setChecked(bool(group.GetBool(entry, default)))
+    elif kind == _PREF_COMBO:
+        index = int(group.GetInt(entry, default))
+        if not 0 <= index < widget.count():
+            index = default
+        widget.setCurrentIndex(index)
+    else:
+        widget.setProperty(
+            "fileName", _pref_text(group.GetString(entry, default))
+        )
+
+
+def _save_one(widget, kind: str, group, entry: str) -> None:
+    """Write what the widget shows. A cleared path is saved empty."""
+    value = _shown(widget, kind)
+    if kind == _PREF_SPIN:
+        group.SetInt(entry, value)
+    elif kind == _PREF_CHECK:
+        group.SetBool(entry, value)
+    elif kind == _PREF_COMBO:
+        if value >= 0:
+            group.SetInt(entry, value)
+    else:
+        group.SetString(entry, value)
+
+
+def _form_note(form, name: str, make):
+    """A value kept on `form` for as long as the page is open."""
+    kept = getattr(form, name, None)
+    if kept is None:
+        kept = make()
+        try:
+            setattr(form, name, kept)
+        except Exception:
+            pass
+    return kept
+
+
+def _each_pref(form, saving: bool) -> None:
+    """Load or save every widget of `form` that names a setting.
+
+    Each widget's default is what the form gave it, kept from the
+    first time the widget is seen: a load with nothing saved shows
+    it, which is also how the Preferences dialog's Reset comes out.
+    """
+    from PySide.QtWidgets import QWidget
+
+    try:
+        children = form.findChildren(QWidget)
+    except RuntimeError as exc:
+        report_wiring("form", exc)
+        return
+    defaults = _form_note(form, "_pref_defaults", dict)
+    unhandled = _form_note(form, "_pref_unhandled", set)
+    for child in children:
+        name = "preference"
+        try:
+            entry = _pref_text(child.property("prefEntry"))
+            if not entry:
+                continue
+            name = child.objectName() or entry
+            path = _pref_text(child.property("prefPath"))
+            kind = _pref_text(child.metaObject().className())
+            reason = ""
+            if kind not in _PREF_KINDS:
+                reason = f"it does not handle a {kind} widget"
+            elif not path:
+                reason = "the widget has no preference path"
+            if reason:
+                if name not in unhandled:
+                    unhandled.add(name)
+                    report_unhandled(name, reason)
+                continue
+            import FreeCAD as App
+
+            group = App.ParamGet(f"{_PREF_ROOT}/{path}")
+            key = (path, entry)
+            if key not in defaults:
+                defaults[key] = _shown(child, kind)
+            if saving:
+                _save_one(child, kind, group, entry)
+            else:
+                _restore_one(child, kind, group, entry, defaults[key])
+        except RuntimeError as exc:
+            report_wiring(name, exc)
+        except Exception as exc:
+            report_wiring(name, exc, with_trace=True)
+
+
+def remember_mode_box(box) -> None:
+    """Keep `box` so a mode change elsewhere can refresh it."""
+    _MODE_BOXES.append(box)
+
+
+def live_mode_boxes():
+    """Mode boxes whose C++ object is still there."""
+    alive = []
+    for box in _MODE_BOXES:
+        try:
+            box.objectName()
+        except RuntimeError:
+            continue
+        except AttributeError:
+            alive.append(box)
+            continue
+        alive.append(box)
+    _MODE_BOXES[:] = alive
+    return alive
+
+
+def bind_page(form, page) -> None:
+    """Connect the page's buttons once, each in its own guard."""
+    from PySide.QtWidgets import (
+        QComboBox,
+        QPushButton,
+        QTableWidget,
+        QToolButton,
+    )
+
+    _hook(
+        form_child(form, QToolButton, "addListenButton"),
+        "addListenButton",
+        lambda button: button.clicked.connect(page.add_listen),
+    )
+    _hook(
+        form_child(form, QToolButton, "removeListenButton"),
+        "removeListenButton",
+        lambda button: button.clicked.connect(page.remove_listen),
+    )
+    _hook(
+        form_child(form, QToolButton, "editListenButton"),
+        "editListenButton",
+        lambda button: button.clicked.connect(
+            lambda *_args: page.edit_listen()
+        ),
+    )
+    _hook(
+        form_child(form, QPushButton, "generateTokenButton"),
+        "generateTokenButton",
+        lambda button: button.clicked.connect(page.generate_token),
+    )
+    _hook(
+        form_child(form, QPushButton, "setTokenButton"),
+        "setTokenButton",
+        lambda button: button.clicked.connect(page.set_token),
+    )
+    _hook(
+        form_child(form, QPushButton, "generateCertButton"),
+        "generateCertButton",
+        lambda button: button.clicked.connect(page.generate_certificate),
+    )
+    table = form_child(form, QTableWidget, "listenTable")
+
+    def _connect_table(widget) -> None:
+        widget.itemSelectionChanged.connect(page.show_selected_note)
+        double_clicked = getattr(widget, "cellDoubleClicked", None)
+        if double_clicked is not None:
+            double_clicked.connect(
+                lambda row, _col: page.edit_listen(row)
+            )
+
+    _hook(table, "listenTable", _connect_table)
+    box = form_child(form, QComboBox, "permissionModeComboBox")
+    if box is not None:
+        remember_mode_box(box)
+
+
+def _hook(widget, name: str, connect) -> None:
+    if widget is None:
+        return
+    try:
+        if widget.property("mcp_hooked"):
+            return
+        connect(widget)
+        widget.setProperty("mcp_hooked", True)
+    except RuntimeError as exc:
+        report_wiring(name, exc)
+    except Exception as exc:
+        report_wiring(name, exc, with_trace=True)
+
+
+class PreferencesPage:
+    """The one MCP Bridge page. FreeCAD calls save and load."""
+
+    def __init__(self):
+        self.form = load_form()
+        self.rows = []
+        self._prepare_table()
+        self._square_buttons()
+        bind_page(self.form, self)
+
+    def _square_buttons(self) -> None:
+        """Keep +, - and Edit compact so a layout does not stretch them."""
+        from PySide.QtWidgets import QSizePolicy, QWidget
+
+        for name in (
+            "addListenButton",
+            "removeListenButton",
+            "editListenButton",
+        ):
+            button = form_child(self.form, QWidget, name)
+            if button is None:
+                continue
+            try:
+                if name == "editListenButton":
+                    button.setFixedHeight(22)
+                else:
+                    button.setFixedSize(22, 22)
+                button.setSizePolicy(
+                    QSizePolicy.Fixed, QSizePolicy.Fixed
+                )
+            except RuntimeError as exc:
+                report_wiring(name, exc)
+            except Exception as exc:
+                report_wiring(name, exc, with_trace=True)
+
+    def loadSettings(self) -> None:
+        """Show the saved list and the saved preference widgets."""
+        restore_prefs(self.form)
+        from freecad.mcp_bridge import config
+
+        self.rows = config.saved_listen_rows()
+        self.form._listen_rows = self.rows
+        self._fill()
+        self._show_mode()
+
+    def saveSettings(self) -> None:
+        """Write the preference widgets and the list. Cancel does not."""
+        save_prefs(self.form)
+        from freecad.mcp_bridge import config
+
+        config.save_listen_rows(self.rows)
+
+    def add_listen(self) -> None:
+        """Ask for one row and add it, unless it is already there."""
+        added = ask_add(
+            self.form, self._choices(), self._own_name(), self.rows
+        )
+        if added is None:
+            return
+        self.rows = with_row(self.rows, added)
+        self.form._listen_rows = self.rows
+        self._fill()
+
+    def edit_listen(self, index: int | None = None) -> None:
+        """Edit the selected or double-clicked row in place."""
+        if index is None or isinstance(index, bool):
+            table = self._table()
+            if table is None:
+                return
+            index = table.currentRow()
+        if index < 0 or index >= len(self.rows):
+            return
+        if not can_edit(self.rows[index]):
+            return
+        edited = ask_edit(
+            self.form,
+            self._choices(),
+            self._own_name(),
+            self.rows,
+            index,
+        )
+        if edited is None:
+            return
+        self.rows = replace_row(self.rows, index, edited)
+        self.form._listen_rows = self.rows
+        self._fill()
+
+    def remove_listen(self) -> None:
+        """Remove the selected row, the last one included."""
+        table = self._table()
+        if table is None:
+            return
+        index = table.currentRow()
+        self.rows = without_index(self.rows, index)
+        self.form._listen_rows = self.rows
+        self._fill()
+
+    def show_selected_note(self) -> None:
+        """The note for the selected row, hidden when it has none."""
+        self._show_note(self._selected_note())
+
+    def generate_token(self) -> None:
+        from freecad.mcp_bridge.init_gui import generate_and_show_token
+
+        generate_and_show_token(parent=self.form)
+
+    def set_token(self) -> None:
+        from freecad.mcp_bridge.init_gui import set_pasted_token_from_dialog
+
+        set_pasted_token_from_dialog(parent=self.form)
+
+    def generate_certificate(self) -> None:
+        from freecad.mcp_bridge.init_gui import generate_and_show_certificate
+
+        generate_and_show_certificate(parent=self.form)
+
+    def _show_mode(self) -> None:
+        from PySide.QtWidgets import QComboBox
+
+        from freecad.mcp_bridge.init_gui import _show_mode_in_box
+
+        box = form_child(self.form, QComboBox, "permissionModeComboBox")
+        if box is None:
+            return
+        try:
+            _show_mode_in_box(box)
+        except RuntimeError as exc:
+            report_wiring("permissionModeComboBox", exc)
+        except Exception as exc:
+            report_wiring(
+                "permissionModeComboBox", exc, with_trace=True
+            )
+
+    def _prepare_table(self) -> None:
+        table = self._table()
+        if table is None:
+            return
+        try:
+            from PySide.QtCore import Qt
+            from PySide.QtWidgets import QHeaderView
+
+            table.setColumnCount(3)
+            header = table.horizontalHeader()
+            header.setVisible(False)
+            header.setSectionResizeMode(0, QHeaderView.Stretch)
+            header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+            header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+            table.verticalHeader().setVisible(False)
+            table.setShowGrid(False)
+            table.setHorizontalScrollBarPolicy(
+                Qt.ScrollBarAlwaysOff
+            )
+            table.setWordWrap(False)
+        except RuntimeError as exc:
+            report_wiring("listenTable", exc)
+        except Exception as exc:
+            report_wiring("listenTable", exc, with_trace=True)
+
+    def _fill(self) -> None:
+        from PySide.QtWidgets import QTableWidgetItem
+
+        table = self._table()
+        if table is None:
+            return
+        ipv4, names, machine = self._facts()
+        try:
+            table.setRowCount(len(self.rows))
+            for index, row in enumerate(self.rows):
+                present = ipv4.get(row.adapter, "")
+                what, port, kind = _cells(row, present)
+                warned = bool(_note(row, machine, names, ipv4))
+                values = (what, port, kind)
+                for column, text in enumerate(values):
+                    item = QTableWidgetItem(text)
+                    if warned and column == 0:
+                        _set_warning_mark(item)
+                    table.setItem(index, column, item)
+        except RuntimeError as exc:
+            report_wiring("listenTable", exc)
+        except Exception as exc:
+            report_wiring("listenTable", exc, with_trace=True)
+        try:
+            table.resizeColumnToContents(1)
+            table.resizeColumnToContents(2)
+        except RuntimeError as exc:
+            report_wiring("listenTable", exc)
+        except Exception as exc:
+            report_wiring("listenTable", exc, with_trace=True)
+        self.show_selected_note()
+        self._show_running()
+
+    def _show_running(self) -> None:
+        from PySide.QtWidgets import QLabel
+
+        from freecad.mcp_bridge import bridge
+        from freecad.mcp_bridge.listeners import (
+            bind_entries,
+            difference_text,
+        )
+
+        label = form_child(
+            self.form, QLabel, "listeningDifferenceLabel"
+        )
+        if label is None:
+            return
+        listening = None
+        try:
+            if bridge.is_running():
+                listening = bridge.listening_entries()
+        except Exception as exc:
+            report_wiring(
+                "listeningDifferenceLabel", exc, with_trace=True
+            )
+            listening = None
+        ipv4, _names, machine = self._facts()
+        bound = bind_entries(self.rows, ipv4, machine)
+        try:
+            _set_label(label, difference_text(bound, listening))
+        except RuntimeError as exc:
+            report_wiring("listeningDifferenceLabel", exc)
+        except Exception as exc:
+            report_wiring(
+                "listeningDifferenceLabel", exc, with_trace=True
+            )
+
+    def _selected_note(self) -> str:
+        table = self._table()
+        if table is None or not self.rows:
+            return ""
+        try:
+            index = table.currentRow()
+        except RuntimeError as exc:
+            report_wiring("listenTable", exc)
+            return ""
+        if index < 0 or index >= len(self.rows):
+            return ""
+        ipv4, names, machine = self._facts()
+        return _note(self.rows[index], machine, names, ipv4)
+
+    def _show_note(self, text: str) -> None:
+        from PySide.QtWidgets import QLabel
+
+        label = form_child(self.form, QLabel, "listenRowNote")
+        if label is None:
+            return
+        try:
+            _set_label(label, text)
+        except RuntimeError as exc:
+            report_wiring("listenRowNote", exc)
+
+    def _table(self):
+        from PySide.QtWidgets import QTableWidget
+
+        return form_child(self.form, QTableWidget, "listenTable")
+
+    def _facts(self):
+        from freecad.mcp_bridge.init_gui import _qt_interface_records
+        from freecad.mcp_bridge.listeners import (
+            adapter_ipv4,
+            adapter_names,
+        )
+
+        up = _qt_interface_records(only_up=True)
+        every = _qt_interface_records(only_up=False)
+        return (
+            adapter_ipv4(up),
+            adapter_names(up),
+            _machine(every),
+        )
+
+    def _choices(self):
+        from freecad.mcp_bridge.init_gui import _qt_interface_records
+        from freecad.mcp_bridge.listeners import adapter_choices
+
+        return adapter_choices(_qt_interface_records(only_up=True))
+
+    def _own_name(self) -> str:
+        from freecad.mcp_bridge.listeners import own_host_name
+
+        try:
+            return own_host_name()
+        except Exception as exc:
+            report_wiring("host name", exc, with_trace=True)
+            return ""
+
+
+def ask_add(parent, choices, own_name: str, rows):
+    """The Add dialog. Return the new row, or None for Cancel.
+
+    A row that is already in `rows` changes nothing.
+    """
+    return _ask_row(parent, choices, own_name, rows)
+
+
+def ask_edit(parent, choices, own_name: str, rows, index: int):
+    """The Edit dialog for row `index`. Return the replacement, or None.
+
+    An Old entry row is not editable and returns None without opening.
+    """
+    if index < 0 or index >= len(rows) or not can_edit(rows[index]):
+        return None
+    return _ask_row(parent, choices, own_name, rows, index=index)
+
+
+def _ask_row(
+    parent,
+    choices,
+    own_name: str,
+    rows,
+    index: int | None = None,
+):
+    from PySide.QtWidgets import (
+        QComboBox,
+        QDialog,
+        QDialogButtonBox,
+        QFormLayout,
+        QLabel,
+        QLineEdit,
+        QSpinBox,
+        QVBoxLayout,
+        QWidget,
+    )
+
+    current = None if index is None else rows[index]
+    dialog_choices = list(choices)
+    if (
+        current is not None
+        and current.kind == KIND_ADAPTER
+        and current.adapter
+        and all(name != current.adapter for _label, name in dialog_choices)
+    ):
+        dialog_choices.append((current.adapter, current.adapter))
+    dialog = QDialog(parent)
+    title = (
+        f"{DISPLAY_NAME}: Edit row"
+        if current is not None
+        else f"{DISPLAY_NAME}: Add to Listen addresses"
+    )
+    dialog.setWindowTitle(title)
+    dialog.setObjectName("MCPBridgeAddListenDialog")
+    kind = QComboBox(dialog)
+    kind.addItem(KIND_ADAPTER_LABEL, KIND_ADAPTER)
+    kind.addItem(KIND_FIXED_LABEL, KIND_ADDRESS)
+    kind.addItem(KIND_NAME_LABEL, KIND_NAME)
+    value_label = QLabel("Adapter", dialog)
+    holder = QWidget(dialog)
+    holder_layout = QVBoxLayout(holder)
+    holder_layout.setContentsMargins(0, 0, 0, 0)
+    value = QComboBox(holder)
+    for label, name in dialog_choices:
+        value.addItem(label, name)
+    address = QLineEdit(holder)
+    name_box = QLineEdit(holder)
+    if own_name:
+        name_box.setText(own_name)
+        name_box.selectAll()
+    for widget in (value, address, name_box):
+        holder_layout.addWidget(widget)
+    port = QSpinBox(dialog)
+    port.setRange(1, 65535)
+    port.setValue(DEFAULT_PORT)
+    if current is not None:
+        if current.kind == KIND_ADAPTER:
+            kind.setCurrentIndex(0)
+            for idx, (_label, name) in enumerate(dialog_choices):
+                if name == current.adapter:
+                    value.setCurrentIndex(idx)
+                    break
+            port.setValue(current.port)
+        elif current.kind == KIND_ADDRESS:
+            kind.setCurrentIndex(1)
+            address.setText(current.host)
+            port.setValue(current.port)
+        elif current.kind == KIND_NAME:
+            kind.setCurrentIndex(2)
+            name_box.setText(current.host)
+            name_box.selectAll()
+    port_label = QLabel("Port", dialog)
+    explain = QLabel(HOST_NAME_LINE, dialog)
+    explain.setWordWrap(True)
+    error = QLabel("", dialog)
+    error.setWordWrap(True)
+    buttons = QDialogButtonBox(QDialogButtonBox.Cancel, parent=dialog)
+    button_label = "Save" if current is not None else "Add"
+    accept_button = buttons.addButton(
+        button_label, QDialogButtonBox.AcceptRole
+    )
+    layout = QVBoxLayout(dialog)
+    form = QFormLayout()
+    form.addRow("Kind", kind)
+    form.addRow(value_label, holder)
+    form.addRow(port_label, port)
+    layout.addLayout(form)
+    layout.addWidget(explain)
+    layout.addWidget(error)
+    layout.addWidget(buttons)
+
+    def show_kind() -> None:
+        selected = kind.currentData()
+        value.setVisible(selected == KIND_ADAPTER)
+        address.setVisible(selected == KIND_ADDRESS)
+        name_box.setVisible(selected == KIND_NAME)
+        port.setVisible(selected != KIND_NAME)
+        port_label.setVisible(selected != KIND_NAME)
+        explain.setVisible(selected == KIND_NAME)
+        if selected == KIND_ADAPTER:
+            value_label.setText("Adapter")
+        elif selected == KIND_ADDRESS:
+            value_label.setText("Address")
+        else:
+            value_label.setText("Name")
+            name_box.selectAll()
+        error.setText("")
+
+    def accept() -> None:
+        selected = kind.currentData()
+        if selected == KIND_ADAPTER:
+            entered = value.currentData() or ""
+        elif selected == KIND_ADDRESS:
+            entered = address.text()
+        else:
+            entered = name_box.text()
+        names = [item for _label, item in dialog_choices]
+        if current is None:
+            reason = add_refusal(
+                selected, entered, str(port.value()), names
+            )
+        else:
+            reason = edit_refusal(
+                selected,
+                entered,
+                str(port.value()),
+                names,
+                rows,
+                index,
+            )
+        if reason:
+            error.setText(reason)
+            return
+        row = make_row(selected, entered, str(port.value()))
+        if current is None and already_listed(rows, row):
+            dialog.done(QDialog.Rejected)
+            return
+        dialog.added = row
+        dialog.done(QDialog.Accepted)
+
+    kind.currentIndexChanged.connect(lambda *_args: show_kind())
+    accept_button.clicked.connect(accept)
+    buttons.rejected.connect(dialog.reject)
+    show_kind()
+    dialog.added = None
+    if dialog.exec() != QDialog.Accepted:
+        return None
+    return dialog.added
+
+
+def _cells(row, present: str):
+    from freecad.mcp_bridge.listeners import cells
+
+    return cells(row, present or None)
+
+
+def _note(row, machine, names, ipv4) -> str:
+    from freecad.mcp_bridge.listeners import row_note
+
+    return row_note(row, machine, names, ipv4)
+
+
+def _machine(records) -> set[str]:
+    import ipaddress
+
+    found = set()
+    for _name, address in records:
+        text = (address or "").split("%", 1)[0].strip()
+        try:
+            found.add(str(ipaddress.ip_address(text)))
+        except ValueError:
+            continue
+    return found
+
+
+def _set_label(label, text: str) -> None:
+    label.setText(text)
+    label.setVisible(bool(text))
+
+
+def _set_warning_mark(item) -> None:
+    try:
+        from PySide.QtWidgets import QApplication, QStyle
+
+        style = QApplication.style()
+        if style is None:
+            return
+        item.setIcon(style.standardIcon(QStyle.SP_MessageBoxWarning))
+    except Exception as exc:
+        report_wiring("listenTable", exc, with_trace=True)

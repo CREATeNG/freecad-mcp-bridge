@@ -55,15 +55,16 @@ The MCP server exposes three tools (schemas in `tools.py`).
 The On/Off button on the status bar shows the permission mode
 beside its words: a shield with a tick for Ask, or a warning
 triangle for Unrestricted. The button is the same width in both
-modes. Its menu has `Permissions: Ask` and `Permissions:
-Unrestricted`, each with its icon, above `MCP Bridge Preferences`.
+modes. Its menu has `Permissions`, with `Ask` and `Unrestricted`
+under it, each with its icon, above `MCP Bridge Preferences`.
 The menu does not mark the mode in force: the button's icon shows
 it. Choosing a mode there switches the same way as the
-**Permission mode** preference under **Permissions**: a
+**Permission mode** preference under **Execution permission**: a
 confirmation to go Unrestricted, and back to Ask at once. A click
 on the button, its icon or its words, turns the bridge on or off.
-It does nothing else. While the mode is Unrestricted, the button is
-shown whatever **Show the On/Off button** says.
+It does nothing else. While the mode is Unrestricted, the button
+is shown whatever **Show** under **MCP Bridge status bar widget**
+says.
 
 **Result shape**
 
@@ -409,17 +410,37 @@ page, then polls via `get_output_page` if needed.
 
 **Listen addresses and ports**
 
-Configured in **Listen addresses** in FreeCAD preferences as a list of
-`address:port` entries (`[ipv6]:port` for IPv6), **`127.0.0.1:39280`**
-by default. When the **Listen addresses** setting has never been
-saved, the default entry uses any previously saved `Port`
-preference so an upgraded profile keeps its custom port. On a
-missing or invalid port, or a bind
-conflict at startup: log a clear error naming the entry and directing
-the user to Edit → Preferences → MCP Bridge, and keep the bridge off.
-No silent port increment. Dynamic port rejected — HTTP clients
-configure the endpoint URL directly; a changing port would require
-reconfiguration each session.
+**Listen addresses** is one list in FreeCAD preferences. With
+nothing saved, the list shows one fixed row, `127.0.0.1:39280`.
+When that setting has never been saved, the default row uses any
+previously saved `Port` preference, so an upgraded profile keeps
+its custom port. A missing or invalid port, or a bind conflict at
+startup, logs an error naming the entry and directing the user to
+Edit → Preferences → MCP Bridge, and keeps the bridge off. There
+is no silent port increment. A dynamic port is rejected: an HTTP
+client configures the endpoint URL directly, and a changing port
+would require reconfiguration each session.
+
+**+** opens **MCP Bridge: Add to Listen addresses**, **-**
+removes the selected row, and **Edit** or double-clicking a row
+opens **MCP Bridge: Edit row** filled with that row (**Save**
+replaces it in place and refuses a duplicate or anything **Add**
+refuses; an **Old entry** row cannot be edited, only removed).
+An adapter row stores the port and the adapter's name, and at
+each start the bridge listens on that adapter's IPv4 address. A
+fixed IP address listens on exactly that address. A host name
+has no port and adds no listener of its own: it is accepted on
+every listener, so a client can connect by name and keep working
+when the address changes, and **Generate self-signed
+certificate** covers it. An empty saved
+list stays empty. A fixed address this machine does not have
+is skipped. The page marks that row, and the start names it in
+the status bar and in one Report view warning, then listens on
+the rest. An adapter that is down or has no IPv4 address, and a
+wildcard, are named the same way. A port another program has
+taken fails the whole start, and the reason is shown. While
+the bridge is on, the page compares its rows, an empty list
+included, with what the bridge is listening on.
 
 **Session management**
 
@@ -501,16 +522,24 @@ state. If the capability belongs anywhere, it is upstream
 By default, the server binds to `127.0.0.1:39280` only. It starts only
 when the user activates the toggle, and stops when they deactivate it.
 
-In Preferences, the user can configure a list of `address:port`
-entries (`[ipv6]:port` for IPv6), defaulting to `127.0.0.1:39280`.
-Every entry requires a port. `0.0.0.0`, `[::]` and any other
-unspecified address are refused, and the message tells the user to
-enter a specific address of this machine. If any entry lacks a valid
-port or cannot be bound, all bound listeners are closed and the
-bridge stays off. The server binds an HTTP listener on each listed
-entry and shares a single main-thread execution queue across them.
-Loopback is bound only when included in the list (the Claude Desktop
-shim connects to `127.0.0.1` on its configured port).
+In Preferences, **Listen addresses** is one list. With nothing
+saved it shows `127.0.0.1:39280`. Rows are added, edited in
+place, or removed. An adapter row listens on that adapter's IPv4
+address. A fixed IP address listens on exactly that address. A
+host name has no port and adds no listener of its own: it is
+accepted on every listener, so a client can connect by name and
+keep working when the address changes. A saved wildcard opens no
+listener. A fixed address this machine
+does not have is skipped, and the bridge listens on the rest.
+The page marks that row, and the start names it in the status
+bar and in one Report view warning. An adapter that is down or
+has no IPv4 address is named the same way. If a listener
+cannot be bound, the bound listeners are closed and the bridge
+stays off. The server binds one listener for each address it
+can open and shares a single main-thread execution queue across
+them. Loopback is
+bound only when it is in the list. The Claude Desktop shim
+connects to `127.0.0.1` on its configured port.
 
 The first time the bridge starts at all, loopback included, one modal
 dialog says that connected agents can run Python code in FreeCAD with
@@ -519,61 +548,81 @@ accepts, and that acceptance is remembered
 (`StartWarningAccepted`). When that first start also has unaccepted
 addresses beyond loopback, the same dialog lists those addresses and
 the risks that remain. A later new address beyond loopback asks once
-on its own. That dialog states the remaining risks:
-
-- lack of encryption when **Require TLS (HTTPS)** is off;
-- remote Python code execution in FreeCAD as the user, by any client
-  with the bearer token that can reach the addresses.
+on its own, and a changed port does not ask again. For an adapter
+row, the warning shows once for each address the adapter hasn't had
+before. That dialog states the remaining risk: remote Python
+code execution in FreeCAD as the user, by any client with the
+bearer token that can reach the addresses.
 
 The bridge stays off unless the user accepts. Acceptance of each
 address is stored in FreeCAD's preferences
 (`AcceptedListenAddresses`) once the start succeeds. Every later
-start, loopback included, keeps a line in the status bar and the
-Report view.
+start, loopback included, keeps the warning in the status bar, and
+a line in the Report view naming where it listens.
 
-**Authentication on every listener, TLS beyond loopback**
+**Authentication on every listener, TLS with a certificate**
 
 Every request on every listener must carry
 `Authorization: Bearer <token>` or is rejected with `401 Unauthorized`
-and `WWW-Authenticate: Bearer`. The token lives in
-`<home>/.freecad-mcp-bridge/token`, or in `FREECAD_MCP_TOKEN_DIR`
-when that variable is set. The folder is readable by the
-user only, and on Windows its one allow entry is inheritable, so a
-file created in it is user-only too. On Linux and macOS the folder
-is mode `0700` and the file is mode `0600`. FreeCAD creates the folder
-and the file at the first start, shows the token once, and writes the
-file. The write goes to a temporary file in that folder and then
-replaces the token file, so a reader never sees it empty.
-**Generate new token** replaces the file and shows the new
-token once. Preferences do not keep a hash. The old `TokenHash`,
-`RequireToken` and `RequireOnLoopback` values are left unread. A
-running bridge, when a request's token does not match, reads the file
-again before refusing.
+and `WWW-Authenticate: Bearer`. FreeCAD keeps only a SHA-256 hash
+of the bearer token in `TokenHash` and shows the token once. It does
+not write a token file, and nothing is shared as a file. **Generate
+new token** stores a new hash and shows the new token once. **Set
+token** stores a pasted bearer token the same way, of any length
+when it uses letters, digits and - . _ ~ + /, with = at the end,
+and does not show it back. `RequireToken`, `RequireTls` and
+`RequireOnLoopback` stay unread. A running bridge hashes the
+request's token and reads `TokenHash` again before refusing.
 
-The Claude Desktop extension reads that file on each `tools/call`. A
-token pasted into its Bearer token setting is written to the file
-only when it is at least 32 characters, the folder already exists,
-and its SHA-256 differs from the hash stored in `pasted` beside the
-token. That record is user-only, like the token file, and holds the
-hash rather than a second copy of the token. A shorter token is not
-written. While the folder is missing, the extension tries the write
-again on each call and does not create the folder. A problem with
-the paste, including a write error, is a text item in the tool
-result. The shim's own error text carries that note beside `error`.
-The call is still sent, with the token from the file. **Generate new
-token** tells the user when the file cannot be written.
+The Claude Desktop extension takes the token only from its Bearer
+token setting, on this machine and for another host. It reads no
+token file and writes nothing. With no token set, or with a paste
+that is not a bearer token, the tool result says so and the call
+is not sent. A refused token says the pasted token was refused.
 
-- **TLS (`RequireTls`, default `true`)** — when enabled, non-loopback
-  listeners serve HTTPS using the user-configured certificate file
-  (`TlsCertFile`) and private key file (`TlsKeyFile`) with Python's
-  standard-library `ssl` module. Loopback listeners serve HTTP. The
-  addon does not generate certificates. If `RequireTls` is enabled and
-  an entry beyond loopback is configured without readable, valid
-  certificate and key files, startup fails with an error directing
-  the user to Edit → Preferences → MCP Bridge and the bridge stays
-  off.
+- **TLS (`TlsCertFile`, `TlsKeyFile`, `serving-cert.pem`)** — when a
+  certificate file (`TlsCertFile`) and private key file (`TlsKeyFile`)
+  are set, every listener serves HTTPS, loopback included, using
+  Python's standard-library `ssl` module, and each start writes a
+  user-only copy of the certificate to `serving-cert.pem` in the
+  bridge's folder. When they are not set, loopback listeners serve HTTP,
+  each start removes `serving-cert.pem`, and a start with an entry
+  beyond loopback fails. In the TLS certificate group the page
+  states that an MCP client must trust this certificate.
+  **Certificate (PEM)** and **Private key (PEM)** sit side by side,
+  with **Generate self-signed certificate**. That button calls
+  `cert_tools.find_tools()` to find certificate tools on the machine
+  (such as `openssl`, including Git for Windows' copy on Windows).
+  Where tools are found, it offers a choice of tool and key type
+  (`RSA 4096` or `ECDSA P-256`) and calls `cert_tools.generate()`.
+  Where none is found, it makes nothing and says where to install
+  openssl for the platform. The certificate is
+  self-signed (825-day validity, `CA:FALSE`, `digitalSignature` and
+  `keyEncipherment`, `serverAuth`), covers `127.0.0.1`, `localhost`,
+  every listed address, and each host name, writes `tls-cert.pem` and
+  `tls-key.pem` (`tls-key.pem` readable by the user only) in
+  `<home>/.freecad-mcp-bridge` (or `FREECAD_MCP_TOKEN_DIR`), fills in
+  the `TlsCertFile` and `TlsKeyFile` fields (asking first when either
+  field is already set or either file already exists), and shows the
+  certificate file path, covered addresses, and expiry date. If an
+  entry beyond loopback is configured without readable, valid
+  certificate and key files, if a configured certificate is not yet
+  valid or has expired, startup fails with an error naming the
+  problem and directing the user to select or generate the files
+  in Edit → Preferences → MCP Bridge, and the bridge stays off.
+  A listener whose address is not in the certificate draws a
+  Report view warning when the certificate names no host, and the
+  start still proceeds.
 
 **Security posture — noted trade-offs**
+
+FreeCAD's Python has no library that creates a certificate, so
+**Generate self-signed certificate** needs a certificate tool on the
+machine. Where none is found, the user installs one or enters their
+own certificate files.
+
+Rejected: an addon generator of its own, in pure Python. Keys and
+certificates are made by a maintained tool, not by the addon's code.
 
 On loopback (`127.0.0.1`), the TCP port is accessible to any local
 process while active. Named sockets (Windows named pipes / UNIX domain
@@ -592,9 +641,12 @@ only after the user has accepted it once.
 **Origin and Host — required**
 
 Any request that carries an `Origin` header is refused with `403`.
-A request is also refused when its `Host` header, port aside, is not
-the address that listener is bound to. A missing `Host` is refused.
-A loopback listener accepts `127.0.0.1`, `localhost` and `[::1]`.
+A request is also refused when its `Host` header, port aside, names
+neither the address that listener is bound to, nor a name its
+certificate covers, nor a name in **Host names**. A missing `Host`
+is refused.
+A loopback listener accepts the address it is bound to, `127.0.0.1`,
+`localhost` and `[::1]`, but not a name its certificate covers.
 
 ---
 
@@ -618,29 +670,82 @@ cannot use the shim. Stdio carries no headers, so the shim sets
 field is present, and to `2025-11-25` when it is not. When the
 version is `2026-07-28` it also sets `Mcp-Method` from the message's
 method and, for `tools/call`, `Mcp-Name` from `params.name`. Node
-stdlib only (global `fetch` and `node:https`, Node ≥ 18); Claude
-Desktop bundles Node.js, so no user-side runtime install is needed.
-The shim reads the port from `FREECAD_MCP_PORT` (default 39280), an
-optional pasted bearer token from `FREECAD_MCP_TOKEN`, and an optional
-PEM certificate path from `FREECAD_MCP_TLS_CERT_FILE` (all wired from
-`user_config` in `manifest.json`). On each `tools/call` it sends
-`Authorization: Bearer` with the token in the token file. The folder
-is `FREECAD_MCP_TOKEN_DIR` when that is set, and
-`<home>/.freecad-mcp-bridge` otherwise. A pasted token of at least 32
-characters is written only when its hash differs from the `pasted`
-file beside the token and the folder already exists. A shorter paste,
-a missing folder, or a write error is a note on the tool result, and
-the call is still sent.
-When a certificate file is set, it connects to
-`https://127.0.0.1:<port>/mcp` and trusts that certificate (which
-must cover `127.0.0.1`). Loopback serves HTTP, so the certificate
-setting stays blank for a loopback connection. Notifications (no `id`)
+stdlib only (global `fetch`, `node:crypto`, `node:https` and
+`node:tls`, Node ≥ 18); Claude Desktop bundles Node.js, so no
+user-side runtime install is needed.
+The shim reads the host from `FREECAD_MCP_HOST` (default `127.0.0.1`;
+`localhost` in any letter case is taken as `127.0.0.1`, and `127.x.x.x`
+and `::1` are treated as loopback), the port from `FREECAD_MCP_PORT`
+(default 39280), an optional pasted bearer token from
+`FREECAD_MCP_TOKEN`, and an optional PEM certificate path from
+`FREECAD_MCP_TLS_CERT_FILE` (all wired from `user_config` in
+`manifest.json`). On this machine and for another host, each
+`tools/call` sends `Authorization: Bearer` with
+`FREECAD_MCP_TOKEN` only. The shim reads no token file and writes
+nothing. With no token set, or with a paste that is not a bearer
+token, the tool result says so and the call is not sent.
+`FREECAD_MCP_TLS_CERT_FILE` is honoured on every host: when it is
+set, the shim connects over HTTPS, pins that file's certificate by
+its SHA-256 fingerprint (not the system's certificate authorities),
+and never falls back to HTTP, so the token is not sent in the clear
+when the user has named a certificate. On this machine it wins over
+`serving-cert.pem`. When it is empty on this machine and
+`serving-cert.pem` is in `FREECAD_MCP_TOKEN_DIR` or
+`<home>/.freecad-mcp-bridge`, the shim connects over HTTPS and pins
+that file's certificate the same way, and when that file is absent
+it connects over HTTP. When `FREECAD_MCP_HOST` names an address or
+hostname beyond loopback, the shim connects to
+`https://<host>:<port>/mcp`, requires `FREECAD_MCP_TLS_CERT_FILE`,
+and sends the pasted token. A failure's message names the file in
+use: the setting when it is set, and `serving-cert.pem` when the
+bridge's copy is in use. At start the shim writes one line to its
+stderr, which Claude Desktop keeps as the extension's log: the
+endpoint, the certificate file it pins, and whether it was given a
+bearer token, never the token. With the setting empty on this
+machine the line says the choice is made at each call and what it
+is now, and one more line is written whenever a call's choice
+differs from the last call's.
+
+Over HTTPS, on this machine and for another host, the shim reads
+the trusted file (`serving-cert.pem` or `FREECAD_MCP_TLS_CERT_FILE`)
+with Node's `crypto.X509Certificate`, which takes the first
+certificate in the file, and takes that certificate's SHA-256
+fingerprint. A file with no `-----BEGIN CERTIFICATE-----` line, or
+one that class refuses, is reported as not a PEM certificate, and
+nothing is sent. The shim completes the TLS handshake with
+`node:tls`, and compares the SHA-256 fingerprint of the certificate
+the bridge presents with that fingerprint before creating the HTTP
+request or sending a single byte (the bearer token included). On a
+mismatch it closes the connection and returns an error. A matching
+fingerprint is the whole check: the shim does no chain building, no
+host-name check, and no check of the certificate's dates, because
+the trusted file is a copy of the bridge's own certificate and
+completing the handshake proves the bridge holds its key, and
+pinning by fingerprint does not depend on whether a Node runtime
+accepts a `CA:FALSE` certificate as a trust anchor. Each
+`tools/call` opens its own TLS connection (`Connection: close`) and
+destroys the socket when the reply ends or on any failure. For the
+Addon Index requirement that "traffic is always encrypted, using
+Python's `ssl` module or another maintained library rather than the
+addon's own code, and the client verifies the server, for example
+with a pinned certificate or a pre-shared key (TLS-PSK); an
+unchecked self-signed certificate does not count;", Python's `ssl`
+module and Node's `node:tls` do the encrypting and the TLS
+handshake, Node's `node:crypto` reads the certificate from the
+trusted file and computes both fingerprints, and the compare of the
+two fingerprints is the shim's own code. On every address beyond
+loopback, where the rule applies, the traffic is encrypted by those
+libraries, and the client verifies the server with a pinned
+certificate.
+
+Notifications (no `id`)
 get no reply and are not sent on. The shim answers `initialize`
 itself with `protocolVersion` `2025-11-25` and a tools capability
 only, and `tools/list` from `tools.json`, a copy of the addon's tool
 list that release preparation checks against `tools.py`. It does not
 contact the bridge for either, whether or not FreeCAD is up. Only a
-`tools/call` is sent on. When that call finds the bridge
+`tools/call` is sent on. When the extension lacks a certificate or
+token for another machine, or when that call finds the bridge
 unreachable, serving HTTPS with no certificate set, returning 401,
 or failing TLS, the tool result's `error` names that case and what
 to change, the bridge's toggle in FreeCAD or the extension's
@@ -714,16 +819,17 @@ running and fixes that job's retention interval, also used for later
 extensions. Preference changes affect jobs that finish afterwards, not
 histories whose intervals are already set.
 
-The preference page is registered as a `.ui` file and appears in Edit →
-Preferences → MCP Bridge. FreeCAD wires widgets to the parameter store
-automatically.
+The preference page is a Python class that owns its form. It appears
+in Edit → Preferences → MCP Bridge. FreeCAD calls its save and load.
 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
-| Listen addresses | `127.0.0.1:39280` | List of `address:port` entries (`[ipv6]:port` for IPv6) to bind; unspecified addresses such as `0.0.0.0` and `[::]` are refused; if unset, inherits a previously saved `Port` value; missing port or bind conflict at startup logs an error and leaves the bridge off; the first start asks once (`StartWarningAccepted`), including loopback; each later non-loopback entry requires acceptance once (`AcceptedListenAddresses`); every later start keeps a line in the status bar and Report view |
-| Bearer token file | `<home>/.freecad-mcp-bridge/token` | Every listener requires `Authorization: Bearer <token>`; FreeCAD writes the file at the first start and on **Generate new token**, shows the token once, and does not keep a hash; a mismatch reads the file again before refusing |
-| Require TLS (HTTPS) | `true` | Serves HTTPS on non-loopback entries using `TlsCertFile` and `TlsKeyFile`; loopback stays HTTP; fails to start on an entry beyond loopback if enabled without valid certificate and key files |
-| TLS certificate file (PEM) / TLS private key file (PEM) | `""` | PEM certificate (`TlsCertFile`) and private key (`TlsKeyFile`) paths for HTTPS |
+| Listen addresses | `127.0.0.1:39280` | One list. Rows are added, edited in place (except an `Old entry` row, which can only be removed), or removed. An adapter row stores the port and the adapter's name and listens on that adapter's IPv4 address. A fixed IP address is `address:port`, or `[ipv6]:port` for IPv6. A host name has no port and adds no listener of its own: it is accepted on every listener, so a client can connect by name and keep working when the address changes. A saved wildcard opens no listener. With nothing saved, the list shows `127.0.0.1:39280`, using a previously saved `Port` when that differs. An empty saved list stays empty. A fixed address this machine does not have is skipped, and the bridge listens on the rest. The page marks that row, and the start names it in the status bar and in one Report view warning. An adapter that is down or has no IPv4 address, and a wildcard, are named the same way. A missing port or a bind conflict logs an error and leaves the bridge off. The first start asks once (`StartWarningAccepted`), including loopback. Each later new address beyond loopback asks once (`AcceptedListenAddresses`), and a changed port does not ask again. For an adapter row, the warning shows once for each address the adapter hasn't had before. Every later start keeps the warning in the status bar, and a line in the Report view naming where it listens |
+| HostNames | `""` | Host name rows, one a line. Each has no port and adds no listener of its own. |
+| ListenAdapters | `""` | One adapter a line: the port, a tab, then the adapter's name. |
+| ListenListSaved | false | Set when the page is saved, so an empty list stays empty. |
+| Bearer token hash | Preferences `TokenHash` | Every listener requires `Authorization: Bearer <token>`; FreeCAD stores only the SHA-256 hash, shows a generated token once, and reads the hash again before refusing a mismatch |
+| Certificate (PEM) / Private key (PEM) | `""` | When both `TlsCertFile` and `TlsKeyFile` are set, every listener serves HTTPS. Without them, loopback is HTTP and a start beyond loopback fails. **Generate self-signed certificate** writes `tls-cert.pem` and `tls-key.pem` in `<home>/.freecad-mcp-bridge` and fills both fields |
 | Permission mode | `0` (Ask) | `PermissionMode`, `0` for Ask and `1` for Unrestricted: in Ask, FreeCAD shows an agent's code, and a file's path with it, before it runs; in Unrestricted the code runs unseen; switched in Preferences or from the On/Off button's menu, with a confirmation to go Unrestricted; each switch writes it at once, and the Preferences box has no preference entry of its own, so FreeCAD's own OK writes nothing for it |
 | Max response timeout (s) | 15 | Max wait for the first answer of `execute_python` and `execute_python_file`, dialog included, and for each later page, before returning with `has_more: true` |
 | Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |

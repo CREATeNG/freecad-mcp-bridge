@@ -118,6 +118,9 @@ def _verify_command_category() -> None:
 
         commands = _commands_for_category(idx)
         if ("MCP_Bridge_Toggle", "MCP Bridge On/Off") not in commands:
+            common._drain_qt_events(500)
+            commands = _commands_for_category(idx)
+        if ("MCP_Bridge_Toggle", "MCP Bridge On/Off") not in commands:
             common.fail(
                 "Command 'MCP_Bridge_Toggle' not listed under Customize "
                 f"category 'MCP_Bridge' (found: {commands})"
@@ -161,8 +164,7 @@ def _report_view_text() -> str:
 
 _PREFS_LINE = (
     "To start or stop the bridge, click <b>MCP On/Off</b> "
-    "in the status bar. While active, it listens "
-    "on the addresses below."
+    "in the status bar."
 )
 
 
@@ -243,19 +245,25 @@ def _assert_status_button(running: bool) -> None:
         )
     menu = button.menu()
     texts = None if menu is None else [a.text() for a in menu.actions()]
-    expected_menu = [
-        "Permissions: Ask",
-        "Permissions: Unrestricted",
-        "MCP Bridge Preferences",
-    ]
+    expected_menu = ["Permissions", "MCP Bridge Preferences"]
     if texts != expected_menu:
         common.fail(
             "Status-bar button menu is missing or unexpected: "
             f"expected {expected_menu!r}, got {texts!r}"
         )
-    # Each item is plain words with its icon. None carries a tick: the
-    # button's own icon is what shows the mode in force.
-    for item in menu.actions():
+    permissions = button._permissions_menu
+    sub = None if permissions is None else [
+        a.text() for a in permissions.actions()
+    ]
+    if sub != ["Ask", "Unrestricted"]:
+        common.fail(
+            "Permissions submenu is missing or unexpected: "
+            f"expected ['Ask', 'Unrestricted'], got {sub!r}"
+        )
+    # Ask and Unrestricted each have the mode's icon and no tick.
+    # Preferences has its icon. None carries a tick.
+    mode_items = list(permissions.actions()) + [menu.actions()[1]]
+    for item in mode_items:
         if item.isCheckable():
             common.fail(
                 f"Status-bar button menu item {item.text()!r} is checkable"
@@ -349,6 +357,66 @@ def _verify_status_button_hide() -> None:
     )
 
 
+def _watch_after_click(what: str) -> dict:
+    """Name any dialog still open a few seconds after a click.
+
+    The text is the title and class of the active modal widget and
+    of every visible top-level widget. Those widgets are then closed.
+    """
+    from PySide.QtCore import QTimer
+    from PySide.QtWidgets import QApplication
+
+    found = {"text": ""}
+    timer = QTimer()
+    timer.setSingleShot(True)
+
+    def tick():
+        app = QApplication.instance()
+        lines = []
+        dialogs = []
+        if app is None:
+            lines.append("QApplication is None")
+        else:
+            active = app.activeModalWidget()
+            if active is None:
+                lines.append("activeModalWidget: none")
+            else:
+                lines.append(
+                    "activeModalWidget: "
+                    f"{type(active).__name__} "
+                    f"title={active.windowTitle()!r} "
+                    f"name={active.objectName()!r}"
+                )
+                dialogs.append(active)
+            for widget in app.topLevelWidgets():
+                try:
+                    visible = widget.isVisible()
+                except Exception:
+                    visible = False
+                if not visible:
+                    continue
+                lines.append(
+                    "top-level: "
+                    f"{type(widget).__name__} "
+                    f"title={widget.windowTitle()!r} "
+                    f"name={widget.objectName()!r}"
+                )
+                if type(widget).__name__ != "QMainWindow":
+                    dialogs.append(widget)
+        found["text"] = f"After {what}: " + "; ".join(lines)
+        common.log_notice(found["text"])
+        for widget in dialogs:
+            try:
+                widget.close()
+            except Exception:
+                pass
+
+    timer.timeout.connect(tick)
+    timer.start(3000)
+    found["timer"] = timer
+    return found
+
+
 def _answer_unrestricted_dialog(label: str) -> None:
     """Click `label` on the Unrestricted confirmation when it shows."""
     from PySide.QtCore import QTimer
@@ -359,15 +427,21 @@ def _answer_unrestricted_dialog(label: str) -> None:
     def tick():
         attempts["left"] -= 1
         app = QApplication.instance()
-        widget = app.activeModalWidget() if app is not None else None
-        if (
-            isinstance(widget, QMessageBox)
-            and widget.objectName() == "MCPBridgeUnrestrictedDialog"
-        ):
-            for btn in widget.buttons():
-                if btn.text() == label:
-                    btn.click()
-                    return
+        widgets = []
+        if app is not None:
+            active = app.activeModalWidget()
+            if active is not None:
+                widgets.append(active)
+            widgets.extend(app.topLevelWidgets())
+        for widget in widgets:
+            if (
+                isinstance(widget, QMessageBox)
+                and widget.objectName() == "MCPBridgeUnrestrictedDialog"
+            ):
+                for btn in widget.buttons():
+                    if btn.text() == label:
+                        btn.click()
+                        return
         if attempts["left"] > 0:
             QTimer.singleShot(50, tick)
 
@@ -386,12 +460,19 @@ def _verify_mode_on_status_button() -> None:
     if config.unrestricted():
         common.fail("Permission mode is not Ask at the start of verify")
     button = _status_button()
-    ask, unrestricted = button.menu().actions()[:2]
+    permissions = button._permissions_menu
+    ask, unrestricted = permissions.actions()[:2]
     width = button.sizeHint().width()
     try:
         # Unrestricted asks first, and No keeps Ask.
         _answer_unrestricted_dialog("No")
+        watched = _watch_after_click("the Unrestricted menu item")
         unrestricted.trigger()
+        watched["timer"].stop()
+        if watched["text"] and "activeModalWidget: none" not in (
+            watched["text"]
+        ):
+            common.fail(watched["text"])
         if config.unrestricted():
             common.fail("No on the confirmation switched to Unrestricted")
         _assert_status_button(False)
@@ -416,7 +497,7 @@ def _verify_mode_on_status_button() -> None:
                     "Status-bar button was hidden while Unrestricted"
                 )
             # Ask is at once, and the preference applies again.
-            _status_button().menu().actions()[0].trigger()
+            _status_button()._permissions_menu.actions()[0].trigger()
             if config.unrestricted():
                 common.fail("Choosing Ask did not switch the mode at once")
             if _status_button() is not None:
@@ -653,20 +734,19 @@ def _http_exec_probe(code: str, timeout_ms: int) -> dict:
 
     from PySide.QtCore import QCoreApplication, QThread
 
-    from freecad.mcp_bridge import config, token_file
+    from freecad.mcp_bridge import config
     from freecad.mcp_bridge.constants import PROTOCOL_VERSION
 
     entry = config.listen_addresses()[0]
     url = f"http://{entry}/mcp"
     timeout_s = timeout_ms / 1000.0
     result: dict = {}
-    token = token_file.read_token()
+    token = config.generate_and_store_token()
 
     def _post(payload):
         # A valid request in the bridge's protocol version: version, client
         # info and capabilities in _meta, mirrored in the headers.
-        # The token is the one FreeCAD wrote, from FREECAD_MCP_TOKEN_DIR
-        # or <home>/.freecad-mcp-bridge.
+        # The token is the one just stored, shown once in the dialog.
         params = payload["params"]
         params["_meta"] = {
             "io.modelcontextprotocol/protocolVersion": PROTOCOL_VERSION,
@@ -789,6 +869,7 @@ def _verify_http_round_trip() -> None:
 def _run() -> None:
     import FreeCAD as App
 
+    common.require_isolated_token_dir()
     common.log_group_start("Verify addon after restart")
     common.log(
         "Verify phase after restart "
@@ -804,6 +885,8 @@ def _run() -> None:
     _verify_status_button_hide()
     _verify_mode_on_status_button()
     _verify_toolbar_hide()
+    # Turning the bridge on never makes a token. Store one first.
+    common.store_token_for_toolbar_start()
     common.start_bridge()
     _assert_status_button(True)
     common.check_listening_status()

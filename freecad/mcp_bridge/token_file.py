@@ -1,15 +1,18 @@
-"""The bearer token file both FreeCAD and the extension share.
+"""The folder the bridge and the extension share for the certificate.
 
 The folder is ``FREECAD_MCP_TOKEN_DIR`` when that variable is set,
-and ``<home>/.freecad-mcp-bridge`` otherwise. The file is ``token``.
+and ``<home>/.freecad-mcp-bridge`` otherwise. FreeCAD keeps only a
+hash of the bearer token and writes no token file. The certificate
+copy written when the bridge starts with TLS is ``serving-cert.pem``.
 The folder is readable by the user only, and its one allow entry is
-inheritable, so a file created in it is user-only too. Each write of
-the token file sets that same user-only access on the file itself.
+inheritable, so a file created in it is user-only too. Each write
+sets that same user-only access on the file itself.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import stat
 import sys
 import tempfile
@@ -17,13 +20,24 @@ import time
 from pathlib import Path
 
 DIR_NAME = ".freecad-mcp-bridge"
-FILE_NAME = "token"
-MIN_TOKEN_LENGTH = 32
+SERVING_CERT_FILE_NAME = "serving-cert.pem"
+# RFC 6750 token68: one or more of these characters, then "=" only at
+# the end. ASCII letters only. Empty is not a token.
+_BEARER_TOKEN = re.compile(r"[A-Za-z0-9._~+/-]+={0,}\Z")
+TOKEN_REFUSAL = (
+    "Only letters, digits and - . _ ~ + / are allowed in a bearer "
+    "token, with = at the end."
+)
+
+
+def token_is_bearer(token: str) -> bool:
+    """True when `token` is an RFC 6750 bearer token."""
+    return _BEARER_TOKEN.fullmatch(token or "") is not None
 _REPLACE_ATTEMPTS = 5
 
 
 def token_dir() -> Path:
-    """Folder that holds the token file.
+    """Folder for the certificate copy.
 
     ``FREECAD_MCP_TOKEN_DIR`` overrides the home folder when it is set.
     """
@@ -33,40 +47,34 @@ def token_dir() -> Path:
     return Path.home() / DIR_NAME
 
 
-def token_path() -> Path:
-    """Path of the token file."""
-    return token_dir() / FILE_NAME
+def serving_cert_path() -> Path:
+    """Path of the serving certificate copy (`serving-cert.pem`)."""
+    return token_dir() / SERVING_CERT_FILE_NAME
 
 
-def read_token() -> str:
-    """Return the token in the file, or '' when it cannot be read."""
-    try:
-        return token_path().read_text(encoding="utf-8").strip()
-    except OSError:
-        return ""
-
-
-def write_token(token: str) -> None:
-    """Write `token` by replacing the file from a temporary file.
-
-    The temporary file is in the same folder, so it inherits that
-    folder's user-only entry. A reader never sees an empty token file.
-    """
+def write_serving_cert(cert_file: str | Path) -> None:
+    """Write a copy of `cert_file` to `serving-cert.pem` in the bridge folder."""
+    content = Path(cert_file).read_bytes()
     directory = token_dir()
     directory.mkdir(parents=True, exist_ok=True)
     _user_only(directory, is_dir=True)
     descriptor, name = tempfile.mkstemp(
-        prefix=".token-", suffix=".tmp", dir=directory
+        prefix=".serving-cert-", suffix=".tmp", dir=directory
     )
     temporary = Path(name)
     try:
-        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-            handle.write(token.strip() + "\n")
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(content)
         _user_only(temporary, is_dir=False)
-        _replace_file(temporary, token_path())
+        _replace_file(temporary, serving_cert_path())
     except OSError:
         temporary.unlink(missing_ok=True)
         raise
+
+
+def remove_serving_cert() -> None:
+    """Remove `serving-cert.pem` if it exists."""
+    serving_cert_path().unlink(missing_ok=True)
 
 
 def _replace_file(source: Path, dest: Path) -> None:

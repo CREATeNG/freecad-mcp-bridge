@@ -44,8 +44,10 @@ def set_port(port):
     if port == -1:
         params.RemInt('Port')
         params.RemString('ListenAddress')
+        params.RemBool('ListenListSaved')
     else:
         params.SetString('ListenAddress', f'127.0.0.1:{port}')
+        params.SetBool('ListenListSaved', True)
 """
 
 
@@ -168,7 +170,7 @@ from PySide.QtWidgets import (
     QApplication,
     QDialog,
     QDialogButtonBox,
-    QTextEdit,
+    QTableWidget,
 )
 
 seen = {{}}
@@ -180,7 +182,7 @@ def inspect_and_click_ok():
         (
             d
             for d in mw.findChildren(QDialog)
-            if d.findChild(QTextEdit, 'listenAddressTextEdit') is not None
+            if d.findChild(QTableWidget, 'listenTable') is not None
         ),
         None,
     )
@@ -188,8 +190,19 @@ def inspect_and_click_ok():
         QTimer.singleShot(100, inspect_and_click_ok)
         return
     seen['dialog_found'] = True
-    box = dlg.findChild(QTextEdit, 'listenAddressTextEdit')
-    seen['box_text'] = box.toPlainText().strip() if box is not None else None
+    table = dlg.findChild(QTableWidget, 'listenTable')
+    if table is None or table.rowCount() < 1:
+        QTimer.singleShot(100, inspect_and_click_ok)
+        return
+    what = ''
+    port_text = ''
+    if table is not None and table.item(0, 0) is not None:
+        what = table.item(0, 0).text()
+    if table is not None and table.item(0, 1) is not None:
+        port_text = table.item(0, 1).text()
+    seen['box_text'] = (
+        f"{{what}}:{{port_text}}" if what and port_text else ''
+    )
     btn_box = dlg.findChild(QDialogButtonBox)
     ok_btn = (
         btn_box.button(QDialogButtonBox.Ok) if btn_box is not None else None
@@ -299,7 +312,218 @@ class PortTests(unittest.TestCase):
         self.assertIn("Preferences", seen["report"])
 
 
-def non_loopback_flow(address, seen_file, continue_file):
+def page_settings_flow(cert_path, key_path, seen_file):
+    """Code that opens the MCP Bridge Preferences page twice.
+
+    Before the first open it saves 7 minutes of history retention and
+    removes both certificate paths. In the first open it records what
+    the page shows, sets 8 minutes, fills the two certificate fields as
+    Generate self-signed certificate fills them, and clicks OK. In the
+    second it records what the page shows, sets 9 minutes, and clicks
+    Cancel. It records what is saved after each, then puts back the
+    eleven settings OK writes as they were found: a value that was
+    saved is saved again, and one that was not is removed.
+    """
+    return PREFERENCES + f"""
+import json
+import traceback
+from PySide.QtWidgets import (
+    QApplication,
+    QDialog,
+    QDialogButtonBox,
+    QSpinBox,
+    QTableWidget,
+    QWidget,
+)
+from freecad.mcp_bridge import init_gui
+
+MINUTES = 'MaxHistoryRetentionMinutes'
+# Every setting OK writes: the page's seven, and the listen list's four.
+WRITTEN = (
+    ('Int', 'MaxResponseTimeoutSeconds'),
+    ('Int', 'MaxPageSize'),
+    ('Int', MINUTES),
+    ('Bool', 'ShowStatusButton'),
+    ('Int', 'StatusButtonPosition'),
+    ('String', 'TlsCertFile'),
+    ('String', 'TlsKeyFile'),
+    ('String', 'ListenAddress'),
+    ('String', 'ListenAdapters'),
+    ('String', 'HostNames'),
+    ('Bool', 'ListenListSaved'),
+)
+UNSET = {{
+    'Int': (-123457, -765431),
+    'Bool': (True, False),
+    'String': ('<unset-a>', '<unset-b>'),
+}}
+seen = {{}}
+mw = Gui.getMainWindow()
+
+
+def saved_or_none(kind, name):
+    # The saved value, or None when nothing is saved under `name`: a
+    # read with two different defaults gives one answer only when a
+    # value is saved.
+    get = getattr(params, 'Get' + kind)
+    first, second = UNSET[kind]
+    value = get(name, first)
+    return value if value == get(name, second) else None
+
+
+found = {{name: (kind, saved_or_none(kind, name)) for kind, name in WRITTEN}}
+
+
+def page_dialog():
+    for dlg in mw.findChildren(QDialog):
+        table = dlg.findChild(QTableWidget, 'listenTable')
+        if dlg.isVisible() and table is not None and table.rowCount() > 0:
+            return dlg
+    return None
+
+
+def when_open(then, tries=100):
+    dlg = page_dialog()
+    if dlg is not None:
+        try:
+            then(dlg)
+        except Exception:
+            # Record it and close the page, so the run goes on.
+            seen.setdefault('errors', []).append(traceback.format_exc())
+            dlg.reject()
+        return
+    if tries > 0:
+        QTimer.singleShot(100, lambda: when_open(then, tries - 1))
+        return
+    seen['page_not_found'] = True
+    stuck = QApplication.activeModalWidget()
+    if stuck is not None:
+        stuck.reject()
+
+
+def shown(dlg, key):
+    spin = dlg.findChild(QSpinBox, 'retentionSpinBox')
+    cert = dlg.findChild(QWidget, 'tlsCertFileChooser')
+    key_file = dlg.findChild(QWidget, 'tlsKeyFileChooser')
+    seen[key + '_minutes'] = spin.value()
+    seen[key + '_cert'] = str(cert.property('fileName') or '')
+    seen[key + '_key'] = str(key_file.property('fileName') or '')
+    return spin
+
+
+def click(dlg, which):
+    box = dlg.findChild(QDialogButtonBox)
+    button = box.button(which) if box is not None else None
+    if button is not None:
+        button.click()
+    elif which == QDialogButtonBox.Ok:
+        dlg.accept()
+    else:
+        dlg.reject()
+
+
+def first_open(dlg):
+    spin = shown(dlg, 'first')
+    spin.setValue(8)
+    init_gui._set_chooser_file_name(
+        dlg, 'tlsCertFileChooser', {cert_path!r}
+    )
+    init_gui._set_chooser_file_name(
+        dlg, 'tlsKeyFileChooser', {key_path!r}
+    )
+    click(dlg, QDialogButtonBox.Ok)
+
+
+def second_open(dlg):
+    spin = shown(dlg, 'second')
+    spin.setValue(9)
+    click(dlg, QDialogButtonBox.Cancel)
+
+
+def saved(key):
+    seen[key + '_minutes'] = params.GetInt(MINUTES, -1)
+    seen[key + '_cert'] = params.GetString('TlsCertFile', '')
+    seen[key + '_key'] = params.GetString('TlsKeyFile', '')
+
+
+def put_back():
+    for name, (kind, value) in found.items():
+        if value is None:
+            getattr(params, 'Rem' + kind)(name)
+        else:
+            getattr(params, 'Set' + kind)(name, value)
+    seen['left_as_found'] = all(
+        saved_or_none(kind, name) == value
+        for name, (kind, value) in found.items()
+    )
+
+
+def step_open_twice():
+    try:
+        params.SetInt(MINUTES, 7)
+        params.RemString('TlsCertFile')
+        params.RemString('TlsKeyFile')
+        QTimer.singleShot(250, lambda: when_open(first_open))
+        Gui.showPreferences('MCP Bridge', 0)
+        saved('after_ok')
+        QTimer.singleShot(250, lambda: when_open(second_open))
+        Gui.showPreferences('MCP Bridge', 0)
+        saved('after_cancel')
+    except Exception:
+        seen.setdefault('errors', []).append(traceback.format_exc())
+    finally:
+        try:
+            put_back()
+        except Exception:
+            seen.setdefault('errors', []).append(traceback.format_exc())
+        with open({seen_file!r}, 'w', encoding='utf-8') as handle:
+            json.dump(seen, handle)
+
+
+QTimer.singleShot(300, step_open_twice)
+"""
+
+
+class PreferencePageTests(unittest.TestCase):
+    def test_the_page_shows_saved_settings_and_ok_saves_them(self):
+        """The page shows what is saved, OK saves it, and Cancel does not."""
+        with tempfile.TemporaryDirectory() as folder:
+            seen_file = os.path.join(folder, "seen.json")
+            cert_path = os.path.join(folder, "tls-cert.pem")
+            key_path = os.path.join(folder, "tls-key.pem")
+            mcp.run(page_settings_flow(cert_path, key_path, seen_file))
+            recorded = wait_for_file(seen_file, timeout_s=60)
+            self.assertTrue(
+                recorded, "the preferences page check was not recorded"
+            )
+            with open(seen_file, encoding="utf-8") as handle:
+                seen = json.load(handle)
+        self.assertNotIn("page_not_found", seen)
+        self.assertEqual(seen.get("errors", []), [])
+        # The first open shows the saved 7 minutes, not the form's 5,
+        # and both certificate fields empty.
+        self.assertEqual(seen.get("first_minutes"), 7)
+        self.assertEqual(seen.get("first_cert"), "")
+        self.assertEqual(seen.get("first_key"), "")
+        # OK saves the changed minutes and both filled paths.
+        self.assertEqual(seen.get("after_ok_minutes"), 8)
+        self.assertEqual(seen.get("after_ok_cert"), cert_path)
+        self.assertEqual(seen.get("after_ok_key"), key_path)
+        # The second open shows what OK saved.
+        self.assertEqual(seen.get("second_minutes"), 8)
+        self.assertEqual(seen.get("second_cert"), cert_path)
+        self.assertEqual(seen.get("second_key"), key_path)
+        # Cancel saves nothing.
+        self.assertEqual(seen.get("after_cancel_minutes"), 8)
+        self.assertEqual(seen.get("after_cancel_cert"), cert_path)
+        self.assertEqual(seen.get("after_cancel_key"), key_path)
+        # Every setting OK wrote is back as it was found.
+        self.assertIs(seen.get("left_as_found"), True)
+
+
+def non_loopback_flow(
+    address, cert_path, key_path, seen_file, continue_file
+):
     """Code that exercises declining, accepting, and restarting at `address`,
     waiting for `continue_file` while the bridge is up on `address` so the
     test runner can talk to both `address` and `127.0.0.1`, then restores
@@ -325,7 +549,6 @@ was_visible = dock is not None and dock.isVisible()
 orig_addr = params.GetString('ListenAddress', '')
 orig_accepted = params.GetString('AcceptedListenAddresses', '')
 orig_req_token = params.GetBool('RequireToken', True)
-orig_req_tls = params.GetBool('RequireTls', True)
 orig_req_on_loopback = params.GetBool('RequireOnLoopback', False)
 orig_token_hash = params.GetString('TokenHash', '')
 orig_cert = params.GetString('TlsCertFile', '')
@@ -383,7 +606,7 @@ def click_dialog_button(label, prefix, attempts=40):
     )
     wanted = label
     if dlg.objectName() == 'MCPBridgeTokenDialog':
-        wanted = 'OK'
+        wanted = 'Close'
     elif (
         dlg.objectName() == 'MCPBridgeFirstStartDialog'
         and label.startswith('Accept')
@@ -391,7 +614,7 @@ def click_dialog_button(label, prefix, attempts=40):
         wanted = 'Accept and Start'
     for btn in dlg.buttons():
         if btn.text() == wanted:
-            if wanted not in ('OK', 'Cancel'):
+            if wanted not in ('OK', 'Cancel', 'Close'):
                 QTimer.singleShot(
                     50,
                     lambda: click_dialog_button(
@@ -418,6 +641,8 @@ def step_decline():
     )
     params.SetBool('RequireToken', False)
     params.SetBool('RequireTls', False)
+    params.SetString('TlsCertFile', {cert_path!r})
+    params.SetString('TlsKeyFile', {key_path!r})
     params.RemString('AcceptedListenAddresses')
     QTimer.singleShot(
         150, lambda: click_dialog_button('Cancel', 'decline')
@@ -443,6 +668,17 @@ def step_accept():
     seen['accepted_status'] = mw.statusBar().currentMessage()
     seen['accepted_report'] = report_view_text()[before:]
     seen['accepted_saved'] = params.GetString('AcceptedListenAddresses', '')
+    seen['token'] = ''
+    for line in seen.get('accept_token_text', '').splitlines():
+        stripped = line.strip()
+        if (
+            stripped
+            and ' ' not in stripped
+            and stripped != '<token>'
+            and not stripped.endswith('.')
+        ):
+            seen['token'] = stripped
+            break
     with open({seen_file!r} + '.ready', 'w', encoding='utf-8') as handle:
         json.dump(seen, handle)
     QTimer.singleShot(200, wait_for_runner)
@@ -485,7 +721,7 @@ def wait_for_runner():
     else:
         params.RemString('AcceptedListenAddresses')
     params.SetBool('RequireToken', orig_req_token)
-    params.SetBool('RequireTls', orig_req_tls)
+    params.RemBool('RequireTls')
     params.SetBool('RequireOnLoopback', orig_req_on_loopback)
     if orig_token_hash:
         params.SetString('TokenHash', orig_token_hash)
@@ -518,96 +754,6 @@ class ListenAddressTests(unittest.TestCase):
         address = non_loopback_address()
         if address is None:
             self.skipTest("this machine has no non-loopback IPv4 address")
-        with tempfile.TemporaryDirectory() as folder:
-            seen_file = os.path.join(folder, "seen.json")
-            ready_file = seen_file + ".ready"
-            continue_file = os.path.join(folder, "continue")
-            mcp.run(non_loopback_flow(address, seen_file, continue_file))
-            self.assertTrue(
-                wait_for_file(ready_file),
-                "the bridge did not reach the accepted state",
-            )
-            with mock.patch.object(
-                mcp, "BRIDGE_URL", f"http://{address}:{PORT}/mcp"
-            ):
-                self.assertTrue(
-                    mcp.wait_until_reachable(15),
-                    f"nothing answered on {address}:{PORT}",
-                )
-                lan_out = mcp.run("print('from lan address')")
-            loopback_out = mcp.run("print('from loopback alongside')")
-            open(continue_file, "w", encoding="utf-8").close()
-            self.assertTrue(
-                wait_for_file(seen_file),
-                "the second-start and restore step did not finish",
-            )
-            self.assertTrue(
-                mcp.wait_until_reachable(30), "the bridge did not come back"
-            )
-            with open(seen_file, encoding="utf-8") as handle:
-                seen = json.load(handle)
-
-        self.assertEqual(lan_out, "from lan address\n")
-        self.assertEqual(loopback_out, "from loopback alongside\n")
-        self.assertFalse(seen.get("no_port_running"))
-        self.assertIn(address, seen.get("no_port_status", ""))
-        self.assertIn(
-            "Change the listen addresses in Edit",
-            seen.get("no_port_report", ""),
-        )
-        self.assertTrue(seen.get("decline_dialog_found"))
-        self.assertFalse(seen.get("decline_port_open_during_dialog"))
-        self.assertEqual(
-            seen.get("decline_title"),
-            "MCP Bridge: Listen beyond this machine?",
-        )
-        self.assertIn(f"{address}:{PORT}", seen.get("decline_text", ""))
-        self.assertNotIn("No authentication", seen.get("decline_text", ""))
-        self.assertIn("No encryption", seen.get("decline_text", ""))
-        self.assertIn("bearer token", seen.get("decline_text", ""))
-        self.assertIn("Code execution", seen.get("decline_text", ""))
-        self.assertFalse(seen.get("declined_running"))
-        self.assertFalse(seen.get("declined_port_open"))
-        self.assertEqual(seen.get("declined_status"), "MCP Bridge: Offline")
-        self.assertEqual(seen.get("declined_accepted"), "")
-
-        self.assertTrue(seen.get("accept_dialog_found"))
-        self.assertFalse(seen.get("accept_port_open_during_dialog"))
-        self.assertTrue(seen.get("accepted_running"))
-        self.assertEqual(
-            json.loads(seen.get("accepted_saved", "[]")),
-            [f"{address}:{PORT}"],
-        )
-        expected_status = (
-            f"MCP Bridge: Listening on 127.0.0.1:{PORT}, "
-            f"{address}:{PORT} (warning: connected agents can run "
-            "code with your full permissions; beyond loopback: "
-            f"{address}:{PORT})"
-        )
-        expected_warning = (
-            f"[MCP Bridge] WARNING: listening on 127.0.0.1:{PORT}, "
-            f"{address}:{PORT} with no encryption. Any client with the "
-            "bearer token that can reach these addresses can run "
-            "Python code in FreeCAD as your user account: "
-            f"{address}:{PORT}."
-        )
-        self.assertEqual(seen.get("accepted_status"), expected_status)
-        self.assertIn(expected_warning, seen.get("accepted_report", ""))
-
-        self.assertFalse(seen.get("second_start_dialog_found"))
-        self.assertTrue(seen.get("second_running"))
-        self.assertEqual(seen.get("second_status"), expected_status)
-        self.assertIn(expected_warning, seen.get("second_report", ""))
-
-        self.assertTrue(seen.get("lan_only_running"))
-        self.assertTrue(seen.get("lan_only_lan_open"))
-        self.assertFalse(seen.get("lan_only_loopback_open"))
-
-    def test_non_loopback_bearer_token_and_tls(self):
-        """Non-loopback entries enforce bearer token and TLS options."""
-        address = non_loopback_address()
-        if address is None:
-            self.skipTest("this machine has no non-loopback IPv4 address")
         openssl_bin = shutil.which("openssl") or (
             r"C:\Program Files\Git\usr\bin\openssl.exe"
             if os.path.exists(r"C:\Program Files\Git\usr\bin\openssl.exe")
@@ -615,12 +761,9 @@ class ListenAddressTests(unittest.TestCase):
         )
         if openssl_bin is None:
             self.skipTest("openssl is not available to make a throwaway cert")
-
         with tempfile.TemporaryDirectory() as folder:
             cert_path = os.path.join(folder, "cert.pem")
             key_path = os.path.join(folder, "key.pem")
-            enc_cert_path = os.path.join(folder, "enc_cert.pem")
-            enc_key_path = os.path.join(folder, "enc_key.pem")
             cnf_path = os.path.join(folder, "openssl.cnf")
             with open(cnf_path, "w", encoding="utf-8") as handle:
                 handle.write(
@@ -649,6 +792,210 @@ class ListenAddressTests(unittest.TestCase):
                     "-nodes",
                     "-config",
                     cnf_path,
+                    "-extensions",
+                    "v3",
+                ],
+                check=True,
+                capture_output=True,
+            )
+            seen_file = os.path.join(folder, "seen.json")
+            ready_file = seen_file + ".ready"
+            continue_file = os.path.join(folder, "continue")
+            mcp.run(
+                non_loopback_flow(
+                    address, cert_path, key_path, seen_file, continue_file
+                )
+            )
+            self.assertTrue(
+                wait_for_file(ready_file),
+                "the bridge did not reach the accepted state",
+            )
+            with open(ready_file, encoding="utf-8") as handle:
+                ready = json.load(handle)
+            client_ctx = ssl.create_default_context(cafile=cert_path)
+            # Turning the bridge on does not show the token. The
+            # acceptance step published the stored one.
+            token = os.environ.get("FREECAD_MCP_TOKEN", "").strip()
+            self.assertTrue(
+                token,
+                "FREECAD_MCP_TOKEN is not set for the acceptance step",
+            )
+            try:
+                lan_status, lan_out = _post_mcp(
+                    f"https://{address}:{PORT}/mcp",
+                    "print('from lan address')",
+                    ssl_context=client_ctx,
+                    token=token,
+                )
+                self.assertEqual(lan_status, 200)
+                loopback_status, loopback_out = _post_mcp(
+                    f"https://127.0.0.1:{PORT}/mcp",
+                    "print('from loopback alongside')",
+                    ssl_context=client_ctx,
+                    token=token,
+                )
+                self.assertEqual(loopback_status, 200)
+            finally:
+                if not os.path.exists(continue_file):
+                    open(
+                        continue_file, "w", encoding="utf-8"
+                    ).close()
+                wait_for_file(seen_file)
+            self.assertTrue(
+                os.path.exists(seen_file),
+                "the second-start and restore step did not finish",
+            )
+            self.assertTrue(
+                mcp.wait_until_reachable(30), "the bridge did not come back"
+            )
+            with open(seen_file, encoding="utf-8") as handle:
+                seen = json.load(handle)
+
+        self.assertEqual(lan_out, "from lan address\n")
+        self.assertEqual(loopback_out, "from loopback alongside\n")
+        self.assertFalse(seen.get("no_port_running"))
+        self.assertIn(address, seen.get("no_port_status", ""))
+        self.assertIn(
+            "has no port",
+            seen.get("no_port_report", ""),
+        )
+        self.assertTrue(seen.get("decline_dialog_found"))
+        self.assertFalse(seen.get("decline_port_open_during_dialog"))
+        self.assertEqual(
+            seen.get("decline_title"),
+            "MCP Bridge: Listen beyond this machine?",
+        )
+        self.assertIn(f"{address}:{PORT}", seen.get("decline_text", ""))
+        self.assertNotIn("No authentication", seen.get("decline_text", ""))
+        self.assertNotIn("No encryption", seen.get("decline_text", ""))
+        self.assertIn("bearer token", seen.get("decline_text", ""))
+        self.assertIn("Code execution", seen.get("decline_text", ""))
+        self.assertFalse(seen.get("declined_running"))
+        self.assertFalse(seen.get("declined_port_open"))
+        self.assertEqual(seen.get("declined_status"), "MCP Bridge: Offline")
+        self.assertEqual(seen.get("declined_accepted"), "")
+
+        self.assertTrue(seen.get("accept_dialog_found"))
+        self.assertFalse(seen.get("accept_port_open_during_dialog"))
+        self.assertTrue(seen.get("accepted_running"))
+        self.assertEqual(
+            json.loads(seen.get("accepted_saved", "[]")),
+            [address],
+        )
+        expected_status = (
+            f"MCP Bridge: Listening on 127.0.0.1:{PORT}, "
+            f"{address}:{PORT} (warning: connected agents can run "
+            "code with your full permissions; beyond loopback: "
+            f"{address}:{PORT})"
+        )
+        expected_listening = (
+            f"[MCP Bridge] Listening on 127.0.0.1:{PORT}/mcp, "
+            f"{address}:{PORT}/mcp over HTTPS, with TLS. Every call "
+            "needs the bearer token."
+        )
+        expected_beyond = (
+            f"[MCP Bridge] {address}:{PORT} can be reached from your "
+            "network. Any client with the bearer token that connects "
+            "there can run Python code in FreeCAD as your user account."
+        )
+        self.assertEqual(seen.get("accepted_status"), expected_status)
+        self.assertIn(expected_listening, seen.get("accepted_report", ""))
+        self.assertIn(expected_beyond, seen.get("accepted_report", ""))
+
+        self.assertFalse(seen.get("second_start_dialog_found"))
+        self.assertTrue(seen.get("second_running"))
+        self.assertEqual(seen.get("second_status"), expected_status)
+        self.assertIn(expected_listening, seen.get("second_report", ""))
+        self.assertIn(expected_beyond, seen.get("second_report", ""))
+
+        self.assertTrue(seen.get("lan_only_running"))
+        self.assertTrue(seen.get("lan_only_lan_open"))
+        self.assertFalse(seen.get("lan_only_loopback_open"))
+
+    def test_non_loopback_bearer_token_and_tls(self):
+        """Non-loopback entries enforce bearer token and TLS options."""
+        address = non_loopback_address()
+        if address is None:
+            self.skipTest("this machine has no non-loopback IPv4 address")
+        openssl_bin = shutil.which("openssl") or (
+            r"C:\Program Files\Git\usr\bin\openssl.exe"
+            if os.path.exists(r"C:\Program Files\Git\usr\bin\openssl.exe")
+            else None
+        )
+        if openssl_bin is None:
+            self.skipTest("openssl is not available to make a throwaway cert")
+
+        with tempfile.TemporaryDirectory() as folder:
+            cert_path = os.path.join(folder, "cert.pem")
+            key_path = os.path.join(folder, "key.pem")
+            uncovered_cert_path = os.path.join(folder, "uncovered_cert.pem")
+            uncovered_key_path = os.path.join(folder, "uncovered_key.pem")
+            enc_cert_path = os.path.join(folder, "enc_cert.pem")
+            enc_key_path = os.path.join(folder, "enc_key.pem")
+            cnf_path = os.path.join(folder, "openssl.cnf")
+            uncovered_cnf_path = os.path.join(folder, "uncovered_openssl.cnf")
+            with open(cnf_path, "w", encoding="utf-8") as handle:
+                handle.write(
+                    "[req]\n"
+                    "distinguished_name = dn\n"
+                    "x509_extensions = v3\n"
+                    "prompt = no\n"
+                    "[dn]\n"
+                    f"CN = {address}\n"
+                    "[v3]\n"
+                    f"subjectAltName = IP:{address},IP:127.0.0.1,"
+                    "DNS:localhost,DNS:freecad.lan\n"
+                )
+            with open(uncovered_cnf_path, "w", encoding="utf-8") as handle:
+                handle.write(
+                    "[req]\n"
+                    "distinguished_name = dn\n"
+                    "x509_extensions = v3\n"
+                    "prompt = no\n"
+                    "[dn]\n"
+                    "CN = 10.255.255.1\n"
+                    "[v3]\n"
+                    "subjectAltName = IP:127.0.0.1,DNS:localhost,"
+                    "IP:10.255.255.1\n"
+                )
+            subprocess.run(
+                [
+                    openssl_bin,
+                    "req",
+                    "-x509",
+                    "-newkey",
+                    "rsa:2048",
+                    "-keyout",
+                    key_path,
+                    "-out",
+                    cert_path,
+                    "-days",
+                    "1",
+                    "-nodes",
+                    "-config",
+                    cnf_path,
+                    "-extensions",
+                    "v3",
+                ],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                [
+                    openssl_bin,
+                    "req",
+                    "-x509",
+                    "-newkey",
+                    "rsa:2048",
+                    "-keyout",
+                    uncovered_key_path,
+                    "-out",
+                    uncovered_cert_path,
+                    "-days",
+                    "1",
+                    "-nodes",
+                    "-config",
+                    uncovered_cnf_path,
                     "-extensions",
                     "v3",
                 ],
@@ -691,6 +1038,8 @@ class ListenAddressTests(unittest.TestCase):
                     address,
                     cert_path,
                     key_path,
+                    uncovered_cert_path,
+                    uncovered_key_path,
                     enc_key_path,
                     seen_file,
                     phase1_file,
@@ -749,6 +1098,26 @@ class ListenAddressTests(unittest.TestCase):
             self.assertEqual(status_ok1, 200)
             self.assertEqual(out1, "https with token1\n")
 
+            # A Host header naming a DNS name covered by the certificate is
+            # accepted, and an uncovered Host header is refused with 403.
+            status_dns_host, out_dns_host = _post_mcp(
+                https_url,
+                "print('https with cert dns host')",
+                ssl_context=client_ctx,
+                token=token1,
+                host_header=f"freecad.lan:{PORT}",
+            )
+            self.assertEqual(status_dns_host, 200)
+            self.assertEqual(out_dns_host, "https with cert dns host\n")
+            status_bad_host, _ = _post_mcp(
+                https_url,
+                "print('https with uncovered host')",
+                ssl_context=client_ctx,
+                token=token1,
+                host_header=f"wrong.lan:{PORT}",
+            )
+            self.assertEqual(status_bad_host, 403)
+
             # A client that connects to the TLS entry and sends nothing does
             # not stop a second client from being served.
             with socket.create_connection((address, PORT), timeout=5) as idle:
@@ -764,25 +1133,67 @@ class ListenAddressTests(unittest.TestCase):
                 )
                 _ = idle
 
-            # Loopback is HTTP and still requires the token. The client
-            # reads it from the token file. A request with no token is
-            # refused. The shim reads the same file, with nothing pasted.
-            loopback_url = f"http://127.0.0.1:{PORT}/mcp"
+            # With a certificate configured, loopback also serves HTTPS
+            # and requires the bearer token. serving-cert.pem is written
+            # in the bridge's folder. Plain HTTP on loopback is refused.
+            self.assertTrue(p1.get("serving_cert_matches"))
+            loopback_http_url = f"http://127.0.0.1:{PORT}/mcp"
+            loopback_https_url = f"https://127.0.0.1:{PORT}/mcp"
+            with self.assertRaises(Exception):
+                _post_mcp(
+                    loopback_http_url,
+                    "print('loopback plain http')",
+                    ssl_context=None,
+                )
             status_loop_no, auth_loop_no = _post_mcp(
-                loopback_url,
+                loopback_https_url,
                 "print('loopback no token')",
+                ssl_context=client_ctx,
                 token=None,
             )
             self.assertEqual(status_loop_no, 401)
             self.assertEqual(auth_loop_no, "Bearer")
-            loopback_out = mcp.run("print('loopback unchanged')")
+            status_loop_ok, loopback_out = _post_mcp(
+                loopback_https_url,
+                "print('loopback unchanged')",
+                ssl_context=client_ctx,
+                token=token1,
+            )
+            self.assertEqual(status_loop_ok, 200)
             self.assertEqual(loopback_out, "loopback unchanged\n")
             node_bin = shutil.which("node")
             if node_bin is not None:
-                shim_out = _run_via_stdio_shim(
-                    node_bin, PORT, "print('desktop shim unchanged')"
+                local_https_shim_out = _run_via_stdio_shim(
+                    node_bin,
+                    PORT,
+                    "print('desktop shim https on loopback')",
+                    token=token1,
                 )
-                self.assertEqual(shim_out, "desktop shim unchanged\n")
+                self.assertEqual(
+                    local_https_shim_out, "desktop shim https on loopback\n"
+                )
+                remote_tok_dir = os.path.join(folder, "remote_shim_tok")
+                os.makedirs(remote_tok_dir, exist_ok=True)
+                local_tok_file = os.path.join(remote_tok_dir, "token")
+                with open(local_tok_file, "w", encoding="utf-8") as handle:
+                    handle.write("keep-local-token\n")
+                remote_shim_out = _run_via_stdio_shim(
+                    node_bin,
+                    PORT,
+                    "print('desktop shim remote https')",
+                    token=token1,
+                    tls_cert_file=cert_path,
+                    host=address,
+                    token_dir=remote_tok_dir,
+                )
+                self.assertEqual(
+                    remote_shim_out, "desktop shim remote https\n"
+                )
+                with open(local_tok_file, encoding="utf-8") as handle:
+                    self.assertEqual(handle.read().strip(), "keep-local-token")
+                self.assertFalse(
+                    os.path.exists(os.path.join(remote_tok_dir, "pasted"))
+                )
 
             # Trigger phase 2: regenerate the token via Preferences UI and
             # restart to verify the token dialog is not shown again on start.
@@ -815,8 +1226,8 @@ class ListenAddressTests(unittest.TestCase):
             self.assertEqual(status_new, 200)
             self.assertEqual(out2, "https with token2\n")
 
-            # Trigger phase 3: the old Apply-to-loopback preference
-            # does not turn loopback into HTTPS.
+            # Trigger phase 3: without a certificate configured, loopback
+            # serves HTTP and removes serving-cert.pem.
             open(phase3_go, "w", encoding="utf-8").close()
             self.assertTrue(
                 wait_for_file(phase3_file),
@@ -826,10 +1237,10 @@ class ListenAddressTests(unittest.TestCase):
             with open(phase3_file, encoding="utf-8") as handle:
                 p3 = json.load(handle)
             self.assertTrue(p3.get("loopback_started_running"))
-            loopback_http_url = f"http://127.0.0.1:{PORT}/mcp"
-            loopback_https_url = f"https://127.0.0.1:{PORT}/mcp"
+            self.assertFalse(p3.get("serving_cert_exists_in_phase3"))
 
-            # Loopback stays HTTP. The token is still required.
+            # Without a certificate, loopback serves HTTP and requires the
+            # token.
             lb_no_tok, lb_auth_no_tok = _post_mcp(
                 loopback_http_url,
                 "print('loopback no token')",
@@ -844,6 +1255,14 @@ class ListenAddressTests(unittest.TestCase):
             )
             self.assertEqual(lb_ok, 200)
             self.assertEqual(lb_out, "loopback http with token2\n")
+            if node_bin is not None:
+                shim_out = _run_via_stdio_shim(
+                    node_bin,
+                    PORT,
+                    "print('desktop shim unchanged')",
+                    token=token2,
+                )
+                self.assertEqual(shim_out, "desktop shim unchanged\n")
             with self.assertRaises(Exception):
                 _post_mcp(
                     loopback_https_url,
@@ -863,16 +1282,26 @@ class ListenAddressTests(unittest.TestCase):
             with open(seen_file, encoding="utf-8") as handle:
                 seen = json.load(handle)
 
-        # 1. With TLS on and no certificate or an encrypted key, start failed
-        # and left the bridge off.
+        # 1. With no certificate, start opens the set-up dialog and
+        # leaves the bridge off. An encrypted key, or a certificate
+        # that does not cover the address, still fails at TLS load.
         self.assertFalse(seen.get("no_cert_running"))
-        self.assertIn(
-            "TLS is required and needs a certificate file and a private "
-            "key file.",
-            seen.get("no_cert_status", ""),
+        self.assertTrue(seen.get("no_cert_setup_found"))
+        self.assertEqual(
+            seen.get("no_cert_setup_title"),
+            "MCP Bridge: Set up the bridge",
         )
         self.assertIn(
-            "untick Require TLS there.", seen.get("no_cert_report", "")
+            "A TLS certificate and private key, for the addresses "
+            "beyond loopback in Listen addresses.",
+            seen.get("no_cert_setup_text", ""),
+        )
+        self.assertNotIn(
+            "An authorization bearer token",
+            seen.get("no_cert_setup_text", ""),
+        )
+        self.assertEqual(
+            seen.get("no_cert_status"), "MCP Bridge: Offline"
         )
         self.assertFalse(seen.get("enc_key_running"))
         self.assertIn(
@@ -880,8 +1309,24 @@ class ListenAddressTests(unittest.TestCase):
             seen.get("enc_key_status", ""),
         )
         self.assertIn(
-            "untick Require TLS in Edit", seen.get("enc_key_report", "")
+            "Select or generate the TLS files in Edit → Preferences → "
+            "MCP Bridge.",
+            seen.get("enc_key_report", ""),
         )
+        self.assertFalse(seen.get("uncovered_cert_running"))
+        self.assertIn(
+            f"{address} is not in the TLS certificate",
+            seen.get("uncovered_cert_report", ""),
+        )
+        self.assertTrue(seen.get("gen_cert_replace_dialog_found"))
+        self.assertTrue(seen.get("gen_cert_dialog_found"))
+        self.assertIn(
+            address,
+            seen.get("gen_cert_dialog_text", ""),
+        )
+        self.assertTrue(seen.get("gen_cert_covers_address"))
+        self.assertTrue(seen.get("gen_cert_covers_loopback"))
+        self.assertTrue(seen.get("gen_cert_unsaved_before_ok"))
 
         # 2. Risk dialog listed only the remaining risk (code execution with
         # the bearer token), not No authentication or No encryption.
@@ -893,31 +1338,28 @@ class ListenAddressTests(unittest.TestCase):
             "Code execution: any client with the bearer token", risk_text
         )
 
-        # 3. Token dialog shown once, names the token file, and is not
-        # shown again on restart. Generate new token shows it again.
-        self.assertTrue(seen.get("token1_dialog_found"))
-        self.assertIn(
-            "readable only by you",
-            seen.get("token1_dialog_text", ""),
-        )
-        self.assertIn(
-            "The Claude Desktop extension reads it from that file.",
-            seen.get("token1_dialog_text", ""),
-        )
-        self.assertIn(
-            "Other clients send it in the Authorization header:",
-            seen.get("token1_dialog_text", ""),
-        )
-        self.assertNotIn("one-way hash", seen.get("token1_dialog_text", ""))
-        self.assertTrue(seen.get("token_file_matches_dialog"))
+        # 3. Turning the bridge on does not show the token.
+        # Generate new token shows it, and a restart does not.
+        self.assertFalse(seen.get("token1_dialog_found"))
+        self.assertTrue(seen.get("token_hash_matches"))
         self.assertFalse(seen.get("restart_token_dialog_found"))
         self.assertTrue(seen.get("regen_token_dialog_found"))
+        regen_text = seen.get("regen_token_dialog_text", "")
+        self.assertIn(
+            "FreeCAD keeps a hash of it, not the token.",
+            regen_text,
+        )
+        self.assertIn(
+            "Copy it now. Every MCP client needs it.",
+            regen_text,
+        )
+        self.assertNotIn("You don't need to copy it.", regen_text)
 
         # 4. user.cfg holds neither raw token nor a new hash.
-        self.assertEqual(seen.get("token1_hash_len"), 0)
+        self.assertEqual(seen.get("token1_hash_len"), 64)
         self.assertFalse(seen.get("user_cfg_contains_token1"))
         self.assertFalse(seen.get("user_cfg_contains_token2"))
-        self.assertFalse(seen.get("user_cfg_contains_hash2"))
+        self.assertTrue(seen.get("user_cfg_contains_hash2"))
 
         # 5. Status bar and Report view warning for both on.
         expected_status = (
@@ -926,16 +1368,19 @@ class ListenAddressTests(unittest.TestCase):
             "code with your full permissions; beyond loopback: "
             f"{address}:{PORT})"
         )
-        expected_warning = (
-            f"[MCP Bridge] WARNING: listening on 127.0.0.1:{PORT}, "
-            f"{address}:{PORT}. TLS is required beyond loopback, and "
-            "the bearer token everywhere. Any client with the bearer "
-            "token that can reach "
-            "these addresses can run Python code in FreeCAD as your user "
-            f"account: {address}:{PORT}."
+        expected_listening = (
+            f"[MCP Bridge] Listening on 127.0.0.1:{PORT}/mcp, "
+            f"{address}:{PORT}/mcp over HTTPS, with TLS. Every call "
+            "needs the bearer token."
+        )
+        expected_beyond = (
+            f"[MCP Bridge] {address}:{PORT} can be reached from your "
+            "network. Any client with the bearer token that connects "
+            "there can run Python code in FreeCAD as your user account."
         )
         self.assertEqual(seen.get("started_status"), expected_status)
-        self.assertIn(expected_warning, seen.get("started_report", ""))
+        self.assertIn(expected_listening, seen.get("started_report", ""))
+        self.assertIn(expected_beyond, seen.get("started_report", ""))
 
         # 6. The old Apply-to-loopback preference does not make loopback
         # need a certificate. The start stays HTTP, shows no risk dialog
@@ -953,7 +1398,7 @@ class ListenAddressTests(unittest.TestCase):
         )
 
 
-def _post_mcp(url, code, ssl_context=None, token=None):
+def _post_mcp(url, code, ssl_context=None, token=None, host_header=None):
     """Send an MCP 2025-11-25 tools/call execute_python POST and return
     `(http_status, stdout_text)`."""
     payload = json.dumps(
@@ -973,6 +1418,8 @@ def _post_mcp(url, code, ssl_context=None, token=None):
     }
     if token is not None:
         headers["Authorization"] = f"Bearer {token}"
+    if host_header is not None:
+        headers["Host"] = host_header
     req = urllib.request.Request(
         url, data=payload, headers=headers, method="POST"
     )
@@ -993,10 +1440,16 @@ def _post_mcp(url, code, ssl_context=None, token=None):
 
 
 def _run_via_stdio_shim(
-    node_bin, port, code, token=None, tls_cert_file=None
+    node_bin,
+    port,
+    code,
+    token=None,
+    tls_cert_file=None,
+    host=None,
+    token_dir=None,
 ):
     """Run `code` through `mcp-stdio-shim/index.js` over stdio against
-    `127.0.0.1:port` and return stdout text."""
+    `host:port` (`127.0.0.1` by default) and return stdout text."""
     shim_js = os.path.abspath(
         os.path.join(
             os.path.dirname(__file__),
@@ -1008,6 +1461,12 @@ def _run_via_stdio_shim(
     )
     env = os.environ.copy()
     env["FREECAD_MCP_PORT"] = str(port)
+    if host is not None:
+        env["FREECAD_MCP_HOST"] = host
+    else:
+        env.pop("FREECAD_MCP_HOST", None)
+    if token_dir is not None:
+        env["FREECAD_MCP_TOKEN_DIR"] = token_dir
     if token is not None:
         env["FREECAD_MCP_TOKEN"] = token
     else:
@@ -1059,6 +1518,8 @@ def _token_and_tls_flow(
     address,
     cert_path,
     key_path,
+    uncovered_cert_path,
+    uncovered_key_path,
     enc_key_path,
     seen_file,
     phase1_file,
@@ -1091,7 +1552,6 @@ was_visible = dock is not None and dock.isVisible()
 orig_addr = params.GetString('ListenAddress', '')
 orig_accepted = params.GetString('AcceptedListenAddresses', '')
 orig_req_token = params.GetBool('RequireToken', True)
-orig_req_tls = params.GetBool('RequireTls', True)
 orig_req_on_loopback = params.GetBool('RequireOnLoopback', False)
 orig_token_hash = params.GetString('TokenHash', '')
 orig_cert = params.GetString('TlsCertFile', '')
@@ -1111,9 +1571,33 @@ def report_view_text():
 
 def extract_token(text):
     for line in (text or '').splitlines():
-        if line.startswith('Authorization: Bearer '):
-            return line.split('Authorization: Bearer ', 1)[1].strip()
+        stripped = line.strip()
+        if (
+            stripped
+            and ' ' not in stripped
+            and stripped != '<token>'
+            and not stripped.endswith('.')
+        ):
+            return stripped
     return ''
+
+
+def dismiss_setup(key, attempts=40):
+    dlg = mw.findChild(QMessageBox, 'MCPBridgeSetupDialog')
+    if dlg is not None and dlg.isVisible():
+        seen[key + '_found'] = True
+        seen[key + '_title'] = dlg.windowTitle()
+        seen[key + '_text'] = dlg.text()
+        for btn in dlg.buttons():
+            if btn.text() == 'Close':
+                btn.click()
+                return
+        return
+    if attempts > 0:
+        QTimer.singleShot(
+            50,
+            lambda k=key, left=attempts - 1: dismiss_setup(k, left),
+        )
 
 
 def handle_dialogs(risk_key, token_key):
@@ -1148,7 +1632,7 @@ def handle_dialogs(risk_key, token_key):
         seen[token_key + '_text'] = tok_dlg.text()
         seen[token_key + '_value'] = extract_token(tok_dlg.text())
         for btn in tok_dlg.buttons():
-            if btn.text() == 'OK':
+            if btn.text() == 'Close':
                 btn.click()
                 return
 
@@ -1160,13 +1644,13 @@ def step_no_cert_then_start():
         'ListenAddress', {loopback_entry!r} + '\\n' + {entry!r}
     )
     params.RemString('AcceptedListenAddresses')
-    params.RemString('TokenHash')
     params.RemBool('RequireToken')
     params.RemBool('RequireTls')
     params.RemBool('RequireOnLoopback')
     params.RemString('TlsCertFile')
     params.RemString('TlsKeyFile')
     before_no_cert = len(report_view_text())
+    QTimer.singleShot(50, lambda: dismiss_setup('no_cert_setup'))
     action.trigger()
     seen['no_cert_running'] = bridge.is_running()
     seen['no_cert_status'] = mw.statusBar().currentMessage()
@@ -1182,13 +1666,91 @@ def step_no_cert_then_start():
     seen['enc_key_status'] = mw.statusBar().currentMessage()
     seen['enc_key_report'] = report_view_text()[before_enc_key:]
 
-    # Now set the throwaway cert and key and start with defaults.
-    # The old RequireToken preference is unread. Clear the token file
-    # so this start shows the token once.
+    # The certificate covers loopback and not the LAN address. The
+    # start warns and still offers the risk dialog. Cancel leaves
+    # the bridge off.
+    params.SetString('TlsCertFile', {uncovered_cert_path!r})
+    params.SetString('TlsKeyFile', {uncovered_key_path!r})
+    before_uncovered = len(report_view_text())
+
+    def cancel_risk(attempts=40):
+        for name in (
+            'MCPBridgeFirstStartDialog', 'MCPBridgeRiskDialog'
+        ):
+            dlg = mw.findChild(QMessageBox, name)
+            if dlg is not None and dlg.isVisible():
+                for btn in dlg.buttons():
+                    if btn.text() == 'Cancel':
+                        btn.click()
+                        return
+        if attempts > 0:
+            QTimer.singleShot(50, lambda: cancel_risk(attempts - 1))
+
+    QTimer.singleShot(50, cancel_risk)
+    action.trigger()
+    seen['uncovered_cert_running'] = bridge.is_running()
+    seen['uncovered_cert_status'] = mw.statusBar().currentMessage()
+    seen['uncovered_cert_report'] = report_view_text()[before_uncovered:]
+
+    # Generate certificate asks before replacing the existing setting,
+    # writes tls-cert.pem and tls-key.pem covering the address, and fills
+    # both file fields without saving preferences.
+    from freecad.mcp_bridge import config as bridge_cfg, init_gui
+    seen['gen_cert_replace_dialog_found'] = False
+    seen['gen_cert_dialog_found'] = False
+
+    def handle_cert_dialogs():
+        for dlg in mw.findChildren(QDialog):
+            if (
+                dlg.isVisible()
+                and dlg.objectName() == 'MCPBridgeCertToolDialog'
+            ):
+                QTimer.singleShot(150, handle_cert_dialogs)
+                dlg.accept()
+                return
+        for box in mw.findChildren(QMessageBox):
+            if not box.isVisible():
+                continue
+            if box.objectName() == 'MCPBridgeConfirmReplaceCertDialog':
+                seen['gen_cert_replace_dialog_found'] = True
+                QTimer.singleShot(150, handle_cert_dialogs)
+                box.button(QMessageBox.Yes).click()
+                return
+            if box.objectName() == 'MCPBridgeCertGeneratedDialog':
+                seen['gen_cert_dialog_found'] = True
+                seen['gen_cert_dialog_text'] = box.text()
+                for b in box.buttons():
+                    if b.text() == 'OK':
+                        b.click()
+                        return
+
+    QTimer.singleShot(150, handle_cert_dialogs)
+    gen_pair = init_gui.generate_and_show_certificate()
+    seen['gen_cert_unsaved_before_ok'] = (
+        params.GetString('TlsCertFile', '') == {uncovered_cert_path!r}
+        and params.GetString('TlsKeyFile', '') == {uncovered_key_path!r}
+    )
+    gen_hosts = (
+        bridge_cfg.certificate_hosts(gen_pair[0]) if gen_pair else set()
+    )
+    seen['gen_cert_covers_address'] = bool(
+        gen_pair
+        and bridge_cfg.certificate_covers_host(gen_hosts, {address!r})
+    )
+    seen['gen_cert_covers_loopback'] = bool(
+        gen_pair
+        and bridge_cfg.certificate_covers_host(gen_hosts, '127.0.0.1')
+        and bridge_cfg.certificate_covers_host(gen_hosts, 'localhost')
+    )
+
+    # Now set the throwaway cert and key and start. Turning the
+    # bridge on does not make a token and does not show one. The
+    # hash already stored is the token the acceptance step published.
     params.SetString('TlsCertFile', {cert_path!r})
     params.SetString('TlsKeyFile', {key_path!r})
     from freecad.mcp_bridge import token_file as token_store
-    token_path = str(token_store.token_path())
+    token_path = str(token_store.token_dir() / "token")
+    serving_cert_path = str(token_store.serving_cert_path())
     if os.path.exists(token_path):
         os.remove(token_path)
     seen['risk_dialog_found'] = False
@@ -1201,15 +1763,35 @@ def step_no_cert_then_start():
     seen['started_running'] = bridge.is_running()
     seen['started_status'] = mw.statusBar().currentMessage()
     seen['started_report'] = report_view_text()[before_start:]
-    seen['token1'] = seen.get('token1_dialog_value', '')
+    published = ''
+    pub_path = os.environ.get('ACCEPTANCE_TOKEN_FILE', '').strip()
+    if pub_path and os.path.exists(pub_path):
+        with open(pub_path, encoding='utf-8') as pub:
+            published = pub.read().strip()
+    seen['token1'] = published or seen.get(
+        'token1_dialog_value', ''
+    )
     seen['token1_hash'] = params.GetString('TokenHash', '')
     seen['token1_hash_len'] = len(seen['token1_hash'])
     file_token = ''
     if os.path.exists(token_path):
         with open(token_path, encoding='utf-8') as token_file:
             file_token = token_file.read().strip()
-    seen['token_file_matches_dialog'] = (
-        bool(seen['token1']) and file_token == seen['token1']
+    from freecad.mcp_bridge import config as bridge_cfg
+    seen['token_hash_matches'] = (
+        bool(seen['token1'])
+        and not os.path.exists(token_path)
+        and bridge_cfg.token_hash() == bridge_cfg.hash_token(seen['token1'])
+    )
+    expected_cert_text = ''
+    with open({cert_path!r}, encoding='utf-8') as cf:
+        expected_cert_text = cf.read()
+    serving_cert_text = ''
+    if os.path.exists(serving_cert_path):
+        with open(serving_cert_path, encoding='utf-8') as scf:
+            serving_cert_text = scf.read()
+    seen['serving_cert_matches'] = (
+        bool(serving_cert_text) and serving_cert_text == expected_cert_text
     )
     with open({phase1_file!r}, 'w', encoding='utf-8') as handle:
         json.dump(seen, handle)
@@ -1257,9 +1839,10 @@ def wait_for_phase2():
                     and box.isVisible()
                 ):
                     seen['regen_token_dialog_found'] = True
+                    seen['regen_token_dialog_text'] = box.text()
                     seen['token2'] = extract_token(box.text())
                     for b in box.buttons():
-                        if b.text() == 'OK':
+                        if b.text() == 'Close':
                             b.click()
                             break
                     break
@@ -1310,8 +1893,12 @@ def wait_for_phase3():
         ),
     )
     action.trigger()
+    from freecad.mcp_bridge import token_file as token_store
     seen['loopback_started_running'] = bridge.is_running()
     seen['loopback_started_status'] = mw.statusBar().currentMessage()
+    seen['serving_cert_exists_in_phase3'] = os.path.exists(
+        str(token_store.serving_cert_path())
+    )
     with open({phase3_file!r}, 'w', encoding='utf-8') as handle:
         json.dump(seen, handle)
     QTimer.singleShot(200, wait_for_finish)
@@ -1325,14 +1912,16 @@ def wait_for_finish():
         action.trigger()
     if orig_addr:
         params.SetString('ListenAddress', orig_addr)
+        params.SetBool('ListenListSaved', True)
     else:
         params.RemString('ListenAddress')
+        params.RemBool('ListenListSaved')
     if orig_accepted:
         params.SetString('AcceptedListenAddresses', orig_accepted)
     else:
         params.RemString('AcceptedListenAddresses')
     params.SetBool('RequireToken', orig_req_token)
-    params.SetBool('RequireTls', orig_req_tls)
+    params.RemBool('RequireTls')
     params.SetBool('RequireOnLoopback', orig_req_on_loopback)
     if orig_token_hash:
         params.SetString('TokenHash', orig_token_hash)

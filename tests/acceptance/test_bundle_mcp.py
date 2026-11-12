@@ -91,6 +91,9 @@ class _Shim:
     def __init__(self, command, args, port, cwd):
         env = os.environ.copy()
         env["FREECAD_MCP_PORT"] = port
+        token = os.environ.get("FREECAD_MCP_TOKEN", "").strip()
+        if token:
+            env["FREECAD_MCP_TOKEN"] = token
         try:
             self.proc = subprocess.Popen(
                 [command, *args],

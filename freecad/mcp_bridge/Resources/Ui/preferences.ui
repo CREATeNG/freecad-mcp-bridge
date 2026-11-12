@@ -6,125 +6,196 @@
    <string>MCP Bridge</string>
   </property>
   <layout class="QVBoxLayout" name="pageLayout">
+   <property name="spacing">
+    <number>6</number>
+   </property>
    <item>
-    <widget class="QGroupBox" name="serverGroup">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
+    <widget class="QLabel" name="serverHint">
+     <property name="textFormat">
+      <enum>Qt::RichText</enum>
      </property>
-     <property name="title">
-      <string>Server</string>
+     <property name="text">
+      <string>To start or stop the bridge, click &lt;b&gt;MCP On/Off&lt;/b&gt; in the status bar.</string>
      </property>
-     <layout class="QVBoxLayout" name="serverLayout">
-      <item>
-       <widget class="QLabel" name="serverHint">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="textFormat">
-         <enum>Qt::RichText</enum>
-        </property>
-        <property name="text">
-         <string>To start or stop the bridge, click &lt;b&gt;MCP On/Off&lt;/b&gt; in the status bar. While active, it listens on the addresses below.</string>
-        </property>
-        <property name="wordWrap">
-         <bool>true</bool>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="serverFields" stretch="0,1,0,2">
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="topRow">
+     <item>
+      <widget class="QGroupBox" name="listenGroup">
+       <property name="title">
+        <string>Listen addresses</string>
+       </property>
+       <layout class="QVBoxLayout" name="listenLayout">
         <item>
-         <widget class="QLabel" name="listenAddressLabel">
-          <property name="text">
-           <string>Listen addresses</string>
-          </property>
-          <property name="alignment">
-           <set>Qt::AlignTop</set>
-          </property>
-         </widget>
-        </item>
-        <item alignment="Qt::AlignTop">
-         <widget class="Gui::PrefTextEdit" name="listenAddressTextEdit">
+         <widget class="QTableWidget" name="listenTable">
           <property name="sizePolicy">
-           <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
+           <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+            <horstretch>1</horstretch>
+            <verstretch>1</verstretch>
            </sizepolicy>
           </property>
-          <property name="minimumSize">
-           <size>
-            <width>0</width>
-            <height>68</height>
-           </size>
+          <property name="selectionMode">
+           <enum>QAbstractItemView::SingleSelection</enum>
           </property>
-          <property name="maximumSize">
-           <size>
-            <width>16777215</width>
-            <height>68</height>
-           </size>
+          <property name="selectionBehavior">
+           <enum>QAbstractItemView::SelectRows</enum>
           </property>
-          <property name="toolTip">
-           <string>Addresses and ports to listen on, as address:port (or [ipv6]:port), one per line or separated by spaces, commas, or semicolons. Used the next time the bridge is switched on.</string>
+          <property name="editTriggers">
+           <set>QAbstractItemView::NoEditTriggers</set>
           </property>
-          <property name="tabChangesFocus">
+          <column>
+           <property name="text">
+            <string>Listener</string>
+           </property>
+          </column>
+          <column>
+           <property name="text">
+            <string>Port</string>
+           </property>
+          </column>
+          <column>
+           <property name="text">
+            <string>Kind</string>
+           </property>
+          </column>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="listenButtons">
+          <item>
+           <widget class="QToolButton" name="addListenButton">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>24</width>
+              <height>24</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>24</width>
+              <height>24</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>+</string>
+            </property>
+            <property name="toolTip">
+             <string>Add a row.</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QToolButton" name="removeListenButton">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>24</width>
+              <height>24</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>24</width>
+              <height>24</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>-</string>
+            </property>
+            <property name="toolTip">
+             <string>Remove the selected row.</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QToolButton" name="editListenButton">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>24</height>
+             </size>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>16777215</width>
+              <height>24</height>
+             </size>
+            </property>
+            <property name="text">
+             <string>Edit</string>
+            </property>
+            <property name="toolTip">
+             <string>Edit the selected row.</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="listenButtonSpacer">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>20</width>
+              <height>10</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <widget class="QLabel" name="listenRowNote">
+          <property name="text">
+           <string/>
+          </property>
+          <property name="wordWrap">
            <bool>true</bool>
           </property>
-          <property name="acceptRichText">
-           <bool>false</bool>
-          </property>
-          <property name="plainText">
-           <string>127.0.0.1:39280</string>
-          </property>
-          <property name="placeholderText">
-           <string>127.0.0.1:39280</string>
-          </property>
-          <property name="prefEntry" stdset="0">
-           <cstring>ListenAddress</cstring>
-          </property>
-          <property name="prefPath" stdset="0">
-           <cstring>Mod/freecad-mcp-bridge</cstring>
-          </property>
          </widget>
         </item>
         <item>
-         <widget class="QWidget" name="addressPagingGap">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
+         <widget class="QLabel" name="listeningDifferenceLabel">
+          <property name="text">
+           <string/>
           </property>
-          <property name="minimumSize">
-           <size>
-            <width>12</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="maximumSize">
-           <size>
-            <width>12</width>
-            <height>16777215</height>
-           </size>
+          <property name="wordWrap">
+           <bool>true</bool>
           </property>
          </widget>
         </item>
-        <item alignment="Qt::AlignTop">
-         <layout class="QFormLayout" name="pagingForm">
-          <property name="verticalSpacing">
-           <number>2</number>
-          </property>
-          <property name="topMargin">
-           <number>0</number>
-          </property>
-          <property name="bottomMargin">
-           <number>0</number>
-          </property>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <layout class="QVBoxLayout" name="rightColumn">
+       <item>
+        <widget class="QGroupBox" name="responsesGroup">
+         <property name="title">
+          <string>Responses</string>
+         </property>
+         <layout class="QFormLayout" name="responsesForm">
           <item row="0" column="0">
            <widget class="QLabel" name="timeoutLabel">
             <property name="text">
@@ -137,35 +208,14 @@
             <property name="toolTip">
              <string>The bridge's wait per page.</string>
             </property>
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
             <property name="suffix">
              <string> s</string>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>134</width>
-              <height>0</height>
-             </size>
-            </property>
-            <property name="maximumSize">
-             <size>
-              <width>134</width>
-              <height>16777215</height>
-             </size>
             </property>
             <property name="minimum">
              <number>1</number>
             </property>
             <property name="maximum">
              <number>600</number>
-            </property>
-            <property name="singleStep">
-             <number>1</number>
             </property>
             <property name="value">
              <number>15</number>
@@ -190,35 +240,14 @@
             <property name="toolTip">
              <string>Splits long output by page size.</string>
             </property>
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
             <property name="suffix">
              <string> K characters</string>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>134</width>
-              <height>0</height>
-             </size>
-            </property>
-            <property name="maximumSize">
-             <size>
-              <width>134</width>
-              <height>16777215</height>
-             </size>
             </property>
             <property name="minimum">
              <number>1</number>
             </property>
             <property name="maximum">
              <number>10240</number>
-            </property>
-            <property name="singleStep">
-             <number>1</number>
             </property>
             <property name="value">
              <number>32</number>
@@ -243,35 +272,14 @@
             <property name="toolTip">
              <string>Idle time before finished output expires.</string>
             </property>
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
             <property name="suffix">
              <string> min</string>
-            </property>
-            <property name="minimumSize">
-             <size>
-              <width>134</width>
-              <height>0</height>
-             </size>
-            </property>
-            <property name="maximumSize">
-             <size>
-              <width>134</width>
-              <height>16777215</height>
-             </size>
             </property>
             <property name="minimum">
              <number>1</number>
             </property>
             <property name="maximum">
              <number>1440</number>
-            </property>
-            <property name="singleStep">
-             <number>1</number>
             </property>
             <property name="value">
              <number>5</number>
@@ -285,39 +293,100 @@
            </widget>
           </item>
          </layout>
-        </item>
-       </layout>
-      </item>
-     </layout>
-    </widget>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="statusBarGroup">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="title">
+          <string>MCP Bridge status bar widget</string>
+         </property>
+         <layout class="QHBoxLayout" name="statusBarLayout">
+          <item>
+           <widget class="Gui::PrefCheckBox" name="showStatusButtonCheckBox">
+            <property name="toolTip">
+             <string>Display toggle button in the status bar. Always shown in Unrestricted mode.</string>
+            </property>
+            <property name="text">
+             <string>Show</string>
+            </property>
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+            <property name="prefEntry" stdset="0">
+             <cstring>ShowStatusButton</cstring>
+            </property>
+            <property name="prefPath" stdset="0">
+             <cstring>Mod/freecad-mcp-bridge</cstring>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="Gui::PrefComboBox" name="statusButtonPositionComboBox">
+            <property name="toolTip">
+             <string>Where the button sits on the status bar.</string>
+            </property>
+            <property name="currentIndex">
+             <number>0</number>
+            </property>
+            <property name="prefEntry" stdset="0">
+             <cstring>StatusButtonPosition</cstring>
+            </property>
+            <property name="prefPath" stdset="0">
+             <cstring>Mod/freecad-mcp-bridge</cstring>
+            </property>
+            <item>
+             <property name="text">
+              <string>Right of FreeCAD's items (default)</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Left of FreeCAD's items</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </item>
+    </layout>
    </item>
    <item>
-    <widget class="QGroupBox" name="securityGroup">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
+    <widget class="QGroupBox" name="tlsGroup">
      <property name="title">
-      <string>Security</string>
+      <string>TLS certificate: needed for any address beyond loopback</string>
      </property>
-     <layout class="QFormLayout" name="securityLayout">
-      <item row="0" column="0" colspan="2">
-       <layout class="QHBoxLayout" name="tlsTokenRow">
+     <layout class="QVBoxLayout" name="tlsLayout">
+      <item>
+       <layout class="QHBoxLayout" name="tlsFiles">
         <item>
-         <widget class="Gui::PrefCheckBox" name="requireTlsCheckBox">
-          <property name="toolTip">
-           <string>Serve HTTPS on non-loopback listen addresses with the files below.</string>
-          </property>
+         <widget class="QLabel" name="tlsCertFileLabel">
           <property name="text">
-           <string>Require TLS (HTTPS)</string>
+           <string>Certificate (PEM)</string>
           </property>
-          <property name="checked">
-           <bool>true</bool>
+         </widget>
+        </item>
+        <item>
+         <widget class="Gui::PrefFileChooser" name="tlsCertFileChooser">
+          <property name="toolTip">
+           <string>PEM certificate file for HTTPS.</string>
+          </property>
+          <property name="fileName">
+           <string/>
+          </property>
+          <property name="filter">
+           <string>PEM files (*.pem *.crt *.key);;All files (*)</string>
           </property>
           <property name="prefEntry" stdset="0">
-           <cstring>RequireTls</cstring>
+           <cstring>TlsCertFile</cstring>
           </property>
           <property name="prefPath" stdset="0">
            <cstring>Mod/freecad-mcp-bridge</cstring>
@@ -325,23 +394,47 @@
          </widget>
         </item>
         <item>
-         <widget class="QPushButton" name="generateTokenButton">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
-          <property name="toolTip">
-           <string>Generate a new bearer token and show it once.</string>
-          </property>
+         <widget class="QLabel" name="tlsKeyFileLabel">
           <property name="text">
-           <string>Generate new token</string>
+           <string>Private key (PEM)</string>
           </property>
          </widget>
         </item>
         <item>
-         <spacer name="tokenRowSpacer">
+         <widget class="Gui::PrefFileChooser" name="tlsKeyFileChooser">
+          <property name="toolTip">
+           <string>PEM private key file for HTTPS.</string>
+          </property>
+          <property name="fileName">
+           <string/>
+          </property>
+          <property name="filter">
+           <string>PEM files (*.pem *.crt *.key);;All files (*)</string>
+          </property>
+          <property name="prefEntry" stdset="0">
+           <cstring>TlsKeyFile</cstring>
+          </property>
+          <property name="prefPath" stdset="0">
+           <cstring>Mod/freecad-mcp-bridge</cstring>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="tlsGenerateRow">
+        <item>
+         <widget class="QLabel" name="certTrustLabel">
+          <property name="text">
+           <string>An MCP client must trust this certificate.</string>
+          </property>
+          <property name="wordWrap">
+           <bool>false</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="tlsGenerateSpacer">
           <property name="orientation">
            <enum>Qt::Horizontal</enum>
           </property>
@@ -353,70 +446,109 @@
           </property>
          </spacer>
         </item>
+        <item>
+         <widget class="QLabel" name="optionalLabel">
+          <property name="text">
+           <string>(Optional)</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="generateCertButton">
+          <property name="sizePolicy">
+           <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+            <horstretch>0</horstretch>
+            <verstretch>0</verstretch>
+           </sizepolicy>
+          </property>
+          <property name="toolTip">
+           <string>Generate a self-signed TLS certificate.</string>
+          </property>
+          <property name="text">
+           <string>Generate self-signed certificate</string>
+          </property>
+         </widget>
+        </item>
        </layout>
-      </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="tlsCertFileLabel">
-        <property name="text">
-         <string>TLS certificate file (PEM)</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <widget class="Gui::PrefFileChooser" name="tlsCertFileChooser">
-        <property name="toolTip">
-         <string>PEM certificate file for HTTPS.</string>
-        </property>
-        <property name="fileName">
-         <string/>
-        </property>
-        <property name="filter">
-         <string>PEM files (*.pem *.crt *.key);;All files (*)</string>
-        </property>
-        <property name="prefEntry" stdset="0">
-         <cstring>TlsCertFile</cstring>
-        </property>
-        <property name="prefPath" stdset="0">
-         <cstring>Mod/freecad-mcp-bridge</cstring>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="tlsKeyFileLabel">
-        <property name="text">
-         <string>TLS private key file (PEM)</string>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="1">
-       <widget class="Gui::PrefFileChooser" name="tlsKeyFileChooser">
-        <property name="toolTip">
-         <string>PEM private key file for HTTPS.</string>
-        </property>
-        <property name="fileName">
-         <string/>
-        </property>
-        <property name="filter">
-         <string>PEM files (*.pem *.crt *.key);;All files (*)</string>
-        </property>
-        <property name="prefEntry" stdset="0">
-         <cstring>TlsKeyFile</cstring>
-        </property>
-        <property name="prefPath" stdset="0">
-         <cstring>Mod/freecad-mcp-bridge</cstring>
-        </property>
-       </widget>
       </item>
      </layout>
     </widget>
    </item>
    <item>
-    <widget class="QGroupBox" name="permissionsGroup">
-     <property name="title">
-      <string>Permissions</string>
-     </property>
-     <layout class="QVBoxLayout" name="permissionsLayout">
-      <item>
+    <layout class="QHBoxLayout" name="tokenRow">
+     <item>
+      <widget class="QGroupBox" name="bearerGroup">
+       <property name="title">
+        <string>Bearer token</string>
+       </property>
+       <layout class="QVBoxLayout" name="bearerLayout">
+        <item>
+         <widget class="QLabel" name="bearerNote">
+          <property name="text">
+           <string>Every MCP client must send the bridge's token. FreeCAD keeps a hash of it, not the token.</string>
+          </property>
+          <property name="wordWrap">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="tokenButtons">
+          <item>
+           <widget class="QPushButton" name="generateTokenButton">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="toolTip">
+             <string>Generate a new bearer token and show it once.</string>
+            </property>
+            <property name="text">
+             <string>Generate new token</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="setTokenButton">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="toolTip">
+             <string>Paste a bearer token.</string>
+            </property>
+            <property name="text">
+             <string>Set token</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="tokenSpacer">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>10</width>
+              <height>10</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <widget class="QGroupBox" name="permissionsGroup">
+       <property name="title">
+        <string>Execution permission</string>
+       </property>
        <layout class="QHBoxLayout" name="permissionModeRow">
         <item>
          <widget class="QLabel" name="permissionModeLabel">
@@ -427,12 +559,6 @@
         </item>
         <item>
          <widget class="QComboBox" name="permissionModeComboBox">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
-          </property>
           <property name="toolTip">
            <string>Ask shows you an agent's code first. Unrestricted runs it unseen.</string>
           </property>
@@ -451,135 +577,60 @@
           </item>
          </widget>
         </item>
-        <item>
-         <spacer name="permissionModeRowSpacer">
-          <property name="orientation">
-           <enum>Qt::Horizontal</enum>
-          </property>
-          <property name="sizeHint" stdset="0">
-           <size>
-            <width>20</width>
-            <height>10</height>
-           </size>
-          </property>
-         </spacer>
-        </item>
        </layout>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item>
-    <widget class="QGroupBox" name="statusBarGroup">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
-     <property name="title">
-      <string>Status bar</string>
-     </property>
-     <layout class="QHBoxLayout" name="statusBarLayout">
-      <item>
-       <widget class="Gui::PrefCheckBox" name="showStatusButtonCheckBox">
-        <property name="toolTip">
-         <string>Display toggle button in the status bar. Always shown in Unrestricted mode.</string>
-        </property>
-        <property name="text">
-         <string>Show the On/Off button</string>
-        </property>
-        <property name="checked">
-         <bool>true</bool>
-        </property>
-        <property name="prefEntry" stdset="0">
-         <cstring>ShowStatusButton</cstring>
-        </property>
-        <property name="prefPath" stdset="0">
-         <cstring>Mod/freecad-mcp-bridge</cstring>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="statusButtonPositionLabel">
-        <property name="text">
-         <string>Position</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="Gui::PrefComboBox" name="statusButtonPositionComboBox">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="toolTip">
-         <string>Where the button sits on the status bar.</string>
-        </property>
-        <property name="currentIndex">
-         <number>0</number>
-        </property>
-        <property name="prefEntry" stdset="0">
-         <cstring>StatusButtonPosition</cstring>
-        </property>
-        <property name="prefPath" stdset="0">
-         <cstring>Mod/freecad-mcp-bridge</cstring>
-        </property>
-        <item>
-         <property name="text">
-          <string>Right of FreeCAD's items (default)</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>Left of FreeCAD's items</string>
-         </property>
-        </item>
-       </widget>
-      </item>
-      <item>
-       <spacer name="statusBarRowSpacer">
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-        <property name="sizeHint" stdset="0">
-         <size>
-          <width>20</width>
-          <height>10</height>
-         </size>
-        </property>
-       </spacer>
-      </item>
-     </layout>
-    </widget>
+      </widget>
+     </item>
+    </layout>
    </item>
    <item>
     <widget class="QGroupBox" name="clientGroup">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
      <property name="title">
       <string>Connect an MCP client</string>
      </property>
      <layout class="QVBoxLayout" name="clientLayout">
       <item>
-       <widget class="QLabel" name="clientNote">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
+       <widget class="QLabel" name="clientLoopbackNote">
         <property name="textFormat">
          <enum>Qt::RichText</enum>
         </property>
         <property name="text">
-         <string>A loopback entry uses &lt;br/&gt;&lt;nobr&gt;http:&amp;#x2060;//&amp;#x2060;127.0.0.1&amp;#x2060;:&amp;#x2060;&amp;lt;PORT&amp;gt;/mcp&lt;/nobr&gt;. By default, beyond loopback, use &lt;br/&gt;&lt;nobr&gt;https:&amp;#x2060;//&amp;#x2060;&amp;lt;ADDRESS&amp;gt;&amp;#x2060;:&amp;#x2060;&amp;lt;PORT&amp;gt;/mcp&lt;/nobr&gt;. Every listener requires the bearer token.&lt;br/&gt;Claude Desktop speaks stdio only and needs this connector: &lt;a href="https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest/download/freecad-mcp-bridge.mcpb"&gt;Download the bundle&lt;/a&gt;.</string>
+         <string>Without a TLS certificate, a loopback entry uses &lt;nobr&gt;http:&amp;#x2060;//&amp;#x2060;127.0.0.1&amp;#x2060;:&amp;#x2060;&amp;lt;PORT&amp;gt;/mcp&lt;/nobr&gt;.</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="clientHttpsNote">
+        <property name="textFormat">
+         <enum>Qt::RichText</enum>
+        </property>
+        <property name="text">
+         <string>With one, every entry uses &lt;nobr&gt;https:&amp;#x2060;//&amp;#x2060;&amp;lt;ADDRESS&amp;gt;&amp;#x2060;:&amp;#x2060;&amp;lt;PORT&amp;gt;/mcp&lt;/nobr&gt;, and beyond loopback one is required.</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="clientTokenNote">
+        <property name="text">
+         <string>Every listener requires the bearer token.</string>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="clientClaudeNote">
+        <property name="textFormat">
+         <enum>Qt::RichText</enum>
+        </property>
+        <property name="text">
+         <string>Claude Desktop speaks stdio only and needs the MCP Bridge for FreeCAD extension: &lt;a href="https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest/download/freecad-mcp-bridge.mcpb"&gt;Download the bundle&lt;/a&gt;.</string>
         </property>
         <property name="wordWrap">
          <bool>true</bool>
@@ -594,24 +645,12 @@
    </item>
    <item>
     <widget class="QGroupBox" name="helpGroup">
-     <property name="sizePolicy">
-      <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
-       <horstretch>0</horstretch>
-       <verstretch>0</verstretch>
-      </sizepolicy>
-     </property>
      <property name="title">
       <string>Help &amp;&amp; feedback</string>
      </property>
      <layout class="QVBoxLayout" name="helpLayout">
       <item>
        <widget class="QLabel" name="helpNote">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Preferred" vsizetype="Minimum">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
         <property name="textFormat">
          <enum>Qt::RichText</enum>
         </property>
@@ -629,27 +668,9 @@
      </layout>
     </widget>
    </item>
-   <item>
-    <spacer name="verticalSpacer">
-     <property name="orientation">
-      <enum>Qt::Vertical</enum>
-     </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>40</height>
-      </size>
-     </property>
-    </spacer>
-   </item>
   </layout>
  </widget>
  <customwidgets>
-  <customwidget>
-   <class>Gui::PrefTextEdit</class>
-   <extends>QTextEdit</extends>
-   <header>Gui/PrefWidgets.h</header>
-  </customwidget>
   <customwidget>
    <class>Gui::PrefSpinBox</class>
    <extends>QSpinBox</extends>

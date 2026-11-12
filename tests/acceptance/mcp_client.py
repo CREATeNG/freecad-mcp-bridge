@@ -17,7 +17,6 @@ import time
 import urllib.error
 import urllib.request
 from contextlib import contextmanager
-from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 from freecad.mcp_bridge.paging import (
@@ -69,28 +68,16 @@ def url_for(path):
     return urlunsplit((parts.scheme, parts.netloc, path, "", ""))
 
 
-def _token_dir():
-    """The folder FreeCAD and the extension share for the token file."""
-    override = os.environ.get("FREECAD_MCP_TOKEN_DIR", "").strip()
-    if override:
-        return Path(override)
-    return Path.home() / ".freecad-mcp-bridge"
-
-
-def _token_from_file():
-    """The bearer token FreeCAD wrote, or '' when the file is absent."""
-    path = _token_dir() / "token"
-    try:
-        return path.read_text(encoding="utf-8").strip()
-    except OSError:
-        return ""
+def _token():
+    """The bearer token from FREECAD_MCP_TOKEN, or '' when it is unset."""
+    return os.environ.get("FREECAD_MCP_TOKEN", "").strip()
 
 
 def send(body=b"", method="POST", url=None, headers=None):
     """Send one raw HTTP request; return its Reply, whatever the status.
 
     A header given as None is left out. A POST with no Authorization
-    header sends the token from the token file when that file exists.
+    header sends the token from FREECAD_MCP_TOKEN when that is set.
     """
     headers = {
         "Content-Type": "application/json",
@@ -98,7 +85,7 @@ def send(body=b"", method="POST", url=None, headers=None):
         **(headers or {}),
     }
     if method == "POST" and "Authorization" not in headers:
-        token = _token_from_file()
+        token = _token()
         if token:
             headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(

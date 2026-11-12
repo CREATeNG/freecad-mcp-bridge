@@ -14,6 +14,7 @@ which, dumps every thread's stack, and exits 1.
 
 Environment:
   ACCEPTANCE_READY_FILE     Written with the bridge's port once it is listening (required)
+  ACCEPTANCE_TOKEN_FILE     Written with the stored token before the ready file
   ACCEPTANCE_STOP_FILE      Its appearance makes FreeCAD quit (required)
   ACCEPTANCE_TIMEOUT_S      Hard limit on serving, in seconds (default: 600)
   RELEASE_INSTALL_GUI_DELAY_MS        Delay before work starts (default: 3000)
@@ -191,6 +192,7 @@ def _watch_for_stop(stop_file: str, timeout_s: float) -> None:
 def _run() -> None:
     from freecad.mcp_bridge import config
 
+    common.require_isolated_token_dir()
     # The suite drives the bridge. The permission mode is Unrestricted
     # so its calls are not waiting on a dialog.
     config.set_unrestricted(True)
@@ -201,6 +203,10 @@ def _run() -> None:
     if not ready_file or not stop_file:
         common.fail("ACCEPTANCE_READY_FILE and ACCEPTANCE_STOP_FILE must be set")
 
+    # Turning the bridge on never makes a token. Store one first
+    # and publish it before the ready file, so the test step has it.
+    token = common.store_token_for_toolbar_start()
+    common.publish_acceptance_token(token)
     common.start_bridge()
     entry = config.listen_addresses()[0]
     _, port = config.parse_listen_entry(entry)
