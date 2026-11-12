@@ -2007,6 +2007,26 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 handler.headers = {"Host": "[2001:db8::5]:443"}
                 self.assertTrue(handler._host_ok())
 
+                # A loopback listener on another 127.x address accepts
+                # the address it is bound to, with or without a port, as
+                # well as the loopback aliases, and nothing else.
+                handler.server.bound_host = "127.0.0.2"
+                handler.server.cert_hosts = set()
+                for host in (
+                    "127.0.0.2",
+                    "127.0.0.2:39280",
+                    "127.0.0.1:39280",
+                    "localhost",
+                    "[::1]:39280",
+                ):
+                    handler.headers = {"Host": host}
+                    self.assertTrue(handler._host_ok(), host)
+                for host in ("127.0.0.3", "192.168.1.50:39280", "evil.example"):
+                    handler.headers = {"Host": host}
+                    self.assertFalse(handler._host_ok(), host)
+                handler.headers = {"Host": "127.0.0.2", "Origin": "null"}
+                self.assertFalse(handler._origin_ok())
+
                 handler.headers = {"Origin": ""}
                 self.assertFalse(handler._origin_ok())
                 handler.headers = {"Origin": "http://127.0.0.1"}
@@ -2034,6 +2054,21 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 handler.headers = {"Host": "evil.example"}
                 handler.do_POST()
                 self.assertEqual(refused[-1], (403, "Forbidden Host"))
+
+                # The same refusals on a listener bound to 127.0.0.2.
+                handler.server.bound_host = "127.0.0.2"
+                handler.headers = {
+                    "Origin": "http://127.0.0.2",
+                    "Host": "127.0.0.2:39280",
+                    "Authorization": f"Bearer {tok2}",
+                }
+                handler.do_POST()
+                self.assertEqual(refused[-1], (403, "Forbidden Origin"))
+                handler.headers = {"Host": "evil.example:39280"}
+                handler.do_POST()
+                self.assertEqual(refused[-1], (403, "Forbidden Host"))
+                self.assertEqual(len(refused), 4)
+                handler.server.bound_host = "127.0.0.1"
 
                 handler.headers = {"Host": "127.0.0.1:39280"}
                 handler.send_response = lambda code, msg=None: (

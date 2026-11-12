@@ -81,10 +81,10 @@ class McpRequestHandler(BaseHTTPRequestHandler):
         if config.host_name_accepted(name):
             return True
         bound = getattr(self.server, "bound_host", "") or ""
-        if config.is_loopback_address(bound):
-            return name.lower() in _LOOPBACK_HOSTS
         if name.lower() == bound.lower():
             return True
+        if config.is_loopback_address(bound):
+            return name.lower() in _LOOPBACK_HOSTS
         cert_hosts = getattr(self.server, "cert_hosts", ())
         return config.certificate_covers_host(cert_hosts, name)
 
