@@ -511,15 +511,23 @@ every document at once. A job that fails keeps what ran: the
 transaction is closed, not aborted, whether the code raised or
 called `sys.exit`.
 
-Code that opens or commits a transaction of its own ends the
-job's. So for the job's length a document observer watches every
-document, and after each commit it opens a fresh transaction named
-`MCP Bridge: run (cont.)`. Nothing the job changes is left out of
-undo, and the job shows as a chain of named steps. Closing the
-job's own transaction is also a commit, so the observer is turned
-off and removed first, whatever the job did. A FreeCAD without
-these calls runs the job as before. One that refuses them runs it
-too, and the Report view says the run may not be one undo step.
+Code that opens, commits or aborts a transaction of its own ends
+the job's. So for the job's length a document observer watches
+every document, and each time a transaction closes it opens a
+fresh one named `MCP Bridge: run, continued`. What the job changes
+stays in undo whether the code commits or aborts its own
+transactions, and the job shows as a chain of named steps. Code
+that turns a document's `UndoMode` off takes that document's
+changes out of undo. The observer listens for
+`slotCloseTransaction`, which FreeCAD calls once every document's
+part of a transaction has closed. `slotAbortTransaction` comes
+part-way through aborting several documents, and opening a
+transaction there would commit the documents not yet aborted.
+Closing the job's own transaction calls the observer too, so it
+is turned off and removed first, whatever the job did. A FreeCAD
+without these calls runs the job as before. One that refuses them
+runs it too, and the Report view says the run may not be one undo
+step.
 
 Creating, opening or closing a document, and saving one, are not
 undone.

@@ -15,10 +15,11 @@ produced.
 Each job is one undo step. An application-wide transaction, "MCP Bridge:
 run", is open while the code runs, so Edit → Undo takes back what the job
 changed in every document at once. A job that fails keeps what ran: the
-transaction is closed, not aborted. Code that commits a transaction of its
-own ends ours, so for the job's length a document observer opens a fresh
-one, "MCP Bridge: run (cont.)", after each such commit. Nothing the job
-changes is then left out of undo, though the job becomes a chain of steps.
+transaction is closed, not aborted. Code that opens, commits or aborts a
+transaction of its own ends ours, so for the job's length a document
+observer opens a fresh one, "MCP Bridge: run, continued", each time a
+transaction closes. What the job changes then stays in undo, as a chain
+of steps, unless the code turns a document's UndoMode off.
 """
 
 import sys
@@ -33,7 +34,7 @@ from freecad.mcp_bridge.constants import LOG_PREFIX
 from freecad.mcp_bridge.job_gate import JobGate, JobLine
 
 UNDO_STEP_NAME = "MCP Bridge: run"
-UNDO_STEP_CONTINUED_NAME = "MCP Bridge: run (cont.)"
+UNDO_STEP_CONTINUED_NAME = "MCP Bridge: run, continued"
 
 
 class TeeWriter:
@@ -52,21 +53,25 @@ class TeeWriter:
         pass
 
 
-class _ReopenAfterCommit:
+class _ReopenAfterClose:
     """Document observer for one job's length.
 
-    FreeCAD calls slotCommitTransaction whenever a transaction ends in a
-    document. While this observer is on, that means the job's code ended
-    ours by committing or opening one of its own, so ours opens again
-    and what the code changes next is still in an undo step. It is
-    turned off before the job's own transaction is closed.
+    FreeCAD calls slotCloseTransaction once a transaction has closed in
+    every document, committed or aborted. While this observer is on,
+    that means the job's code ended ours by opening, committing or
+    aborting one of its own, so ours opens again and what the code
+    changes next is still in an undo step. It is turned off before the
+    job's own transaction is closed, since that close calls it too.
+    slotAbortTransaction is not used: FreeCAD calls it part-way through
+    aborting several documents, and opening ours there would commit the
+    documents not yet aborted.
     """
 
     def __init__(self, open_step):
         self._open_step = open_step
         self.on = True
 
-    def slotCommitTransaction(self, _doc):
+    def slotCloseTransaction(self, _abort):
         if self.on:
             self._open_step(UNDO_STEP_CONTINUED_NAME)
 
@@ -92,7 +97,7 @@ class _UndoStep:
         try:
             set_active(UNDO_STEP_NAME)
             self._opened = True
-            observer = _ReopenAfterCommit(self._reopen)
+            observer = _ReopenAfterClose(self._reopen)
             app.addDocumentObserver(observer)
             self._observer = observer
         except Exception as exc:

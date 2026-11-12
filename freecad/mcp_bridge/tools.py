@@ -18,8 +18,9 @@ EXECUTE_PYTHON = {
         "job_token, and get_output_page returns the output once "
         "they answer, or the decline as an error. "
         "Each call is one step in FreeCAD's Edit → Undo, named "
-        "\"MCP Bridge: run\"; code that opens its own transactions "
-        "makes it a chain of named steps, so leave transactions alone."
+        "\"MCP Bridge: run\". Code that opens its own transactions "
+        "splits the call into a chain of named steps, so leave "
+        "transactions alone."
     ),
     "inputSchema": {
         "type": "object",
@@ -52,8 +53,9 @@ EXECUTE_PYTHON_FILE = {
         "job_token, and get_output_page returns the output once "
         "they answer, or the decline as an error. "
         "Each call is one step in FreeCAD's Edit → Undo, named "
-        "\"MCP Bridge: run\"; code that opens its own transactions "
-        "makes it a chain of named steps, so leave transactions alone."
+        "\"MCP Bridge: run\". Code that opens its own transactions "
+        "splits the call into a chain of named steps, so leave "
+        "transactions alone."
     ),
     "inputSchema": {
         "type": "object",

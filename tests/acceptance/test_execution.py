@@ -167,8 +167,8 @@ class ExecutionContextTests(unittest.TestCase):
 
 
 class UndoStepTests(unittest.TestCase):
-    def test_each_run_is_one_undo_step_and_a_commit_by_the_code_continues_it(self):
-        """Each run is one step in Edit → Undo, "MCP Bridge: run", across every document it changes; code that commits a transaction of its own makes the run a chain of named steps."""
+    def test_each_run_is_one_undo_step_and_a_commit_or_abort_by_the_code_continues_it(self):
+        """Each run is one step in Edit → Undo, "MCP Bridge: run", across every document it changes; code that commits or aborts a transaction of its own makes the run a chain of named steps, and what it changes after an abort stays in undo."""
         created = mcp.run(
             "a = App.newDocument('AcceptanceUndoA')\n"
             "b = App.newDocument('AcceptanceUndoB')\n"
@@ -206,8 +206,37 @@ class UndoStepTests(unittest.TestCase):
             )
             self.assertEqual(
                 chain.splitlines(),
-                ["MCP Bridge: run (cont.)", "inner", "MCP Bridge: run"],
+                ["MCP Bridge: run, continued", "inner", "MCP Bridge: run"],
                 chain,
+            )
+            # The code aborts a transaction of its own that spans both
+            # documents, then changes both again.
+            mcp.run(
+                f"a = App.getDocument({a_name!r})\n"
+                f"b = App.getDocument({b_name!r})\n"
+                "a.addObject('App::FeaturePython', 'A5')\n"
+                "b.addObject('App::FeaturePython', 'B5')\n"
+                "a.openTransaction('inner-abort')\n"
+                "a.addObject('App::FeaturePython', 'XA')\n"
+                "b.addObject('App::FeaturePython', 'XB')\n"
+                "App.closeActiveTransaction(True)\n"
+                "a.addObject('App::FeaturePython', 'A6')\n"
+                "b.addObject('App::FeaturePython', 'B6')\n"
+            )
+            after_abort = mcp.run(
+                f"for doc in (App.getDocument({a_name!r}), App.getDocument({b_name!r})):\n"
+                "    print(sorted(o.Name for o in doc.Objects))\n"
+                "    print([n.removeprefix('-> ') for n in doc.UndoNames[:2]])\n"
+            )
+            self.assertEqual(
+                after_abort.splitlines(),
+                [
+                    "['A1', 'A2', 'A3', 'A4', 'A5', 'A6']",
+                    "['MCP Bridge: run, continued', 'MCP Bridge: run']",
+                    "['B1', 'B5', 'B6']",
+                    "['MCP Bridge: run, continued', 'MCP Bridge: run']",
+                ],
+                after_abort,
             )
         finally:
             mcp.run(

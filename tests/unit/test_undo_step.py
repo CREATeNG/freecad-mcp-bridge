@@ -2,10 +2,10 @@
 
 The job runs inside an application-wide transaction, "MCP Bridge: run",
 opened before the code and closed after, never aborted. A document
-observer reopens it as "MCP Bridge: run (cont.)" whenever the code commits
-a transaction of its own, and is removed before the job's transaction is
-closed. These tests run executor.Executor._run against stand-ins for
-FreeCAD and Qt, which record the calls in order.
+observer reopens it as "MCP Bridge: run, continued" whenever the code
+commits or aborts a transaction of its own, and is removed before the
+job's transaction is closed. These tests run executor.Executor._run
+against stand-ins for FreeCAD and Qt, which record the calls in order.
 """
 
 import importlib
@@ -16,14 +16,16 @@ import unittest
 from unittest import mock
 
 RUN = "MCP Bridge: run"
-CONT = "MCP Bridge: run (cont.)"
+CONT = "MCP Bridge: run, continued"
 
 
 class StandInApp(types.ModuleType):
     """FreeCAD's transaction and observer calls, recorded in order.
 
-    As in FreeCAD, closing a transaction tells every registered
-    observer that a transaction was committed.
+    As in FreeCAD, a transaction that closes calls each registered
+    observer's slotCommitTransaction(doc) or slotAbortTransaction(doc),
+    then its slotCloseTransaction(abort), each only where the observer
+    has it.
     """
 
     def __init__(self, with_calls=True, refuse_open=False):
@@ -49,7 +51,7 @@ class StandInApp(types.ModuleType):
 
     def _close_active(self, *args, **kwargs):
         self.log.append(("close", args, kwargs))
-        self._notify_commit()
+        self._notify_close(bool(args[0] if args else kwargs.get("abort")))
 
     def _add_observer(self, observer):
         self.observers.append(observer)
@@ -59,14 +61,25 @@ class StandInApp(types.ModuleType):
         self.observers.remove(observer)
         self.log.append(("remove observer",))
 
-    def _notify_commit(self):
+    def _notify_close(self, abort):
+        doc = types.SimpleNamespace(Name="Doc")
+        per_document = "slotAbortTransaction" if abort else "slotCommitTransaction"
         for observer in list(self.observers):
-            observer.slotCommitTransaction(types.SimpleNamespace(Name="Doc"))
+            if hasattr(observer, per_document):
+                getattr(observer, per_document)(doc)
+        for observer in list(self.observers):
+            if hasattr(observer, "slotCloseTransaction"):
+                observer.slotCloseTransaction(abort)
 
     def code_commits_its_own(self):
         """What the job's code does with doc.commitTransaction()."""
         self.log.append(("code commits",))
-        self._notify_commit()
+        self._notify_close(False)
+
+    def code_aborts_its_own(self):
+        """What the job's code does with doc.abortTransaction()."""
+        self.log.append(("code aborts",))
+        self._notify_close(True)
 
 
 def load_executor(app):
@@ -184,7 +197,7 @@ class UndoStepTests(unittest.TestCase):
         self.assertEqual(app.observers, [])
 
     def test_a_commit_by_the_code_reopens_ours(self):
-        """After the code's own commit, "MCP Bridge: run (cont.)" opens."""
+        """After the code's own commit, "MCP Bridge: run, continued" opens."""
         app, _ = self.run_job(
             "App.code_commits_its_own()\nApp.log.append(('code after',))"
         )
@@ -194,6 +207,24 @@ class UndoStepTests(unittest.TestCase):
                 ("open", RUN),
                 ("add observer",),
                 ("code commits",),
+                ("open", CONT),
+                ("code after",),
+                ("remove observer",),
+                ("close", (), {}),
+            ],
+        )
+
+    def test_an_abort_by_the_code_reopens_ours(self):
+        """After the code's own abort, "MCP Bridge: run, continued" opens."""
+        app, _ = self.run_job(
+            "App.code_aborts_its_own()\nApp.log.append(('code after',))"
+        )
+        self.assertEqual(
+            app.log,
+            [
+                ("open", RUN),
+                ("add observer",),
+                ("code aborts",),
                 ("open", CONT),
                 ("code after",),
                 ("remove observer",),
