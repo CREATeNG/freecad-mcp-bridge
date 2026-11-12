@@ -36,6 +36,13 @@ from freecad.mcp_bridge.listeners import (
 
 _MODE_BOXES = []
 
+_PREF_ROOT = "User parameter:BaseApp/Preferences"
+_PREF_SPIN = "Gui::PrefSpinBox"
+_PREF_CHECK = "Gui::PrefCheckBox"
+_PREF_COMBO = "Gui::PrefComboBox"
+_PREF_FILE = "Gui::PrefFileChooser"
+_PREF_KINDS = (_PREF_SPIN, _PREF_CHECK, _PREF_COMBO, _PREF_FILE)
+
 
 def ui_path() -> str:
     """Absolute path to the one preferences page."""
@@ -90,17 +97,118 @@ def form_child(form, kind, name: str):
         return None
 
 
+def report_unhandled(control: str, reason: str) -> None:
+    """One Report view warning: the page leaves `control` alone."""
+    try:
+        import FreeCAD as App
+    except Exception:
+        return
+    console = getattr(App, "Console", None)
+    if console is None or not hasattr(console, "PrintWarning"):
+        return
+    try:
+        console.PrintWarning(
+            f"{LOG_PREFIX} The Preferences page does not load or save "
+            f"{control}: {reason}.\n"
+        )
+    except Exception:
+        return
+
+
 def restore_prefs(form) -> None:
-    """Call onRestore on each preference widget of `form`."""
-    _each_pref(form, "onRestore")
+    """Show each preference widget's saved value, or its default.
+
+    FreeCAD loads and saves these widgets itself only for a page
+    registered as a .ui file. This page is a Python class, and
+    Python cannot call a widget's onRestore or onSave, so the page
+    reads and writes each setting here: under the widget's own
+    prefPath and prefEntry, in the type FreeCAD's widget uses.
+    """
+    _each_pref(form, saving=False)
 
 
 def save_prefs(form) -> None:
-    """Call onSave on each preference widget of `form`."""
-    _each_pref(form, "onSave")
+    """Write each preference widget's value to its setting."""
+    _each_pref(form, saving=True)
 
 
-def _each_pref(form, method: str) -> None:
+def _pref_text(value) -> str:
+    """A widget property as text.
+
+    PySide gives prefEntry and prefPath as a QByteArray. A string
+    or bytes is taken too.
+    """
+    data = getattr(value, "data", None)
+    if callable(data):
+        value = data()
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return bytes(value).decode("utf-8", "replace").strip()
+    if isinstance(value, str):
+        return value.strip()
+    return ""
+
+
+def _shown(widget, kind: str):
+    """What a widget of FreeCAD class `kind` shows now."""
+    if kind == _PREF_SPIN:
+        return int(widget.value())
+    if kind == _PREF_CHECK:
+        return bool(widget.isChecked())
+    if kind == _PREF_COMBO:
+        return int(widget.currentIndex())
+    return _pref_text(widget.property("fileName"))
+
+
+def _restore_one(widget, kind: str, group, entry: str, default) -> None:
+    """Show the saved value of `entry`, or `default` with none saved."""
+    if kind == _PREF_SPIN:
+        widget.setValue(int(group.GetInt(entry, default)))
+    elif kind == _PREF_CHECK:
+        widget.setChecked(bool(group.GetBool(entry, default)))
+    elif kind == _PREF_COMBO:
+        index = int(group.GetInt(entry, default))
+        if not 0 <= index < widget.count():
+            index = default
+        widget.setCurrentIndex(index)
+    else:
+        widget.setProperty(
+            "fileName", _pref_text(group.GetString(entry, default))
+        )
+
+
+def _save_one(widget, kind: str, group, entry: str) -> None:
+    """Write what the widget shows. A cleared path is saved empty."""
+    value = _shown(widget, kind)
+    if kind == _PREF_SPIN:
+        group.SetInt(entry, value)
+    elif kind == _PREF_CHECK:
+        group.SetBool(entry, value)
+    elif kind == _PREF_COMBO:
+        if value >= 0:
+            group.SetInt(entry, value)
+    else:
+        group.SetString(entry, value)
+
+
+def _form_note(form, name: str, make):
+    """A value kept on `form` for as long as the page is open."""
+    kept = getattr(form, name, None)
+    if kept is None:
+        kept = make()
+        try:
+            setattr(form, name, kept)
+        except Exception:
+            pass
+    return kept
+
+
+def _each_pref(form, saving: bool) -> None:
+    """Load or save every widget of `form` that names a setting.
+
+    Each widget's default is what the form gave it, kept from the
+    first time the widget is seen: a load with nothing saved shows
+    it, which is also how the Preferences dialog's Reset comes out.
+    """
     from PySide.QtWidgets import QWidget
 
     try:
@@ -108,14 +216,37 @@ def _each_pref(form, method: str) -> None:
     except RuntimeError as exc:
         report_wiring("form", exc)
         return
+    defaults = _form_note(form, "_pref_defaults", dict)
+    unhandled = _form_note(form, "_pref_unhandled", set)
     for child in children:
-        call = getattr(child, method, None)
-        if not callable(call):
-            continue
         name = "preference"
         try:
-            name = child.objectName() or name
-            call()
+            entry = _pref_text(child.property("prefEntry"))
+            if not entry:
+                continue
+            name = child.objectName() or entry
+            path = _pref_text(child.property("prefPath"))
+            kind = _pref_text(child.metaObject().className())
+            reason = ""
+            if kind not in _PREF_KINDS:
+                reason = f"it does not handle a {kind} widget"
+            elif not path:
+                reason = "the widget has no preference path"
+            if reason:
+                if name not in unhandled:
+                    unhandled.add(name)
+                    report_unhandled(name, reason)
+                continue
+            import FreeCAD as App
+
+            group = App.ParamGet(f"{_PREF_ROOT}/{path}")
+            key = (path, entry)
+            if key not in defaults:
+                defaults[key] = _shown(child, kind)
+            if saving:
+                _save_one(child, kind, group, entry)
+            else:
+                _restore_one(child, kind, group, entry, defaults[key])
         except RuntimeError as exc:
             report_wiring(name, exc)
         except Exception as exc:

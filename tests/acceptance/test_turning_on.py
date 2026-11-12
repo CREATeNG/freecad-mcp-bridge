@@ -312,6 +312,183 @@ class PortTests(unittest.TestCase):
         self.assertIn("Preferences", seen["report"])
 
 
+def page_settings_flow(cert_path, key_path, seen_file):
+    """Code that opens the MCP Bridge Preferences page twice.
+
+    Before the first open it saves 7 minutes of history retention and
+    removes both certificate paths. In the first open it records what
+    the page shows, sets 8 minutes, fills the two certificate fields as
+    Generate self-signed certificate fills them, and clicks OK. In the
+    second it records what the page shows, sets 9 minutes, and clicks
+    Cancel. It records what is saved after each, then puts every
+    setting it touched back.
+    """
+    return PREFERENCES + f"""
+import json
+from PySide.QtWidgets import (
+    QApplication,
+    QDialog,
+    QDialogButtonBox,
+    QSpinBox,
+    QTableWidget,
+    QWidget,
+)
+from freecad.mcp_bridge import init_gui
+
+MINUTES = 'MaxHistoryRetentionMinutes'
+LIST_STRINGS = ('ListenAddress', 'ListenAdapters', 'HostNames')
+seen = {{}}
+mw = Gui.getMainWindow()
+orig_minutes = params.GetInt(MINUTES, -1)
+orig_cert = params.GetString('TlsCertFile', '')
+orig_key = params.GetString('TlsKeyFile', '')
+orig_list = {{name: params.GetString(name, '') for name in LIST_STRINGS}}
+orig_list_saved = params.GetBool('ListenListSaved', False)
+
+
+def page_dialog():
+    for dlg in mw.findChildren(QDialog):
+        table = dlg.findChild(QTableWidget, 'listenTable')
+        if dlg.isVisible() and table is not None and table.rowCount() > 0:
+            return dlg
+    return None
+
+
+def when_open(then, tries=100):
+    dlg = page_dialog()
+    if dlg is not None:
+        then(dlg)
+        return
+    if tries > 0:
+        QTimer.singleShot(100, lambda: when_open(then, tries - 1))
+        return
+    seen['page_not_found'] = True
+    stuck = QApplication.activeModalWidget()
+    if stuck is not None:
+        stuck.reject()
+
+
+def shown(dlg, key):
+    spin = dlg.findChild(QSpinBox, 'retentionSpinBox')
+    cert = dlg.findChild(QWidget, 'tlsCertFileChooser')
+    key_file = dlg.findChild(QWidget, 'tlsKeyFileChooser')
+    seen[key + '_minutes'] = spin.value()
+    seen[key + '_cert'] = str(cert.property('fileName') or '')
+    seen[key + '_key'] = str(key_file.property('fileName') or '')
+    return spin
+
+
+def click(dlg, which):
+    box = dlg.findChild(QDialogButtonBox)
+    button = box.button(which) if box is not None else None
+    if button is not None:
+        button.click()
+    elif which == QDialogButtonBox.Ok:
+        dlg.accept()
+    else:
+        dlg.reject()
+
+
+def first_open(dlg):
+    spin = shown(dlg, 'first')
+    spin.setValue(8)
+    init_gui._set_chooser_file_name(
+        dlg, 'tlsCertFileChooser', {cert_path!r}
+    )
+    init_gui._set_chooser_file_name(
+        dlg, 'tlsKeyFileChooser', {key_path!r}
+    )
+    click(dlg, QDialogButtonBox.Ok)
+
+
+def second_open(dlg):
+    spin = shown(dlg, 'second')
+    spin.setValue(9)
+    click(dlg, QDialogButtonBox.Cancel)
+
+
+def saved(key):
+    seen[key + '_minutes'] = params.GetInt(MINUTES, -1)
+    seen[key + '_cert'] = params.GetString('TlsCertFile', '')
+    seen[key + '_key'] = params.GetString('TlsKeyFile', '')
+
+
+def put_back():
+    if orig_minutes == -1:
+        params.RemInt(MINUTES)
+    else:
+        params.SetInt(MINUTES, orig_minutes)
+    for name, value in (('TlsCertFile', orig_cert), ('TlsKeyFile', orig_key)):
+        if value:
+            params.SetString(name, value)
+        else:
+            params.RemString(name)
+    for name, value in orig_list.items():
+        if value:
+            params.SetString(name, value)
+        else:
+            params.RemString(name)
+    if orig_list_saved:
+        params.SetBool('ListenListSaved', True)
+    else:
+        params.RemBool('ListenListSaved')
+
+
+def step_open_twice():
+    try:
+        params.SetInt(MINUTES, 7)
+        params.RemString('TlsCertFile')
+        params.RemString('TlsKeyFile')
+        QTimer.singleShot(250, lambda: when_open(first_open))
+        Gui.showPreferences('MCP Bridge', 0)
+        saved('after_ok')
+        QTimer.singleShot(250, lambda: when_open(second_open))
+        Gui.showPreferences('MCP Bridge', 0)
+        saved('after_cancel')
+    finally:
+        put_back()
+        with open({seen_file!r}, 'w', encoding='utf-8') as handle:
+            json.dump(seen, handle)
+
+
+QTimer.singleShot(300, step_open_twice)
+"""
+
+
+class PreferencePageTests(unittest.TestCase):
+    def test_the_page_shows_saved_settings_and_ok_saves_them(self):
+        """The page shows what is saved, OK saves it, and Cancel does not."""
+        with tempfile.TemporaryDirectory() as folder:
+            seen_file = os.path.join(folder, "seen.json")
+            cert_path = os.path.join(folder, "tls-cert.pem")
+            key_path = os.path.join(folder, "tls-key.pem")
+            mcp.run(page_settings_flow(cert_path, key_path, seen_file))
+            recorded = wait_for_file(seen_file, timeout_s=60)
+            self.assertTrue(
+                recorded, "the preferences page check was not recorded"
+            )
+            with open(seen_file, encoding="utf-8") as handle:
+                seen = json.load(handle)
+        self.assertNotIn("page_not_found", seen)
+        # The first open shows the saved 7 minutes, not the form's 5,
+        # and both certificate fields empty.
+        self.assertEqual(seen.get("first_minutes"), 7)
+        self.assertEqual(seen.get("first_cert"), "")
+        self.assertEqual(seen.get("first_key"), "")
+        # OK saves the changed minutes and both filled paths.
+        self.assertEqual(seen.get("after_ok_minutes"), 8)
+        self.assertEqual(seen.get("after_ok_cert"), cert_path)
+        self.assertEqual(seen.get("after_ok_key"), key_path)
+        # The second open shows what OK saved.
+        self.assertEqual(seen.get("second_minutes"), 8)
+        self.assertEqual(seen.get("second_cert"), cert_path)
+        self.assertEqual(seen.get("second_key"), key_path)
+        # Cancel saves nothing.
+        self.assertEqual(seen.get("after_cancel_minutes"), 8)
+        self.assertEqual(seen.get("after_cancel_cert"), cert_path)
+        self.assertEqual(seen.get("after_cancel_key"), key_path)
+
+
 def non_loopback_flow(
     address, cert_path, key_path, seen_file, continue_file
 ):
