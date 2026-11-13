@@ -186,9 +186,9 @@ Preferences**. Choosing a mode there switches the same way as
 **Permission mode** under **Execution permission** in **Edit →
 Preferences → MCP Bridge**: it asks before going Unrestricted, and goes
 back to Ask at once. In Preferences too, the choice applies at once,
-without OK, and **Cancel** does not undo it, a switch to Unrestricted
-included. A click on the button, its icon or its words, turns the bridge
-on or off.
+without OK, and **Cancel** does not undo it, even a switch to
+Unrestricted. A click on the button, its icon or its words, turns the
+bridge on or off.
 
 ### Example prompts
 
@@ -223,9 +223,9 @@ change a model — for example:
   even while the bridge is on. A fixed address this machine does not
   have is skipped. The page marks that row, and the start names it in
   the status bar and in one **Report view** warning, then listens on the
-  rest. An adapter that is down or has no such address, and a wildcard,
-  are named the same way. A port another program has taken fails the
-  whole start, and the reason is shown.
+  rest. An adapter that is down, or has no IPv4 address other than
+  169.254.x.x, and a wildcard, are named the same way. A port another
+  program has taken fails the whole start, and the reason is shown.
 - The first start asks you to accept that connected agents can run
   code with your full permissions. A later new address beyond
   loopback asks once, and a changed port does not ask again. For an
