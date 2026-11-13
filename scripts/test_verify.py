@@ -577,6 +577,26 @@ def _verify_toolbar_hide() -> None:
                 return False
             time.sleep(0.05)
 
+    def _state(found) -> str:
+        """The toolbar's state, for a failure message."""
+        if found is None:
+            return "toolbar not found"
+        action = found.toggleViewAction()
+        checked = None if action is None else action.isChecked()
+        try:
+            saved = (
+                tb_params.GetBool(DISPLAY_NAME, True)
+                if DISPLAY_NAME in tb_params.GetBools()
+                else "unset"
+            )
+        except Exception as exc:
+            saved = f"unreadable ({exc})"
+        return (
+            f"isVisible={found.isVisible()}, "
+            f"toggleViewAction checked={checked}, "
+            f"saved Toolbars[{DISPLAY_NAME!r}]={saved}"
+        )
+
     try:
         tb = _find_toolbar()
         if tb is None or not tb.isVisible():
@@ -598,6 +618,9 @@ def _verify_toolbar_hide() -> None:
             )
 
         Gui.activateWorkbench(other_wb)
+        # Let FreeCAD's 100 ms toolbar restore after the switch run now,
+        # not after the toggle below.
+        common._drain_qt_events(200)
 
         def _still_hidden() -> bool:
             found = _find_toolbar()
@@ -605,10 +628,9 @@ def _verify_toolbar_hide() -> None:
 
         if not _wait_until(_still_hidden):
             tb = _find_toolbar()
-            visible = None if tb is None else tb.isVisible()
             common.fail(
                 "MCP Bridge toolbar did not stay hidden after workbench "
-                f"switch (tb={tb!r}, visible={visible})"
+                f"switch (tb={tb!r}, {_state(tb)})"
             )
         tb = _find_toolbar()
         if tb_params.GetBool(DISPLAY_NAME, True):
@@ -624,6 +646,7 @@ def _verify_toolbar_hide() -> None:
             )
 
         Gui.activateWorkbench(initial_wb)
+        common._drain_qt_events(200)
 
         def _still_shown() -> bool:
             found = _find_toolbar()
@@ -631,10 +654,9 @@ def _verify_toolbar_hide() -> None:
 
         if not _wait_until(_still_shown):
             tb = _find_toolbar()
-            visible = None if tb is None else tb.isVisible()
             common.fail(
                 "MCP Bridge toolbar did not stay shown after workbench "
-                f"switch (tb={tb!r}, visible={visible})"
+                f"switch (tb={tb!r}, {_state(tb)})"
             )
         if not tb_params.GetBool(DISPLAY_NAME, False):
             common.fail(
@@ -648,6 +670,7 @@ def _verify_toolbar_hide() -> None:
             and Gui.activeWorkbench().name() != initial_wb
         ):
             Gui.activateWorkbench(initial_wb)
+            common._drain_qt_events(200)
             QCoreApplication.processEvents()
         tb = _find_toolbar()
         if tb is not None and not tb.isVisible():
