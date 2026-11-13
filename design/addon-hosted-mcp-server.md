@@ -682,13 +682,13 @@ only after the user has accepted it once.
 
 **Origin and Host — required**
 
-Any request that carries an `Origin` header is refused with `403`.
-A request is also refused when its `Host` header, port aside, names
+Any request that carries an `Origin` header is refused with `403`. A
+request is also refused when its `Host` header, port aside, names
 neither the address that listener is bound to, nor a name its
-certificate covers, nor a name in **Host names**. A missing `Host`
-is refused.
-A loopback listener accepts the address it is bound to, `127.0.0.1`,
-`localhost` and `[::1]`, but not a name its certificate covers.
+certificate covers, nor a host name in **Listen addresses**. A missing
+`Host` is refused. A loopback listener accepts the address it is bound
+to, `127.0.0.1`, `localhost` and `[::1]`, but not a name its certificate
+covers.
 
 ---
 

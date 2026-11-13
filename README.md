@@ -335,13 +335,13 @@ MCP Bridge is designed for **local** control of FreeCAD.
   access, with no sandbox on the bridge side. That makes your MCP
   client the guardrail. Use a client you trust, and set it to ask
   before running the agent's tool calls.
-- The bridge rejects any request that carries an `Origin` header,
-  so a browser page cannot reach it. It also rejects a request
-  whose `Host` header, port aside, names neither the address that
-  listener is bound to, nor a name its certificate covers, nor a
-  name in **Host names**. A loopback listener accepts the address
-  it is bound to, `127.0.0.1`, `localhost` and `[::1]`, but not a
-  name its certificate covers.
+- The bridge rejects any request that carries an `Origin` header, so a
+  browser page cannot reach it. It also rejects a request whose `Host`
+  header, port aside, names neither the address that listener is bound
+  to, nor a name its certificate covers, nor a host name in **Listen
+  addresses**. A loopback listener accepts the address it is bound to,
+  `127.0.0.1`, `localhost` and `[::1]`, but not a name its certificate
+  covers.
 
 For privacy questions or security reports, contact chris@createng.com
 or see [SECURITY.md](SECURITY.md).

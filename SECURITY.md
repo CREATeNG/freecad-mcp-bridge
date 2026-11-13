@@ -56,10 +56,10 @@ Unrestricted. Its menu switches modes the same way as **Permission
 mode** under **Execution permission** in **Edit → Preferences → MCP
 Bridge**. A request that carries an `Origin` header is refused, as is a
 `Host` header that, port aside, names neither the address that listener
-is bound to, nor a name its certificate covers, nor a name in **Host
-names**. A loopback listener accepts the address it is bound to,
-`127.0.0.1`, `localhost` and `[::1]`, but not a name its certificate
-covers.
+is bound to, nor a name its certificate covers, nor a host name in
+**Listen addresses**. A loopback listener accepts the address it is
+bound to, `127.0.0.1`, `localhost` and `[::1]`, but not a name its
+certificate covers.
 
 See [README § Privacy Policy](README.md#privacy-policy) for how the
 bridge (the MCP server inside FreeCAD) and your MCP client interact,
