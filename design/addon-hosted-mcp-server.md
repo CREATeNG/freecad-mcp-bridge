@@ -654,7 +654,12 @@ is not sent. A refused token says the pasted token was refused.
   the user to select or generate the files in Edit → Preferences → MCP
   Bridge, and the bridge stays off. A listener whose address is not in
   the certificate draws a Report view warning when the certificate names
-  no host, and the start still proceeds.
+  no host, and the start still proceeds. On a FreeCAD whose Python has
+  no `ssl` module, as reported for FreeCAD's snap (#67), the addon still
+  loads: a start that needs TLS, for an address beyond loopback or with
+  both certificate fields set, stops before the set-up dialog with a
+  message saying the `ssl` module is missing, and loopback listeners
+  still start over HTTP.
 
 **Security posture — noted trade-offs**
 

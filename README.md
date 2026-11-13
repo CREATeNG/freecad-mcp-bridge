@@ -53,8 +53,8 @@ The server runs only while you toggle it on, and only on your own machine.
      That's the whole setup for most clients.
 
      **Over HTTPS.** With your own certificate and private key set in
-     Preferences, in **Certificate (PEM)** and **Private key (PEM)**,
-     the bridge serves HTTPS on every listener. Use
+     **Certificate (PEM)** and **Private key (PEM)** in Preferences, the
+     bridge serves HTTPS on every listener. Use
      `https://<HOST>:<PORT>/mcp` as the URL, where `<HOST>` is a name
      the bridge accepts and the certificate covers. The bridge accepts
      the listener's address (on loopback, also `127.0.0.1`, `localhost`
@@ -273,9 +273,9 @@ change a model — for example:
   `<home>/.freecad-mcp-bridge`, covering `127.0.0.1`, `localhost`, each
   fixed address and host name in **Listen addresses**, loopback entries
   such as `::1` included, and one IPv4 address for each listed adapter
-  that is up when you click it: its first that isn't 169.254.x.x, for
-  825 days, and fills in both fields. OK in Preferences saves them. It
-  uses a certificate tool on this machine: openssl, Git for Windows'
+  that is up when you click it: its first that isn't 169.254.x.x. It
+  lasts 825 days and fills in both fields. OK in Preferences saves them.
+  It uses a certificate tool on this machine: openssl, Git for Windows'
   openssl, or Windows PowerShell. You choose the tool and **RSA 4096**
   or **ECDSA P-256**. Where none is found, it makes nothing and says
   where to install openssl. It asks before replacing the current

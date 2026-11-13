@@ -21,8 +21,8 @@ import time
 try:
     import ssl
 except ImportError:
-    # Some Python builds, such as the one in FreeCAD's official snap,
-    # ship without the _ssl extension module. Only TLS needs it, so the
+    # Some Python builds ship without the _ssl extension module, as
+    # reported for FreeCAD's official snap (#67). Only TLS needs it, so the
     # addon still loads, and a start that needs TLS says why it can't.
     ssl = None
 
@@ -610,10 +610,10 @@ def certificate_covers_host(
 
 
 NO_TLS_MESSAGE = (
-    "TLS isn't available: this FreeCAD's Python has no ssl module. Only "
-    "loopback listen addresses, with Certificate (PEM) and Private key "
-    "(PEM) left empty, can be used here. Change them in Edit → "
-    "Preferences → MCP Bridge."
+    "TLS isn't available: this FreeCAD's Python has no ssl module, so a "
+    "start that needs TLS can't happen here. Loopback listen addresses "
+    "still work over HTTP, as long as Certificate (PEM) and Private key "
+    "(PEM) aren't both set. Change them in Edit → Preferences → MCP Bridge."
 )
 
 

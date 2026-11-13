@@ -433,7 +433,7 @@ class SavedListenListTests(unittest.TestCase):
 
 
 class WithoutSslModuleTests(unittest.TestCase):
-    """The addon on a Python without the ssl module, such as the one in
+    """The addon on a Python without the ssl module, as reported for
     FreeCAD's official snap. Reported, with the approach used here, by
     lplaurin in #67 and #68."""
 
@@ -468,6 +468,10 @@ class WithoutSslModuleTests(unittest.TestCase):
             config.build_ssl_context("cert.pem", "key.pem")
         self.assertEqual(str(caught.exception), config.NO_TLS_MESSAGE)
         self.assertIn("has no ssl module", config.NO_TLS_MESSAGE)
+        self.assertIn(
+            "a start that needs TLS can't happen here", config.NO_TLS_MESSAGE
+        )
+        self.assertIn("aren't both set", config.NO_TLS_MESSAGE)
         self.assertIn("Edit → Preferences → MCP Bridge", config.NO_TLS_MESSAGE)
 
     def test_turning_the_bridge_on_with_a_certificate_says_why_not(self):
