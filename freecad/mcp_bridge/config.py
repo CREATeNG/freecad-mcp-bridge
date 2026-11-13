@@ -9,6 +9,8 @@ Status-bar button settings are read when the status-bar button is created or
 refreshed.
 """
 
+from __future__ import annotations
+
 import datetime
 import hashlib
 import hmac
@@ -16,8 +18,16 @@ import ipaddress
 import json
 import re
 import secrets
-import ssl
 import time
+
+try:
+    import ssl
+except ImportError:
+    # Some Python builds (e.g. the official FreeCAD snap's bundled
+    # Python 3.12) ship without the _ssl extension module. TLS is only
+    # needed for listeners beyond loopback, so module load must not
+    # fail here; build_ssl_context() reports the missing module itself.
+    ssl = None
 
 import FreeCAD
 
@@ -606,6 +616,12 @@ def build_ssl_context(
     not cover is not a reason to refuse. `addresses` is accepted
     for older callers and is not checked.
     """
+    if ssl is None:
+        raise ValueError(
+            "TLS is not available: this Python build has no ssl "
+            "module. Only loopback listeners, which do not need TLS, "
+            "will work here."
+        )
     cert = (cert_file or "").strip()
     key = (key_file or "").strip()
     if not cert or not key:

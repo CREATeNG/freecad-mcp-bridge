@@ -118,6 +118,26 @@ def fresh_config():
     return config, params, groups
 
 
+class ConfigWithoutSslModuleTests(unittest.TestCase):
+    """config.py on a Python build with no ssl module (e.g. the FreeCAD
+    snap's bundled Python, which ships without the _ssl extension)."""
+
+    def test_config_loads_and_build_ssl_context_fails_clearly(self):
+        """Module load succeeds with ssl missing, and build_ssl_context
+        then reports TLS is unavailable instead of crashing addon load."""
+        params = EmptyParams()
+        freecad = types.SimpleNamespace(ParamGet=lambda _g: params)
+        with mock.patch.dict(
+            sys.modules, {"FreeCAD": freecad, "ssl": None}
+        ):
+            sys.modules.pop("freecad.mcp_bridge.config", None)
+            config = importlib.import_module("freecad.mcp_bridge.config")
+        self.assertIsNone(config.ssl)
+        with self.assertRaises(ValueError) as exc:
+            config.build_ssl_context("cert.pem", "key.pem")
+        self.assertIn("ssl module", str(exc.exception))
+
+
 class PreferencePageTests(unittest.TestCase):
     def test_the_page_offers_port_timeout_page_size_and_retention(self):
         """Preferences offer port, timeout, page size, history retention and
