@@ -310,6 +310,70 @@ class UnsetPreferenceTests(unittest.TestCase):
         )
 
 
+class UpgradedProfileStore(EmptyParams):
+    """A parameter store as 0.1.27 left it: a customized Port and a
+    saved ListenAddress."""
+
+    def __init__(self, values):
+        super().__init__()
+        self.values = dict(values)
+
+    def GetInt(self, name, default):
+        self.read.add(name)
+        return self.values.get(name, default)
+
+    def RemInt(self, name):
+        self.values.pop(name, None)
+
+
+class SavedListenListTests(unittest.TestCase):
+    def _upgraded_config(self):
+        config, params, _groups = fresh_config()
+        store = UpgradedProfileStore(
+            {"Port": 40111, "ListenAddress": "127.0.0.1:40222"}
+        )
+        return config, store
+
+    def test_a_list_saved_empty_stays_empty_on_an_upgraded_profile(self):
+        """On a profile upgraded from 0.1.27 with Port and ListenAddress
+        set, a list saved empty reads back empty, and the old Port does
+        not come back as a listener."""
+        config, store = self._upgraded_config()
+        with mock.patch.object(config, "_params", return_value=store):
+            config.save_listen_rows([])
+            self.assertEqual(config.saved_listen_rows(), [])
+            self.assertEqual(config.listen_addresses(), [])
+            config.migrate_legacy_port()
+        self.assertEqual(store.values["ListenAddress"], "")
+        self.assertIs(store.values["ListenListSaved"], True)
+
+    def test_a_list_saved_with_only_an_adapter_gains_no_fixed_address(self):
+        """On a profile upgraded from 0.1.27 with Port set, a list saved
+        with only an adapter row reads back with only that row."""
+        from freecad.mcp_bridge.listeners import KIND_ADAPTER, ListenRow
+
+        config, store = self._upgraded_config()
+        adapter = ListenRow(KIND_ADAPTER, port=39280, adapter="Wi-Fi")
+        with mock.patch.object(config, "_params", return_value=store):
+            config.save_listen_rows([adapter])
+            rows = config.saved_listen_rows()
+            self.assertEqual(config.listen_addresses(), [])
+        self.assertEqual([row.kind for row in rows], [KIND_ADAPTER])
+        self.assertEqual(store.values["ListenAddress"], "")
+
+    def test_an_unsaved_upgraded_list_still_takes_the_old_port(self):
+        """On a profile upgraded from 0.1.27 whose list has never been
+        saved and holds no address, the old Port becomes the one entry,
+        as before."""
+        config, store = self._upgraded_config()
+        store.values["ListenAddress"] = ""
+        with mock.patch.object(config, "_params", return_value=store):
+            self.assertEqual(
+                config.listen_addresses(), ["127.0.0.1:40111"]
+            )
+        self.assertEqual(store.values["ListenAddress"], "127.0.0.1:40111")
+
+
 def _fresh_init_gui():
     """Import init_gui.py against stand-in FreeCAD and Qt modules."""
     freecad = types.SimpleNamespace(

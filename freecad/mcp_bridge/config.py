@@ -138,13 +138,19 @@ def parse_listen_addresses(
 
 def migrate_legacy_port() -> str:
     """Migrate a customized legacy `Port` into `ListenAddress` when
-    `ListenAddress` has no entries, and return the default entry."""
+    `ListenAddress` has no entries and the list has never been saved,
+    and return the default entry. A saved list, empty or holding only
+    adapters or host names, stays as saved."""
     params = _params()
     raw = params.GetString("ListenAddress", "")
     legacy_port = params.GetInt("Port", DEFAULT_PORT)
     default_entry = f"{DEFAULT_LISTEN_HOST}:{legacy_port}"
+    saved = getattr(params, "GetBool", lambda *_args: False)(
+        "ListenListSaved", False
+    )
     if (
-        not any(re.split(r"[\s,;]+", (raw or "").strip()))
+        not saved
+        and not any(re.split(r"[\s,;]+", (raw or "").strip()))
         and legacy_port != DEFAULT_PORT
     ):
         if hasattr(params, "RemInt"):

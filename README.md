@@ -11,12 +11,18 @@ The server runs only while you toggle it on, and only on your own machine.
 ## Quick start
 
 1. Install **MCP Bridge** from the FreeCAD **Addon Manager** and restart FreeCAD.
-2. An **MCP Bridge** toolbar button appears, and the status-bar button
+2. In **Edit → Preferences → MCP Bridge**, click **Generate new
+   token**. FreeCAD shows the token once: click **Copy token** and
+   keep it for your MCP client, then click **OK**. The bridge does
+   not start until it has a token.
+3. An **MCP Bridge** toolbar button appears, and the status-bar button
    shows **MCP Off**. Click either one to start the server. The
-   status-bar button then reads **MCP On**, and FreeCAD shows a
-   notification, `MCP Bridge: Listening on 127.0.0.1:39280` (`39280` is
-   the default port).
-3. Connect your MCP client:
+   first start asks you to accept that connected agents can run
+   code with your full permissions. The status-bar button then
+   reads **MCP On**, and FreeCAD shows a notification,
+   `MCP Bridge: Listening on 127.0.0.1:39280` (`39280` is the
+   default port).
+4. Connect your MCP client:
    - **Claude Desktop:** install the **MCP Bridge for FreeCAD** extension
      using the steps in [Claude Desktop](#claude-desktop) below.
      There's no file to edit and no URL to type.
@@ -26,6 +32,8 @@ The server runs only while you toggle it on, and only on your own machine.
      - **URL:** `http://127.0.0.1:<PORT>/mcp`, where `127.0.0.1:<PORT>`
        is a loopback entry in **Listen addresses** in Preferences
        (`127.0.0.1:39280`, the default)
+     - **Header:** `Authorization: Bearer <token>`, with the token
+       from step 2
 
      For example, in Claude Code's `.mcp.json` (with `39280`, the
      default port):
@@ -35,13 +43,30 @@ The server runs only while you toggle it on, and only on your own machine.
        "mcpServers": {
          "freecad": {
            "type": "http",
-           "url": "http://127.0.0.1:39280/mcp"
+           "url": "http://127.0.0.1:39280/mcp",
+           "headers": { "Authorization": "Bearer <token>" }
          }
        }
      }
      ```
 
      That's the whole setup for most clients.
+
+     **Over HTTPS.** With a certificate and private key set in
+     Preferences, the bridge serves HTTPS on every listener. Use
+     `https://<HOST>:<PORT>/mcp` as the URL, where `<HOST>` is an
+     address or name the certificate covers. Give the client a
+     copy of the file in **Certificate (PEM)**, never the private
+     key, and set the client to trust it, in its setting for a
+     custom or self-signed certificate. A client with no such
+     setting can run the shim in
+     [`mcp-stdio-shim/`](mcp-stdio-shim/) as a stdio server,
+     `node mcp-stdio-shim/index.js` (Node 18 or later), with
+     `FREECAD_MCP_HOST`, `FREECAD_MCP_PORT`, `FREECAD_MCP_TOKEN` and
+     `FREECAD_MCP_TLS_CERT_FILE` set to the host, the port, the
+     token and the path of that copy. The shim sends nothing until
+     the bridge's certificate matches the copy by its SHA-256
+     fingerprint.
 
 The server is off until you toggle it on, each session — click the button again to stop it.
 
@@ -207,10 +232,10 @@ change a model — for example:
   (default 5 min). Each page your agent reads restarts that interval;
   after a gap that long without a fetch, unread output is gone.
 - **Bearer token** — every listener requires
-  `Authorization: Bearer <token>`. The first time the bridge starts,
-  and whenever you click **Generate new token**, FreeCAD generates a
-  random token and shows it once. It keeps a SHA-256 hash in
-  preferences, not the token. **Set token** stores a pasted bearer
+  `Authorization: Bearer <token>`. Whenever you click **Generate new
+  token**, FreeCAD generates a random token and shows it once. It
+  keeps a SHA-256 hash in preferences, not the token. **Set token**
+  stores a pasted bearer
   token the same way, of any length when it uses letters, digits
   and - . _ ~ + /, with = at the end, and does not show it
   again. Nothing is written for the extension to read. A bridge
