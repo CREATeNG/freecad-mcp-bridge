@@ -26,6 +26,9 @@ The server runs only while you toggle it on, and only on your own machine.
    - **Claude Desktop:** install the **MCP Bridge for FreeCAD** extension
      using the steps in [Claude Desktop](#claude-desktop) below.
      There's no file to edit and no URL to type.
+   - **Another MCP client:** see
+     [Other MCP clients](USER_GUIDE.md#other-mcp-clients) in the
+     user guide.
 
 The server is off until you toggle it on, each session — click the button again to stop it.
 
@@ -59,6 +62,10 @@ The server is off until you toggle it on, each session — click the button agai
      set, the extension uses HTTPS with that file in place of
      `serving-cert.pem`, and never HTTP.
 
+   For a FreeCAD on another host, see
+   [Claude Desktop extension](USER_GUIDE.md#claude-desktop-extension)
+   in the user guide.
+
    Reinstalling the extension clears the **Bearer token** setting,
    so paste the token again. After you paste or change the token,
    quit Claude Desktop fully and start it again: the extension reads
@@ -72,15 +79,9 @@ The server is off until you toggle it on, each session — click the button agai
 Once connected, the agent has these tools:
 
 - **`execute_python(code)`** — run Python in your FreeCAD session.
-  `App`/`FreeCAD` and `Gui`/`FreeCADGui` are pre-bound, and
-  `__name__` is `"__main__"`, so a script's
-  `if __name__ == "__main__":` block runs. Output (stdout, stderr,
-  exceptions) is returned to the client and mirrored to FreeCAD's
-  **Report view**, so you can watch its output in real time.
-- **`execute_python_file(filepath)`** — read a local `.py` file
-  (absolute path) and run its text in the same context, with
-  `__file__` set to the path.
-- **`get_output_page(job_token, page_no)`** — fetch the next page of a long-running script's output. The agent calls it while a response says `has_more: true`, as the tool's description tells it to.
+- **`execute_python_file(filepath)`** — read a local `.py` file and
+  run it.
+- **`get_output_page(job_token, page_no)`** — fetch the next page of a long-running script's output.
 
 Each run of `execute_python` or `execute_python_file` is one step
 in **Edit → Undo**, named "MCP Bridge: run", across every document
@@ -96,11 +97,7 @@ permission mode, the default, FreeCAD shows the code in a dialog
 before it runs, and for a file its path and whole text. The dialog
 has **Unrestricted!**, **Run** and **Don't run**. **Run** runs the
 text shown. **Don't run** is the default, and comes back to the
-agent as an error. The call waits up to **Max response timeout**,
-dialog included. A run that finishes in that time comes back in the
-same reply. If you have not answered by then, the reply carries a
-job token, and the agent collects the output, or the decline, with
-`get_output_page`.
+agent as an error.
 
 ### Example prompts
 

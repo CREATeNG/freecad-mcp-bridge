@@ -1,8 +1,8 @@
 # MCP Bridge user guide
 
-The reference for MCP Bridge. The [README](README.md) has what the
-addon is, the quick start with Claude Desktop, and the Privacy
-Policy.
+This guide is the reference for MCP Bridge. The [README](README.md)
+has what the addon is, the quick start with Claude Desktop, what the
+agent can do, and the Privacy Policy.
 
 ---
 
@@ -67,8 +67,9 @@ by its SHA-256 fingerprint.
 
 ## Claude Desktop extension
 
-For a FreeCAD on another host, step 3 of
-[Claude Desktop](README.md#claude-desktop) in the README is:
+For a FreeCAD on another host, follow
+[Claude Desktop](README.md#claude-desktop) in the README, with this in
+place of step 3's "On this machine":
 
 - **For another host:** Paste the token FreeCAD showed into
   **Bearer token**. The extension writes nothing. Set **TLS
@@ -93,10 +94,31 @@ Alternatively, stdio clients can run the shim directly with node, instead of ins
 
 ---
 
+## Tools
+
+- **`execute_python(code)`** — run Python in your FreeCAD session.
+  `App`/`FreeCAD` and `Gui`/`FreeCADGui` are pre-bound, and
+  `__name__` is `"__main__"`, so a script's
+  `if __name__ == "__main__":` block runs. Output (stdout, stderr,
+  exceptions) is returned to the client and mirrored to FreeCAD's
+  **Report view**, so you can watch its output in real time.
+- **`execute_python_file(filepath)`** — read a local `.py` file
+  (absolute path) and run its text in the same context, with
+  `__file__` set to the path.
+- **`get_output_page(job_token, page_no)`** — fetch the next page of a long-running script's output. The agent calls it while a response says `has_more: true`, as the tool's description tells it to.
+
+---
+
 ## Permission modes
 
 The dialog FreeCAD shows in the **Ask** mode is described in
 [What the AI can do](README.md#what-the-ai-can-do) in the README.
+
+The call waits up to **Max response timeout**,
+dialog included. A run that finishes in that time comes back in the
+same reply. If you have not answered by then, the reply carries a
+job token, and the agent collects the output, or the decline, with
+`get_output_page`.
 
 **Unrestricted!** asks if you are really sure. Only **Yes** switches
 to the **Unrestricted** mode, in which any code an agent sends runs
