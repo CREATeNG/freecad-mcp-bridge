@@ -183,11 +183,12 @@ tick for Ask, or a warning triangle for Unrestricted. The menu on
 the button's arrow has **Permissions**, with **Ask** and
 **Unrestricted** under it, each with its icon, above **MCP Bridge
 Preferences**. Choosing a mode there switches the same way as
-**Permission mode** under **Execution permission** in
-**Edit → Preferences → MCP Bridge**: it asks before going
-Unrestricted, and goes back to Ask at once. In Preferences too, the
-choice applies at once, without OK. A click on the button, its icon
-or its words, turns the bridge on or off.
+**Permission mode** under **Execution permission** in **Edit →
+Preferences → MCP Bridge**: it asks before going Unrestricted, and goes
+back to Ask at once. In Preferences too, the choice applies at once,
+without OK, and **Cancel** does not undo it, a switch to Unrestricted
+included. A click on the button, its icon or its words, turns the bridge
+on or off.
 
 ### Example prompts
 
@@ -207,24 +208,24 @@ change a model — for example:
 
 **Edit → Preferences → MCP Bridge:**
 
-- **Listen addresses** — one list. **+** adds a row, **-** removes
-  the selected row, the last one included, and **Edit** (or
-  double-clicking a row) edits it in place. With nothing saved, the
-  list shows `127.0.0.1:39280`. An adapter row listens on that
-  adapter's IPv4 address at each start. A fixed IP address listens
-  on exactly that address. A host name should resolve to one of the
-  listen addresses. It adds no listener of its own, and **Generate
-  self-signed certificate** covers it. Keep a `127.0.0.1` row if you
-  use the Claude Desktop extension on this machine.
-- While the bridge is on, the page shows where the list differs
-  from what it is listening on. Click **OK**, then turn the bridge
-  off and on again, to apply the list. A fixed address this
-  machine does not have is skipped. The page marks that row, and
-  the start names it in the status bar and in one **Report view**
-  warning, then listens on the rest. An adapter that is down or
-  has no IPv4 address, and a wildcard, are named the same way. A
-  port another program has taken fails the whole start, and the
-  reason is shown.
+- **Listen addresses** — one list. **+** adds a row, **-** removes the
+  selected row, the last one included, and **Edit** (or double-clicking
+  a row) edits it in place. With nothing saved, the list shows
+  `127.0.0.1:39280`. An adapter row listens, at each start, on that
+  adapter's first IPv4 address that isn't 169.254.x.x. A fixed IP
+  address listens on exactly that address. A host name should resolve to
+  one of the listen addresses. It adds no listener of its own, and
+  **Generate self-signed certificate** covers it. Keep a `127.0.0.1` row
+  if you use the Claude Desktop extension on this machine.
+- While the bridge is on, the page shows where the list differs from
+  what it is listening on. Click **OK**, then turn the bridge off and on
+  again, to apply the list. A host name applies as soon as it is saved,
+  even while the bridge is on. A fixed address this machine does not
+  have is skipped. The page marks that row, and the start names it in
+  the status bar and in one **Report view** warning, then listens on the
+  rest. An adapter that is down or has no such address, and a wildcard,
+  are named the same way. A port another program has taken fails the
+  whole start, and the reason is shown.
 - The first start asks you to accept that connected agents can run
   code with your full permissions. A later new address beyond
   loopback asks once, and a changed port does not ask again. For an
@@ -252,12 +253,14 @@ change a model — for example:
   not show it again. Nothing is written for the extension to read. A
   bridge that is already running reads the hash again before it
   refuses a token that does not match.
-- **Certificate (PEM)** and **Private key (PEM)** —
-  when both files are set, every listener serves HTTPS, loopback
-  included, and each start writes a copy of the certificate to
+- **Certificate (PEM)** and **Private key (PEM)** — when both files are
+  set, every listener serves HTTPS, loopback included, and each start
+  writes a copy of the certificate to
   `<home>/.freecad-mcp-bridge/serving-cert.pem` so the Claude Desktop
-  extension on this machine can verify it automatically. Without them,
-  loopback entries serve HTTP, and a start with an entry beyond
+  extension on this machine can verify it automatically. If that copy
+  can't be written, the bridge still starts, and a **Report view**
+  warning says the extension on this machine may not connect. Without
+  them, loopback entries serve HTTP, and a start with an entry beyond
   loopback fails.
 - An MCP client other than the Claude Desktop extension on this
   machine needs a copy of the certificate file, not the private

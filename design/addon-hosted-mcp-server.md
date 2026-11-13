@@ -425,25 +425,25 @@ is no silent port increment. A dynamic port is rejected: an HTTP
 client configures the endpoint URL directly, and a changing port
 would require reconfiguration each session.
 
-**+** opens **MCP Bridge: Add to Listen addresses**, **-**
-removes the selected row, and **Edit** or double-clicking a row
-opens **MCP Bridge: Edit row** filled with that row (**Save**
-replaces it in place and refuses a duplicate or anything **Add**
-refuses; an **Old entry** row cannot be edited, only removed).
-An adapter row stores the port and the adapter's name, and at
-each start the bridge listens on that adapter's IPv4 address. A
-fixed IP address listens on exactly that address. A host name
-has no port and adds no listener of its own: it is accepted on
-every listener, so a client can connect by name and keep working
-when the address changes, and **Generate self-signed
-certificate** covers it. An empty saved
-list stays empty. A fixed address this machine does not have
-is skipped. The page marks that row, and the start names it in
-the status bar and in one Report view warning, then listens on
-the rest. An adapter that is down or has no IPv4 address, and a
-wildcard, are named the same way. A port another program has
-taken fails the whole start, and the reason is shown. While
-the bridge is on, the page compares its rows, an empty list
+**+** opens **MCP Bridge: Add to Listen addresses**, **-** removes the
+selected row, and **Edit** or double-clicking a row opens **MCP Bridge:
+Edit row** filled with that row (**Save** replaces it in place and
+refuses a duplicate or anything **Add** refuses; an **Old entry** row
+cannot be edited, only removed). An adapter row stores the port and the
+adapter's name, and at each start the bridge listens on that adapter's
+first IPv4 address that isn't 169.254.x.x. A fixed IP address listens on
+exactly that address. A host name has no port and adds no listener of
+its own: it is accepted on every listener, so a client can connect by
+name and keep working when the address changes, and **Generate
+self-signed certificate** covers it. The Host check reads the saved host
+names on every request, so a saved host name is accepted at once, while
+address and adapter rows take effect at the next start. An empty saved
+list stays empty. A fixed address this machine does not have is skipped.
+The page marks that row, and the start names it in the status bar and in
+one Report view warning, then listens on the rest. An adapter that is
+down or has no such address, and a wildcard, are named the same way. A
+port another program has taken fails the whole start, and the reason is
+shown. While the bridge is on, the page compares its rows, an empty list
 included, with what the bridge is listening on.
 
 **Session management**
@@ -561,24 +561,23 @@ state. If the capability belongs anywhere, it is upstream
 By default, the server binds to `127.0.0.1:39280` only. It starts only
 when the user activates the toggle, and stops when they deactivate it.
 
-In Preferences, **Listen addresses** is one list. With nothing
-saved it shows `127.0.0.1:39280`. Rows are added, edited in
-place, or removed. An adapter row listens on that adapter's IPv4
-address. A fixed IP address listens on exactly that address. A
-host name has no port and adds no listener of its own: it is
-accepted on every listener, so a client can connect by name and
-keep working when the address changes. A saved wildcard opens no
-listener. A fixed address this machine
-does not have is skipped, and the bridge listens on the rest.
-The page marks that row, and the start names it in the status
-bar and in one Report view warning. An adapter that is down or
-has no IPv4 address is named the same way. If a listener
-cannot be bound, the bound listeners are closed and the bridge
-stays off. The server binds one listener for each address it
-can open and shares a single main-thread execution queue across
-them. Loopback is
-bound only when it is in the list. The Claude Desktop shim
-connects to `127.0.0.1` on its configured port.
+In Preferences, **Listen addresses** is one list. With nothing saved it
+shows `127.0.0.1:39280`. Rows are added, edited in place, or removed. An
+adapter row listens on that adapter's first IPv4 address that isn't
+169.254.x.x. A fixed IP address listens on exactly that address. A host
+name has no port and adds no listener of its own: it is accepted on
+every listener, so a client can connect by name and keep working when
+the address changes. It is accepted as soon as it is saved, while other
+rows wait for the next start. A saved wildcard opens no listener. A
+fixed address this machine does not have is skipped, and the bridge
+listens on the rest. The page marks that row, and the start names it in
+the status bar and in one Report view warning. An adapter that is down
+or has no such address is named the same way. If a listener cannot be
+bound, the bound listeners are closed and the bridge stays off. The
+server binds one listener for each address it can open and shares a
+single main-thread execution queue across them. Loopback is bound only
+when it is in the list. The Claude Desktop shim connects to `127.0.0.1`
+on its configured port.
 
 The first time the bridge starts at all, loopback included, one modal
 dialog says that connected agents can run Python code in FreeCAD with
@@ -624,9 +623,11 @@ is not sent. A refused token says the pasted token was refused.
   are set, every listener serves HTTPS, loopback included, using
   Python's standard-library `ssl` module, and each start writes a
   user-only copy of the certificate to `serving-cert.pem` in the
-  bridge's folder. When they are not set, loopback listeners serve HTTP,
-  each start removes `serving-cert.pem`, and a start with an entry
-  beyond loopback fails. In the TLS certificate group the page
+  bridge's folder. If that write fails, the bridge still listens and
+  warns in the Report view that the Claude Desktop extension on this
+  machine may not connect. When they are not set, loopback listeners
+  serve HTTP, each start removes `serving-cert.pem`, and a start with an
+  entry beyond loopback fails. In the TLS certificate group the page
   states that an MCP client must trust this certificate.
   **Certificate (PEM)** and **Private key (PEM)** sit side by side,
   with **Generate self-signed certificate**. That button calls
