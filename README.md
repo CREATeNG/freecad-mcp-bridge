@@ -74,10 +74,11 @@ The server is off until you toggle it on, each session — click the button agai
    in FreeCAD's **Listen addresses**, and check that the extension
    is **Enabled**. On the Linux beta, the extension's tools default
    to **Needs approval**.
-   - Paste the token from Quick start's step 2 into **Bearer token**,
-     and leave **TLS certificate file (PEM)** empty. For a FreeCAD on
-     another host, or if a tool call says the bridge serves HTTPS and
-     the extension found no `serving-cert.pem`, see
+   - **On this machine:** Paste the token from Quick start's step 2
+     into **Bearer token**, and leave **TLS certificate file (PEM)**
+     empty.
+   - **For another host**, or if a tool call says the bridge serves
+     HTTPS and the extension found no `serving-cert.pem`: see
      [Claude Desktop extension](https://github.com/CREATeNG/freecad-mcp-bridge/blob/main/USER_GUIDE.md#claude-desktop-extension)
      in the user guide.
 

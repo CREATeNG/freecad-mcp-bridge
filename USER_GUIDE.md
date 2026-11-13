@@ -1,7 +1,7 @@
 # MCP Bridge user guide
 
 This guide is the reference for MCP Bridge. The [README](README.md) has
-what the addon is, the quick start, for Claude Desktop and for other MCP
+what the addon is, the quick start for Claude Desktop and for other MCP
 clients, what the agent can do, and the Privacy Policy.
 
 ---
