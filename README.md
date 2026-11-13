@@ -61,12 +61,15 @@ The server runs only while you toggle it on, and only on your own machine.
      listener beyond this machine, a name the certificate covers.
      **Generate self-signed certificate** covers `127.0.0.1`,
      `localhost`, each fixed address and host name in **Listen
-     addresses**, and the IPv4 address each listed adapter has when you
-     click it. Give the client a copy of the file in **Certificate
-     (PEM)**, never the private key, and set the client to trust it, in
-     its setting for a custom or self-signed certificate. A client that
-     runs stdio servers, and has no such setting, can run the shim in
-     [`mcp-stdio-shim/`](mcp-stdio-shim/) as one:
+     addresses**, and one IPv4 address for each listed adapter that is
+     up when you click it: its first that isn't 169.254.x.x. An adapter
+     that is down, or has only a 169.254.x.x address, adds none. Give
+     the client a copy of the file in **Certificate (PEM)**, never the
+     private key, and set the client to trust it, in its setting for a
+     custom or self-signed certificate.
+
+     A client that runs stdio servers, and has no such setting, can run
+     the shim in [`mcp-stdio-shim/`](mcp-stdio-shim/) as one:
      `node mcp-stdio-shim/index.js` (Node 18 or later), from the addon's
      folder, with `FREECAD_MCP_HOST`, `FREECAD_MCP_PORT`,
      `FREECAD_MCP_TOKEN` and `FREECAD_MCP_TLS_CERT_FILE` set to the
