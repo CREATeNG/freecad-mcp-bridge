@@ -628,38 +628,40 @@ is not sent. A refused token says the pasted token was refused.
   machine may not connect. When they are not set, loopback listeners
   serve HTTP, each start removes `serving-cert.pem`, and a start with an
   entry beyond loopback fails. In the TLS certificate group the page
-  states that an MCP client must trust this certificate.
-  **Certificate (PEM)** and **Private key (PEM)** sit side by side,
-  with **Generate self-signed certificate**. That button calls
-  `cert_tools.find_tools()` to find certificate tools on the machine
-  (such as `openssl`, including Git for Windows' copy on Windows).
-  Where tools are found, it offers a choice of tool and key type
-  (`RSA 4096` or `ECDSA P-256`) and calls `cert_tools.generate()`.
-  Where none is found, it makes nothing and says where to install
-  openssl for the platform. The certificate is
+  states that an MCP client must trust this certificate. The user sets
+  their own certificate and private key in **Certificate (PEM)** and
+  **Private key (PEM)**. Beside them, **Generate self-signed
+  certificate** is an optional convenience for a user who has no
+  certificate. That button calls `cert_tools.find_tools()` to find
+  certificate tools on the machine (such as `openssl`, including Git for
+  Windows' copy on Windows). Where tools are found, it offers a choice
+  of tool and key type (`RSA 4096` or `ECDSA P-256`) and calls
+  `cert_tools.generate()`. Where none is found, it makes nothing and
+  says where to install openssl for the platform. The certificate is
   self-signed (825-day validity, `CA:FALSE`, `digitalSignature` and
   `keyEncipherment`, `serverAuth`), covers `127.0.0.1`, `localhost`,
-  every listed address, and each host name, writes `tls-cert.pem` and
-  `tls-key.pem` (`tls-key.pem` readable by the user only) in
+  each fixed address and host name in the list, and, for each listed
+  adapter that is up when the button is clicked, its first IPv4 address
+  that isn't 169.254.x.x, writes `tls-cert.pem` and `tls-key.pem`
+  (`tls-key.pem` readable by the user only) in
   `<home>/.freecad-mcp-bridge` (or `FREECAD_MCP_TOKEN_DIR`), fills in
   the `TlsCertFile` and `TlsKeyFile` fields (asking first when either
   field is already set or either file already exists), and shows the
-  certificate file path, covered addresses, and expiry date. If an
-  entry beyond loopback is configured without readable, valid
-  certificate and key files, if a configured certificate is not yet
-  valid or has expired, startup fails with an error naming the
-  problem and directing the user to select or generate the files
-  in Edit → Preferences → MCP Bridge, and the bridge stays off.
-  A listener whose address is not in the certificate draws a
-  Report view warning when the certificate names no host, and the
-  start still proceeds.
+  certificate file path, covered addresses, and expiry date. If an entry
+  beyond loopback is configured without readable, valid certificate and
+  key files, if a configured certificate is not yet valid or has
+  expired, startup fails with an error naming the problem and directing
+  the user to select or generate the files in Edit → Preferences → MCP
+  Bridge, and the bridge stays off. A listener whose address is not in
+  the certificate draws a Report view warning when the certificate names
+  no host, and the start still proceeds.
 
 **Security posture — noted trade-offs**
 
 FreeCAD's Python has no library that creates a certificate, so
 **Generate self-signed certificate** needs a certificate tool on the
-machine. Where none is found, the user installs one or enters their
-own certificate files.
+machine. Where none is found, the user enters their own certificate
+files, or installs one.
 
 Rejected: an addon generator of its own, in pure Python. Keys and
 certificates are made by a maintained tool, not by the addon's code.
@@ -869,7 +871,7 @@ in Edit → Preferences → MCP Bridge. FreeCAD calls its save and load.
 | ListenAdapters | `""` | One adapter a line: the port, a tab, then the adapter's name. |
 | ListenListSaved | false | Set when the page is saved, so an empty list stays empty. |
 | Bearer token hash | Preferences `TokenHash` | Every listener requires `Authorization: Bearer <token>`; FreeCAD stores only the SHA-256 hash, shows a generated token once, and reads the hash again before refusing a mismatch |
-| Certificate (PEM) / Private key (PEM) | `""` | When both `TlsCertFile` and `TlsKeyFile` are set, every listener serves HTTPS. Without them, loopback is HTTP and a start beyond loopback fails. **Generate self-signed certificate** writes `tls-cert.pem` and `tls-key.pem` in `<home>/.freecad-mcp-bridge` and fills both fields |
+| Certificate (PEM) / Private key (PEM) | `""` | When both `TlsCertFile` and `TlsKeyFile` are set, every listener serves HTTPS. Without them, loopback is HTTP and a start beyond loopback fails. The optional **Generate self-signed certificate**, for a user with no certificate, writes `tls-cert.pem` and `tls-key.pem` in `<home>/.freecad-mcp-bridge` and fills both fields |
 | Permission mode | `0` (Ask) | `PermissionMode`, `0` for Ask and `1` for Unrestricted: in Ask, FreeCAD shows an agent's code, and a file's path with it, before it runs; in Unrestricted the code runs unseen; switched in Preferences or from the On/Off button's menu, with a confirmation to go Unrestricted; each switch writes it at once, and the Preferences box has no preference entry of its own, so FreeCAD's own OK writes nothing for it |
 | Max response timeout (s) | 15 | Max wait for the first answer of `execute_python` and `execute_python_file`, dialog included, and for each later page, before returning with `has_more: true` |
 | Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |

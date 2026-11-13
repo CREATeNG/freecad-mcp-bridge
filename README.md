@@ -52,21 +52,22 @@ The server runs only while you toggle it on, and only on your own machine.
 
      That's the whole setup for most clients.
 
-     **Over HTTPS.** With a certificate and private key set in
-     Preferences, the bridge serves HTTPS on every listener. Use
+     **Over HTTPS.** With your own certificate and private key set in
+     Preferences, in **Certificate (PEM)** and **Private key (PEM)**,
+     the bridge serves HTTPS on every listener. Use
      `https://<HOST>:<PORT>/mcp` as the URL, where `<HOST>` is a name
      the bridge accepts and the certificate covers. The bridge accepts
      the listener's address (on loopback, also `127.0.0.1`, `localhost`
      and `[::1]`), a host name in **Listen addresses**, or, for a
-     listener beyond this machine, a name the certificate covers.
-     **Generate self-signed certificate** covers `127.0.0.1`,
-     `localhost`, each fixed address and host name in **Listen
-     addresses**, and one IPv4 address for each listed adapter that is
-     up when you click it: its first that isn't 169.254.x.x. An adapter
-     that is down, or has only a 169.254.x.x address, adds none. Give
-     the client a copy of the file in **Certificate (PEM)**, never the
-     private key, and set the client to trust it, in its setting for a
-     custom or self-signed certificate.
+     listener beyond this machine, a name the certificate covers. If you
+     have no certificate, **Generate self-signed certificate** makes
+     one, covering `127.0.0.1`, `localhost`, each fixed address and host
+     name in **Listen addresses**, and one IPv4 address for each listed
+     adapter that is up when you click it: its first that isn't
+     169.254.x.x. An adapter that is down, or has only a 169.254.x.x
+     address, adds none. Give the client a copy of the file in
+     **Certificate (PEM)**, never the private key, and set the client to
+     trust it, in its setting for a custom or self-signed certificate.
 
      A client that runs stdio servers, and has no such setting, can run
      the shim in [`mcp-stdio-shim/`](mcp-stdio-shim/) as one:
@@ -253,9 +254,9 @@ change a model — for example:
   not show it again. Nothing is written for the extension to read. A
   bridge that is already running reads the hash again before it
   refuses a token that does not match.
-- **Certificate (PEM)** and **Private key (PEM)** — when both files are
-  set, every listener serves HTTPS, loopback included, and each start
-  writes a copy of the certificate to
+- **Certificate (PEM)** and **Private key (PEM)** — your own certificate
+  and private key files. When both are set, every listener serves HTTPS,
+  loopback included, and each start writes a copy of the certificate to
   `<home>/.freecad-mcp-bridge/serving-cert.pem` so the Claude Desktop
   extension on this machine can verify it automatically. If that copy
   can't be written, the bridge still starts, and a **Report view**
@@ -266,17 +267,18 @@ change a model — for example:
   machine needs a copy of the certificate file, not the private
   key. The extension on this machine reads `serving-cert.pem` and
   pins that file's certificate by its SHA-256 fingerprint.
-- **Generate self-signed certificate** — this
-  button creates `tls-cert.pem` and `tls-key.pem` (the key
-  readable by you only) in `<home>/.freecad-mcp-bridge`, covering
-  `127.0.0.1`, `localhost`, every listed address, loopback entries
-  such as `::1` included, and each host name, for 825 days, and
-  fills in both fields. OK in Preferences saves
-  them. It uses a certificate tool on this machine: openssl, Git
-  for Windows' openssl, or Windows PowerShell. You choose the tool
-  and **RSA 4096** or **ECDSA P-256**. Where none is found, it makes
-  nothing and says where to install openssl. You can also enter your
-  own certificate files. It asks before replacing the current
+- **Generate self-signed certificate** — an optional convenience for
+  when you have no certificate of your own. This button creates
+  `tls-cert.pem` and `tls-key.pem` (the key readable by you only) in
+  `<home>/.freecad-mcp-bridge`, covering `127.0.0.1`, `localhost`, each
+  fixed address and host name in **Listen addresses**, loopback entries
+  such as `::1` included, and one IPv4 address for each listed adapter
+  that is up when you click it: its first that isn't 169.254.x.x, for
+  825 days, and fills in both fields. OK in Preferences saves them. It
+  uses a certificate tool on this machine: openssl, Git for Windows'
+  openssl, or Windows PowerShell. You choose the tool and **RSA 4096**
+  or **ECDSA P-256**. Where none is found, it makes nothing and says
+  where to install openssl. It asks before replacing the current
   certificate, then shows the path, the covered addresses, and the
   expiry.
 - A start fails when the certificate is not yet valid or has
