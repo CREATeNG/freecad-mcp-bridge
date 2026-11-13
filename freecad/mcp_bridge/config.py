@@ -613,7 +613,8 @@ NO_TLS_MESSAGE = (
     "TLS isn't available: this FreeCAD's Python has no ssl module, so a "
     "start that needs TLS can't happen here. Loopback listen addresses "
     "still work over HTTP, as long as Certificate (PEM) and Private key "
-    "(PEM) aren't both set. Change them in Edit → Preferences → MCP Bridge."
+    "(PEM) aren't both set. Listen addresses and both fields are in Edit → "
+    "Preferences → MCP Bridge."
 )
 
 
