@@ -8,31 +8,8 @@ agent can do, and the Privacy Policy.
 
 ## Other MCP clients
 
-Point the client, Claude Code or another, at the bridge with:
-
-- **Transport:** Streamable HTTP
-- **URL:** `http://127.0.0.1:<PORT>/mcp`, where `127.0.0.1:<PORT>`
-  is a loopback entry in **Listen addresses** in Preferences
-  (`127.0.0.1:39280`, the default)
-- **Header:** `Authorization: Bearer <token>`, with the token
-  from step 2 of the README's [Quick start](README.md#quick-start)
-
-For example, in Claude Code's `.mcp.json` (with `39280`, the
-default port):
-
-```json
-{
-  "mcpServers": {
-    "freecad": {
-      "type": "http",
-      "url": "http://127.0.0.1:39280/mcp",
-      "headers": { "Authorization": "Bearer <token>" }
-    }
-  }
-}
-```
-
-That's the whole setup for most clients.
+The basic setup is step 4 of [Quick start](README.md#quick-start) in
+the README.
 
 **Over HTTPS.** With your own certificate and private key set in
 **Certificate (PEM)** and **Private key (PEM)** in Preferences, the

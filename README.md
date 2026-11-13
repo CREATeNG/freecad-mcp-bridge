@@ -27,7 +27,33 @@ your own machine.
    - **Claude Desktop:** install the **MCP Bridge for FreeCAD** extension
      using the steps in [Claude Desktop](#claude-desktop) below.
      There's no file to edit and no URL to type.
-   - **Another MCP client:** see
+   - **Other MCP clients (Claude Code and others):** point the client
+     at the bridge with:
+     - **Transport:** Streamable HTTP
+     - **URL:** `http://127.0.0.1:<PORT>/mcp`, where `127.0.0.1:<PORT>`
+       is a loopback entry in **Listen addresses** in Preferences
+       (`127.0.0.1:39280`, the default)
+     - **Header:** `Authorization: Bearer <token>`, with the token
+       from step 2
+
+     For example, in Claude Code's `.mcp.json` (with `39280`, the
+     default port):
+
+     ```json
+     {
+       "mcpServers": {
+         "freecad": {
+           "type": "http",
+           "url": "http://127.0.0.1:39280/mcp",
+           "headers": { "Authorization": "Bearer <token>" }
+         }
+       }
+     }
+     ```
+
+     That's the whole setup for most clients.
+
+     For HTTPS and the stdio shim, see
      [Other MCP clients](https://github.com/CREATeNG/freecad-mcp-bridge/blob/main/USER_GUIDE.md#other-mcp-clients)
      in the user guide.
 
