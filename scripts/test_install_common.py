@@ -596,7 +596,7 @@ def build_addon_descriptor(
         return repo_url.rstrip("/"), "main"
     if mode == "branch":
         # A user's custom-repository route: the repository URL with a
-        # branch named, `release` in the README's case. The tag names the
+        # branch named, `release` in the user guide's case. The tag names the
         # version the branch should hold.
         if not branch:
             fail("RELEASE_INSTALL_MODE=branch needs RELEASE_INSTALL_BRANCH")

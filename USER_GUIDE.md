@@ -15,7 +15,7 @@ Policy.
     is a loopback entry in **Listen addresses** in Preferences
     (`127.0.0.1:39280`, the default)
   - **Header:** `Authorization: Bearer <token>`, with the token
-    from step 2
+    from step 2 of the README's [Quick start](README.md#quick-start)
 
   For example, in Claude Code's `.mcp.json` (with `39280`, the
   default port):

@@ -2,7 +2,7 @@
 
 Instructions for **maintainers of this repository** who cut releases and manage versioning.
 
-Developers should read **[DEVELOPMENT.md](DEVELOPMENT.md)**. End users should read **[README.md](README.md)**.
+Developers should read **[DEVELOPMENT.md](DEVELOPMENT.md)**. End users should read **[README.md](README.md)**, then **[USER_GUIDE.md](USER_GUIDE.md)**.
 
 For install-verify CI details (scripts, logs, triggers), see **[TESTING.md](TESTING.md)**.
 
