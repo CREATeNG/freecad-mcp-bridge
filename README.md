@@ -54,27 +54,28 @@ The server runs only while you toggle it on, and only on your own machine.
 
      **Over HTTPS.** With a certificate and private key set in
      Preferences, the bridge serves HTTPS on every listener. Use
-     `https://<HOST>:<PORT>/mcp` as the URL, where `<HOST>` is a
-     name the bridge accepts: the listener's address (on loopback,
-     also `127.0.0.1`, `localhost` and `[::1]`), a host name in
-     **Listen addresses**, or, for a listener beyond this machine,
-     a name the certificate covers. On a loopback listener, the
-     certificate covering a name is not enough. Give the client a
-     copy of the file in **Certificate (PEM)**, never the private
-     key, and set the client to trust it, in its setting for a
-     custom or self-signed certificate. A client that runs stdio
-     servers, and has no such setting, can run the shim in
+     `https://<HOST>:<PORT>/mcp` as the URL, where `<HOST>` is a name
+     the bridge accepts and the certificate covers. The bridge accepts
+     the listener's address (on loopback, also `127.0.0.1`, `localhost`
+     and `[::1]`), a host name in **Listen addresses**, or, for a
+     listener beyond this machine, a name the certificate covers.
+     **Generate self-signed certificate** covers `127.0.0.1`,
+     `localhost`, each fixed address and host name in **Listen
+     addresses**, and the IPv4 address each listed adapter has when you
+     click it. Give the client a copy of the file in **Certificate
+     (PEM)**, never the private key, and set the client to trust it, in
+     its setting for a custom or self-signed certificate. A client that
+     runs stdio servers, and has no such setting, can run the shim in
      [`mcp-stdio-shim/`](mcp-stdio-shim/) as one:
-     `node mcp-stdio-shim/index.js` (Node 18 or later), from the
-     addon's folder, with `FREECAD_MCP_HOST`, `FREECAD_MCP_PORT`,
+     `node mcp-stdio-shim/index.js` (Node 18 or later), from the addon's
+     folder, with `FREECAD_MCP_HOST`, `FREECAD_MCP_PORT`,
      `FREECAD_MCP_TOKEN` and `FREECAD_MCP_TLS_CERT_FILE` set to the
-     host, the port, the token and the path of that copy. The
-     Addon Manager installs the addon, with the shim, as
-     `freecad-mcp-bridge` in the `Mod` folder of FreeCAD's user
-     data folder, which `App.getUserAppDataDir()` prints in
-     FreeCAD's Python console. The shim sends nothing until the
-     bridge's certificate matches the copy by its SHA-256
-     fingerprint.
+     host, the port, the token and the path of that copy. The Addon
+     Manager installs the addon, with the shim, as `freecad-mcp-bridge`
+     in the `Mod` folder of FreeCAD's user data folder, which
+     `App.getUserAppDataDir()` prints in FreeCAD's Python console. The
+     shim sends nothing until the bridge's certificate matches the copy
+     by its SHA-256 fingerprint.
 
 The server is off until you toggle it on, each session — click the button again to stop it.
 
