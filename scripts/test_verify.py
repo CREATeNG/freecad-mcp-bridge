@@ -642,7 +642,8 @@ def _verify_toolbar_hide() -> None:
         tb.toggleViewAction().trigger()
         if not _wait_until(lambda: tb.isVisible()):
             common.fail(
-                "MCP Bridge toolbar did not become visible when shown again"
+                "MCP Bridge toolbar did not become visible when shown again "
+                f"({_state(tb)})"
             )
 
         Gui.activateWorkbench(initial_wb)
