@@ -13,6 +13,8 @@ For general guidelines on FreeCAD addon development setup—such as cloning, sym
 
 This is a small addon. Start with `http_server.py` and `executor.py` to see the request lifecycle. For the architecture and its rationale, see [design/addon-hosted-mcp-server.md](design/addon-hosted-mcp-server.md); for a walkthrough of how execution behaves, [design/job-lifecycle.md](design/job-lifecycle.md).
 
+**Repository layout:** [`freecad/mcp_bridge/`](freecad/mcp_bridge/) (the addon), [`mcp-stdio-shim/`](mcp-stdio-shim/) (the Claude Desktop connector source), `package.xml` (Addon Manager metadata). Tagged releases (`v0.1.x`) are complete snapshots; `main` may be ahead.
+
 ---
 
 ## 1. Direct CLI testing utility (`send_cmd.py`)

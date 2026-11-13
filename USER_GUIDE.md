@@ -8,31 +8,31 @@ agent can do, and the Privacy Policy.
 
 ## Other MCP clients
 
-- **Other MCP clients (Claude Code and others):** point the client
-  at the bridge with:
-  - **Transport:** Streamable HTTP
-  - **URL:** `http://127.0.0.1:<PORT>/mcp`, where `127.0.0.1:<PORT>`
-    is a loopback entry in **Listen addresses** in Preferences
-    (`127.0.0.1:39280`, the default)
-  - **Header:** `Authorization: Bearer <token>`, with the token
-    from step 2 of the README's [Quick start](README.md#quick-start)
+Point the client, Claude Code or another, at the bridge with:
 
-  For example, in Claude Code's `.mcp.json` (with `39280`, the
-  default port):
+- **Transport:** Streamable HTTP
+- **URL:** `http://127.0.0.1:<PORT>/mcp`, where `127.0.0.1:<PORT>`
+  is a loopback entry in **Listen addresses** in Preferences
+  (`127.0.0.1:39280`, the default)
+- **Header:** `Authorization: Bearer <token>`, with the token
+  from step 2 of the README's [Quick start](README.md#quick-start)
 
-  ```json
-  {
-    "mcpServers": {
-      "freecad": {
-        "type": "http",
-        "url": "http://127.0.0.1:39280/mcp",
-        "headers": { "Authorization": "Bearer <token>" }
-      }
+For example, in Claude Code's `.mcp.json` (with `39280`, the
+default port):
+
+```json
+{
+  "mcpServers": {
+    "freecad": {
+      "type": "http",
+      "url": "http://127.0.0.1:39280/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
     }
   }
-  ```
+}
+```
 
-  That's the whole setup for most clients.
+That's the whole setup for most clients.
 
 **Over HTTPS.** With your own certificate and private key set in
 **Certificate (PEM)** and **Private key (PEM)** in Preferences, the
@@ -67,6 +67,24 @@ by its SHA-256 fingerprint.
 
 ## Claude Desktop extension
 
+Step 3 of [Claude Desktop](README.md#claude-desktop) in the README, in
+full, for a FreeCAD on this machine:
+
+- **On this machine:** Paste the token FreeCAD showed into
+  **Bearer token**. The extension writes nothing and reads no
+  token file. It reads `serving-cert.pem` in the bridge's
+  folder, which the bridge writes at each start with TLS and
+  removes at each start without. With that file the extension
+  uses HTTPS and checks that the certificate the bridge
+  presents has the same SHA-256 fingerprint as that file
+  before sending the request. Without it, it uses HTTP. Leave
+  **TLS certificate file (PEM)** empty, unless a tool call says
+  the bridge serves HTTPS and the extension found no
+  `serving-cert.pem`: then set it to a copy of FreeCAD's
+  certificate file, not the private key. When that setting is
+  set, the extension uses HTTPS with that file in place of
+  `serving-cert.pem`, and never HTTP.
+
 For a FreeCAD on another host, follow
 [Claude Desktop](README.md#claude-desktop) in the README, with this in
 place of step 3's "On this machine":
@@ -90,7 +108,9 @@ machine too, it forwards to `https://<HOST>:<PORT>/mcp` and pins
 that file's certificate, and never uses HTTP. For another host it
 forwards to `https://<HOST>:<PORT>/mcp`.
 
-Alternatively, stdio clients can run the shim directly with node, instead of installing the bundle.
+Alternatively, stdio clients can run the shim directly with node,
+instead of installing the bundle, as
+[Other MCP clients](#other-mcp-clients) describes.
 
 ---
 
@@ -120,12 +140,12 @@ same reply. If you have not answered by then, the reply carries a
 job token, and the agent collects the output, or the decline, with
 `get_output_page`.
 
-**Unrestricted!** asks if you are really sure. Only **Yes** switches
-to the **Unrestricted** mode, in which any code an agent sends runs
-with your full permissions, unseen. The On/Off button on the status
-bar shows the mode beside **MCP On** or **MCP Off**: a shield with a
-tick for Ask, or a warning triangle for Unrestricted. The menu on
-the button's arrow has **Permissions**, with **Ask** and
+The dialog's **Unrestricted!** button asks if you are really sure. Only
+**Yes** switches to the **Unrestricted** mode, in which any code an
+agent sends runs with your full permissions, unseen. The On/Off button
+on the status bar shows the mode beside **MCP On** or **MCP Off**: a
+shield with a tick for Ask, or a warning triangle for Unrestricted. The
+menu on the button's arrow has **Permissions**, with **Ask** and
 **Unrestricted** under it, each with its icon, above **MCP Bridge
 Preferences**. Choosing a mode there switches the same way as
 **Permission mode** under **Execution permission** in **Edit →
@@ -247,15 +267,3 @@ Copy or clone this repository into your FreeCAD `Mod` folder as `freecad-mcp-bri
 - **Windows:** `%APPDATA%\FreeCAD\…\Mod\`
 - **macOS:** `~/Library/Application Support/FreeCAD/…/Mod/`
 - **Linux:** `~/.local/share/FreeCAD/…/Mod/`
-
----
-
-## For developers & maintainers
-
-| If you are… | Start here |
-|-------------|------------|
-| **Developing the addon** | [DEVELOPMENT.md](DEVELOPMENT.md) |
-| **Cutting releases / updating the Index** | [MAINTAINING.md](MAINTAINING.md) |
-| **CI / install-verify** | [TESTING.md](TESTING.md) |
-
-**Repository layout:** [`freecad/mcp_bridge/`](freecad/mcp_bridge/) (the addon), [`mcp-stdio-shim/`](mcp-stdio-shim/) (the Claude Desktop connector source), `package.xml` (Addon Manager metadata). Tagged releases (`v0.1.x`) are complete snapshots; `main` may be ahead.

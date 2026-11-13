@@ -4,7 +4,8 @@
 
 **MCP Bridge** gives AI agents access to your open FreeCAD session. It runs a small [MCP](https://modelcontextprotocol.io) server *inside* FreeCAD — no binaries, no external dependencies — letting an AI agent execute Python in your live session and see the results.
 
-The server runs only while you toggle it on, and only on your own machine.
+The server runs only while you toggle it on, and, by default, only on
+your own machine.
 
 ---
 
@@ -47,20 +48,12 @@ The server is off until you toggle it on, each session — click the button agai
    in FreeCAD's **Listen addresses**, and check that the extension
    is **Enabled**. On the Linux beta, the extension's tools default
    to **Needs approval**.
-   - **On this machine:** Paste the token FreeCAD showed into
-     **Bearer token**. The extension writes nothing and reads no
-     token file. It reads `serving-cert.pem` in the bridge's
-     folder, which the bridge writes at each start with TLS and
-     removes at each start without. With that file the extension
-     uses HTTPS and checks that the certificate the bridge
-     presents has the same SHA-256 fingerprint as that file
-     before sending the request. Without it, it uses HTTP. Leave
-     **TLS certificate file (PEM)** empty, unless a tool call says
+   - **On this machine:** Paste the token into **Bearer token**, and
+     leave **TLS certificate file (PEM)** empty, unless a tool call says
      the bridge serves HTTPS and the extension found no
-     `serving-cert.pem`: then set it to a copy of FreeCAD's
-     certificate file, not the private key. When that setting is
-     set, the extension uses HTTPS with that file in place of
-     `serving-cert.pem`, and never HTTP.
+     `serving-cert.pem`: see
+     [Claude Desktop extension](USER_GUIDE.md#claude-desktop-extension)
+     in the user guide.
 
    For a FreeCAD on another host, see
    [Claude Desktop extension](USER_GUIDE.md#claude-desktop-extension)
@@ -118,6 +111,9 @@ change a model — for example:
 Other MCP clients, HTTPS and certificates, the permission modes,
 every preference and other ways to install are in the
 [User guide](USER_GUIDE.md).
+
+Developing or maintaining the addon: see
+[DEVELOPMENT.md](DEVELOPMENT.md).
 
 ---
 
