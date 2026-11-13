@@ -1,8 +1,8 @@
 # MCP Bridge user guide
 
-This guide is the reference for MCP Bridge. The [README](README.md)
-has what the addon is, the quick start with Claude Desktop, what the
-agent can do, and the Privacy Policy.
+This guide is the reference for MCP Bridge. The [README](README.md) has
+what the addon is, the quick start, for Claude Desktop and for other MCP
+clients, what the agent can do, and the Privacy Policy.
 
 ---
 
@@ -44,8 +44,8 @@ by its SHA-256 fingerprint.
 
 ## Claude Desktop extension
 
-Step 3 of [Claude Desktop](README.md#claude-desktop) in the README, in
-full, for a FreeCAD on this machine:
+The "On this machine" part of step 3 of
+[Claude Desktop](README.md#claude-desktop) in the README, in full:
 
 - **On this machine:** Paste the token FreeCAD showed into
   **Bearer token**. The extension writes nothing and reads no
@@ -104,18 +104,18 @@ instead of installing the bundle, as
   `__file__` set to the path.
 - **`get_output_page(job_token, page_no)`** — fetch the next page of a long-running script's output. The agent calls it while a response says `has_more: true`, as the tool's description tells it to.
 
+A call to `execute_python` or `execute_python_file` waits up to
+**Max response timeout**, dialog included. A run that finishes in that
+time comes back in the same reply. If you have not answered by then,
+the reply carries a job token, and the agent collects the output, or
+the decline, with `get_output_page`.
+
 ---
 
 ## Permission modes
 
 The dialog FreeCAD shows in the **Ask** mode is described in
 [What the AI can do](README.md#what-the-ai-can-do) in the README.
-
-The call waits up to **Max response timeout**,
-dialog included. A run that finishes in that time comes back in the
-same reply. If you have not answered by then, the reply carries a
-job token, and the agent collects the output, or the decline, with
-`get_output_page`.
 
 The dialog's **Unrestricted!** button asks if you are really sure. Only
 **Yes** switches to the **Unrestricted** mode, in which any code an

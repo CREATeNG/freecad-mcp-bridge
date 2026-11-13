@@ -74,16 +74,12 @@ The server is off until you toggle it on, each session — click the button agai
    in FreeCAD's **Listen addresses**, and check that the extension
    is **Enabled**. On the Linux beta, the extension's tools default
    to **Needs approval**.
-   - **On this machine:** Paste the token into **Bearer token**, and
-     leave **TLS certificate file (PEM)** empty, unless a tool call says
-     the bridge serves HTTPS and the extension found no
-     `serving-cert.pem`: see
+   - Paste the token from Quick start's step 2 into **Bearer token**,
+     and leave **TLS certificate file (PEM)** empty. For a FreeCAD on
+     another host, or if a tool call says the bridge serves HTTPS and
+     the extension found no `serving-cert.pem`, see
      [Claude Desktop extension](https://github.com/CREATeNG/freecad-mcp-bridge/blob/main/USER_GUIDE.md#claude-desktop-extension)
      in the user guide.
-
-   For a FreeCAD on another host, see
-   [Claude Desktop extension](https://github.com/CREATeNG/freecad-mcp-bridge/blob/main/USER_GUIDE.md#claude-desktop-extension)
-   in the user guide.
 
    Reinstalling the extension clears the **Bearer token** setting,
    so paste the token again. After you paste or change the token,
@@ -134,8 +130,8 @@ change a model — for example:
 
 ## User guide
 
-Other MCP clients, HTTPS and certificates, the permission modes, every
-preference and other ways to install are in the
+Other MCP clients, HTTPS and certificates, the tools in full, the
+permission modes, every preference and other ways to install are in the
 [User guide](https://github.com/CREATeNG/freecad-mcp-bridge/blob/main/USER_GUIDE.md).
 
 Developing or maintaining the addon: see
