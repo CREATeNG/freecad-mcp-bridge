@@ -4,7 +4,7 @@ Developer tips and guidelines for coding and local testing.
 
 | If you are… | Read |
 |-------------|------|
-| **Installing and using the addon** | [README.md](README.md) |
+| **Installing and using the addon** | [README.md](README.md), then [USER_GUIDE.md](USER_GUIDE.md) |
 | **Cutting releases, versioning, Index** | [MAINTAINING.md](MAINTAINING.md) |
 | **Running tests locally or in CI** | [TESTING.md](TESTING.md) |
 | **Developers** | This document |
