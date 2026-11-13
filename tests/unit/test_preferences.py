@@ -432,6 +432,89 @@ class SavedListenListTests(unittest.TestCase):
         self.assertEqual(store.values["ListenAddress"], "127.0.0.1:40111")
 
 
+class WithoutSslModuleTests(unittest.TestCase):
+    """The addon on a Python without the ssl module, such as the one in
+    FreeCAD's official snap. Reported, with the approach used here, by
+    lplaurin in #67 and #68."""
+
+    def _config_without_ssl(self, store):
+        import freecad.mcp_bridge as package
+
+        freecad = types.SimpleNamespace(
+            ParamGet=lambda _group: store,
+            Console=types.SimpleNamespace(PrintWarning=lambda *_: None),
+        )
+        with mock.patch.dict(sys.modules, {"FreeCAD": freecad, "ssl": None}):
+            sys.modules.pop("freecad.mcp_bridge.config", None)
+            config = importlib.import_module("freecad.mcp_bridge.config")
+        # The import left the ssl-less module on the package; put back
+        # what was there, so later tests get the real one.
+        original = sys.modules.get("freecad.mcp_bridge.config")
+        if original is not None:
+            self.addCleanup(setattr, package, "config", original)
+        return config, package
+
+    def test_the_addon_loads_without_ssl_and_a_tls_start_says_why(self):
+        """config loads with no ssl module, the Preferences page's
+        certificate reads find nothing, and building a TLS context
+        refuses with the message that names the missing ssl module."""
+        store = UpgradedProfileStore({})
+        config, _ = self._config_without_ssl(store)
+        self.assertIsNone(config.ssl)
+        self.assertIs(config.tls_available(), False)
+        self.assertIsNone(config.certificate_expiry_date("cert.pem"))
+        self.assertEqual(config.certificate_hosts("cert.pem"), set())
+        with self.assertRaises(ValueError) as caught:
+            config.build_ssl_context("cert.pem", "key.pem")
+        self.assertEqual(str(caught.exception), config.NO_TLS_MESSAGE)
+        self.assertIn("has no ssl module", config.NO_TLS_MESSAGE)
+        self.assertIn("Edit → Preferences → MCP Bridge", config.NO_TLS_MESSAGE)
+
+    def test_turning_the_bridge_on_with_a_certificate_says_why_not(self):
+        """With a certificate set and no ssl module, turning the bridge
+        on stops with that message, before any set-up dialog."""
+        store = UpgradedProfileStore(
+            {
+                "ListenAddress": "127.0.0.1:39280",
+                "ListenListSaved": True,
+                "TlsCertFile": "cert.pem",
+                "TlsKeyFile": "key.pem",
+            }
+        )
+        config, package = self._config_without_ssl(store)
+        init_gui = _fresh_init_gui()
+        freecad = types.SimpleNamespace(
+            ParamGet=lambda _group: store,
+            Console=types.SimpleNamespace(PrintWarning=lambda *_: None),
+        )
+        with (
+            mock.patch.dict(
+                sys.modules,
+                {
+                    "FreeCAD": freecad,
+                    "FreeCADGui": types.SimpleNamespace(),
+                    "freecad.mcp_bridge.config": config,
+                },
+            ),
+            mock.patch.object(package, "config", config),
+            mock.patch.object(
+                init_gui, "_qt_interface_records", return_value=[]
+            ),
+            mock.patch(
+                "freecad.mcp_bridge.pref_pages._machine",
+                return_value={"127.0.0.1"},
+            ),
+            mock.patch.object(
+                init_gui,
+                "_show_setup_dialog",
+                side_effect=AssertionError("set-up dialog shown"),
+            ),
+        ):
+            with self.assertRaises(ValueError) as caught:
+                init_gui._turn_bridge_on()
+        self.assertEqual(str(caught.exception), config.NO_TLS_MESSAGE)
+
+
 def _fresh_init_gui():
     """Import init_gui.py against stand-in FreeCAD and Qt modules."""
     freecad = types.SimpleNamespace(

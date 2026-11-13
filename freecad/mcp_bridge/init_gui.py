@@ -888,6 +888,11 @@ def _turn_bridge_on():
         for entry in entries
         if not config.is_loopback_address(entry)
     ]
+    if (
+        non_loopback or (cert_file.strip() and key_file.strip())
+    ) and not config.tls_available():
+        # No set-up dialog: no certificate could make TLS work here.
+        raise ValueError(config.NO_TLS_MESSAGE)
     need_token = not config.token_hash()
     need_tls = bool(non_loopback) and not (
         cert_file.strip() and key_file.strip()

@@ -16,8 +16,15 @@ import ipaddress
 import json
 import re
 import secrets
-import ssl
 import time
+
+try:
+    import ssl
+except ImportError:
+    # Some Python builds, such as the one in FreeCAD's official snap,
+    # ship without the _ssl extension module. Only TLS needs it, so the
+    # addon still loads, and a start that needs TLS says why it can't.
+    ssl = None
 
 import FreeCAD
 
@@ -602,18 +609,34 @@ def certificate_covers_host(
     return False
 
 
+NO_TLS_MESSAGE = (
+    "TLS isn't available: this FreeCAD's Python has no ssl module. Only "
+    "loopback listen addresses, with Certificate (PEM) and Private key "
+    "(PEM) left empty, can be used here. Change them in Edit → "
+    "Preferences → MCP Bridge."
+)
+
+
+def tls_available() -> bool:
+    """Whether this Python has the ssl module that TLS needs."""
+    return ssl is not None
+
+
 def build_ssl_context(
     cert_file: str,
     key_file: str,
     addresses: list[str] | None = None,
-) -> ssl.SSLContext:
+) -> "ssl.SSLContext":
     """Build a server SSLContext from `cert_file` and `key_file`.
 
     `cert_file` must be valid now: not before `notBefore`, and not
     past `notAfter`. A listener whose address the certificate does
     not cover is not a reason to refuse. `addresses` is accepted
-    for older callers and is not checked.
+    for older callers and is not checked. Without the ssl module it
+    refuses with NO_TLS_MESSAGE.
     """
+    if ssl is None:
+        raise ValueError(NO_TLS_MESSAGE)
     cert = (cert_file or "").strip()
     key = (key_file or "").strip()
     if not cert or not key:
