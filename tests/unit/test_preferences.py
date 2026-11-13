@@ -361,6 +361,64 @@ class SavedListenListTests(unittest.TestCase):
         self.assertEqual([row.kind for row in rows], [KIND_ADAPTER])
         self.assertEqual(store.values["ListenAddress"], "")
 
+    def test_a_first_save_stays_as_saved_while_freecad_notifies_observers(
+        self,
+    ):
+        """On a profile upgraded from 0.1.27, the first save of the list,
+        empty, adapter-only or names-only, stays as saved while FreeCAD
+        calls the bridge's preference observer on each write, as it
+        does, inline."""
+        from freecad.mcp_bridge.listeners import (
+            KIND_ADAPTER,
+            KIND_NAME,
+            ListenRow,
+        )
+
+        import freecad.mcp_bridge as package
+
+        class NotifyingStore(UpgradedProfileStore):
+            def __init__(self, values):
+                super().__init__(values)
+                self.observers = []
+
+            def _notify(self, name):
+                for observer in list(self.observers):
+                    observer.onChange(self, name)
+
+            def SetString(self, name, value):
+                super().SetString(name, value)
+                self._notify(name)
+
+            def SetBool(self, name, value):
+                super().SetBool(name, value)
+                self._notify(name)
+
+        cases = {
+            "empty": [],
+            "adapter-only": [
+                ListenRow(KIND_ADAPTER, port=39280, adapter="Wi-Fi")
+            ],
+            "names-only": [ListenRow(KIND_NAME, host="cad.example")],
+        }
+        for label, rows in cases.items():
+            with self.subTest(label):
+                config, _ = self._upgraded_config()
+                store = NotifyingStore(
+                    {"Port": 40111, "ListenAddress": "127.0.0.1:40222"}
+                )
+                init_gui = _fresh_init_gui()
+                store.observers.append(init_gui._StatusBarPrefObserver())
+                with (
+                    mock.patch.dict(
+                        sys.modules, {"freecad.mcp_bridge.config": config}
+                    ),
+                    mock.patch.object(package, "config", config),
+                    mock.patch.object(config, "_params", return_value=store),
+                ):
+                    config.save_listen_rows(rows)
+                    self.assertEqual(config.listen_addresses(), [])
+                self.assertEqual(store.values["ListenAddress"], "")
+
     def test_an_unsaved_upgraded_list_still_takes_the_old_port(self):
         """On a profile upgraded from 0.1.27 whose list has never been
         saved and holds no address, the old Port becomes the one entry,

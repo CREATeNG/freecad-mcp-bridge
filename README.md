@@ -13,10 +13,10 @@ The server runs only while you toggle it on, and only on your own machine.
 1. Install **MCP Bridge** from the FreeCAD **Addon Manager** and restart FreeCAD.
 2. In **Edit → Preferences → MCP Bridge**, click **Generate new
    token**. FreeCAD shows the token once: click **Copy token** and
-   keep it for your MCP client, then click **OK**. The bridge does
-   not start until it has a token.
-3. An **MCP Bridge** toolbar button appears, and the status-bar button
-   shows **MCP Off**. Click either one to start the server. The
+   keep it for your MCP client, click **Close**, then click **OK**
+   in Preferences. The bridge does not start until it has a token.
+3. An **MCP Bridge** button is in the toolbar, and the status-bar
+   button shows **MCP Off**. Click either one to start the server. The
    first start asks you to accept that connected agents can run
    code with your full permissions. The status-bar button then
    reads **MCP On**, and FreeCAD shows a notification,
@@ -54,18 +54,26 @@ The server runs only while you toggle it on, and only on your own machine.
 
      **Over HTTPS.** With a certificate and private key set in
      Preferences, the bridge serves HTTPS on every listener. Use
-     `https://<HOST>:<PORT>/mcp` as the URL, where `<HOST>` is an
-     address or name the certificate covers. Give the client a
+     `https://<HOST>:<PORT>/mcp` as the URL, where `<HOST>` is a
+     name the bridge accepts: the listener's address (on loopback,
+     also `127.0.0.1`, `localhost` and `[::1]`), a host name in
+     **Listen addresses**, or, for a listener beyond this machine,
+     a name the certificate covers. On a loopback listener, the
+     certificate covering a name is not enough. Give the client a
      copy of the file in **Certificate (PEM)**, never the private
      key, and set the client to trust it, in its setting for a
-     custom or self-signed certificate. A client with no such
-     setting can run the shim in
-     [`mcp-stdio-shim/`](mcp-stdio-shim/) as a stdio server,
-     `node mcp-stdio-shim/index.js` (Node 18 or later), with
-     `FREECAD_MCP_HOST`, `FREECAD_MCP_PORT`, `FREECAD_MCP_TOKEN` and
-     `FREECAD_MCP_TLS_CERT_FILE` set to the host, the port, the
-     token and the path of that copy. The shim sends nothing until
-     the bridge's certificate matches the copy by its SHA-256
+     custom or self-signed certificate. A client that runs stdio
+     servers, and has no such setting, can run the shim in
+     [`mcp-stdio-shim/`](mcp-stdio-shim/) as one:
+     `node mcp-stdio-shim/index.js` (Node 18 or later), from the
+     addon's folder, with `FREECAD_MCP_HOST`, `FREECAD_MCP_PORT`,
+     `FREECAD_MCP_TOKEN` and `FREECAD_MCP_TLS_CERT_FILE` set to the
+     host, the port, the token and the path of that copy. The
+     Addon Manager installs the addon, with the shim, as
+     `freecad-mcp-bridge` in the `Mod` folder of FreeCAD's user
+     data folder, which `App.getUserAppDataDir()` prints in
+     FreeCAD's Python console. The shim sends nothing until the
+     bridge's certificate matches the copy by its SHA-256
      fingerprint.
 
 The server is off until you toggle it on, each session — click the button again to stop it.
@@ -235,12 +243,11 @@ change a model — for example:
   `Authorization: Bearer <token>`. Whenever you click **Generate new
   token**, FreeCAD generates a random token and shows it once. It
   keeps a SHA-256 hash in preferences, not the token. **Set token**
-  stores a pasted bearer
-  token the same way, of any length when it uses letters, digits
-  and - . _ ~ + /, with = at the end, and does not show it
-  again. Nothing is written for the extension to read. A bridge
-  that is already running reads the hash again before it refuses
-  a token that does not match.
+  stores a pasted bearer token the same way, of any length when it
+  uses letters, digits and - . _ ~ + /, with = at the end, and does
+  not show it again. Nothing is written for the extension to read. A
+  bridge that is already running reads the hash again before it
+  refuses a token that does not match.
 - **Certificate (PEM)** and **Private key (PEM)** —
   when both files are set, every listener serves HTTPS, loopback
   included, and each start writes a copy of the certificate to

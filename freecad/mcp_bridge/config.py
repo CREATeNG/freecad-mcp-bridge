@@ -208,10 +208,12 @@ def save_listen_rows(rows) -> None:
     )
 
     params = _params()
+    # First, so an observer that runs on the writes below already
+    # finds the list saved and migrates no legacy Port into it.
+    params.SetBool("ListenListSaved", True)
     params.SetString("ListenAddress", dump_addresses(rows))
     params.SetString("ListenAdapters", dump_adapters(rows))
     params.SetString("HostNames", dump_names(rows))
-    params.SetBool("ListenListSaved", True)
 
 
 def accepted_listen_addresses() -> list[str]:

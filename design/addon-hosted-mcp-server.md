@@ -77,15 +77,17 @@ client that keeps only the start can still continue.
   when the response is a stored page (it carries content, or is the job's final page).
   Page 0 is the job's first stored page — usually in the response of the initiating
   call. Empty non-final responses and tool-level `error` responses carry no `page_no`,
-  except the final page of a run declined with **Don't run**.
+  except a declined run's final page (see `error`).
 - **`job_token`** — present while the job's page history exists, except on a tool-level
-  `error` response. Pass it to `get_output_page`. The token names the history for replay and for sub-agents
+  `error` response other than a declined run's final page (see `error`). Pass it to
+  `get_output_page`. The token names the history for replay and for sub-agents
   that read the same job.
 - **`error`** — present when the tool cannot return exec output: `execute_python_file`
   when the bridge cannot read the file (human-readable message), and `get_output_page`
-  with `"unknown or expired job_token"` or `"page_no out of range"`, and the final
-  page of a run declined with **Don't run**, which keeps its `page_no` and
-  `job_token`. Python failures
+  with `"unknown or expired job_token"` or `"page_no out of range"`, and a declined
+  run's final page: a run declined with **Don't run**, or whose code or file dialog
+  failed (`"The code dialog failed: …"`, `"The file dialog failed: …"`). That page
+  keeps its `page_no` and `job_token`. Python failures
   inside a running job are not `error` — they appear as `stderr` chunks in `page`.
 - **`page`** — an ordered array of `{stream, text}` chunks captured from the running
   job's stdout and stderr. Read the array in order; concatenate `text` values for a flat
@@ -288,8 +290,8 @@ equal to the last `page_no` received plus one — 0 if none has been received ye
 `has_more` is `false`. Empty non-final responses carry no `page_no`, so the same request
 naturally repeats; the final page may arrive with an empty `page` array. To retry or
 replay a page, request its `page_no` again. On `get_output_page`, `error` means a dead
-token, an out-of-range `page_no`, or, on the final page, a run declined with
-**Don't run**.
+token, an out-of-range `page_no`, or, on the final page, a declined run: one declined
+with **Don't run**, or whose code or file dialog failed.
 
 **Rejected alternative**
 
