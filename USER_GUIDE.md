@@ -17,11 +17,11 @@ bridge serves HTTPS on every listener. Use
 `https://<HOST>:<PORT>/mcp` as the URL, where `<HOST>` is a name
 the bridge accepts and the certificate covers. The bridge accepts
 the listener's address (on loopback, also `127.0.0.1`, `localhost`
-and `[::1]`), a host name in **Listen addresses**, or, for a
+and `[::1]`), a host name in **Addresses**, or, for a
 listener beyond this machine, a name the certificate covers. If you
 have no certificate, **Generate self-signed certificate** makes
 one, covering `127.0.0.1`, `localhost`, each fixed address and host
-name in **Listen addresses**, and one IPv4 address for each listed
+name in **Addresses**, and one IPv4 address for each listed
 adapter that is up when you click it: its first that isn't
 169.254.x.x. An adapter that is down, or has only a 169.254.x.x
 address, adds none. Give the client a copy of the file in
@@ -102,7 +102,9 @@ instead of installing the bundle, as
 - **`execute_python_file(filepath)`**: read a local `.py` file
   (absolute path) and run its text in the same context, with
   `__file__` set to the path.
-- **`get_output_page(job_token, page_no)`**: fetch the next page of a long-running script's output. The agent calls it while a response says `has_more: true`, as the tool's description tells it to.
+- **`get_output_page(job_token, page_no)`**: fetch the next page of a
+  long-running script's output. The agent calls it while a response says
+  `has_more: true`, as the tool's description tells it to.
 
 A call to `execute_python` or `execute_python_file` waits up to
 **Max response timeout**, dialog included. A run that finishes in that
@@ -151,7 +153,7 @@ bridge on or off.
 
 **Edit → Preferences → MCP Bridge:**
 
-- **Listen addresses**: one list. **+** adds a row, **-** removes the
+- **Addresses**: one list. **+** adds a row, **-** removes the
   selected row, the last one included, and **Edit** (or double-clicking
   a row) edits it in place. With nothing saved, the list shows
   `127.0.0.1:39280`. An adapter row listens, at each start, on that
@@ -202,9 +204,10 @@ bridge on or off.
   `<home>/.freecad-mcp-bridge/serving-cert.pem` so the Claude Desktop
   extension on this machine can verify it automatically. If that copy
   can't be written, the bridge still starts, and a **Report view**
-  warning says the extension on this machine may not connect. Without
-  them, loopback entries serve HTTP, and a start with an entry beyond
-  loopback fails.
+  warning says the extension on this machine may not connect. With
+  neither set, loopback entries serve HTTP, and a start with an entry
+  beyond loopback fails. With only one set, the bridge doesn't start,
+  loopback included, and never falls back to HTTP.
 - An MCP client other than the Claude Desktop extension on this
   machine needs a copy of the certificate file, not the private
   key. The extension on this machine reads `serving-cert.pem` and
@@ -213,16 +216,19 @@ bridge on or off.
   when you have no certificate of your own. This button creates
   `tls-cert.pem` and `tls-key.pem` (the key readable by you only) in
   `<home>/.freecad-mcp-bridge`, covering `127.0.0.1`, `localhost`, each
-  fixed address and host name in **Listen addresses**, loopback entries
+  fixed address and host name in **Addresses**, loopback entries
   such as `::1` included, and one IPv4 address for each listed adapter
   that is up when you click it: its first that isn't 169.254.x.x. It
-  lasts 825 days and fills in both fields. OK in Preferences saves them.
-  It uses a certificate tool on this machine: openssl, Git for Windows'
-  openssl, or Windows PowerShell. You choose the tool and **RSA 4096**
-  or **ECDSA P-256**. Where none is found, it makes nothing and says
-  where to install openssl. It asks before replacing the current
-  certificate, then shows the path, the covered addresses, and the
-  expiry.
+  fills in both fields. OK in Preferences saves them. It uses a
+  certificate tool on this machine: openssl, Git for Windows' openssl,
+  or Windows PowerShell. You choose the tool, the key type
+  (**RSA 4096** or **ECDSA P-256**) and **Valid for**, the number of
+  days from now the certificate lasts, from 1 to 3650, 365 by default.
+  Where the tool allows, the certificate is valid from a day before now,
+  so a client whose clock is a little behind still accepts it. Where no
+  tool is found, it makes nothing and says where to install openssl. It
+  asks before replacing the current certificate, then shows the path,
+  the covered addresses, and the expiry.
 - A start fails when the certificate is not yet valid or has
   expired, and a start also fails when either file is not set for
   an entry beyond loopback. A listener whose address is not in
@@ -242,17 +248,23 @@ bridge on or off.
 
 ## Other installation methods
 
-Besides the Addon Manager ([Quick start](README.md#quick-start) in the README):
+Besides the Addon Manager ([Quick start](README.md#quick-start) in the
+README):
 
 ### Addon Manager: custom repository
 
-1. FreeCAD → Edit → Preferences → Addon Manager → **Custom repositories** → **+**.
-2. Enter `https://github.com/CREATeNG/freecad-mcp-bridge`, branch `release`. For the latest `main`, use the manual install below.
+1. FreeCAD → Edit → Preferences → Addon Manager →
+   **Custom repositories** → **+**.
+2. Enter `https://github.com/CREATeNG/freecad-mcp-bridge`, branch
+   `release`. For the latest `main`, use the manual install below.
 3. OK, then install from Tools → Addon Manager.
 
 ### Manual (Mod folder)
 
-Copy or clone this repository into your FreeCAD `Mod` folder as `freecad-mcp-bridge`, then restart. The `Mod` folder is under your FreeCAD user-data directory (on FreeCAD 1.1 that's a versioned path, e.g. `…/FreeCAD/v1-1/Mod/`):
+Copy or clone this repository into your FreeCAD `Mod` folder as
+`freecad-mcp-bridge`, then restart. The `Mod` folder is under your
+FreeCAD user-data directory (on FreeCAD 1.1 that's a versioned path,
+e.g. `…/FreeCAD/v1-1/Mod/`):
 
 - **Windows:** `%APPDATA%\FreeCAD\…\Mod\`
 - **macOS:** `~/Library/Application Support/FreeCAD/…/Mod/`

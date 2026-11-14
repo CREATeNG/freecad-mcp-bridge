@@ -434,6 +434,12 @@ class HttpServer:
         )
         if not entries:
             entries = list(config.listen_addresses())
+        if not entries:
+            # Before the Executor, so a refused start holds nothing.
+            raise ValueError(
+                "No listen address to open. Add one in Edit → Preferences "
+                "→ MCP Bridge → Addresses."
+            )
         cert_file = (
             config.tls_cert_file()
             if tls_cert_file is None
@@ -444,6 +450,12 @@ class HttpServer:
             if tls_key_file is None
             else tls_key_file
         )
+        pair_problem = config.tls_pair_problem(cert_file, key_file)
+        if pair_problem:
+            FreeCAD.Console.PrintDeveloperError(
+                f"{LOG_PREFIX} {pair_problem}\n"
+            )
+            raise ValueError(pair_problem)
         try:
             targets = [
                 (entry, *config.parse_listen_entry(entry))
@@ -451,8 +463,8 @@ class HttpServer:
             ]
         except ValueError as exc:
             FreeCAD.Console.PrintDeveloperError(
-                f"{LOG_PREFIX} {exc} Change the listen addresses in Edit → "
-                "Preferences → MCP Bridge.\n"
+                f"{LOG_PREFIX} {exc} Change it in Edit → "
+                "Preferences → MCP Bridge → Addresses.\n"
             )
             raise
         non_loopback = [
@@ -507,8 +519,8 @@ class HttpServer:
             self._listen_entries = []
             FreeCAD.Console.PrintDeveloperError(
                 f"{LOG_PREFIX} Could not bind {failed_entry} ({exc}). "
-                "Change the listen addresses in Edit → Preferences → "
-                "MCP Bridge.\n"
+                "Change it in Edit → Preferences → "
+                "MCP Bridge → Addresses.\n"
             )
             raise
 
@@ -549,15 +561,6 @@ class HttpServer:
                 token_file.write_serving_cert(cert_file)
             else:
                 token_file.remove_serving_cert()
-                cert_set = bool((cert_file or "").strip())
-                key_set = bool((key_file or "").strip())
-                if cert_set != key_set:
-                    FreeCAD.Console.PrintWarning(
-                        f"{LOG_PREFIX} One TLS file is set and the other "
-                        "is not, so the bridge is serving HTTP. Select or "
-                        "generate both in Edit → Preferences → "
-                        "MCP Bridge.\n"
-                    )
         except OSError as exc:
             FreeCAD.Console.PrintWarning(
                 f"{LOG_PREFIX} Could not update serving-cert.pem "

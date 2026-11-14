@@ -12,6 +12,7 @@ at its usual install paths), or ``powershell`` (Windows PowerShell
 
 from __future__ import annotations
 
+import datetime
 import ipaddress
 import os
 import shutil
@@ -21,11 +22,15 @@ import tempfile
 from pathlib import Path
 
 from freecad.mcp_bridge import token_file
+from freecad.mcp_bridge.constants import (
+    CERT_VALID_DAYS_DEFAULT,
+    CERT_VALID_DAYS_MAX,
+    CERT_VALID_DAYS_MIN,
+)
 
 KEY_RSA = "rsa-4096"
 KEY_ECDSA = "ecdsa-p256"
 _KEY_TYPES = (KEY_RSA, KEY_ECDSA)
-_VALIDITY_DAYS = "825"
 
 _GIT_OPENSSL = (
     Path(r"C:\Program Files\Git\usr\bin\openssl.exe"),
@@ -73,13 +78,25 @@ def generate(
     hosts: list[str],
     cert_path: str,
     key_path: str,
+    days: int = CERT_VALID_DAYS_DEFAULT,
 ) -> None:
     """Write a self-signed pair for ``hosts`` with ``tool``.
 
     Names become dNSName entries and addresses become iPAddress
-    entries. The certificate lasts 825 days and cannot sign other
+    entries. The certificate is valid for ``days`` days from now, 1 to
+    3650, and starts a day earlier where the tool can, against clock
+    skew: PowerShell, and openssl 3.4 or later. It cannot sign other
     certificates. The key file is readable by the user only.
     """
+    if (
+        isinstance(days, bool)
+        or not isinstance(days, int)
+        or not CERT_VALID_DAYS_MIN <= days <= CERT_VALID_DAYS_MAX
+    ):
+        raise CertToolError(
+            f"Valid for must be {CERT_VALID_DAYS_MIN} to "
+            f"{CERT_VALID_DAYS_MAX} days."
+        )
     if key_type not in _KEY_TYPES:
         raise CertToolError(
             f"Unknown key type {key_type}. Use rsa-4096 or ecdsa-p256."
@@ -95,7 +112,9 @@ def generate(
     key_tmp = _temporary_output(key)
     try:
         token_file._user_only(key_tmp, is_dir=False)
-        _generate_with(tool, key_type, cleaned, cert_tmp, key_tmp)
+        _generate_with(
+            tool, key_type, cleaned, cert_tmp, key_tmp, days
+        )
         token_file._replace_file(cert_tmp, cert)
         token_file._replace_file(key_tmp, key)
     except Exception:
@@ -125,22 +144,25 @@ def _generate_with(
     hosts: list[str],
     cert: Path,
     key: Path,
+    days: int = CERT_VALID_DAYS_DEFAULT,
 ) -> None:
     if tool == "openssl":
         binary = shutil.which("openssl")
         if not binary:
             raise CertToolError("openssl is not on PATH.")
-        _openssl_generate(binary, key_type, hosts, cert, key)
+        _openssl_generate(binary, key_type, hosts, cert, key, days)
     elif tool == "git-openssl":
         binary = _git_openssl()
         if binary is None:
             raise CertToolError("Git for Windows openssl was not found.")
-        _openssl_generate(str(binary), key_type, hosts, cert, key)
+        _openssl_generate(
+            str(binary), key_type, hosts, cert, key, days
+        )
     elif tool == "powershell":
         exe = _powershell_exe()
         if exe is None:
             raise CertToolError("Windows PowerShell was not found.")
-        _powershell_generate(exe, key_type, hosts, cert, key)
+        _powershell_generate(exe, key_type, hosts, cert, key, days)
     else:
         raise CertToolError(f"Unknown certificate tool {tool}.")
 
@@ -226,6 +248,61 @@ def _run(command: list[str]) -> None:
         raise CertToolError(detail or "The certificate tool failed.")
 
 
+def validity_window(
+    days: int, now: datetime.datetime | None = None
+) -> tuple[datetime.datetime, datetime.datetime]:
+    """(start, end) of a certificate made at `now`: a day back,
+    against clock skew, and `days` days ahead."""
+    if now is None:
+        now = datetime.datetime.now(datetime.timezone.utc)
+    return (
+        now - datetime.timedelta(days=1),
+        now + datetime.timedelta(days=days),
+    )
+
+
+def _openssl_time(moment: datetime.datetime) -> str:
+    """openssl's [CC]YYMMDDHHMMSSZ, in UTC."""
+    utc = moment.astimezone(datetime.timezone.utc)
+    return utc.strftime("%Y%m%d%H%M%SZ")
+
+
+def _openssl_can_backdate(binary: str) -> bool:
+    """Whether this openssl's req takes -not_before and -not_after,
+    as OpenSSL 3.4 and later do, by its own help. An older openssl, or
+    LibreSSL, gets -days from now."""
+    flags = {}
+    if sys.platform.startswith("win"):
+        flags["creationflags"] = subprocess.CREATE_NO_WINDOW
+    try:
+        result = subprocess.run(
+            [binary, "req", "-help"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+            **flags,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    text = (result.stdout or "") + (result.stderr or "")
+    return "-not_before" in text and "-not_after" in text
+
+
+def _openssl_validity(binary: str, days: int) -> list[str]:
+    """The validity arguments for `req -x509`: a day back and `days`
+    ahead where this openssl can backdate, else `-days` from now."""
+    if not _openssl_can_backdate(binary):
+        return ["-days", str(days)]
+    start, end = validity_window(days)
+    return [
+        "-not_before",
+        _openssl_time(start),
+        "-not_after",
+        _openssl_time(end),
+    ]
+
+
 def _openssl_config(hosts: list[str]) -> str:
     lines = [
         "[req]",
@@ -261,7 +338,9 @@ def _openssl_generate(
     hosts: list[str],
     cert: Path,
     key: Path,
+    days: int = CERT_VALID_DAYS_DEFAULT,
 ) -> None:
+    validity = _openssl_validity(binary, days)
     with tempfile.TemporaryDirectory() as folder:
         config = Path(folder) / "cert.cnf"
         config.write_text(
@@ -290,8 +369,7 @@ def _openssl_generate(
                 str(key),
                 "-out",
                 str(cert),
-                "-days",
-                _VALIDITY_DAYS,
+                *validity,
                 "-config",
                 str(config),
             ]
@@ -307,8 +385,7 @@ def _openssl_generate(
                 str(key),
                 "-out",
                 str(cert),
-                "-days",
-                _VALIDITY_DAYS,
+                *validity,
                 "-config",
                 str(config),
             ]
@@ -321,6 +398,7 @@ def _powershell_generate(
     hosts: list[str],
     cert: Path,
     key: Path,
+    days: int = CERT_VALID_DAYS_DEFAULT,
 ) -> None:
     kind = "RSA" if key_type == KEY_RSA else "ECDSA"
     _run(
@@ -339,5 +417,7 @@ def _powershell_generate(
             str(cert),
             "-KeyPath",
             str(key),
+            "-ValidDays",
+            str(days),
         ]
     )

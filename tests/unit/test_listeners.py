@@ -221,7 +221,7 @@ class ListenListTests(unittest.TestCase):
         note = row_note(row, set(), {"Ethernet 2"}, {})
         self.assertEqual(
             note,
-            "Ethernet 2 has no IPv4 address, so the bridge "
+            "Ethernet 2 has no usable IPv4 address, so the bridge "
             "opens no listener on it.",
         )
         self.assertEqual(bind_entries([row], {}), [])
@@ -262,8 +262,42 @@ class ListenListTests(unittest.TestCase):
         from freecad.mcp_bridge.listeners import difference_text
 
         text = difference_text([], ["127.0.0.1:39280"])
-        self.assertIn("Listen addresses has nothing", text)
-        self.assertNotIn("127.0.0.1:39280. Listen addresses has 127", text)
+        self.assertIn("With these rows it would listen on no address.", text)
+        self.assertNotIn("With these rows it would listen on 127", text)
+
+    def test_a_host_name_only_list_would_listen_on_no_address(self):
+        """A host-name row opens no listener, so the running line says
+        the bridge would listen on no address, not that the list is
+        empty."""
+        from freecad.mcp_bridge.listeners import difference_text
+
+        rows = [name_row("workshop.example")]
+        page = bind_entries(rows, {}, {"127.0.0.1"})
+        self.assertEqual(
+            difference_text(page, ["127.0.0.1:39280"]),
+            "The bridge is listening on 127.0.0.1:39280. With these rows "
+            "it would listen on no address. To apply the change, click "
+            "OK, then turn the bridge off and on again.",
+        )
+
+    def test_a_skipped_row_is_left_out_of_what_it_would_listen_on(self):
+        """A fixed address this machine doesn't have opens nothing, so
+        the running line names only what a start would open."""
+        from freecad.mcp_bridge.listeners import difference_text
+
+        rows = [
+            address_row("127.0.0.1", 39280),
+            address_row("10.9.9.9", 39280),
+            address_row("127.0.0.1", 39281),
+        ]
+        page = bind_entries(rows, {}, {"127.0.0.1"})
+        self.assertEqual(
+            difference_text(page, ["127.0.0.1:39280"]),
+            "The bridge is listening on 127.0.0.1:39280. With these rows "
+            "it would listen on 127.0.0.1:39280, 127.0.0.1:39281. To "
+            "apply the change, click OK, then turn the bridge off and on "
+            "again.",
+        )
 
     def test_add_refuses_a_bad_ipv6_address_and_a_spaced_name(self):
         """A bad IPv6 address is unreadable. A name with a space is refused."""
@@ -766,6 +800,27 @@ class ListenListTests(unittest.TestCase):
             self.assertEqual(changed.kind, KIND_ADDRESS)
             self.assertEqual(changed.host, "192.168.1.50")
             self.assertEqual(changed.port, 4300)
+
+            # 3b. Add refuses a row already in the list, as Edit does,
+            # and stays open; a new row then adds.
+            def add_duplicate_then_new(dlg):
+                self.assertEqual(dlg.title, "MCP Bridge: Add to Addresses")
+                error = dlg.widgets[3]
+                dlg.kind_box.setCurrentIndex(1)
+                dlg.address_box.setText("127.0.0.1")
+                dlg.port_box.setValue(39280)
+                dlg.button_box.accept_button.clicked.emit()
+                self.assertEqual(error.text(), DUPLICATE_ROW_REFUSAL)
+                self.assertFalse(dlg._closed)
+                dlg.port_box.setValue(4400)
+                dlg.button_box.accept_button.clicked.emit()
+                self.assertTrue(dlg._closed)
+
+            on_exec.append(add_duplicate_then_new)
+            added = pref_pages.ask_add(None, choices, "my-pc", rows)
+            self.assertEqual(added.kind, KIND_ADDRESS)
+            self.assertEqual(added.host, "127.0.0.1")
+            self.assertEqual(added.port, 4400)
 
             # 4. An "Old entry" row does not open the dialog at all.
             opened.clear()

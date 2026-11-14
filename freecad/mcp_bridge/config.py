@@ -612,15 +612,37 @@ def certificate_covers_host(
 NO_TLS_MESSAGE = (
     "TLS isn't available: this FreeCAD's Python has no ssl module, so a "
     "start that needs TLS can't happen here. Loopback listen addresses "
-    "still work over HTTP, as long as Certificate (PEM) and Private key "
-    "(PEM) aren't both set. Listen addresses and both fields are in Edit → "
-    "Preferences → MCP Bridge."
+    "still work over HTTP, as long as neither Certificate (PEM) nor "
+    "Private key (PEM) is set. The Addresses list and both fields are "
+    "in Edit → Preferences → MCP Bridge."
 )
 
 
 def tls_available() -> bool:
     """Whether this Python has the ssl module that TLS needs."""
     return ssl is not None
+
+
+def tls_pair_problem(cert_file: str, key_file: str) -> str:
+    """Why a start can't use these TLS fields, or "" when it can.
+
+    Both or none: with only one of Certificate (PEM) and Private key
+    (PEM) set, the start refuses, loopback included, and never falls
+    back to HTTP.
+    """
+    cert_set = bool((cert_file or "").strip())
+    key_set = bool((key_file or "").strip())
+    if cert_set == key_set:
+        return ""
+    have, missing = (
+        ("Certificate (PEM)", "Private key (PEM)")
+        if cert_set
+        else ("Private key (PEM)", "Certificate (PEM)")
+    )
+    return (
+        f"The bridge can't start: {have} is set and {missing} isn't. "
+        "Set both, or clear both, in Edit → Preferences → MCP Bridge."
+    )
 
 
 def build_ssl_context(

@@ -64,7 +64,7 @@ HOST_NAME_LINE = (
     "A host name should resolve to one of the listen addresses, "
     "and a generated self-signed certificate includes it."
 )
-DUPLICATE_ROW_REFUSAL = "That row is already in Listen addresses."
+DUPLICATE_ROW_REFUSAL = "That row is already in the list."
 
 
 class ListenRow:
@@ -222,7 +222,7 @@ def row_note(
         and row.adapter not in ipv4_of
     ):
         return (
-            f"{row.adapter} has no IPv4 address, so the "
+            f"{row.adapter} has no usable IPv4 address, so the "
             "bridge opens no listener on it."
         )
     if row.kind == KIND_LEGACY:
@@ -293,8 +293,8 @@ def add_refusal(
 ) -> str:
     """Why Add refuses, or '' when the row may be added.
 
-    A row already in the list is not a refusal: adding it changes
-    nothing, and the caller checks that itself.
+    A row already in the list is checked by the caller, with
+    already_listed, and refused with DUPLICATE_ROW_REFUSAL.
     """
     if kind == KIND_NAME:
         name = (value or "").strip()
@@ -461,7 +461,7 @@ def start_notes(
         if row.kind == KIND_ADAPTER and row.adapter in adapter_names:
             if row.adapter not in ipv4_of:
                 notes.append(
-                    f"{row.adapter} has no IPv4 address, so the "
+                    f"{row.adapter} has no usable IPv4 address, so the "
                     "bridge opens no listener on it."
                 )
                 continue
@@ -617,20 +617,22 @@ def difference_text(
 ) -> str:
     """How the page's listeners differ from a bridge that is on.
 
-    An empty page stays empty. No default address is put in.
+    `page` is what the page's rows would open (bind_entries): host
+    names and skipped rows open nothing, so they aren't in it. An
+    empty page stays empty. No default address is put in.
     `listening` is None when the bridge is off.
     """
     if listening is None:
         return ""
     if sorted(page) == sorted(list(listening)):
         return ""
-    page_s = ", ".join(page) if page else "nothing"
-    listen_s = ", ".join(listening) if listening else "nothing"
+    page_s = ", ".join(page) if page else "no address"
+    listen_s = ", ".join(listening) if listening else "no address"
     return (
         f"The bridge is listening on {listen_s}. "
-        f"Listen addresses has {page_s}. "
-        "Click OK, then turn the bridge off and on again, "
-        "to apply the change."
+        f"With these rows it would listen on {page_s}. "
+        "To apply the change, click OK, then turn the bridge off and "
+        "on again."
     )
 
 

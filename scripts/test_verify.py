@@ -163,7 +163,7 @@ def _report_view_text() -> str:
 
 
 _PREFS_LINE = (
-    "To start or stop the bridge, click <b>MCP On/Off</b> "
+    "To start or stop the bridge, click <b>MCP Off</b> or <b>MCP On</b> "
     "in the status bar."
 )
 

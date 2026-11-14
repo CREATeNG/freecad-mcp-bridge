@@ -17,6 +17,7 @@ from freecad.mcp_bridge.constants import (
     LOG_PREFIX,
 )
 from freecad.mcp_bridge.listeners import (
+    DUPLICATE_ROW_REFUSAL,
     HOST_NAME_LINE,
     KIND_ADAPTER,
     KIND_ADAPTER_LABEL,
@@ -639,7 +640,7 @@ class MCPBridgePreferencesPage:
 def ask_add(parent, choices, own_name: str, rows):
     """The Add dialog. Return the new row, or None for Cancel.
 
-    A row that is already in `rows` changes nothing.
+    A row that is already in `rows` is refused, as Edit refuses it.
     """
     return _ask_row(parent, choices, own_name, rows)
 
@@ -686,7 +687,7 @@ def _ask_row(
     title = (
         f"{DISPLAY_NAME}: Edit row"
         if current is not None
-        else f"{DISPLAY_NAME}: Add to Listen addresses"
+        else f"{DISPLAY_NAME}: Add to Addresses"
     )
     dialog.setWindowTitle(title)
     dialog.setObjectName("MCPBridgeAddListenDialog")
@@ -791,7 +792,8 @@ def _ask_row(
             return
         row = make_row(selected, entered, str(port.value()))
         if current is None and already_listed(rows, row):
-            dialog.done(QDialog.Rejected)
+            # As Edit does: say so, and stay open.
+            error.setText(DUPLICATE_ROW_REFUSAL)
             return
         dialog.added = row
         dialog.done(QDialog.Accepted)

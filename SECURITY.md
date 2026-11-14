@@ -23,7 +23,7 @@ Please include:
 
 By default, the bridge listens on `127.0.0.1:39280`, and only while you
 toggle it on in your FreeCAD session. Adding a non-loopback entry in
-**Listen addresses** in **Edit → Preferences → MCP Bridge** exposes the
+**Addresses** in **Edit → Preferences → MCP Bridge** exposes the
 endpoint beyond this machine. Every listener requires a bearer token.
 FreeCAD keeps a SHA-256 hash of it, not the token. Nothing is written
 for an MCP client to read. When your own certificate and private key are
@@ -35,13 +35,15 @@ bridge's certificate by its SHA-256 fingerprint against **TLS
 certificate file (PEM)** when that setting is set, or against
 `serving-cert.pem` on this machine when it is empty, and sends no
 request bytes (the bearer token included) until they match. With that
-setting set, the extension never uses HTTP. When they are not set,
-loopback entries use HTTP, and a start with a non-loopback entry fails.
+setting set, the extension never uses HTTP. With neither
+**Certificate (PEM)** nor **Private key (PEM)** set, loopback entries
+use HTTP, and a start with a non-loopback entry fails. With only one
+set, the bridge doesn't start, loopback included.
 If you have no certificate, the optional **Generate self-signed
 certificate** creates `tls-cert.pem` and `tls-key.pem` in
 `<home>/.freecad-mcp-bridge/`, with `tls-key.pem` readable by you only,
 covering `127.0.0.1`, `localhost`, each fixed address and host name in
-**Listen addresses**, loopback entries such as `::1` included, and one
+**Addresses**, loopback entries such as `::1` included, and one
 IPv4 address for each listed adapter that is up when you click it: its
 first that isn't 169.254.x.x. Any client that can reach an entry, with
 the bearer token, can run Python code in FreeCAD as your user account.
@@ -57,7 +59,7 @@ mode** under **Execution permission** in **Edit → Preferences → MCP
 Bridge**. A request that carries an `Origin` header is refused, as is a
 `Host` header that, port aside, names neither the address that listener
 is bound to, nor a name its certificate covers, nor a host name in
-**Listen addresses**. A loopback listener accepts the address it is
+**Addresses**. A loopback listener accepts the address it is
 bound to, `127.0.0.1`, `localhost` and `[::1]`, but not a name its
 certificate covers.
 

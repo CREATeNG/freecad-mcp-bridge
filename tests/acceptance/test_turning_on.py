@@ -308,7 +308,7 @@ class PortTests(unittest.TestCase):
             seen["status"],
         )
         self.assertIn(f"Could not bind 127.0.0.1:{port}", seen["report"])
-        self.assertIn("Change the listen addresses in Edit", seen["report"])
+        self.assertIn("Change it in Edit", seen["report"])
         self.assertIn("Preferences", seen["report"])
 
 
@@ -1292,8 +1292,8 @@ class ListenAddressTests(unittest.TestCase):
             "MCP Bridge: Set up the bridge",
         )
         self.assertIn(
-            "A TLS certificate and private key, for the addresses "
-            "beyond loopback in Listen addresses.",
+            "A TLS certificate and private key, for the rows "
+            "beyond loopback in the Addresses list.",
             seen.get("no_cert_setup_text", ""),
         )
         self.assertNotIn(

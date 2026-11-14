@@ -11,6 +11,9 @@ from freecad.mcp_bridge.listeners import (
     bind_entries,
 )
 from freecad.mcp_bridge.constants import (
+    CERT_VALID_DAYS_DEFAULT,
+    CERT_VALID_DAYS_MAX,
+    CERT_VALID_DAYS_MIN,
     COMMAND_ID,
     DISPLAY_NAME,
     LOG_PREFIX,
@@ -332,7 +335,7 @@ def _setup_dialog_text(
     ]
     if need_listen:
         lines.append(
-            "• A listen address. Under Listen addresses, click + "
+            "• A listen address. Under Addresses, click + "
             "and add an adapter or a fixed IP address."
         )
     if need_token:
@@ -343,8 +346,8 @@ def _setup_dialog_text(
         )
     if need_tls:
         lines.append(
-            "• A TLS certificate and private key, for the addresses "
-            "beyond loopback in Listen addresses. Enter your own "
+            "• A TLS certificate and private key, for the rows "
+            "beyond loopback in the Addresses list. Enter your own "
             "certificate files, or click Generate self-signed "
             "certificate."
         )
@@ -491,12 +494,16 @@ def _cert_replace_dialog_text():
     )
 
 
-def _cert_generated_dialog_text(cert_file, hosts, expiry_date=""):
+def _cert_generated_dialog_text(
+    cert_file, hosts, expiry_date="", days=CERT_VALID_DAYS_DEFAULT
+):
     """Return `(title, body)` after generating a TLS certificate and private
     key."""
     addr_lines = "\n".join(f"  {host}" for host in hosts)
     expiry_line = (
-        f"{expiry_date} (825 days)" if expiry_date else "825 days"
+        f"{expiry_date} ({days} days)"
+        if expiry_date
+        else f"{days} days"
     )
     body = (
         "Generated a new TLS certificate and private key.\n\n"
@@ -645,8 +652,9 @@ def _show_cert_message(title, body, warning, object_name, parent=None):
 
 
 def _choose_cert_tool_and_key_type(tools, parent=None):
-    """Prompt the user to choose a certificate tool from `tools` and a key
-    type (`RSA 4096` or `ECDSA P-256`). Return `(tool, key_type)` or `None`."""
+    """Prompt the user to choose a certificate tool from `tools`, a key
+    type (`RSA 4096` or `ECDSA P-256`) and Valid for, in days. Return
+    `(tool, key_type, days)` or `None`."""
     if not tools:
         return None
     try:
@@ -657,11 +665,12 @@ def _choose_cert_tool_and_key_type(tools, parent=None):
             QDialogButtonBox,
             QFormLayout,
             QLabel,
+            QSpinBox,
             QVBoxLayout,
             QWidget,
         )
     except Exception:
-        return tools[0], CERT_KEY_TYPES[0]
+        return tools[0], CERT_KEY_TYPES[0], CERT_VALID_DAYS_DEFAULT
 
     host = (
         parent
@@ -674,8 +683,8 @@ def _choose_cert_tool_and_key_type(tools, parent=None):
     dlg.setObjectName("MCPBridgeCertToolDialog")
     layout = QVBoxLayout(dlg)
     intro = QLabel(
-        "Choose the certificate tool and key type for the new TLS "
-        "certificate:",
+        "Choose the certificate tool, key type and validity for the "
+        "new TLS certificate:",
         dlg,
     )
     intro.setObjectName("certToolDialogLabel")
@@ -694,6 +703,13 @@ def _choose_cert_tool_and_key_type(tools, parent=None):
     for key_type in CERT_KEY_TYPES:
         key_combo.addItem(key_type)
     form.addRow("Key type", key_combo)
+
+    days_box = QSpinBox(dlg)
+    days_box.setObjectName("certValidDaysSpinBox")
+    days_box.setRange(CERT_VALID_DAYS_MIN, CERT_VALID_DAYS_MAX)
+    days_box.setValue(CERT_VALID_DAYS_DEFAULT)
+    days_box.setSuffix(" days")
+    form.addRow("Valid for", days_box)
     layout.addLayout(form)
 
     buttons = QDialogButtonBox(
@@ -706,7 +722,11 @@ def _choose_cert_tool_and_key_type(tools, parent=None):
         if dlg.exec() != QDialog.Accepted:
             return None
         tool_idx = max(0, min(tool_combo.currentIndex(), len(tools) - 1))
-        return tools[tool_idx], key_combo.currentText()
+        return (
+            tools[tool_idx],
+            key_combo.currentText(),
+            days_box.value(),
+        )
     finally:
         dlg.setParent(None)
         dlg.deleteLater()
@@ -782,7 +802,7 @@ def generate_and_show_certificate(parent=None):
     except Exception:
         app = None
     try:
-        chosen_tool, chosen_key_type = chosen
+        chosen_tool, chosen_key_type, chosen_days = chosen
         c_path = tls_cert.cert_path()
         k_path = tls_cert.key_path()
         folder = c_path.parent
@@ -794,6 +814,7 @@ def generate_and_show_certificate(parent=None):
             hosts,
             str(c_path),
             str(k_path),
+            days=chosen_days,
         )
         token_file._user_only(k_path, is_dir=False)
     except Exception as exc:
@@ -824,7 +845,7 @@ def generate_and_show_certificate(parent=None):
     _set_chooser_file_name(host, "tlsKeyFileChooser", k_str)
     expiry_date = config.certificate_expiry_date(c_str) or ""
     title, body = _cert_generated_dialog_text(
-        c_str, hosts, expiry_date=expiry_date
+        c_str, hosts, expiry_date=expiry_date, days=chosen_days
     )
     _show_cert_message(
         title,
@@ -883,6 +904,10 @@ def _turn_bridge_on():
     )
     cert_file = config.tls_cert_file()
     key_file = config.tls_key_file()
+    # Both or none, before the no-ssl message and the set-up dialog.
+    pair_problem = config.tls_pair_problem(cert_file, key_file)
+    if pair_problem:
+        raise ValueError(pair_problem)
     non_loopback = [
         entry
         for entry in entries
@@ -915,7 +940,7 @@ def _turn_bridge_on():
         return reason, False, True
     if non_loopback or (cert_file.strip() and key_file.strip()):
         config.build_ssl_context(cert_file, key_file, entries)
-    if cert_file.strip():
+    if cert_file.strip() and key_file.strip():
         for line in config.listener_coverage_warnings(cert_file, entries):
             App.Console.PrintWarning(f"{LOG_PREFIX} WARNING: {line}\n")
     pending = _unaccepted(rows, ipv4, machine)
@@ -1064,8 +1089,8 @@ class MCPBridgeCommand:
             warning = status
             if bad_listen:
                 warning += (
-                    ". Change the listen addresses in Edit → "
-                    "Preferences → MCP Bridge."
+                    ". Change it in Edit → "
+                    "Preferences → MCP Bridge → Addresses."
                 )
             App.Console.PrintWarning(warning + "\n")
 

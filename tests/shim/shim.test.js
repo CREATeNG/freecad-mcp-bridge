@@ -4,7 +4,7 @@
 // experiences it. The shim runs as a child process; a stand-in HTTP server
 // plays the bridge, or a closed port plays a bridge that is not running.
 
-const { test } = require("node:test");
+const { test, after } = require("node:test");
 const assert = require("node:assert/strict");
 const { spawn, execFileSync } = require("node:child_process");
 const crypto = require("node:crypto");
@@ -65,9 +65,19 @@ async function closedPort() {
   return port;
 }
 
+// Every shim's home folder, removed once the file's tests have run, so a
+// test can still read its shim's folder after stopping it.
+const shimHomes = [];
+after(() => {
+  for (const home of shimHomes) {
+    fs.rmSync(home, { recursive: true, force: true, maxRetries: 3 });
+  }
+});
+
 // Start the shim against `port`; collect its stdout lines.
 function startShim(port, extraEnv = {}, options = {}) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "shim-home-"));
+  shimHomes.push(home);
   const tokenDir = options.tokenDir || path.join(home, ".freecad-mcp-bridge");
   const tokenFile = path.join(tokenDir, "token");
   const pasted = extraEnv.FREECAD_MCP_TOKEN || "";
@@ -345,6 +355,7 @@ async function askOffline(message) {
   shim.send(JSON.stringify(message) + "\n");
   const [reply] = await shim.waitForLines(1);
   await shim.stop();
+  fs.rmSync(shim.home, { recursive: true, force: true, maxRetries: 3 });
   return reply;
 }
 
@@ -376,6 +387,19 @@ test("with the bridge unreachable, a tool call says to start FreeCAD and turn th
   const payload = JSON.parse(reply.result.content[0].text);
   assert.match(payload.error, /start FreeCAD/i);
   assert.match(payload.error, /turn the bridge on/i);
+});
+
+test("a tool error result serializes page last, as the bridge's results do", async () => {
+  const reply = await askOffline({
+    jsonrpc: "2.0",
+    id: 4,
+    method: "tools/call",
+    params: { name: "execute_python", arguments: { code: "print(1)" } },
+  });
+  assert.equal(reply.result.isError, true);
+  const text = reply.result.content[0].text;
+  assert.deepEqual(Object.keys(JSON.parse(text)), ["has_more", "error", "page"]);
+  assert.ok(text.startsWith('{"has_more":false,"error":'), text);
 });
 
 test("ping is answered locally with an empty result and is not sent on", async () => {

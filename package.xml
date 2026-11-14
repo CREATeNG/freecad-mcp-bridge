@@ -11,7 +11,7 @@
     <tag>mcp</tag>
     <tag>scripting</tag>
     <url branch="release" type="repository">https://github.com/CREATeNG/freecad-mcp-bridge</url>
-    <url type="readme">https://raw.githubusercontent.com/CREATeNG/freecad-mcp-bridge/main/README.md</url>
+    <url type="readme">https://raw.githubusercontent.com/CREATeNG/freecad-mcp-bridge/release/README.md</url>
     <url type="bugtracker">https://github.com/CREATeNG/freecad-mcp-bridge/issues</url>
     <content>
         <other>

@@ -11,7 +11,9 @@ import importlib
 import json
 import os
 import re
+import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 import types
@@ -221,8 +223,8 @@ class PreferencePageTests(unittest.TestCase):
         )
         self.assertEqual(
             widgets_by_name["serverHint"]["text"],
-            "To start or stop the bridge, click <b>MCP On/Off</b> "
-            "in the status bar.",
+            "To start or stop the bridge, click <b>MCP Off</b> or "
+            "<b>MCP On</b> in the status bar.",
         )
         self.assertEqual(
             widgets_by_name["certTrustLabel"]["text"],
@@ -471,7 +473,10 @@ class WithoutSslModuleTests(unittest.TestCase):
         self.assertIn(
             "a start that needs TLS can't happen here", config.NO_TLS_MESSAGE
         )
-        self.assertIn("aren't both set", config.NO_TLS_MESSAGE)
+        self.assertIn(
+            "neither Certificate (PEM) nor Private key (PEM) is set",
+            config.NO_TLS_MESSAGE,
+        )
         self.assertIn("Edit → Preferences → MCP Bridge", config.NO_TLS_MESSAGE)
 
     def test_turning_the_bridge_on_with_a_certificate_says_why_not(self):
@@ -517,6 +522,388 @@ class WithoutSslModuleTests(unittest.TestCase):
             with self.assertRaises(ValueError) as caught:
                 init_gui._turn_bridge_on()
         self.assertEqual(str(caught.exception), config.NO_TLS_MESSAGE)
+
+
+def _restore_package_after(test):
+    """Put freecad.mcp_bridge's attributes back as they are now, when
+    test ends: an import sets each new submodule on the package, and
+    patch.dict on sys.modules doesn't undo that."""
+    import freecad.mcp_bridge as package
+
+    before = dict(vars(package))
+
+    def restore_package():
+        for name in set(vars(package)) - set(before):
+            delattr(package, name)
+        for name, value in before.items():
+            if vars(package).get(name, object()) is not value:
+                setattr(package, name, value)
+
+    test.addCleanup(restore_package)
+    return package
+
+
+CERT_WITHOUT_KEY = (
+    "The bridge can't start: Certificate (PEM) is set and Private key "
+    "(PEM) isn't. Set both, or clear both, in Edit → Preferences → "
+    "MCP Bridge."
+)
+KEY_WITHOUT_CERT = (
+    "The bridge can't start: Private key (PEM) is set and Certificate "
+    "(PEM) isn't. Set both, or clear both, in Edit → Preferences → "
+    "MCP Bridge."
+)
+
+
+class TlsFieldsStartTests(unittest.TestCase):
+    """Turning the bridge on with Certificate (PEM) and Private key (PEM):
+    both or none, and the certificate-coverage warning only on a TLS
+    start."""
+
+    def _start(self, cert_file, key_file):
+        """Turn the bridge on for 127.0.0.1 with these two fields, up to
+        bridge.start. Return the mock that stood in for
+        listener_coverage_warnings, and the exception the start raised."""
+        package = _restore_package_after(self)
+        store = UpgradedProfileStore(
+            {
+                "ListenAddress": "127.0.0.1:39280",
+                "ListenListSaved": True,
+                "StartWarningAccepted": True,
+                "TlsCertFile": cert_file,
+                "TlsKeyFile": key_file,
+            }
+        )
+        freecad = types.SimpleNamespace(
+            ParamGet=lambda _group: store,
+            Console=types.SimpleNamespace(PrintWarning=lambda *_: None),
+        )
+        with mock.patch.dict(sys.modules, {"FreeCAD": freecad}):
+            sys.modules.pop("freecad.mcp_bridge.config", None)
+            config = importlib.import_module("freecad.mcp_bridge.config")
+        store.values["TokenHash"] = config.hash_token("ab")
+        init_gui = _fresh_init_gui()
+
+        class Started(Exception):
+            pass
+
+        with (
+            mock.patch.dict(
+                sys.modules,
+                {
+                    "FreeCAD": freecad,
+                    "FreeCADGui": types.SimpleNamespace(),
+                    "freecad.mcp_bridge.config": config,
+                },
+            ),
+            mock.patch.object(package, "config", config),
+            mock.patch.object(
+                init_gui, "_qt_interface_records", return_value=[]
+            ),
+            mock.patch(
+                "freecad.mcp_bridge.pref_pages._machine",
+                return_value={"127.0.0.1"},
+            ),
+            mock.patch.object(
+                init_gui,
+                "_show_setup_dialog",
+                side_effect=AssertionError("set-up dialog shown"),
+            ),
+            mock.patch.object(config, "build_ssl_context"),
+            mock.patch.object(
+                config, "listener_coverage_warnings", return_value=[]
+            ) as coverage,
+            mock.patch.object(
+                init_gui.bridge, "start", side_effect=Started, create=True
+            ),
+        ):
+            with self.assertRaises((Started, ValueError)) as caught:
+                init_gui._turn_bridge_on()
+        return coverage, caught.exception, Started
+
+    def test_a_certificate_without_its_key_refuses_the_start(self):
+        """With Certificate (PEM) set and Private key (PEM) empty, the
+        start refuses, on loopback too, before the set-up dialog, and
+        checks no listener against the certificate."""
+        coverage, raised, _started = self._start("cert.pem", "")
+        self.assertIsInstance(raised, ValueError)
+        self.assertEqual(str(raised), CERT_WITHOUT_KEY)
+        coverage.assert_not_called()
+
+    def test_a_key_without_its_certificate_refuses_the_start(self):
+        """With Private key (PEM) set and Certificate (PEM) empty, the
+        start refuses the same way."""
+        coverage, raised, _started = self._start("", "key.pem")
+        self.assertIsInstance(raised, ValueError)
+        self.assertEqual(str(raised), KEY_WITHOUT_CERT)
+        coverage.assert_not_called()
+
+    def test_a_certificate_and_its_key_check_each_listener(self):
+        """With both set, the start serves HTTPS and checks its listeners
+        against the certificate."""
+        coverage, raised, started = self._start("cert.pem", "key.pem")
+        self.assertIsInstance(raised, started)
+        coverage.assert_called_once_with("cert.pem", ["127.0.0.1:39280"])
+
+
+class CertificateValidForTests(unittest.TestCase):
+    def test_the_dialog_offers_valid_for_365_days_from_1_to_3650(self):
+        """Generate self-signed certificate's dialog has a Valid for field
+        in days, 365 by default, 1 to 3650, and returns what is chosen."""
+        _restore_package_after(self)
+        init_gui = _fresh_init_gui()
+        made = {}
+
+        class Widget:
+            def __init__(self, *args, **_kwargs):
+                self.args = args
+
+            def setObjectName(self, name):
+                made[name] = self
+
+            def setWordWrap(self, *_args):
+                pass
+
+            def setParent(self, *_args):
+                pass
+
+            def deleteLater(self):
+                pass
+
+        class Signal:
+            def connect(self, _slot):
+                pass
+
+        class Dialog(Widget):
+            Accepted = 1
+
+            def setWindowTitle(self, _title):
+                pass
+
+            def accept(self):
+                pass
+
+            def reject(self):
+                pass
+
+            def exec(self):
+                days_box = made["certValidDaysSpinBox"]
+                self.seen = (days_box.range, days_box.value(), days_box.suffix)
+                days_box.setValue(90)
+                return Dialog.Accepted
+
+        class ComboBox(Widget):
+            def addItem(self, _text):
+                pass
+
+            def currentIndex(self):
+                return 0
+
+            def currentText(self):
+                return "ECDSA P-256"
+
+        class SpinBox(Widget):
+            def setRange(self, low, high):
+                self.range = (low, high)
+
+            def setValue(self, value):
+                self._value = value
+
+            def value(self):
+                return self._value
+
+            def setSuffix(self, suffix):
+                self.suffix = suffix
+
+        class Layout(Widget):
+            def addWidget(self, *_args):
+                pass
+
+            def addLayout(self, *_args):
+                pass
+
+            def addRow(self, *_args):
+                pass
+
+        class ButtonBox(Widget):
+            Ok = 1
+            Cancel = 2
+
+            def __init__(self, *args):
+                super().__init__(*args)
+                self.accepted = Signal()
+                self.rejected = Signal()
+
+        dialogs = []
+
+        def make_dialog(*args):
+            dialog = Dialog(*args)
+            dialogs.append(dialog)
+            return dialog
+
+        make_dialog.Accepted = Dialog.Accepted
+        make_dialog.setWindowTitle = Dialog.setWindowTitle
+        widgets = types.SimpleNamespace(
+            QComboBox=ComboBox,
+            QDialog=make_dialog,
+            QDialogButtonBox=ButtonBox,
+            QFormLayout=Layout,
+            QLabel=Widget,
+            QSpinBox=SpinBox,
+            QVBoxLayout=Layout,
+            QWidget=Widget,
+        )
+        gui = types.SimpleNamespace(getMainWindow=lambda: None)
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "FreeCADGui": gui,
+                "PySide": types.SimpleNamespace(QtWidgets=widgets),
+                "PySide.QtWidgets": widgets,
+            },
+        ):
+            chosen = init_gui._choose_cert_tool_and_key_type(
+                [{"id": "openssl", "label": "openssl"}]
+            )
+        self.assertEqual(dialogs[0].seen, ((1, 3650), 365, " days"))
+        self.assertEqual(
+            chosen, ({"id": "openssl", "label": "openssl"}, "ECDSA P-256", 90)
+        )
+
+
+class HttpServerRefusalTests(unittest.TestCase):
+    """HttpServer.start refuses before anything starts: no Executor is
+    made and nothing is bound."""
+
+    NO_ADDRESS = (
+        "No listen address to open. Add one in Edit → Preferences → "
+        "MCP Bridge → Addresses."
+    )
+
+    def _refused(self, values, **start_kwargs):
+        """Start an HttpServer on a store holding values; return the
+        ValueError it raised, and whether an Executor was made."""
+        _restore_package_after(self)
+        store = UpgradedProfileStore(values)
+        freecad = types.SimpleNamespace(
+            ParamGet=lambda _group: store,
+            Console=types.SimpleNamespace(
+                PrintMessage=lambda *_: None,
+                PrintWarning=lambda *_: None,
+                PrintDeveloperError=lambda *_: None,
+            ),
+        )
+        made = []
+        executor_module = types.SimpleNamespace(
+            Executor=lambda: made.append("Executor")
+        )
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "FreeCAD": freecad,
+                "freecad.mcp_bridge.executor": executor_module,
+            },
+        ):
+            # config first: importing it sets the package's attribute, so
+            # http_server takes this one and not one an earlier test left.
+            sys.modules.pop("freecad.mcp_bridge.config", None)
+            importlib.import_module("freecad.mcp_bridge.config")
+            sys.modules.pop("freecad.mcp_bridge.http_server", None)
+            http_server = importlib.import_module(
+                "freecad.mcp_bridge.http_server"
+            )
+            srv = http_server.HttpServer()
+            with (
+                mock.patch.object(
+                    http_server.paging,
+                    "MaintenanceHTTPServer",
+                    side_effect=AssertionError("a listener was bound"),
+                ),
+                self.assertRaises(ValueError) as caught,
+            ):
+                srv.start(**start_kwargs)
+        self.assertEqual(made, [])
+        self.assertIsNone(srv._executor)
+        self.assertFalse(srv.is_running())
+        return caught.exception
+
+    def test_a_start_with_no_listen_address_refuses_before_the_executor(
+        self,
+    ):
+        """Started from code with nothing to listen on, as with a list
+        saved empty, the server refuses with a ValueError saying where to
+        add an address."""
+        raised = self._refused({"ListenListSaved": True}, addresses=[])
+        self.assertEqual(str(raised), self.NO_ADDRESS)
+
+    def test_a_certificate_without_its_key_refuses_on_loopback(self):
+        """With only Certificate (PEM) set, a loopback start refuses and
+        never serves HTTP."""
+        raised = self._refused(
+            {
+                "ListenAddress": "127.0.0.1:39280",
+                "ListenListSaved": True,
+                "TlsCertFile": "cert.pem",
+                "TlsKeyFile": "",
+            }
+        )
+        self.assertEqual(str(raised), CERT_WITHOUT_KEY)
+
+    def test_a_key_without_its_certificate_refuses_on_loopback(self):
+        """With only Private key (PEM) set, a loopback start refuses the
+        same way."""
+        raised = self._refused(
+            {
+                "ListenAddress": "127.0.0.1:39280",
+                "ListenListSaved": True,
+                "TlsCertFile": "",
+                "TlsKeyFile": "key.pem",
+            }
+        )
+        self.assertEqual(str(raised), KEY_WITHOUT_CERT)
+
+    @unittest.skipUnless(shutil.which("openssl"), "needs openssl")
+    def test_a_key_that_doesnt_match_its_certificate_refuses(self):
+        """A private key from another pair refuses the start as a
+        certificate that can't be loaded, naming the mismatch."""
+        folder = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, folder, True)
+        # Its own config, since an openssl build may point at none.
+        openssl_cnf = folder / "openssl.cnf"
+        openssl_cnf.write_text(
+            "[req]\ndistinguished_name = dn\nprompt = no\n"
+            "[dn]\nCN = 127.0.0.1\n",
+            encoding="utf-8",
+        )
+
+        def make_pair(name):
+            key = folder / f"{name}-key.pem"
+            cert = folder / f"{name}-cert.pem"
+            subprocess.run(
+                [
+                    "openssl", "req", "-x509", "-newkey", "rsa:2048",
+                    "-nodes", "-config", str(openssl_cnf),
+                    "-keyout", str(key), "-out", str(cert), "-days", "1",
+                ],
+                check=True,
+                capture_output=True,
+            )
+            return cert, key
+
+        cert_a, _key_a = make_pair("a")
+        _cert_b, key_b = make_pair("b")
+        raised = self._refused(
+            {
+                "ListenAddress": "127.0.0.1:39280",
+                "ListenListSaved": True,
+                "TlsCertFile": str(cert_a),
+                "TlsKeyFile": str(key_b),
+            }
+        )
+        self.assertIn(
+            "Could not load TLS certificate or private key", str(raised)
+        )
+        self.assertIn("KEY_VALUES_MISMATCH", str(raised))
 
 
 def _fresh_init_gui():
@@ -1397,7 +1784,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             # saved list is empty, and when it holds host names only.
             saved_store = dict(store)
             listen_line = (
-                "A listen address. Under Listen addresses, "
+                "A listen address. Under Addresses, "
                 "click + and add an adapter or a fixed IP address."
             )
 
@@ -1445,7 +1832,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 "machine, so the bridge opens no listener on it."
             )
             no_ipv4 = (
-                "Wi-Fi has no IPv4 address, so the bridge opens "
+                "Wi-Fi has no usable IPv4 address, so the bridge opens "
                 "no listener on it."
             )
             wild = (
@@ -3280,9 +3667,68 @@ class TlsCertificateTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.pair_dir.cleanup()
 
+    def test_a_one_day_certificate_from_each_tool_is_valid_and_loads(self):
+        """Valid for 1 day: each tool on this machine makes a certificate
+        that is valid when generation returns, loads in
+        build_ssl_context, and ends a day from now, give or take a
+        minute. PowerShell, and an openssl that can backdate, start it
+        a day back; an older openssl starts it now."""
+        import datetime
+        import shutil
+        import ssl
+
+        from freecad.mcp_bridge import cert_tools
+
+        _restore_package_after(self)
+        config, _, _ = fresh_config()
+
+        def when(text):
+            return datetime.datetime.fromtimestamp(
+                ssl.cert_time_to_seconds(text), datetime.timezone.utc
+            )
+
+        minute = datetime.timedelta(minutes=1)
+        day = datetime.timedelta(days=1)
+        for tool in cert_tools.find_tools():
+            with self.subTest(tool=tool["id"]):
+                if tool["id"] == "powershell":
+                    backdated = True
+                else:
+                    binary = (
+                        shutil.which("openssl")
+                        if tool["id"] == "openssl"
+                        else str(cert_tools._git_openssl())
+                    )
+                    backdated = cert_tools._openssl_can_backdate(binary)
+                with tempfile.TemporaryDirectory() as folder:
+                    cert = Path(folder) / "cert.pem"
+                    key = Path(folder) / "key.pem"
+                    cert_tools.generate(
+                        tool["id"],
+                        cert_tools.KEY_ECDSA,
+                        ["127.0.0.1"],
+                        str(cert),
+                        str(key),
+                        days=1,
+                    )
+                    now = datetime.datetime.now(datetime.timezone.utc)
+                    decoded = ssl._ssl._test_decode_cert(str(cert))
+                    self.assertIsNotNone(
+                        config.build_ssl_context(
+                            str(cert), str(key), ["127.0.0.1:39280"]
+                        )
+                    )
+                self.assertLess(
+                    abs(when(decoded["notAfter"]) - (now + day)), minute
+                )
+                expected_start = now - day if backdated else now
+                self.assertLess(
+                    abs(when(decoded["notBefore"]) - expected_start), minute
+                )
+
     def test_certificate_hosts_expiry_and_openssl_verify(self):
         """The bridge reads a generated certificate's hosts and its expiry,
-        825 days on, and the certificate verifies against itself."""
+        365 days on, and the certificate verifies against itself."""
         import datetime
         import shutil
         import subprocess
@@ -3305,7 +3751,7 @@ class TlsCertificateTests(unittest.TestCase):
                 config.certificate_expiry_date(str(c_path))
             )
             self.assertIn(
-                (expiry - self.made_on).days, (824, 825, 826)
+                (expiry - self.made_on).days, (364, 365, 366)
             )
             self.assertEqual(
                 config.certificate_target_hosts(["127.0.0.1:39280"]),
@@ -3655,7 +4101,9 @@ class TlsCertificateTests(unittest.TestCase):
             lambda parent=None: replace_answers.pop(0)
         )
 
-        def write_pair(tool, key_type, hosts, cert_path, key_path):
+        def write_pair(
+            tool, key_type, hosts, cert_path, key_path, days=825
+        ):
             generated_hosts.append(list(hosts))
             Path(cert_path).write_text(self.cert_pem, encoding="utf-8")
             Path(key_path).write_text(self.key_pem, encoding="utf-8")
@@ -3665,7 +4113,7 @@ class TlsCertificateTests(unittest.TestCase):
             generate=write_pair,
         )
         init_gui._choose_cert_tool_and_key_type = (
-            lambda tools, parent=None: (tools[0], "ECDSA P-256")
+            lambda tools, parent=None: (tools[0], "ECDSA P-256", 825)
         )
         expiry = self.expiry
 
@@ -3868,7 +4316,7 @@ class TlsCertificateTests(unittest.TestCase):
                 tool_calls = []
 
                 def stub_generate(
-                    tool, key_type, hosts, cert_path, key_path
+                    tool, key_type, hosts, cert_path, key_path, days=825
                 ):
                     self.assertIn(
                         key_type,
@@ -3882,6 +4330,7 @@ class TlsCertificateTests(unittest.TestCase):
                             list(hosts),
                             cert_path,
                             key_path,
+                            days,
                         )
                     )
                     Path(cert_path).write_text(
@@ -3908,17 +4357,27 @@ class TlsCertificateTests(unittest.TestCase):
                     sys.modules,
                     {"freecad.mcp_bridge.cert_tools": stub_cert_tools},
                 ):
-                    for chosen_idx, chosen_key_type, expected_id, expected_kt in (
-                        (0, "RSA 4096", "openssl", "rsa-4096"),
-                        (1, "ECDSA P-256", "git-openssl", "ecdsa-p256"),
-                        (2, "RSA 4096", "powershell", "rsa-4096"),
+                    # The Valid for days reach generate() and the
+                    # finished dialog: the default, the lowest, the
+                    # highest.
+                    for (
+                        chosen_idx,
+                        chosen_key_type,
+                        chosen_days,
+                        expected_id,
+                        expected_kt,
+                    ) in (
+                        (0, "RSA 4096", 825, "openssl", "rsa-4096"),
+                        (1, "ECDSA P-256", 1, "git-openssl", "ecdsa-p256"),
+                        (2, "RSA 4096", 3650, "powershell", "rsa-4096"),
                     ):
                         messages.clear()
                         replace_answers.append(True)
                         init_gui._choose_cert_tool_and_key_type = (
-                            lambda tools, parent=None, idx=chosen_idx, kt=chosen_key_type: (
+                            lambda tools, parent=None, idx=chosen_idx, kt=chosen_key_type, days=chosen_days: (
                                 tools[idx],
                                 kt,
+                                days,
                             )
                         )
                         res = init_gui.generate_and_show_certificate(
@@ -3937,6 +4396,7 @@ class TlsCertificateTests(unittest.TestCase):
                                 ],
                                 expected_cert,
                                 expected_key,
+                                chosen_days,
                             ),
                         )
                         if os.name == "nt":
@@ -3954,7 +4414,8 @@ class TlsCertificateTests(unittest.TestCase):
                             messages[-1][1],
                         )
                         self.assertIn(
-                            f"{expiry} (825 days)", messages[-1][1]
+                            f"{expiry} ({chosen_days} days)",
+                            messages[-1][1],
                         )
 
             # 5. End-to-end check against real cert_tools module: the button's
@@ -3983,6 +4444,7 @@ class TlsCertificateTests(unittest.TestCase):
                         lambda tools, parent=None: (
                             tools[0],
                             "ECDSA P-256",
+                            825,
                         )
                     )
                     res_real = init_gui.generate_and_show_certificate(
@@ -4001,6 +4463,7 @@ class TlsCertificateTests(unittest.TestCase):
                         ],
                         expected_cert,
                         expected_key,
+                        days=825,
                     )
                     ctx = config.build_ssl_context(
                         expected_cert,
@@ -4032,7 +4495,7 @@ class TlsCertificateTests(unittest.TestCase):
         core.Qt = Qt
         init_gui._cert_would_replace = lambda host: False
 
-        def fail_to_write(*_args):
+        def fail_to_write(*_args, **_kwargs):
             raise OSError("disk full")
 
         init_gui._find_cert_tools = lambda: (
@@ -4040,7 +4503,7 @@ class TlsCertificateTests(unittest.TestCase):
             [{"id": "openssl", "label": "openssl"}],
         )
         init_gui._choose_cert_tool_and_key_type = (
-            lambda tools, parent=None: (tools[0], "RSA 4096")
+            lambda tools, parent=None: (tools[0], "RSA 4096", 825)
         )
 
         def show(*_args, **_kwargs):
