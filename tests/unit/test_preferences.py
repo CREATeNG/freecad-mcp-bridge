@@ -576,10 +576,22 @@ class PreferencePageRegistrationTests(unittest.TestCase):
             "PySide.QtCore": qtcore,
             "freecad.mcp_bridge.bridge": types.SimpleNamespace(),
         }
-        with mock.patch.dict(sys.modules, stubs):
-            sys.modules.pop("freecad.mcp_bridge.init_gui", None)
-            importlib.import_module("freecad.mcp_bridge.init_gui")
-            sys.modules.pop("freecad.mcp_bridge.init_gui", None)
+        # patch.dict puts sys.modules back, but an import also sets each
+        # new submodule as an attribute of the package. Put those back too,
+        # so a later import doesn't get this test's stand-in-backed module.
+        package = sys.modules["freecad.mcp_bridge"]
+        before = dict(vars(package))
+        try:
+            with mock.patch.dict(sys.modules, stubs):
+                sys.modules.pop("freecad.mcp_bridge.init_gui", None)
+                importlib.import_module("freecad.mcp_bridge.init_gui")
+                sys.modules.pop("freecad.mcp_bridge.init_gui", None)
+        finally:
+            for name in set(vars(package)) - set(before):
+                delattr(package, name)
+            for name, value in before.items():
+                if vars(package).get(name, object()) is not value:
+                    setattr(package, name, value)
 
         self.assertEqual(len(registered), 1)
         page_class, group = registered[0]
