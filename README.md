@@ -2,7 +2,7 @@
 
 # MCP Bridge
 
-**MCP Bridge** gives AI agents access to your open FreeCAD session. It runs a small [MCP](https://modelcontextprotocol.io) server *inside* FreeCAD — no binaries, no external dependencies — letting an AI agent execute Python in your live session and see the results.
+**MCP Bridge** gives AI agents access to your open FreeCAD session. It runs a small [MCP](https://modelcontextprotocol.io) server *inside* FreeCAD, with no binaries and no external dependencies, letting an AI agent execute Python in your live session and see the results.
 
 The server runs only while you toggle it on, and, by default, only on
 your own machine.
@@ -41,7 +41,7 @@ your own machine.
      [Other MCP clients](https://github.com/CREATeNG/freecad-mcp-bridge/blob/main/USER_GUIDE.md#other-mcp-clients)
      in the user guide.
 
-The server is off until you toggle it on, each session — click the button again to stop it.
+The server is off until you toggle it on, each session. Click the button again to stop it.
 
 ## Claude Desktop
 
@@ -78,10 +78,10 @@ The server is off until you toggle it on, each session — click the button agai
 
 Once connected, the agent has these tools:
 
-- **`execute_python(code)`** — run Python in your FreeCAD session.
-- **`execute_python_file(filepath)`** — read a local `.py` file and
+- **`execute_python(code)`**: run Python in your FreeCAD session.
+- **`execute_python_file(filepath)`**: read a local `.py` file and
   run it.
-- **`get_output_page(job_token, page_no)`** — fetch the next page of a long-running script's output.
+- **`get_output_page(job_token, page_no)`**: fetch the next page of a long-running script's output.
 
 Each run of `execute_python` or `execute_python_file` is one step
 in **Edit → Undo**, named "MCP Bridge: run", across every document
@@ -102,7 +102,7 @@ agent as an error.
 ### Example prompts
 
 With the bridge on, you can ask your agent to build, inspect, or
-change a model — for example:
+change a model. For example:
 
 - *"Create a new document with a 40 × 30 × 10 mm mounting plate and a
   6 mm through-hole in the centre."*
@@ -157,7 +157,7 @@ MCP Bridge is designed for **local** control of FreeCAD.
   permissions. Once you accept a non-loopback entry, the bridge
   listens on it too. Any client that can reach one, with the bearer
   token, can run Python code in FreeCAD as your user account.
-- Your agent can run code in your live FreeCAD session — macro-level
+- Your agent can run code in your live FreeCAD session: macro-level
   access, with no sandbox on the bridge side. That makes your MCP
   client the guardrail. Use a client you trust, and set it to ask
   before running the agent's tool calls.
