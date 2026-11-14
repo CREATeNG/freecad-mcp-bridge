@@ -617,18 +617,20 @@ def difference_text(
 ) -> str:
     """How the page's listeners differ from a bridge that is on.
 
-    An empty page stays empty. No default address is put in.
+    `page` is what the page's rows would open (bind_entries): host
+    names and skipped rows open nothing, so they aren't in it. An
+    empty page stays empty. No default address is put in.
     `listening` is None when the bridge is off.
     """
     if listening is None:
         return ""
     if sorted(page) == sorted(list(listening)):
         return ""
-    page_s = ", ".join(page) if page else "nothing"
-    listen_s = ", ".join(listening) if listening else "nothing"
+    page_s = ", ".join(page) if page else "no address"
+    listen_s = ", ".join(listening) if listening else "no address"
     return (
         f"The bridge is listening on {listen_s}. "
-        f"The Addresses list has {page_s}. "
+        f"Turned off and on again, it would listen on {page_s}. "
         "Click OK, then turn the bridge off and on again, "
         "to apply the change."
     )
