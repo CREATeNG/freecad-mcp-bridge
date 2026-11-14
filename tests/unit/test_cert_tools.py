@@ -1,6 +1,7 @@
 """A certificate tool makes a pair Python's ssl will serve and trust."""
 
 import ctypes
+import datetime
 import socket
 import ssl
 import subprocess
@@ -207,11 +208,13 @@ class RunWindowTests(unittest.TestCase):
 
 
 class ValidDaysTests(unittest.TestCase):
-    """Generate self-signed certificate's Valid for: 825 days unless
-    chosen, 1 to 3650, reaching each tool's command."""
+    """Generate self-signed certificate's Valid for: 365 days unless
+    chosen, 1 to 3650, from now, starting a day back where the tool
+    can."""
 
-    def _commands(self, tool, key_type, **kwargs):
-        """Run generate with `_run` caught; return the commands it ran."""
+    def _commands(self, tool, key_type, backdate=True, **kwargs):
+        """Run generate with `_run` caught and openssl's help answered;
+        return the commands it ran."""
         commands = []
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
@@ -224,6 +227,9 @@ class ValidDaysTests(unittest.TestCase):
                     cert_tools,
                     "_powershell_exe",
                     return_value=Path("powershell.exe"),
+                ),
+                mock.patch.object(
+                    cert_tools, "_openssl_can_backdate", return_value=backdate
                 ),
                 mock.patch.object(
                     cert_tools, "_run", side_effect=commands.append
@@ -239,32 +245,99 @@ class ValidDaysTests(unittest.TestCase):
                 )
         return commands
 
-    def test_the_default_is_825_days(self):
-        """Without a choice, the certificate is valid for 825 days."""
+    @staticmethod
+    def _arg(command, flag):
+        return command[command.index(flag) + 1]
+
+    def _assert_window(self, command, days):
+        """-not_before is a day back and -not_after `days` ahead, give
+        or take a minute, and there is no -days."""
+        now = datetime.datetime.now(datetime.timezone.utc)
+        start = datetime.datetime.strptime(
+            self._arg(command, "-not_before"), "%Y%m%d%H%M%SZ"
+        ).replace(tzinfo=datetime.timezone.utc)
+        end = datetime.datetime.strptime(
+            self._arg(command, "-not_after"), "%Y%m%d%H%M%SZ"
+        ).replace(tzinfo=datetime.timezone.utc)
+        minute = datetime.timedelta(minutes=1)
+        self.assertLess(
+            abs(start - (now - datetime.timedelta(days=1))), minute
+        )
+        self.assertLess(
+            abs(end - (now + datetime.timedelta(days=days))), minute
+        )
+        self.assertNotIn("-days", command)
+
+    def test_the_default_is_365_days(self):
+        """Without a choice, the certificate is valid for 365 days."""
         from freecad.mcp_bridge.constants import (
             CERT_VALID_DAYS_DEFAULT,
             CERT_VALID_DAYS_MAX,
             CERT_VALID_DAYS_MIN,
         )
 
-        self.assertEqual(CERT_VALID_DAYS_DEFAULT, 825)
+        self.assertEqual(CERT_VALID_DAYS_DEFAULT, 365)
         self.assertEqual((CERT_VALID_DAYS_MIN, CERT_VALID_DAYS_MAX), (1, 3650))
-        command = self._commands("openssl", cert_tools.KEY_RSA)[-1]
-        self.assertEqual(command[command.index("-days") + 1], "825")
+        old = self._commands("openssl", cert_tools.KEY_RSA, backdate=False)
+        self.assertEqual(self._arg(old[-1], "-days"), "365")
+        new = self._commands("openssl", cert_tools.KEY_RSA, backdate=True)
+        self._assert_window(new[-1], 365)
+        ps = self._commands("powershell", cert_tools.KEY_RSA)
+        self.assertEqual(self._arg(ps[-1], "-ValidDays"), "365")
 
-    def test_openssl_gets_the_chosen_days(self):
-        """openssl's -days is the chosen number, for both key types."""
+    def test_an_openssl_that_can_backdate_starts_a_day_back(self):
+        """An openssl with -not_before starts a day back and ends the
+        chosen days from now, for both key types."""
         for key_type in (cert_tools.KEY_RSA, cert_tools.KEY_ECDSA):
             with self.subTest(key_type=key_type):
-                command = self._commands("openssl", key_type, days=30)[-1]
-                self.assertEqual(command[command.index("-days") + 1], "30")
+                command = self._commands(
+                    "openssl", key_type, backdate=True, days=30
+                )[-1]
+                self._assert_window(command, 30)
+
+    def test_an_openssl_that_cannot_backdate_gets_days_from_now(self):
+        """An openssl without -not_before gets -days, from now."""
+        for key_type in (cert_tools.KEY_RSA, cert_tools.KEY_ECDSA):
+            with self.subTest(key_type=key_type):
+                command = self._commands(
+                    "openssl", key_type, backdate=False, days=30
+                )[-1]
+                self.assertEqual(self._arg(command, "-days"), "30")
+                self.assertNotIn("-not_before", command)
+
+    def test_openssl_backdating_is_read_from_its_own_help(self):
+        """-not_before and -not_after in `openssl req -help` mean it can
+        backdate; their absence, or an openssl that won't run, mean not."""
+        help_34 = (
+            " -not_before val  [CC]YYMMDDHHMMSSZ value for notBefore\n"
+            " -not_after val   [CC]YYMMDDHHMMSSZ value for notAfter\n"
+            " -days +int       Number of days certificate is valid for\n"
+        )
+        help_30 = " -days +int       Number of days certificate is valid for\n"
+        for text, expected in ((help_34, True), (help_30, False)):
+            with self.subTest(expected=expected):
+                with mock.patch(
+                    "freecad.mcp_bridge.cert_tools.subprocess.run",
+                    return_value=subprocess.CompletedProcess(
+                        [], 1, stdout="", stderr=text
+                    ),
+                ):
+                    self.assertIs(
+                        cert_tools._openssl_can_backdate("openssl"),
+                        expected,
+                    )
+        with mock.patch(
+            "freecad.mcp_bridge.cert_tools.subprocess.run",
+            side_effect=OSError("missing"),
+        ):
+            self.assertIs(cert_tools._openssl_can_backdate("openssl"), False)
 
     def test_powershell_gets_the_chosen_days(self):
         """The PowerShell script is given the chosen number as -ValidDays."""
         command = self._commands(
             "powershell", cert_tools.KEY_ECDSA, days=3650
         )[-1]
-        self.assertEqual(command[command.index("-ValidDays") + 1], "3650")
+        self.assertEqual(self._arg(command, "-ValidDays"), "3650")
 
     def test_days_outside_1_to_3650_are_refused_before_any_tool_runs(self):
         """0, 3651 and a value that isn't a whole number are refused, and
@@ -281,34 +354,7 @@ class ValidDaysTests(unittest.TestCase):
                 command = self._commands(
                     "openssl", cert_tools.KEY_RSA, days=days
                 )[-1]
-                self.assertEqual(
-                    command[command.index("-days") + 1], str(days)
-                )
-
-    def test_each_tool_here_makes_a_certificate_valid_for_the_days(self):
-        """Each tool on this machine makes a certificate valid for the
-        chosen number of days, from notBefore to notAfter."""
-        tools = cert_tools.find_tools()
-        if not tools:
-            self.skipTest("no certificate tool on this machine")
-        for tool in tools:
-            with self.subTest(tool=tool["id"]):
-                with tempfile.TemporaryDirectory() as folder:
-                    cert = Path(folder) / "cert.pem"
-                    cert_tools.generate(
-                        tool["id"],
-                        cert_tools.KEY_ECDSA,
-                        ["127.0.0.1"],
-                        str(cert),
-                        str(Path(folder) / "key.pem"),
-                        days=30,
-                    )
-                    decoded = ssl._ssl._test_decode_cert(str(cert))
-                period = ssl.cert_time_to_seconds(
-                    decoded["notAfter"]
-                ) - ssl.cert_time_to_seconds(decoded["notBefore"])
-                # Certificate times are to the second.
-                self.assertLessEqual(abs(period - 30 * 86400), 1)
+                self._assert_window(command, days)
 
 
 if __name__ == "__main__":

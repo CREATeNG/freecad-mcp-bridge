@@ -120,10 +120,11 @@ try {
     )
     $request.CertificateExtensions.Add($eku)
 
-    # Valid for $ValidDays, as openssl's -days is. The period starts a
-    # day early, against clock skew.
-    $start = [DateTimeOffset]::UtcNow.AddDays(-1)
-    $end = $start.AddDays($ValidDays)
+    # Valid for $ValidDays from now, starting a day back, against
+    # clock skew. Both from one clock reading.
+    $now = [DateTimeOffset]::UtcNow
+    $start = $now.AddDays(-1)
+    $end = $now.AddDays($ValidDays)
     $cert = $request.CreateSelfSigned($start, $end)
 
     $pkcs8 = $cng.Export(

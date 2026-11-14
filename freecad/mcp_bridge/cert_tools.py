@@ -12,6 +12,7 @@ at its usual install paths), or ``powershell`` (Windows PowerShell
 
 from __future__ import annotations
 
+import datetime
 import ipaddress
 import os
 import shutil
@@ -82,10 +83,10 @@ def generate(
     """Write a self-signed pair for ``hosts`` with ``tool``.
 
     Names become dNSName entries and addresses become iPAddress
-    entries. The certificate is valid for ``days`` days, 1 to 3650:
-    from now with openssl, from a day ago with PowerShell, against
-    clock skew. It cannot sign other certificates. The key file is
-    readable by the user only.
+    entries. The certificate is valid for ``days`` days from now, 1 to
+    3650, and starts a day earlier where the tool can, against clock
+    skew: PowerShell, and openssl 3.4 or later. It cannot sign other
+    certificates. The key file is readable by the user only.
     """
     if (
         isinstance(days, bool)
@@ -247,6 +248,61 @@ def _run(command: list[str]) -> None:
         raise CertToolError(detail or "The certificate tool failed.")
 
 
+def validity_window(
+    days: int, now: datetime.datetime | None = None
+) -> tuple[datetime.datetime, datetime.datetime]:
+    """(start, end) of a certificate made at `now`: a day back,
+    against clock skew, and `days` days ahead."""
+    if now is None:
+        now = datetime.datetime.now(datetime.timezone.utc)
+    return (
+        now - datetime.timedelta(days=1),
+        now + datetime.timedelta(days=days),
+    )
+
+
+def _openssl_time(moment: datetime.datetime) -> str:
+    """openssl's [CC]YYMMDDHHMMSSZ, in UTC."""
+    utc = moment.astimezone(datetime.timezone.utc)
+    return utc.strftime("%Y%m%d%H%M%SZ")
+
+
+def _openssl_can_backdate(binary: str) -> bool:
+    """Whether this openssl's req takes -not_before and -not_after,
+    as OpenSSL 3.4 and later do, by its own help. An older openssl, or
+    LibreSSL, gets -days from now."""
+    flags = {}
+    if sys.platform.startswith("win"):
+        flags["creationflags"] = subprocess.CREATE_NO_WINDOW
+    try:
+        result = subprocess.run(
+            [binary, "req", "-help"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+            **flags,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    text = (result.stdout or "") + (result.stderr or "")
+    return "-not_before" in text and "-not_after" in text
+
+
+def _openssl_validity(binary: str, days: int) -> list[str]:
+    """The validity arguments for `req -x509`: a day back and `days`
+    ahead where this openssl can backdate, else `-days` from now."""
+    if not _openssl_can_backdate(binary):
+        return ["-days", str(days)]
+    start, end = validity_window(days)
+    return [
+        "-not_before",
+        _openssl_time(start),
+        "-not_after",
+        _openssl_time(end),
+    ]
+
+
 def _openssl_config(hosts: list[str]) -> str:
     lines = [
         "[req]",
@@ -284,6 +340,7 @@ def _openssl_generate(
     key: Path,
     days: int = CERT_VALID_DAYS_DEFAULT,
 ) -> None:
+    validity = _openssl_validity(binary, days)
     with tempfile.TemporaryDirectory() as folder:
         config = Path(folder) / "cert.cnf"
         config.write_text(
@@ -312,8 +369,7 @@ def _openssl_generate(
                 str(key),
                 "-out",
                 str(cert),
-                "-days",
-                str(days),
+                *validity,
                 "-config",
                 str(config),
             ]
@@ -329,8 +385,7 @@ def _openssl_generate(
                 str(key),
                 "-out",
                 str(cert),
-                "-days",
-                str(days),
+                *validity,
                 "-config",
                 str(config),
             ]

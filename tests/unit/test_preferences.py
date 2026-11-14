@@ -647,9 +647,9 @@ class TlsFieldsStartTests(unittest.TestCase):
 
 
 class CertificateValidForTests(unittest.TestCase):
-    def test_the_dialog_offers_valid_for_825_days_from_1_to_3650(self):
+    def test_the_dialog_offers_valid_for_365_days_from_1_to_3650(self):
         """Generate self-signed certificate's dialog has a Valid for field
-        in days, 825 to start, 1 to 3650, and returns what is chosen."""
+        in days, 365 by default, 1 to 3650, and returns what is chosen."""
         _restore_package_after(self)
         init_gui = _fresh_init_gui()
         made = {}
@@ -765,7 +765,7 @@ class CertificateValidForTests(unittest.TestCase):
             chosen = init_gui._choose_cert_tool_and_key_type(
                 [{"id": "openssl", "label": "openssl"}]
             )
-        self.assertEqual(dialogs[0].seen, ((1, 3650), 825, " days"))
+        self.assertEqual(dialogs[0].seen, ((1, 3650), 365, " days"))
         self.assertEqual(
             chosen, ({"id": "openssl", "label": "openssl"}, "ECDSA P-256", 90)
         )
@@ -3667,9 +3667,67 @@ class TlsCertificateTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.pair_dir.cleanup()
 
+    def test_a_one_day_certificate_from_each_tool_is_valid_and_loads(self):
+        """Valid for 1 day: each tool on this machine makes a certificate
+        that is valid when generation returns, loads in
+        build_ssl_context, and ends a day from now, give or take a
+        minute. PowerShell, and an openssl that can backdate, start it
+        a day back; an older openssl starts it now."""
+        import datetime
+        import shutil
+        import ssl
+
+        from freecad.mcp_bridge import cert_tools
+
+        config, _, _ = fresh_config()
+
+        def when(text):
+            return datetime.datetime.fromtimestamp(
+                ssl.cert_time_to_seconds(text), datetime.timezone.utc
+            )
+
+        minute = datetime.timedelta(minutes=1)
+        day = datetime.timedelta(days=1)
+        for tool in cert_tools.find_tools():
+            with self.subTest(tool=tool["id"]):
+                if tool["id"] == "powershell":
+                    backdated = True
+                else:
+                    binary = (
+                        shutil.which("openssl")
+                        if tool["id"] == "openssl"
+                        else str(cert_tools._git_openssl())
+                    )
+                    backdated = cert_tools._openssl_can_backdate(binary)
+                with tempfile.TemporaryDirectory() as folder:
+                    cert = Path(folder) / "cert.pem"
+                    key = Path(folder) / "key.pem"
+                    cert_tools.generate(
+                        tool["id"],
+                        cert_tools.KEY_ECDSA,
+                        ["127.0.0.1"],
+                        str(cert),
+                        str(key),
+                        days=1,
+                    )
+                    now = datetime.datetime.now(datetime.timezone.utc)
+                    decoded = ssl._ssl._test_decode_cert(str(cert))
+                    self.assertIsNotNone(
+                        config.build_ssl_context(
+                            str(cert), str(key), ["127.0.0.1:39280"]
+                        )
+                    )
+                self.assertLess(
+                    abs(when(decoded["notAfter"]) - (now + day)), minute
+                )
+                expected_start = now - day if backdated else now
+                self.assertLess(
+                    abs(when(decoded["notBefore"]) - expected_start), minute
+                )
+
     def test_certificate_hosts_expiry_and_openssl_verify(self):
         """The bridge reads a generated certificate's hosts and its expiry,
-        825 days on, and the certificate verifies against itself."""
+        365 days on, and the certificate verifies against itself."""
         import datetime
         import shutil
         import subprocess
@@ -3692,7 +3750,7 @@ class TlsCertificateTests(unittest.TestCase):
                 config.certificate_expiry_date(str(c_path))
             )
             self.assertIn(
-                (expiry - self.made_on).days, (824, 825, 826)
+                (expiry - self.made_on).days, (364, 365, 366)
             )
             self.assertEqual(
                 config.certificate_target_hosts(["127.0.0.1:39280"]),
