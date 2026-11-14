@@ -1560,9 +1560,9 @@ if not getattr(App, "MCPBridgePrefAdded", False):
     except Exception:
         pass
     try:
-        from freecad.mcp_bridge.pref_pages import PreferencesPage
+        from freecad.mcp_bridge.pref_pages import MCPBridgePreferencesPage
 
-        Gui.addPreferencePage(PreferencesPage, DISPLAY_NAME)
+        Gui.addPreferencePage(MCPBridgePreferencesPage, DISPLAY_NAME)
         App.MCPBridgePrefAdded = True
     except Exception as exc:
         App.Console.PrintWarning(

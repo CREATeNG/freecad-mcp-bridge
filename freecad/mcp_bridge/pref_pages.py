@@ -345,8 +345,13 @@ def _hook(widget, name: str, connect) -> None:
         report_wiring(name, exc, with_trace=True)
 
 
-class PreferencesPage:
-    """The one MCP Bridge page. FreeCAD calls save and load."""
+class MCPBridgePreferencesPage:
+    """The one MCP Bridge page. FreeCAD calls save and load.
+
+    FreeCAD keeps a Python page class by its __name__, so a name another
+    module also registers, such as Assembly's PreferencesPage, replaces
+    this page under "MCP Bridge" (#70).
+    """
 
     def __init__(self):
         self.form = load_form()

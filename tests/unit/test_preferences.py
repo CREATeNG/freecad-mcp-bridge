@@ -548,6 +548,45 @@ def _fresh_init_gui():
     return module
 
 
+class PreferencePageRegistrationTests(unittest.TestCase):
+    def test_the_registered_page_class_has_a_name_only_we_use(self):
+        """FreeCAD keeps a Python preference page class by its __name__, so
+        a name another module also registers, such as Assembly's
+        PreferencesPage, takes over the MCP Bridge page (#70)."""
+        registered = []
+        freecad = types.SimpleNamespace(
+            Console=types.SimpleNamespace(PrintWarning=lambda *_: None)
+        )
+        gui = types.SimpleNamespace(
+            addIconPath=lambda *_: None,
+            listCommands=lambda: [],
+            addCommand=lambda *_: None,
+            addPreferencePage=lambda cls, group: registered.append(
+                (cls, group)
+            ),
+            addWorkbenchManipulator=lambda *_: None,
+        )
+        qtcore = types.SimpleNamespace(
+            QTimer=types.SimpleNamespace(singleShot=lambda *_: None)
+        )
+        stubs = {
+            "FreeCAD": freecad,
+            "FreeCADGui": gui,
+            "PySide": types.SimpleNamespace(QtCore=qtcore),
+            "PySide.QtCore": qtcore,
+            "freecad.mcp_bridge.bridge": types.SimpleNamespace(),
+        }
+        with mock.patch.dict(sys.modules, stubs):
+            sys.modules.pop("freecad.mcp_bridge.init_gui", None)
+            importlib.import_module("freecad.mcp_bridge.init_gui")
+            sys.modules.pop("freecad.mcp_bridge.init_gui", None)
+
+        self.assertEqual(len(registered), 1)
+        page_class, group = registered[0]
+        self.assertEqual(page_class.__name__, "MCPBridgePreferencesPage")
+        self.assertEqual(group, DISPLAY_NAME)
+
+
 def _hex_to_rgb(hex_color):
     value = hex_color.lstrip("#")
     return (
