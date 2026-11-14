@@ -4,7 +4,7 @@
 // experiences it. The shim runs as a child process; a stand-in HTTP server
 // plays the bridge, or a closed port plays a bridge that is not running.
 
-const { test } = require("node:test");
+const { test, after } = require("node:test");
 const assert = require("node:assert/strict");
 const { spawn, execFileSync } = require("node:child_process");
 const crypto = require("node:crypto");
@@ -65,9 +65,19 @@ async function closedPort() {
   return port;
 }
 
+// Every shim's home folder, removed once the file's tests have run, so a
+// test can still read its shim's folder after stopping it.
+const shimHomes = [];
+after(() => {
+  for (const home of shimHomes) {
+    fs.rmSync(home, { recursive: true, force: true, maxRetries: 3 });
+  }
+});
+
 // Start the shim against `port`; collect its stdout lines.
 function startShim(port, extraEnv = {}, options = {}) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "shim-home-"));
+  shimHomes.push(home);
   const tokenDir = options.tokenDir || path.join(home, ".freecad-mcp-bridge");
   const tokenFile = path.join(tokenDir, "token");
   const pasted = extraEnv.FREECAD_MCP_TOKEN || "";
@@ -345,6 +355,7 @@ async function askOffline(message) {
   shim.send(JSON.stringify(message) + "\n");
   const [reply] = await shim.waitForLines(1);
   await shim.stop();
+  fs.rmSync(shim.home, { recursive: true, force: true, maxRetries: 3 });
   return reply;
 }
 
