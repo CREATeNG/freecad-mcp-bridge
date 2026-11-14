@@ -224,9 +224,9 @@ bridge on or off.
   openssl, Git for Windows' openssl, or Windows PowerShell. You choose
   the tool, **RSA 4096** or **ECDSA P-256**, and **Valid for**, in days,
   825 to start, from 1 to 3650. Where none is found, it makes nothing
-  and says where to install openssl. It asks before replacing the current
-  certificate, then shows the path, the covered addresses, and the
-  expiry.
+  and says where to install openssl. It asks before replacing the
+  current certificate, then shows the path, the covered addresses, and
+  the expiry.
 - A start fails when the certificate is not yet valid or has
   expired, and a start also fails when either file is not set for
   an entry beyond loopback. A listener whose address is not in
