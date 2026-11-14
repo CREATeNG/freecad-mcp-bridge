@@ -34,15 +34,18 @@ default; use your port if it differs.
 Both send the bearer token from the `FREECAD_MCP_TOKEN` environment
 variable, the token FreeCAD showed when you clicked **Generate new
 token**. Without it the bridge refuses the request. `send_cmd.py` reads
-no token file. It sends plain HTTP to `127.0.0.1` only, so it reaches a
-loopback listener while **Certificate (PEM)** and **Private key (PEM)**
-aren't both set.
+no token file. It sends plain HTTP to `127.0.0.1` only. So it needs a
+`127.0.0.1` row in **Listen addresses**, and it can't connect while
+**Certificate (PEM)** and **Private key (PEM)** are both set.
 
 **Run a code string to test the connection:**
 ```bash
 export FREECAD_MCP_TOKEN='<token>'
 python send_cmd.py 39280 "print('Hello from the terminal!')"
 ```
+
+In PowerShell, set the token with `$env:FREECAD_MCP_TOKEN = '<token>'`
+in place of the `export` line.
 
 **Run a script file:**
 ```bash
@@ -59,20 +62,23 @@ stdio-to-HTTP/HTTPS relay. It reads JSON-RPC messages from stdin,
 forwards each `tools/call` to the bridge at `<host>:<port>/mcp`, and
 writes the responses back on stdout.
 
-It takes its settings from environment variables:
+It takes its settings from five environment variables:
 
 - `FREECAD_MCP_HOST`: the bridge's host, `127.0.0.1` by default.
   `localhost` is taken as `127.0.0.1`, and `127.x.x.x` and `::1` count
   as this machine.
 - `FREECAD_MCP_PORT`: the port, `39280` by default.
-- `FREECAD_MCP_TOKEN`: the bearer token. Every call needs it; the shim
+- `FREECAD_MCP_TOKEN`: the bearer token. Every call needs it. The shim
   reads no token file.
-- `FREECAD_MCP_TLS_CERT_FILE`: a copy of FreeCAD's certificate file,
-  not the private key. When it is set, the shim connects over HTTPS and
-  pins that certificate by its SHA-256 fingerprint, and never uses
-  HTTP. With it empty on this machine, the shim uses HTTPS pinned to
-  `serving-cert.pem` when the bridge has written that file, and HTTP
-  when it hasn't. Another host needs it set.
+- `FREECAD_MCP_TLS_CERT_FILE`: the path of a copy of FreeCAD's
+  certificate file, not the private key. When it is set, the shim
+  connects over HTTPS and pins that certificate by its SHA-256
+  fingerprint, and never uses HTTP. With it empty and the host this
+  machine, the shim uses HTTPS pinned to `serving-cert.pem` when the
+  bridge has written that file, and HTTP when it hasn't. Another host
+  needs it set.
+- `FREECAD_MCP_TOKEN_DIR`: the folder where the shim looks for
+  `serving-cert.pem`, `<home>/.freecad-mcp-bridge` by default.
 
 To run it locally for testing:
 1. Ensure Node.js (>=18) is installed.

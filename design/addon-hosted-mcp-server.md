@@ -594,10 +594,11 @@ when none is set; a TLS certificate and private key, when the start
 would open a listener beyond loopback and either field is empty, where
 a listed address the start skips doesn't count. It names the button or
 field that supplies each, and has Open Preferences, which opens the MCP
-Bridge page, and Close. It comes before the start warning and the risk
-dialog below. A list whose only rows are `Old entry` rows, or whose
-every row is skipped, starts nothing either, and the status bar says
-why.
+Bridge page, and Close. It comes before the two dialogs the next
+paragraphs describe, the start warning, "MCP Bridge: Start the
+bridge?", and the risk dialog, "MCP Bridge: Listen beyond this
+machine?". A list whose only rows are `Old entry` rows, or whose every
+row is skipped, starts nothing either, and the status bar says why.
 
 The first time the bridge starts at all, loopback included, one modal
 dialog says that connected agents can run Python code in FreeCAD with

@@ -57,7 +57,7 @@ switch the server On / Off.
 That's the whole setup for most clients.
 
 For HTTPS and the stdio shim, see
-[Other MCP clients](https://github.com/CREATeNG/freecad-mcp-bridge/blob/main/USER_GUIDE.md#other-mcp-clients)
+[Other MCP clients](https://github.com/CREATeNG/freecad-mcp-bridge/blob/release/USER_GUIDE.md#other-mcp-clients)
 in the user guide.
 
 ## Claude Desktop
@@ -79,7 +79,7 @@ in the user guide.
    - **TLS certificate file (PEM):** leave it empty on this machine,
      over HTTP or HTTPS.
    - **For another host**, it's required: see
-     [Claude Desktop extension](https://github.com/CREATeNG/freecad-mcp-bridge/blob/main/USER_GUIDE.md#claude-desktop-extension)
+     [Claude Desktop extension](https://github.com/CREATeNG/freecad-mcp-bridge/blob/release/USER_GUIDE.md#claude-desktop-extension)
      in the user guide.
 
 Reinstalling the extension clears the **Bearer token** setting, so
@@ -132,7 +132,7 @@ change a model. For example:
 Other MCP clients, HTTPS and certificates, the tools in full, the
 permission modes, every preference and other ways to install are in
 the
-[User guide](https://github.com/CREATeNG/freecad-mcp-bridge/blob/main/USER_GUIDE.md).
+[User guide](https://github.com/CREATeNG/freecad-mcp-bridge/blob/release/USER_GUIDE.md).
 
 Developing or maintaining the addon: see
 [DEVELOPMENT.md](https://github.com/CREATeNG/freecad-mcp-bridge/blob/main/DEVELOPMENT.md).
