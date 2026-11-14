@@ -883,6 +883,10 @@ def _turn_bridge_on():
     )
     cert_file = config.tls_cert_file()
     key_file = config.tls_key_file()
+    # Both or none, before the no-ssl message and the set-up dialog.
+    pair_problem = config.tls_pair_problem(cert_file, key_file)
+    if pair_problem:
+        raise ValueError(pair_problem)
     non_loopback = [
         entry
         for entry in entries

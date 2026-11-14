@@ -591,7 +591,7 @@ opens "The bridge can't start yet. In Edit → Preferences → MCP Bridge,
 it needs:" and lists only what is missing: a listen address, when the
 list has no adapter, fixed address or `Old entry` row; a bearer token,
 when none is set; a TLS certificate and private key, when the start
-would open a listener beyond loopback and either field is empty, where
+would open a listener beyond loopback and neither field is set, where
 a listed address the start skips doesn't count. It names the button or
 field that supplies each, and has Open Preferences, which opens the MCP
 Bridge page, and Close. It comes before the two dialogs the next
@@ -646,9 +646,11 @@ is not sent. A refused token says the pasted token was refused.
   user-only copy of the certificate to `serving-cert.pem` in the
   bridge's folder. If that write fails, the bridge still listens and
   warns in the Report view that the Claude Desktop extension on this
-  machine may not connect. When they are not set, loopback listeners
+  machine may not connect. When neither is set, loopback listeners
   serve HTTP, each start removes `serving-cert.pem`, and a start with an
-  entry beyond loopback fails. In the TLS certificate group the page
+  entry beyond loopback fails. When only one is set, the start refuses,
+  loopback included, naming the field that isn't set, and never falls
+  back to HTTP. In the TLS certificate group the page
   states that an MCP client must trust this certificate. The user sets
   their own certificate and private key in **Certificate (PEM)** and
   **Private key (PEM)**. Beside them, **Generate self-signed
@@ -897,7 +899,7 @@ in Edit → Preferences → MCP Bridge. FreeCAD calls its save and load.
 | ListenAdapters | `""` | One adapter a line: the port, a tab, then the adapter's name. |
 | ListenListSaved | false | Set when the page is saved, so an empty list stays empty. |
 | Bearer token hash | Preferences `TokenHash` | Every listener requires `Authorization: Bearer <token>`; FreeCAD stores only the SHA-256 hash, shows a generated token once, and reads the hash again before refusing a mismatch |
-| Certificate (PEM) / Private key (PEM) | `""` | When both `TlsCertFile` and `TlsKeyFile` are set, every listener serves HTTPS. Without them, loopback is HTTP and a start beyond loopback fails. The optional **Generate self-signed certificate**, for a user with no certificate, writes `tls-cert.pem` and `tls-key.pem` in `<home>/.freecad-mcp-bridge` and fills both fields |
+| Certificate (PEM) / Private key (PEM) | `""` | When both `TlsCertFile` and `TlsKeyFile` are set, every listener serves HTTPS. With neither set, loopback is HTTP and a start beyond loopback fails. With only one set, the start refuses, loopback included. The optional **Generate self-signed certificate**, for a user with no certificate, writes `tls-cert.pem` and `tls-key.pem` in `<home>/.freecad-mcp-bridge` and fills both fields |
 | Permission mode | `0` (Ask) | `PermissionMode`, `0` for Ask and `1` for Unrestricted: in Ask, FreeCAD shows an agent's code, and a file's path with it, before it runs; in Unrestricted the code runs unseen; switched in Preferences or from the On/Off button's menu, with a confirmation to go Unrestricted; each switch writes it at once, and the Preferences box has no preference entry of its own, so FreeCAD's own OK writes nothing for it |
 | Max response timeout (s) | 15 | Max wait for the first answer of `execute_python` and `execute_python_file`, dialog included, and for each later page, before returning with `has_more: true` |
 | Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |

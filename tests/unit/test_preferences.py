@@ -11,7 +11,9 @@ import importlib
 import json
 import os
 import re
+import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 import types
@@ -471,7 +473,10 @@ class WithoutSslModuleTests(unittest.TestCase):
         self.assertIn(
             "a start that needs TLS can't happen here", config.NO_TLS_MESSAGE
         )
-        self.assertIn("aren't both set", config.NO_TLS_MESSAGE)
+        self.assertIn(
+            "neither Certificate (PEM) nor Private key (PEM) is set",
+            config.NO_TLS_MESSAGE,
+        )
         self.assertIn("Edit → Preferences → MCP Bridge", config.NO_TLS_MESSAGE)
 
     def test_turning_the_bridge_on_with_a_certificate_says_why_not(self):
@@ -519,32 +524,53 @@ class WithoutSslModuleTests(unittest.TestCase):
         self.assertEqual(str(caught.exception), config.NO_TLS_MESSAGE)
 
 
-class CoverageWarningTests(unittest.TestCase):
-    """The certificate-coverage warning goes with a TLS start: both
-    Certificate (PEM) and Private key (PEM) set."""
+def _restore_package_after(test):
+    """Put freecad.mcp_bridge's attributes back as they are now, when
+    test ends: an import sets each new submodule on the package, and
+    patch.dict on sys.modules doesn't undo that."""
+    import freecad.mcp_bridge as package
 
-    def _start(self, key_file):
-        """Turn the bridge on for 127.0.0.1 with a certificate set and
-        key_file as the key, up to bridge.start; return the mock that
-        stood in for listener_coverage_warnings."""
-        import freecad.mcp_bridge as package
+    before = dict(vars(package))
 
-        before = dict(vars(package))
+    def restore_package():
+        for name in set(vars(package)) - set(before):
+            delattr(package, name)
+        for name, value in before.items():
+            if vars(package).get(name, object()) is not value:
+                setattr(package, name, value)
 
-        def restore_package():
-            for name in set(vars(package)) - set(before):
-                delattr(package, name)
-            for name, value in before.items():
-                if vars(package).get(name, object()) is not value:
-                    setattr(package, name, value)
+    test.addCleanup(restore_package)
+    return package
 
-        self.addCleanup(restore_package)
+
+CERT_WITHOUT_KEY = (
+    "The bridge can't start: Certificate (PEM) is set and Private key "
+    "(PEM) isn't. Set both, or clear both, in Edit → Preferences → "
+    "MCP Bridge."
+)
+KEY_WITHOUT_CERT = (
+    "The bridge can't start: Private key (PEM) is set and Certificate "
+    "(PEM) isn't. Set both, or clear both, in Edit → Preferences → "
+    "MCP Bridge."
+)
+
+
+class TlsFieldsStartTests(unittest.TestCase):
+    """Turning the bridge on with Certificate (PEM) and Private key (PEM):
+    both or none, and the certificate-coverage warning only on a TLS
+    start."""
+
+    def _start(self, cert_file, key_file):
+        """Turn the bridge on for 127.0.0.1 with these two fields, up to
+        bridge.start. Return the mock that stood in for
+        listener_coverage_warnings, and the exception the start raised."""
+        package = _restore_package_after(self)
         store = UpgradedProfileStore(
             {
                 "ListenAddress": "127.0.0.1:39280",
                 "ListenListSaved": True,
                 "StartWarningAccepted": True,
-                "TlsCertFile": "cert.pem",
+                "TlsCertFile": cert_file,
                 "TlsKeyFile": key_file,
             }
         )
@@ -591,49 +617,49 @@ class CoverageWarningTests(unittest.TestCase):
                 init_gui.bridge, "start", side_effect=Started, create=True
             ),
         ):
-            with self.assertRaises(Started):
+            with self.assertRaises((Started, ValueError)) as caught:
                 init_gui._turn_bridge_on()
-        return coverage
+        return coverage, caught.exception, Started
 
-    def test_a_certificate_without_its_key_draws_no_coverage_warning(self):
-        """With Certificate (PEM) set and Private key (PEM) empty, a
-        loopback start serves HTTP, so no listener is checked against the
-        certificate."""
-        self._start(key_file="").assert_not_called()
+    def test_a_certificate_without_its_key_refuses_the_start(self):
+        """With Certificate (PEM) set and Private key (PEM) empty, the
+        start refuses, on loopback too, before the set-up dialog, and
+        checks no listener against the certificate."""
+        coverage, raised, _started = self._start("cert.pem", "")
+        self.assertIsInstance(raised, ValueError)
+        self.assertEqual(str(raised), CERT_WITHOUT_KEY)
+        coverage.assert_not_called()
+
+    def test_a_key_without_its_certificate_refuses_the_start(self):
+        """With Private key (PEM) set and Certificate (PEM) empty, the
+        start refuses the same way."""
+        coverage, raised, _started = self._start("", "key.pem")
+        self.assertIsInstance(raised, ValueError)
+        self.assertEqual(str(raised), KEY_WITHOUT_CERT)
+        coverage.assert_not_called()
 
     def test_a_certificate_and_its_key_check_each_listener(self):
         """With both set, the start serves HTTPS and checks its listeners
         against the certificate."""
-        self._start(key_file="key.pem").assert_called_once_with(
-            "cert.pem", ["127.0.0.1:39280"]
-        )
+        coverage, raised, started = self._start("cert.pem", "key.pem")
+        self.assertIsInstance(raised, started)
+        coverage.assert_called_once_with("cert.pem", ["127.0.0.1:39280"])
 
 
-class NoListenAddressStartTests(unittest.TestCase):
+class HttpServerRefusalTests(unittest.TestCase):
+    """HttpServer.start refuses before anything starts: no Executor is
+    made and nothing is bound."""
+
     NO_ADDRESS = (
         "No listen address to open. Add one in Edit → Preferences → "
         "MCP Bridge → Listen addresses."
     )
 
-    def test_a_start_with_no_listen_address_refuses_before_the_executor(
-        self,
-    ):
-        """Started from code with nothing to listen on, as with a list
-        saved empty, the server refuses with a ValueError saying where to
-        add an address, and makes no Executor."""
-        import freecad.mcp_bridge as package
-
-        before = dict(vars(package))
-
-        def restore_package():
-            for name in set(vars(package)) - set(before):
-                delattr(package, name)
-            for name, value in before.items():
-                if vars(package).get(name, object()) is not value:
-                    setattr(package, name, value)
-
-        self.addCleanup(restore_package)
-        store = UpgradedProfileStore({"ListenListSaved": True})
+    def _refused(self, values, **start_kwargs):
+        """Start an HttpServer on a store holding values; return the
+        ValueError it raised, and whether an Executor was made."""
+        _restore_package_after(self)
+        store = UpgradedProfileStore(values)
         freecad = types.SimpleNamespace(
             ParamGet=lambda _group: store,
             Console=types.SimpleNamespace(
@@ -662,11 +688,97 @@ class NoListenAddressStartTests(unittest.TestCase):
                 "freecad.mcp_bridge.http_server"
             )
             srv = http_server.HttpServer()
-            with self.assertRaises(ValueError) as caught:
-                srv.start(addresses=[])
-        self.assertEqual(str(caught.exception), self.NO_ADDRESS)
+            with (
+                mock.patch.object(
+                    http_server.paging,
+                    "MaintenanceHTTPServer",
+                    side_effect=AssertionError("a listener was bound"),
+                ),
+                self.assertRaises(ValueError) as caught,
+            ):
+                srv.start(**start_kwargs)
         self.assertEqual(made, [])
         self.assertIsNone(srv._executor)
+        self.assertFalse(srv.is_running())
+        return caught.exception
+
+    def test_a_start_with_no_listen_address_refuses_before_the_executor(
+        self,
+    ):
+        """Started from code with nothing to listen on, as with a list
+        saved empty, the server refuses with a ValueError saying where to
+        add an address."""
+        raised = self._refused({"ListenListSaved": True}, addresses=[])
+        self.assertEqual(str(raised), self.NO_ADDRESS)
+
+    def test_a_certificate_without_its_key_refuses_on_loopback(self):
+        """With only Certificate (PEM) set, a loopback start refuses and
+        never serves HTTP."""
+        raised = self._refused(
+            {
+                "ListenAddress": "127.0.0.1:39280",
+                "ListenListSaved": True,
+                "TlsCertFile": "cert.pem",
+                "TlsKeyFile": "",
+            }
+        )
+        self.assertEqual(str(raised), CERT_WITHOUT_KEY)
+
+    def test_a_key_without_its_certificate_refuses_on_loopback(self):
+        """With only Private key (PEM) set, a loopback start refuses the
+        same way."""
+        raised = self._refused(
+            {
+                "ListenAddress": "127.0.0.1:39280",
+                "ListenListSaved": True,
+                "TlsCertFile": "",
+                "TlsKeyFile": "key.pem",
+            }
+        )
+        self.assertEqual(str(raised), KEY_WITHOUT_CERT)
+
+    @unittest.skipUnless(shutil.which("openssl"), "needs openssl")
+    def test_a_key_that_doesnt_match_its_certificate_refuses(self):
+        """A private key from another pair refuses the start as a
+        certificate that can't be loaded, naming the mismatch."""
+        folder = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, folder, True)
+        # Its own config, since an openssl build may point at none.
+        openssl_cnf = folder / "openssl.cnf"
+        openssl_cnf.write_text(
+            "[req]\ndistinguished_name = dn\nprompt = no\n"
+            "[dn]\nCN = 127.0.0.1\n",
+            encoding="utf-8",
+        )
+
+        def make_pair(name):
+            key = folder / f"{name}-key.pem"
+            cert = folder / f"{name}-cert.pem"
+            subprocess.run(
+                [
+                    "openssl", "req", "-x509", "-newkey", "rsa:2048",
+                    "-nodes", "-config", str(openssl_cnf),
+                    "-keyout", str(key), "-out", str(cert), "-days", "1",
+                ],
+                check=True,
+                capture_output=True,
+            )
+            return cert, key
+
+        cert_a, _key_a = make_pair("a")
+        _cert_b, key_b = make_pair("b")
+        raised = self._refused(
+            {
+                "ListenAddress": "127.0.0.1:39280",
+                "ListenListSaved": True,
+                "TlsCertFile": str(cert_a),
+                "TlsKeyFile": str(key_b),
+            }
+        )
+        self.assertIn(
+            "Could not load TLS certificate or private key", str(raised)
+        )
+        self.assertIn("KEY_VALUES_MISMATCH", str(raised))
 
 
 def _fresh_init_gui():

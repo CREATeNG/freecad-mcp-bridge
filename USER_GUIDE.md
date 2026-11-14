@@ -204,9 +204,10 @@ bridge on or off.
   `<home>/.freecad-mcp-bridge/serving-cert.pem` so the Claude Desktop
   extension on this machine can verify it automatically. If that copy
   can't be written, the bridge still starts, and a **Report view**
-  warning says the extension on this machine may not connect. Without
-  them, loopback entries serve HTTP, and a start with an entry beyond
-  loopback fails.
+  warning says the extension on this machine may not connect. With
+  neither set, loopback entries serve HTTP, and a start with an entry
+  beyond loopback fails. With only one set, the bridge doesn't start,
+  loopback included, and never falls back to HTTP.
 - An MCP client other than the Claude Desktop extension on this
   machine needs a copy of the certificate file, not the private
   key. The extension on this machine reads `serving-cert.pem` and
