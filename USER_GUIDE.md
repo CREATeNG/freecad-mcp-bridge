@@ -224,10 +224,11 @@ bridge on or off.
   or Windows PowerShell. You choose the tool, the key type
   (**RSA 4096** or **ECDSA P-256**) and **Valid for**, the number of
   days from now the certificate lasts, from 1 to 3650, 365 by default.
-  It starts a day earlier where the tool can. Where none is found, it
-  makes nothing and says where to install openssl. It asks before
-  replacing the current certificate, then shows the path, the covered
-  addresses, and the expiry.
+  Where the tool allows, the certificate is valid from a day before now,
+  so a client whose clock is a little behind still accepts it. Where no
+  tool is found, it makes nothing and says where to install openssl. It
+  asks before replacing the current certificate, then shows the path,
+  the covered addresses, and the expiry.
 - A start fails when the certificate is not yet valid or has
   expired, and a start also fails when either file is not set for
   an entry beyond loopback. A listener whose address is not in

@@ -663,31 +663,30 @@ is not sent. A refused token says the pasted token was refused.
   of tool, key type (`RSA 4096` or `ECDSA P-256`) and **Valid for**, in
   days (365 by default, 1 to 3650), and calls `cert_tools.generate()`.
   Where none is found, it makes nothing and says where to install
-  openssl for the platform. The certificate is self-signed (valid for
-  the chosen number of days from now, starting a day earlier where the
-  tool can, which is PowerShell and openssl 3.4 or later, `CA:FALSE`,
-  `digitalSignature` and `keyEncipherment`, `serverAuth`), covers
-  `127.0.0.1`, `localhost`,
-  each fixed address and host name in the list, and, for each listed
-  adapter that is up when the button is clicked, its first IPv4 address
-  that isn't 169.254.x.x, writes `tls-cert.pem` and `tls-key.pem`
-  (`tls-key.pem` readable by the user only) in
-  `<home>/.freecad-mcp-bridge` (or `FREECAD_MCP_TOKEN_DIR`), fills in
-  the `TlsCertFile` and `TlsKeyFile` fields (asking first when either
-  field is already set or either file already exists), and shows the
-  certificate file path, covered addresses, and expiry date. If an entry
-  beyond loopback is configured without readable, valid certificate and
-  key files, if a configured certificate is not yet valid or has
-  expired, startup fails with an error naming the problem and directing
-  the user to select or generate the files in Edit → Preferences → MCP
-  Bridge, and the bridge stays off. A listener whose address is not in
-  the certificate draws a Report view warning when the certificate names
-  no host, and the start still proceeds. On a FreeCAD whose Python has
-  no `ssl` module, as reported for FreeCAD's snap (#67), the addon still
-  loads: a start that needs TLS, for an address beyond loopback or with
-  both certificate fields set, stops before the set-up dialog with a
-  message saying the `ssl` module is missing, and loopback listeners
-  still start over HTTP.
+  openssl for the platform. The certificate is valid for the chosen
+  number of days from now, and its validity starts a day earlier with
+  PowerShell and with openssl 3.4 or later. It is self-signed
+  (`CA:FALSE`, `digitalSignature` and `keyEncipherment`, `serverAuth`),
+  covers `127.0.0.1`, `localhost`, each fixed address and host name in
+  the list, and, for each listed adapter that is up when the button is
+  clicked, its first IPv4 address that isn't 169.254.x.x, writes
+  `tls-cert.pem` and `tls-key.pem` (`tls-key.pem` readable by the user
+  only) in `<home>/.freecad-mcp-bridge` (or `FREECAD_MCP_TOKEN_DIR`),
+  fills in the `TlsCertFile` and `TlsKeyFile` fields (asking first when
+  either field is already set or either file already exists), and shows
+  the certificate file path, covered addresses, and expiry date. If an
+  entry beyond loopback is configured without readable, valid
+  certificate and key files, if a configured certificate is not yet
+  valid or has expired, startup fails with an error naming the problem
+  and directing the user to select or generate the files in Edit →
+  Preferences → MCP Bridge, and the bridge stays off. A listener whose
+  address is not in the certificate draws a Report view warning when the
+  certificate names no host, and the start still proceeds. On a FreeCAD
+  whose Python has no `ssl` module, as reported for FreeCAD's snap
+  (#67), the addon still loads: a start that needs TLS, for an address
+  beyond loopback or with both certificate fields set, stops before the
+  set-up dialog with a message saying the `ssl` module is missing, and
+  loopback listeners still start over HTTP.
 
 **Security posture — noted trade-offs**
 
