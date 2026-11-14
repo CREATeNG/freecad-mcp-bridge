@@ -29,10 +29,10 @@ switch the server On / Off.
 
 1. Install **MCP Bridge** from the FreeCAD **Addon Manager**.
    - Restart FreeCAD after installing the addon.
-2. On first use, **Edit → Preferences → MCP Bridge**, click **Generate
-   new token**. FreeCAD shows the token only once: click **Copy
-   token** and keep it for your MCP client, click **Close**, then
-   click **OK** in Preferences.
+2. On first use, open **Edit → Preferences → MCP Bridge** and click
+   **Generate new token**. FreeCAD shows the token only once: click
+   **Copy token** and keep it for your MCP client, click **Close**,
+   then click **OK** in Preferences.
    - This is the authorization bearer token that your MCP client
      needs to use.
 3. Use either the status-bar control widget or the toolbar button to
