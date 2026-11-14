@@ -48,13 +48,13 @@ The MCP server exposes three tools (schemas in `tools.py`).
   switches the mode to Unrestricted, and the shown text then runs. The
   dialog counts against **Max response timeout**. If the file cannot be
   read, the tool returns `has_more: false`, an `error` message, and
-  `page: []` — no job, no page history, and no `job_token`. In
-  Unrestricted, a file an agent names later runs without FreeCAD showing
-  it. That is the setting the Addon Index's rule "Automatic approval is
-  opt-in" allows: "a setting, off by default, that warns in the
-  interface itself (not just in a tooltip or the documentation) that the
-  model's code will run with the user's full permissions". Ask is the
-  default, and switching to Unrestricted shows that warning first.
+  `page: []` — no job, no page history, and no `job_token`. Once the
+  mode is Unrestricted, a file an agent names runs without FreeCAD
+  showing it. That is the setting the Addon Index's rule "Automatic
+  approval is opt-in" allows: "a setting, off by default, that warns in
+  the interface itself (not just in a tooltip or the documentation) that
+  the model's code will run with the user's full permissions". Ask is
+  the default, and switching to Unrestricted shows that warning first.
 - **`get_output_page(job_token, page_no)`** — fetches the requested page from a job's page
   history. Both arguments are required.
 
@@ -322,9 +322,10 @@ carries its own version, and 2025-11-25, which opens with an
 `initialize` handshake. Both are served on the same endpoint, each
 request in its own version. Each POST carries one JSON-RPC message; a
 batched array gets `400` and an invalid-request error. Every reply to a
-request is plain JSON (`Content-Type: application/json`), except the
-one to `subscriptions/listen` (below). The server returns `405` on GET
-and on DELETE: it offers no standalone stream and keeps no sessions.
+request is plain JSON (`Content-Type: application/json`), except the one
+to `subscriptions/listen` (below). The server returns `405` on GET and
+on DELETE: it offers no standalone stream and keeps no sessions. Any
+other method, such as PUT or HEAD, gets `501`.
 
 Job output and paging are delivered on POST through `tools/call`.
 
@@ -570,12 +571,12 @@ state. If the capability belongs anywhere, it is upstream
 
 ## Security
 
-This section, with the tools list and the stdio shim, answers the AI
-Agents section of the FreeCAD Addon Index's Qualities, quoted as of
-FreeCAD/Addon-Academy's merge 0e4b0e1. Two of its rules, "Ask before
-sending anything" and "No default service", need nothing built: the
-bridge selects no AI service and sends nothing to one. Which service an
-agent uses is set in its MCP client.
+This section, with the sections on the tools and on the stdio shim,
+answers the AI Agents section of the FreeCAD Addon Index's Qualities,
+quoted as of FreeCAD/Addon-Academy's merge 0e4b0e1. Two of its rules,
+"Ask before sending anything" and "No default service", need nothing
+built: the bridge selects no AI service and sends nothing to one. Which
+service an agent uses is set in its MCP client.
 
 **Loopback by default, user-toggled, with per-address risk acceptance**
 
@@ -636,19 +637,19 @@ a line in the Report view naming where it listens.
 
 **Authentication on every listener, TLS with a certificate**
 
-The server answers POST alone. A GET or DELETE gets `405`, and any other
-method, such as PUT or HEAD, gets `501`, before any check in this
-section, and none of them runs anything. Every POST on every listener
-must carry `Authorization: Bearer <token>` or is rejected with
-`401 Unauthorized` and `WWW-Authenticate: Bearer`. FreeCAD keeps only a
-SHA-256 hash of the bearer token in `TokenHash` and shows the token
-once. It does not write a token file, and nothing is shared as a file.
-**Generate new token** stores a new hash and shows the new token once.
-**Set token** stores a pasted bearer token the same way, of any length
-when it uses letters, digits and - . _ ~ + /, with = at the end, and
-does not show it back. `RequireToken`, `RequireTls` and
-`RequireOnLoopback` stay unread. A running bridge hashes the request's
-token and reads `TokenHash` again before refusing.
+The server acts on POST alone. A GET or DELETE gets `405`, and any other
+method, such as PUT or HEAD, gets `501`. Both come before any check in
+this section, and run nothing. Every POST on every listener must carry
+`Authorization: Bearer <token>` or is rejected with `401 Unauthorized`
+and `WWW-Authenticate: Bearer`. FreeCAD keeps only a SHA-256 hash of the
+bearer token in `TokenHash` and shows the token once. It does not write
+a token file, and nothing is shared as a file. **Generate new token**
+stores a new hash and shows the new token once. **Set token** stores a
+pasted bearer token the same way, of any length when it uses letters,
+digits and - . _ ~ + /, with = at the end, and does not show it back.
+`RequireToken`, `RequireTls` and `RequireOnLoopback` stay unread. A
+running bridge hashes the request's token and reads `TokenHash` again
+before refusing.
 
 The Claude Desktop extension takes the token only from its Bearer token
 setting, on this machine and for another host. It reads no token file
