@@ -434,9 +434,9 @@ would require reconfiguration each session.
 **+** opens **MCP Bridge: Add to Addresses**, **-** removes the
 selected row, and **Edit** or double-clicking a row opens **MCP Bridge:
 Edit row** filled with that row (**Save** replaces it in place and
-refuses a duplicate or anything **Add** refuses; an **Old entry** row
+refuses anything **Add** refuses; an **Old entry** row
 cannot be edited, only removed). **Add** refuses a row already in the
-list, as **Save** does, with "That row is already in the list." An
+list, with "That row is already in the list." An
 adapter row stores the port and the adapter's name, and at each start
 the bridge listens on that adapter's
 first IPv4 address that isn't 169.254.x.x. A fixed IP address listens on
@@ -661,10 +661,10 @@ is not sent. A refused token says the pasted token was refused.
   certificate tools on the machine (such as `openssl`, including Git for
   Windows' copy on Windows). Where tools are found, it offers a choice
   of tool, key type (`RSA 4096` or `ECDSA P-256`) and **Valid for**, in
-  days (825 to start, 1 to 3650), and calls `cert_tools.generate()`.
+  days (825 by default, 1 to 3650), and calls `cert_tools.generate()`.
   Where none is found, it makes nothing and says where to install
   openssl for the platform. The certificate is self-signed (valid for
-  the chosen days, `CA:FALSE`, `digitalSignature` and
+  the chosen number of days, `CA:FALSE`, `digitalSignature` and
   `keyEncipherment`, `serverAuth`), covers `127.0.0.1`, `localhost`,
   each fixed address and host name in the list, and, for each listed
   adapter that is up when the button is clicked, its first IPv4 address

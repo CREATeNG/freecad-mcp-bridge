@@ -219,14 +219,14 @@ bridge on or off.
   fixed address and host name in **Addresses**, loopback entries
   such as `::1` included, and one IPv4 address for each listed adapter
   that is up when you click it: its first that isn't 169.254.x.x. It
-  lasts the days set in **Valid for** and fills in both fields. OK in
-  Preferences saves them. It uses a certificate tool on this machine:
-  openssl, Git for Windows' openssl, or Windows PowerShell. You choose
-  the tool, **RSA 4096** or **ECDSA P-256**, and **Valid for**, in days,
-  825 to start, from 1 to 3650. Where none is found, it makes nothing
-  and says where to install openssl. It asks before replacing the
-  current certificate, then shows the path, the covered addresses, and
-  the expiry.
+  fills in both fields. OK in Preferences saves them. It uses a
+  certificate tool on this machine: openssl, Git for Windows' openssl,
+  or Windows PowerShell. You choose the tool, the key type
+  (**RSA 4096** or **ECDSA P-256**) and **Valid for**, the number of
+  days the certificate lasts, from 1 to 3650, 825 by default. Where none
+  is found, it makes nothing and says where to install openssl. It asks
+  before replacing the current certificate, then shows the path, the
+  covered addresses, and the expiry.
 - A start fails when the certificate is not yet valid or has
   expired, and a start also fails when either file is not set for
   an entry beyond loopback. A listener whose address is not in
