@@ -437,7 +437,8 @@ Edit row** filled with that row (**Save** replaces it in place and
 refuses a duplicate or anything **Add** refuses; an **Old entry** row
 cannot be edited, only removed). **Add** refuses a row already in the
 list, as **Save** does, with "That row is already in the list." An
-adapter row stores the port and the adapter's name, and at each start the bridge listens on that adapter's
+adapter row stores the port and the adapter's name, and at each start
+the bridge listens on that adapter's
 first IPv4 address that isn't 169.254.x.x. A fixed IP address listens on
 exactly that address. A host name has no port and adds no listener of
 its own: it is accepted on every listener, so a client can connect by
