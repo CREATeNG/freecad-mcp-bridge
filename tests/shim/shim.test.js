@@ -378,6 +378,19 @@ test("with the bridge unreachable, a tool call says to start FreeCAD and turn th
   assert.match(payload.error, /turn the bridge on/i);
 });
 
+test("a tool error result serializes page last, as the bridge's results do", async () => {
+  const reply = await askOffline({
+    jsonrpc: "2.0",
+    id: 4,
+    method: "tools/call",
+    params: { name: "execute_python", arguments: { code: "print(1)" } },
+  });
+  assert.equal(reply.result.isError, true);
+  const text = reply.result.content[0].text;
+  assert.deepEqual(Object.keys(JSON.parse(text)), ["has_more", "error", "page"]);
+  assert.ok(text.startsWith('{"has_more":false,"error":'), text);
+});
+
 test("ping is answered locally with an empty result and is not sent on", async () => {
   const bridge = await startBridge(echo);
   const shim = startShim(bridge.port);

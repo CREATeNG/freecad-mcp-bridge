@@ -312,10 +312,11 @@ function toolErrorResult(errorText) {
     content: [
       {
         type: "text",
+        // page last, as the bridge serializes its results.
         text: JSON.stringify({
-          page: [],
           has_more: false,
           error: errorText,
+          page: [],
         }),
       },
     ],
