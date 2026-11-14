@@ -16,6 +16,11 @@
 - **Fixed: a start with only one of Certificate (PEM) and Private key
   (PEM) set fell back to HTTP.** It now refuses, loopback included, and
   says which field is missing.
+- **Generate self-signed certificate has a Valid for field:** the number
+  of days from now the certificate lasts, from 1 to 3650. The default is
+  365, where every certificate used to get 825. Where the tool allows,
+  the certificate is valid from a day before now, so a client whose
+  clock is a little behind still accepts it.
 - **The list of listen addresses is now titled Addresses,** since it
   also holds host names, which don't listen.
 - **An emptied Addresses list stays empty:** it no longer refills from
