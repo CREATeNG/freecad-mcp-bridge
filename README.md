@@ -2,31 +2,50 @@
 
 # MCP Bridge
 
-**MCP Bridge** gives AI agents access to your open FreeCAD session. It runs a small [MCP](https://modelcontextprotocol.io) server *inside* FreeCAD, with no binaries and no external dependencies, letting an AI agent execute Python in your live session and see the results.
+**MCP Bridge** gives AI agents access to your open FreeCAD session. It
+runs a small [MCP](https://modelcontextprotocol.io) server *inside*
+FreeCAD, with no binaries and no external dependencies, letting an AI
+agent execute Python in your live session and see the results.
 
 The server runs only while you toggle it on, and, by default, only on
 your own machine.
+
+**MCP Bridge** is not a workbench.
+
+**MCP Bridge** adds a control widget in FreeCAD's status-bar which:
+- displays the current permission mode and the server's listening
+  state,
+- click to toggle it On / Off,
+- click mini-menu with options to:
+  - control the permissions mode
+  - open the **MCP Bridge** preferences page
+
+**MCP Bridge** also adds a top-level toolbar with a toggle button to
+switch the server On / Off.
 
 ---
 
 ## Quick start
 
-1. Install **MCP Bridge** from the FreeCAD **Addon Manager** and restart FreeCAD.
-2. In **Edit → Preferences → MCP Bridge**, click **Generate new
-   token**. FreeCAD shows the token once: click **Copy token** and
-   keep it for your MCP client, click **Close**, then click **OK**
-   in Preferences. The bridge does not start until it has a token.
-3. An **MCP Bridge** button is in the toolbar, and the status-bar
-   button shows **MCP Off**. Click either one to start the server. The
-   first start asks you to accept that connected agents can run
-   code with your full permissions. The status-bar button then
-   reads **MCP On**, and FreeCAD shows a notification,
-   `MCP Bridge: Listening on 127.0.0.1:39280` (`39280` is the
-   default port).
+1. Install **MCP Bridge** from the FreeCAD **Addon Manager**.
+   - Restart FreeCAD after installing the addon.
+2. On first use, **Edit → Preferences → MCP Bridge**, click **Generate
+   new token**. FreeCAD shows the token only once: click **Copy
+   token** and keep it for your MCP client, click **Close**, then
+   click **OK** in Preferences.
+   - This is the authorization bearer token that your MCP client
+     needs to use.
+3. Use either the status-bar control widget or the toolbar button to
+   switch **MCP On**.
+   - The first start asks you to accept that the connected agent can
+     run code with your full permissions.
+   - The status-bar button then reads **MCP On**, and FreeCAD shows a
+     notification, `MCP Bridge: Listening on 127.0.0.1:39280`
+     (`39280` is the default port).
 4. Connect your MCP client:
-   - **Claude Desktop:** install the **MCP Bridge for FreeCAD** extension
-     using the steps in [Claude Desktop](#claude-desktop) below.
-     There's no file to edit and no URL to type.
+   - **Claude Desktop:** install the **MCP Bridge for FreeCAD**
+     extension using the steps in [Claude Desktop](#claude-desktop)
+     below.
    - **Other MCP clients (Claude Code and others):** point the client
      at the bridge with:
      - **Transport:** Streamable HTTP
@@ -41,36 +60,42 @@ For HTTPS and the stdio shim, see
 [Other MCP clients](https://github.com/CREATeNG/freecad-mcp-bridge/blob/main/USER_GUIDE.md#other-mcp-clients)
 in the user guide.
 
-The server is off until you toggle it on, each session. Click the button again to stop it.
-
 ## Claude Desktop
 
 1. Download **`freecad-mcp-bridge.mcpb`** from the
    [latest release](https://github.com/CREATeNG/freecad-mcp-bridge/releases/latest).
-2. Open **Settings → Extensions** and install the downloaded bundle.
-   On the Linux beta, either drag it into the pane or choose
-   **Advanced settings → Install extension** to select the file.
-   Accept the installation warning to continue.
-3. In the Extensions list, open **MCP Bridge for FreeCAD**.
-   **FreeCAD host** is `127.0.0.1` by default (`localhost`, `::1`,
-   and `127.x.x.x` count as this machine too), and **port** is
-   `39280` by default. Set them to match the entry you connect to
-   in FreeCAD's **Listen addresses**, and check that the extension
-   is **Enabled**. On the Linux beta, the extension's tools default
-   to **Needs approval**.
-   - **On this machine:** Paste the token from Quick start's step 2
-     into **Bearer token**, and leave **TLS certificate file (PEM)**
-     empty.
-   - **For another host**, or if a tool call says the bridge serves
-     HTTPS and the extension found no `serving-cert.pem`: see
-     [Claude Desktop extension](https://github.com/CREATeNG/freecad-mcp-bridge/blob/main/USER_GUIDE.md#claude-desktop-extension)
-     in the user guide.
+2. Open **Settings → Desktop app → Extensions → Manage** and install
+   the downloaded bundle. Claude Desktop will ask you to accept a
+   warning to continue.
+3. Click **Configure** on the **MCP Bridge for FreeCAD** in the
+   Extensions list. **FreeCAD host** is `127.0.0.1` by default
+   (`localhost`, `::1`, and `127.x.x.x` count as the local machine
+   too), and **port** is `39280` by default. Set them to match the
+   entry you connect to in the MCP Bridge addon **Listen addresses**,
+   and check that the extension is **Enabled**.
+   - The extension's tools default to **Needs approval**.
+   - Paste the authorization bearer token from Quick start's step 2
+     above into **Bearer token**.
+   - **TLS certificate file (PEM) - May be empty only for localhost
+     address when:**
+     - Plain localhost HTTP is served with no certificate file
+       configured in the MCP Bridge, or
+     - An HTTPS certificate file is configured in the MCP Bridge and
+       stored in its default location where the extension can find
+       it.
+   - **TLS certificate file (PEM) - Required when:**
+     - The MCP Bridge is configured to serve HTTPS with a certificate
+       from a file other than its default location `serving-cert.pem`:
+       see
+       [Claude Desktop extension](https://github.com/CREATeNG/freecad-mcp-bridge/blob/main/USER_GUIDE.md#claude-desktop-extension)
+       in the user guide.
 
-Reinstalling the extension clears the **Bearer token** setting,
-so paste the token again. After you paste or change the token,
-quit Claude Desktop fully and start it again: the extension reads
-the token only when it starts. Closing its window can leave Claude
-Desktop running in the tray, so quit it from the tray icon's menu.
+Reinstalling the extension clears the **Bearer token** setting, so
+paste the token again, generating a new one if you no longer have it.
+After you paste or change the token, quit Claude Desktop fully and
+start it again: the extension only reads the token when Claude Desktop
+starts. Note: Claude Desktop might keep running in the system tray
+after closing the window, so quit it from the tray icon's menu.
 
 ---
 
@@ -81,7 +106,8 @@ Once connected, the agent has these tools:
 - **`execute_python(code)`**: run Python in your FreeCAD session.
 - **`execute_python_file(filepath)`**: read a local `.py` file and
   run it.
-- **`get_output_page(job_token, page_no)`**: fetch the next page of a long-running script's output.
+- **`get_output_page(job_token, page_no)`**: fetch the next page of a
+  long-running script's output.
 
 Each run of `execute_python` or `execute_python_file` is one step
 in **Edit → Undo**, named "MCP Bridge: run", across every document
@@ -112,7 +138,8 @@ change a model. For example:
 ## User guide
 
 Other MCP clients, HTTPS and certificates, the tools in full, the
-permission modes, every preference and other ways to install are in the
+permission modes, every preference and other ways to install are in
+the
 [User guide](https://github.com/CREATeNG/freecad-mcp-bridge/blob/main/USER_GUIDE.md).
 
 Developing or maintaining the addon: see
@@ -148,11 +175,11 @@ MCP Bridge is designed for **local** control of FreeCAD.
   listener requires the bearer token. When a certificate and private
   key are set, every listener serves HTTPS, loopback included; without
   them, loopback entries use HTTP and non-loopback entries are
-  refused. The first start asks you to
-  accept that connected agents can run code with your full
-  permissions. Once you accept a non-loopback entry, the bridge
-  listens on it too. Any client that can reach one, with the bearer
-  token, can run Python code in FreeCAD as your user account.
+  refused. The first start asks you to accept that connected agents
+  can run code with your full permissions. Once you accept a
+  non-loopback entry, the bridge listens on it too. Any client that
+  can reach one, with the bearer token, can run Python code in FreeCAD
+  as your user account.
 - Your agent can run code in your live FreeCAD session: macro-level
   access, with no sandbox on the bridge side. That makes your MCP
   client the guardrail. Use a client you trust, and set it to ask
