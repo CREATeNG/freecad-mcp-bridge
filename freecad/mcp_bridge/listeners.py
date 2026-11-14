@@ -222,7 +222,7 @@ def row_note(
         and row.adapter not in ipv4_of
     ):
         return (
-            f"{row.adapter} has no IPv4 address, so the "
+            f"{row.adapter} has no usable IPv4 address, so the "
             "bridge opens no listener on it."
         )
     if row.kind == KIND_LEGACY:
@@ -461,7 +461,7 @@ def start_notes(
         if row.kind == KIND_ADAPTER and row.adapter in adapter_names:
             if row.adapter not in ipv4_of:
                 notes.append(
-                    f"{row.adapter} has no IPv4 address, so the "
+                    f"{row.adapter} has no usable IPv4 address, so the "
                     "bridge opens no listener on it."
                 )
                 continue

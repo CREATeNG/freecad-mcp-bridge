@@ -221,7 +221,7 @@ class ListenListTests(unittest.TestCase):
         note = row_note(row, set(), {"Ethernet 2"}, {})
         self.assertEqual(
             note,
-            "Ethernet 2 has no IPv4 address, so the bridge "
+            "Ethernet 2 has no usable IPv4 address, so the bridge "
             "opens no listener on it.",
         )
         self.assertEqual(bind_entries([row], {}), [])

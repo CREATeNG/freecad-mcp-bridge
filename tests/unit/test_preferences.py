@@ -1595,7 +1595,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
                 "machine, so the bridge opens no listener on it."
             )
             no_ipv4 = (
-                "Wi-Fi has no IPv4 address, so the bridge opens "
+                "Wi-Fi has no usable IPv4 address, so the bridge opens "
                 "no listener on it."
             )
             wild = (
