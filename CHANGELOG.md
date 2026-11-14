@@ -1,3 +1,32 @@
+## 0.1.29
+
+**What's new since 0.1.28**
+
+### The MCP Bridge addon
+
+- **The MCP Bridge Preferences class now registers with a unique name.**
+  It no longer clashes with the Assembly workbench: once Assembly had
+  loaded, **Edit → Preferences → MCP Bridge** showed Assembly's settings
+  instead of the bridge's, so there was no way to set the bearer token.
+  Thanks to @GHswitt for the report, its cause and the fix (#70).
+- **Loads on a FreeCAD without Python's ssl module,** such as the
+  FreeCAD 1.1.4 snap on the stable channel (revision 2904). Loopback
+  listen addresses work there over HTTP, and a start that needs TLS says
+  why it can't. Thanks to @lplaurin (#67, #68).
+- **An emptied Listen addresses list stays empty:** it no longer refills
+  from an older profile's **Port** setting, the first save included.
+
+### Documentation
+
+- **A shorter README:** what the addon is, and a quick start for Claude
+  Desktop and for other MCP clients. The full reference, with HTTPS,
+  every preference and other ways to install, is in the new **User
+  guide**.
+
+The Claude Desktop extension is unchanged.
+
+Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini (Google) and Codex (OpenAI).
+
 ## 0.1.28
 
 **What's new since 0.1.27**
