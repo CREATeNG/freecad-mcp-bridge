@@ -73,22 +73,26 @@ client that keeps only the start can still continue.
 - **`has_more`** — always present. When `true`, at least one
   higher-numbered page exists or will exist for this job, while its
   history remains readable.
-- **`page_no`** — 0-based index of this page in the job's page history; present exactly
-  when the response is a stored page (it carries content, or is the job's final page).
-  Page 0 is the job's first stored page — usually in the response of the initiating
-  call. Empty non-final responses and tool-level `error` responses carry no `page_no`,
-  except the final page of a run that never ran (see `error`).
-- **`job_token`** — present while the job's page history exists, except on a tool-level
-  `error` response other than the final page of a run that never ran (see `error`).
-  Pass it to `get_output_page`. The token names the history for replay and for
-  sub-agents that read the same job.
-- **`error`** — present when the tool cannot return exec output: `execute_python_file`
-  when the bridge cannot read the file (human-readable message), and `get_output_page`
-  with `"unknown or expired job_token"` or `"page_no out of range"`, and the final
-  page of a run that never ran: one declined with **Don't run**, or whose code or
-  file dialog failed (`"The code dialog failed: …"`, `"The file dialog failed: …"`).
-  That page keeps its `page_no` and `job_token`. Python failures inside a running job
-  are not `error` — they appear as `stderr` chunks in `page`.
+- **`page_no`** — 0-based index of this page in the job's page history;
+  present exactly when the response is a stored page (it carries
+  content, or is the job's final page). Page 0 is the job's first stored
+  page — usually in the response of the initiating call. Empty non-final
+  responses and tool-level `error` responses carry no `page_no`, except
+  the final page of a run that never ran (see `error`).
+- **`job_token`** — present while the job's page history exists, except
+  on a tool-level `error` response other than the final page of a run
+  that never ran (see `error`). Pass it to `get_output_page`. The token
+  names the history for replay and for sub-agents that read the same
+  job.
+- **`error`** — present when the tool cannot return exec output:
+  `execute_python_file` when the bridge cannot read the file
+  (human-readable message), and `get_output_page` with
+  `"unknown or expired job_token"` or `"page_no out of range"`, and the
+  final page of a run that never ran: one declined with **Don't run**,
+  or whose code or file dialog failed (`"The code dialog failed: …"`,
+  `"The file dialog failed: …"`). That page keeps its `page_no` and
+  `job_token`. Python failures inside a running job are not `error` —
+  they appear as `stderr` chunks in `page`.
 - **`page`** — an ordered array of `{stream, text}` chunks captured from the running
   job's stdout and stderr. Read the array in order; concatenate `text` values for a flat
   transcript. Empty when the response is a tool-level `error` (no exec output).
@@ -285,13 +289,15 @@ read it and stop (tool-level failure — no job output to collect). If the
 initiating call returns `has_more: false` without `error`, page delivery
 is complete — no polling.
 
-Otherwise, keep `job_token` and apply one rule: call `get_output_page` with `page_no`
-equal to the last `page_no` received plus one — 0 if none has been received yet — until
-`has_more` is `false`. Empty non-final responses carry no `page_no`, so the same request
-naturally repeats; the final page may arrive with an empty `page` array. To retry or
-replay a page, request its `page_no` again. On `get_output_page`, `error` means a dead
-token, an out-of-range `page_no`, or, on the final page, a run that never ran: one
-declined with **Don't run**, or whose code or file dialog failed.
+Otherwise, keep `job_token` and apply one rule: call `get_output_page`
+with `page_no` equal to the last `page_no` received plus one — 0 if none
+has been received yet — until `has_more` is `false`. Empty non-final
+responses carry no `page_no`, so the same request naturally repeats; the
+final page may arrive with an empty `page` array. To retry or replay a
+page, request its `page_no` again. On `get_output_page`, `error` means a
+dead token, an out-of-range `page_no`, or, on the final page, a run that
+never ran: one declined with **Don't run**, or whose code or file dialog
+failed.
 
 **Rejected alternative**
 
@@ -576,8 +582,22 @@ or has no such address is named the same way. If a listener cannot be
 bound, the bound listeners are closed and the bridge stays off. The
 server binds one listener for each address it can open and shares a
 single main-thread execution queue across them. Loopback is bound only
-when it is in the list. The Claude Desktop shim connects to `127.0.0.1`
-on its configured port.
+when it is in the list. The Claude Desktop shim connects to its
+configured host, `127.0.0.1` by default, on its configured port.
+
+When something the bridge needs is missing, turning it on shows the
+set-up dialog, "MCP Bridge: Set up the bridge", and nothing starts. It
+opens "The bridge can't start yet. In Edit → Preferences → MCP Bridge,
+it needs:" and lists only what is missing: a listen address, when the
+list has no adapter, fixed address or `Old entry` row; a bearer token,
+when none is set; a TLS certificate and private key, when the start
+would open a listener beyond loopback and either field is empty, where
+a listed address the start skips doesn't count. It names the button or
+field that supplies each, and has Open Preferences, which opens the MCP
+Bridge page, and Close. It comes before the start warning and the risk
+dialog below. A list whose only rows are `Old entry` rows, or whose
+every row is skipped, starts nothing either, and the status bar says
+why.
 
 The first time the bridge starts at all, loopback included, one modal
 dialog says that connected agents can run Python code in FreeCAD with
@@ -871,7 +891,7 @@ in Edit → Preferences → MCP Bridge. FreeCAD calls its save and load.
 
 | Parameter | Default | Notes |
 |-----------|---------|-------|
-| Listen addresses | `127.0.0.1:39280` | One list. Rows are added, edited in place (except an `Old entry` row, which can only be removed), or removed. An adapter row stores the port and the adapter's name and listens on that adapter's IPv4 address. A fixed IP address is `address:port`, or `[ipv6]:port` for IPv6. A host name has no port and adds no listener of its own: it is accepted on every listener, so a client can connect by name and keep working when the address changes. A saved wildcard opens no listener. With nothing saved, the list shows `127.0.0.1:39280`, using a previously saved `Port` when that differs. An empty saved list stays empty. A fixed address this machine does not have is skipped, and the bridge listens on the rest. The page marks that row, and the start names it in the status bar and in one Report view warning. An adapter that is down or has no IPv4 address, and a wildcard, are named the same way. A missing port or a bind conflict logs an error and leaves the bridge off. The first start asks once (`StartWarningAccepted`), including loopback. Each later new address beyond loopback asks once (`AcceptedListenAddresses`), and a changed port does not ask again. For an adapter row, the warning shows once for each address the adapter hasn't had before. Every later start keeps the warning in the status bar, and a line in the Report view naming where it listens |
+| Listen addresses | `127.0.0.1:39280` | One list. Rows are added, edited in place (except an `Old entry` row, which can only be removed), or removed. An adapter row stores the port and the adapter's name and listens on that adapter's first IPv4 address that isn't 169.254.x.x. A fixed IP address is `address:port`, or `[ipv6]:port` for IPv6. A host name has no port and adds no listener of its own: it is accepted on every listener, so a client can connect by name and keep working when the address changes. A saved wildcard opens no listener. With nothing saved, the list shows `127.0.0.1:39280`, using a previously saved `Port` when that differs. An empty saved list stays empty. A fixed address this machine does not have is skipped, and the bridge listens on the rest. The page marks that row, and the start names it in the status bar and in one Report view warning. An adapter that is down or has no IPv4 address other than 169.254.x.x, and a wildcard, are named the same way. A missing port or a bind conflict logs an error and leaves the bridge off. The first start asks once (`StartWarningAccepted`), including loopback. Each later new address beyond loopback asks once (`AcceptedListenAddresses`), and a changed port does not ask again. For an adapter row, the warning shows once for each address the adapter hasn't had before. Every later start keeps the warning in the status bar, and a line in the Report view naming where it listens |
 | HostNames | `""` | Host name rows, one a line. Each has no port and adds no listener of its own. |
 | ListenAdapters | `""` | One adapter a line: the port, a tab, then the adapter's name. |
 | ListenListSaved | false | Set when the page is saved, so an empty list stays empty. |

@@ -102,7 +102,9 @@ instead of installing the bundle, as
 - **`execute_python_file(filepath)`**: read a local `.py` file
   (absolute path) and run its text in the same context, with
   `__file__` set to the path.
-- **`get_output_page(job_token, page_no)`**: fetch the next page of a long-running script's output. The agent calls it while a response says `has_more: true`, as the tool's description tells it to.
+- **`get_output_page(job_token, page_no)`**: fetch the next page of a
+  long-running script's output. The agent calls it while a response says
+  `has_more: true`, as the tool's description tells it to.
 
 A call to `execute_python` or `execute_python_file` waits up to
 **Max response timeout**, dialog included. A run that finishes in that
@@ -242,17 +244,23 @@ bridge on or off.
 
 ## Other installation methods
 
-Besides the Addon Manager ([Quick start](README.md#quick-start) in the README):
+Besides the Addon Manager ([Quick start](README.md#quick-start) in the
+README):
 
 ### Addon Manager: custom repository
 
-1. FreeCAD → Edit → Preferences → Addon Manager → **Custom repositories** → **+**.
-2. Enter `https://github.com/CREATeNG/freecad-mcp-bridge`, branch `release`. For the latest `main`, use the manual install below.
+1. FreeCAD → Edit → Preferences → Addon Manager →
+   **Custom repositories** → **+**.
+2. Enter `https://github.com/CREATeNG/freecad-mcp-bridge`, branch
+   `release`. For the latest `main`, use the manual install below.
 3. OK, then install from Tools → Addon Manager.
 
 ### Manual (Mod folder)
 
-Copy or clone this repository into your FreeCAD `Mod` folder as `freecad-mcp-bridge`, then restart. The `Mod` folder is under your FreeCAD user-data directory (on FreeCAD 1.1 that's a versioned path, e.g. `…/FreeCAD/v1-1/Mod/`):
+Copy or clone this repository into your FreeCAD `Mod` folder as
+`freecad-mcp-bridge`, then restart. The `Mod` folder is under your
+FreeCAD user-data directory (on FreeCAD 1.1 that's a versioned path,
+e.g. `…/FreeCAD/v1-1/Mod/`):
 
 - **Windows:** `%APPDATA%\FreeCAD\…\Mod\`
 - **macOS:** `~/Library/Application Support/FreeCAD/…/Mod/`

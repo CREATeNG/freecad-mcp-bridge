@@ -519,6 +519,96 @@ class WithoutSslModuleTests(unittest.TestCase):
         self.assertEqual(str(caught.exception), config.NO_TLS_MESSAGE)
 
 
+class CoverageWarningTests(unittest.TestCase):
+    """The certificate-coverage warning goes with a TLS start: both
+    Certificate (PEM) and Private key (PEM) set."""
+
+    def _start(self, key_file):
+        """Turn the bridge on for 127.0.0.1 with a certificate set and
+        key_file as the key, up to bridge.start; return the mock that
+        stood in for listener_coverage_warnings."""
+        import freecad.mcp_bridge as package
+
+        before = dict(vars(package))
+
+        def restore_package():
+            for name in set(vars(package)) - set(before):
+                delattr(package, name)
+            for name, value in before.items():
+                if vars(package).get(name, object()) is not value:
+                    setattr(package, name, value)
+
+        self.addCleanup(restore_package)
+        store = UpgradedProfileStore(
+            {
+                "ListenAddress": "127.0.0.1:39280",
+                "ListenListSaved": True,
+                "StartWarningAccepted": True,
+                "TlsCertFile": "cert.pem",
+                "TlsKeyFile": key_file,
+            }
+        )
+        freecad = types.SimpleNamespace(
+            ParamGet=lambda _group: store,
+            Console=types.SimpleNamespace(PrintWarning=lambda *_: None),
+        )
+        with mock.patch.dict(sys.modules, {"FreeCAD": freecad}):
+            sys.modules.pop("freecad.mcp_bridge.config", None)
+            config = importlib.import_module("freecad.mcp_bridge.config")
+        store.values["TokenHash"] = config.hash_token("ab")
+        init_gui = _fresh_init_gui()
+
+        class Started(Exception):
+            pass
+
+        with (
+            mock.patch.dict(
+                sys.modules,
+                {
+                    "FreeCAD": freecad,
+                    "FreeCADGui": types.SimpleNamespace(),
+                    "freecad.mcp_bridge.config": config,
+                },
+            ),
+            mock.patch.object(package, "config", config),
+            mock.patch.object(
+                init_gui, "_qt_interface_records", return_value=[]
+            ),
+            mock.patch(
+                "freecad.mcp_bridge.pref_pages._machine",
+                return_value={"127.0.0.1"},
+            ),
+            mock.patch.object(
+                init_gui,
+                "_show_setup_dialog",
+                side_effect=AssertionError("set-up dialog shown"),
+            ),
+            mock.patch.object(config, "build_ssl_context"),
+            mock.patch.object(
+                config, "listener_coverage_warnings", return_value=[]
+            ) as coverage,
+            mock.patch.object(
+                init_gui.bridge, "start", side_effect=Started, create=True
+            ),
+        ):
+            with self.assertRaises(Started):
+                init_gui._turn_bridge_on()
+        return coverage
+
+    def test_a_certificate_without_its_key_draws_no_coverage_warning(self):
+        """With Certificate (PEM) set and Private key (PEM) empty, a
+        loopback start serves HTTP, so no listener is checked against the
+        certificate."""
+        self._start(key_file="").assert_not_called()
+
+    def test_a_certificate_and_its_key_check_each_listener(self):
+        """With both set, the start serves HTTPS and checks its listeners
+        against the certificate."""
+        self._start(key_file="key.pem").assert_called_once_with(
+            "cert.pem", ["127.0.0.1:39280"]
+        )
+
+
 def _fresh_init_gui():
     """Import init_gui.py against stand-in FreeCAD and Qt modules."""
     freecad = types.SimpleNamespace(

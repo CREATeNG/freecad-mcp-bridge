@@ -13,7 +13,10 @@ For general guidelines on FreeCAD addon development setup—such as cloning, sym
 
 This is a small addon. Start with `http_server.py` and `executor.py` to see the request lifecycle. For the architecture and its rationale, see [design/addon-hosted-mcp-server.md](design/addon-hosted-mcp-server.md); for a walkthrough of how execution behaves, [design/job-lifecycle.md](design/job-lifecycle.md).
 
-**Repository layout:** [`freecad/mcp_bridge/`](freecad/mcp_bridge/) (the addon), [`mcp-stdio-shim/`](mcp-stdio-shim/) (the Claude Desktop connector source), `package.xml` (Addon Manager metadata). Tagged releases (`v0.1.x`) are complete snapshots; `main` may be ahead.
+**Repository layout:** [`freecad/mcp_bridge/`](freecad/mcp_bridge/)
+(the addon), [`mcp-stdio-shim/`](mcp-stdio-shim/) (the Claude Desktop
+connector source), `package.xml` (Addon Manager metadata). Tagged
+releases (`v0.1.x`) are complete snapshots; `main` may be ahead.
 
 ---
 
@@ -28,8 +31,16 @@ output comes once you choose **Run**.
 Both commands take the port as their first argument. `39280` is the
 default; use your port if it differs.
 
+Both send the bearer token from the `FREECAD_MCP_TOKEN` environment
+variable, the token FreeCAD showed when you clicked **Generate new
+token**. Without it the bridge refuses the request. `send_cmd.py` reads
+no token file. It sends plain HTTP to `127.0.0.1` only, so it reaches a
+loopback listener while **Certificate (PEM)** and **Private key (PEM)**
+aren't both set.
+
 **Run a code string to test the connection:**
 ```bash
+export FREECAD_MCP_TOKEN='<token>'
 python send_cmd.py 39280 "print('Hello from the terminal!')"
 ```
 
@@ -42,7 +53,26 @@ python send_cmd.py 39280 -f path/to/your/script.py
 
 ## 2. Claude Desktop shim (`mcp-stdio-shim/`)
 
-Claude Desktop cannot connect directly to a local HTTP MCP server. The zero-dependency Node shim in `mcp-stdio-shim/` acts as a stdio-to-HTTP relay. It reads JSON-RPC messages from stdin, forwards them to the HTTP server at `http://127.0.0.1:<port>/mcp`, and writes the responses back on stdout.
+Claude Desktop cannot connect directly to a local HTTP MCP server. The
+zero-dependency Node shim in `mcp-stdio-shim/` acts as a
+stdio-to-HTTP/HTTPS relay. It reads JSON-RPC messages from stdin,
+forwards each `tools/call` to the bridge at `<host>:<port>/mcp`, and
+writes the responses back on stdout.
+
+It takes its settings from environment variables:
+
+- `FREECAD_MCP_HOST`: the bridge's host, `127.0.0.1` by default.
+  `localhost` is taken as `127.0.0.1`, and `127.x.x.x` and `::1` count
+  as this machine.
+- `FREECAD_MCP_PORT`: the port, `39280` by default.
+- `FREECAD_MCP_TOKEN`: the bearer token. Every call needs it; the shim
+  reads no token file.
+- `FREECAD_MCP_TLS_CERT_FILE`: a copy of FreeCAD's certificate file,
+  not the private key. When it is set, the shim connects over HTTPS and
+  pins that certificate by its SHA-256 fingerprint, and never uses
+  HTTP. With it empty on this machine, the shim uses HTTPS pinned to
+  `serving-cert.pem` when the bridge has written that file, and HTTP
+  when it hasn't. Another host needs it set.
 
 To run it locally for testing:
 1. Ensure Node.js (>=18) is installed.
@@ -54,7 +84,10 @@ To run it locally for testing:
          "command": "node",
          "args": [
            "<path-to-your-git-clone>/mcp-stdio-shim/index.js"
-         ]
+         ],
+         "env": {
+           "FREECAD_MCP_TOKEN": "<token>"
+         }
        }
      }
    }

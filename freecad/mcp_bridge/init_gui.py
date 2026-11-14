@@ -915,7 +915,7 @@ def _turn_bridge_on():
         return reason, False, True
     if non_loopback or (cert_file.strip() and key_file.strip()):
         config.build_ssl_context(cert_file, key_file, entries)
-    if cert_file.strip():
+    if cert_file.strip() and key_file.strip():
         for line in config.listener_coverage_warnings(cert_file, entries):
             App.Console.PrintWarning(f"{LOG_PREFIX} WARNING: {line}\n")
     pending = _unaccepted(rows, ipv4, machine)
