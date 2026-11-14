@@ -76,19 +76,11 @@ in the user guide.
    - The extension's tools default to **Needs approval**.
    - Paste the authorization bearer token from Quick start's step 2
      above into **Bearer token**.
-   - **TLS certificate file (PEM) - May be empty only for localhost
-     address when:**
-     - Plain localhost HTTP is served with no certificate file
-       configured in the MCP Bridge, or
-     - An HTTPS certificate file is configured in the MCP Bridge and
-       stored in its default location where the extension can find
-       it.
-   - **TLS certificate file (PEM) - Required when:**
-     - The MCP Bridge is configured to serve HTTPS with a certificate
-       from a file other than its default location `serving-cert.pem`:
-       see
-       [Claude Desktop extension](https://github.com/CREATeNG/freecad-mcp-bridge/blob/main/USER_GUIDE.md#claude-desktop-extension)
-       in the user guide.
+   - **TLS certificate file (PEM):** leave it empty on this machine,
+     over HTTP or HTTPS.
+   - **For another host**, it's required: see
+     [Claude Desktop extension](https://github.com/CREATeNG/freecad-mcp-bridge/blob/main/USER_GUIDE.md#claude-desktop-extension)
+     in the user guide.
 
 Reinstalling the extension clears the **Bearer token** setting, so
 paste the token again, generating a new one if you no longer have it.
