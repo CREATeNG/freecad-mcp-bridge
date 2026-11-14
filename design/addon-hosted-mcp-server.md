@@ -595,7 +595,7 @@ would open a listener beyond loopback and either field is empty, where
 a listed address the start skips doesn't count. It names the button or
 field that supplies each, and has Open Preferences, which opens the MCP
 Bridge page, and Close. It comes before the two dialogs the next
-paragraphs describe, the start warning, "MCP Bridge: Start the
+paragraphs describe: the start warning, "MCP Bridge: Start the
 bridge?", and the risk dialog, "MCP Bridge: Listen beyond this
 machine?". A list whose only rows are `Old entry` rows, or whose every
 row is skipped, starts nothing either, and the status bar says why.

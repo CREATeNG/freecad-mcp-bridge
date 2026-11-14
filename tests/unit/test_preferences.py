@@ -609,6 +609,63 @@ class CoverageWarningTests(unittest.TestCase):
         )
 
 
+class NoListenAddressStartTests(unittest.TestCase):
+    NO_ADDRESS = (
+        "No listen address to open. Add one in Edit → Preferences → "
+        "MCP Bridge → Listen addresses."
+    )
+
+    def test_a_start_with_no_listen_address_refuses_before_the_executor(
+        self,
+    ):
+        """Started from code with nothing to listen on, as with a list
+        saved empty, the server refuses with a ValueError saying where to
+        add an address, and makes no Executor."""
+        import freecad.mcp_bridge as package
+
+        before = dict(vars(package))
+
+        def restore_package():
+            for name in set(vars(package)) - set(before):
+                delattr(package, name)
+            for name, value in before.items():
+                if vars(package).get(name, object()) is not value:
+                    setattr(package, name, value)
+
+        self.addCleanup(restore_package)
+        store = UpgradedProfileStore({"ListenListSaved": True})
+        freecad = types.SimpleNamespace(
+            ParamGet=lambda _group: store,
+            Console=types.SimpleNamespace(
+                PrintMessage=lambda *_: None,
+                PrintWarning=lambda *_: None,
+                PrintDeveloperError=lambda *_: None,
+            ),
+        )
+        made = []
+        executor_module = types.SimpleNamespace(
+            Executor=lambda: made.append("Executor")
+        )
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "FreeCAD": freecad,
+                "freecad.mcp_bridge.executor": executor_module,
+            },
+        ):
+            sys.modules.pop("freecad.mcp_bridge.config", None)
+            sys.modules.pop("freecad.mcp_bridge.http_server", None)
+            http_server = importlib.import_module(
+                "freecad.mcp_bridge.http_server"
+            )
+            srv = http_server.HttpServer()
+            with self.assertRaises(ValueError) as caught:
+                srv.start(addresses=[])
+        self.assertEqual(str(caught.exception), self.NO_ADDRESS)
+        self.assertEqual(made, [])
+        self.assertIsNone(srv._executor)
+
+
 def _fresh_init_gui():
     """Import init_gui.py against stand-in FreeCAD and Qt modules."""
     freecad = types.SimpleNamespace(

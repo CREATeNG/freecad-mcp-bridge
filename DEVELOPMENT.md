@@ -35,7 +35,8 @@ Both send the bearer token from the `FREECAD_MCP_TOKEN` environment
 variable, the token FreeCAD showed when you clicked **Generate new
 token**. Without it the bridge refuses the request. `send_cmd.py` reads
 no token file. It sends plain HTTP to `127.0.0.1` only. So it needs a
-`127.0.0.1` row in **Listen addresses**, and it can't connect while
+listener on `127.0.0.1`, from a fixed `127.0.0.1` row or a loopback
+adapter row in **Listen addresses**, and it can't connect while
 **Certificate (PEM)** and **Private key (PEM)** are both set.
 
 **Run a code string to test the connection:**
@@ -78,7 +79,8 @@ It takes its settings from five environment variables:
   bridge has written that file, and HTTP when it hasn't. Another host
   needs it set.
 - `FREECAD_MCP_TOKEN_DIR`: the folder where the shim looks for
-  `serving-cert.pem`, `<home>/.freecad-mcp-bridge` by default.
+  `serving-cert.pem`, `<home>/.freecad-mcp-bridge` by default. Despite
+  its name, no token is read from it.
 
 To run it locally for testing:
 1. Ensure Node.js (>=18) is installed.

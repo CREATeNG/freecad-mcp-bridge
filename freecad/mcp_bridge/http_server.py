@@ -434,6 +434,12 @@ class HttpServer:
         )
         if not entries:
             entries = list(config.listen_addresses())
+        if not entries:
+            # Before the Executor, so a refused start holds nothing.
+            raise ValueError(
+                "No listen address to open. Add one in Edit → Preferences "
+                "→ MCP Bridge → Listen addresses."
+            )
         cert_file = (
             config.tls_cert_file()
             if tls_cert_file is None
