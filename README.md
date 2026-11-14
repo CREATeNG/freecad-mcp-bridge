@@ -30,26 +30,10 @@ your own machine.
    - **Other MCP clients (Claude Code and others):** point the client
      at the bridge with:
      - **Transport:** Streamable HTTP
-     - **URL:** `http://127.0.0.1:<PORT>/mcp`, where `127.0.0.1:<PORT>`
-       is a loopback entry in **Listen addresses** in Preferences
-       (`127.0.0.1:39280`, the default)
+     - **URL:** `http://127.0.0.1:39280/mcp`, from a loopback entry in
+       **Listen addresses**
      - **Header:** `Authorization: Bearer <token>`, with the token
        from step 2
-
-     For example, in Claude Code's `.mcp.json` (with `39280`, the
-     default port):
-
-     ```json
-     {
-       "mcpServers": {
-         "freecad": {
-           "type": "http",
-           "url": "http://127.0.0.1:39280/mcp",
-           "headers": { "Authorization": "Bearer <token>" }
-         }
-       }
-     }
-     ```
 
      That's the whole setup for most clients.
 
