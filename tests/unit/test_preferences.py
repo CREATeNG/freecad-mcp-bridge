@@ -653,7 +653,10 @@ class NoListenAddressStartTests(unittest.TestCase):
                 "freecad.mcp_bridge.executor": executor_module,
             },
         ):
+            # config first: importing it sets the package's attribute, so
+            # http_server takes this one and not one an earlier test left.
             sys.modules.pop("freecad.mcp_bridge.config", None)
+            importlib.import_module("freecad.mcp_bridge.config")
             sys.modules.pop("freecad.mcp_bridge.http_server", None)
             http_server = importlib.import_module(
                 "freecad.mcp_bridge.http_server"
