@@ -15,7 +15,7 @@
       <enum>Qt::RichText</enum>
      </property>
      <property name="text">
-      <string>To start or stop the bridge, click &lt;b&gt;MCP On/Off&lt;/b&gt; in the status bar.</string>
+      <string>To start or stop the bridge, click &lt;b&gt;MCP Off&lt;/b&gt; or &lt;b&gt;MCP On&lt;/b&gt; in the status bar.</string>
      </property>
      <property name="wordWrap">
       <bool>true</bool>

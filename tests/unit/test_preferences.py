@@ -223,8 +223,8 @@ class PreferencePageTests(unittest.TestCase):
         )
         self.assertEqual(
             widgets_by_name["serverHint"]["text"],
-            "To start or stop the bridge, click <b>MCP On/Off</b> "
-            "in the status bar.",
+            "To start or stop the bridge, click <b>MCP Off</b> or "
+            "<b>MCP On</b> in the status bar.",
         )
         self.assertEqual(
             widgets_by_name["certTrustLabel"]["text"],
