@@ -93,16 +93,16 @@ instead of installing the bundle, as
 
 ## Tools
 
-- **`execute_python(code)`** — run Python in your FreeCAD session.
+- **`execute_python(code)`**: run Python in your FreeCAD session.
   `App`/`FreeCAD` and `Gui`/`FreeCADGui` are pre-bound, and
   `__name__` is `"__main__"`, so a script's
   `if __name__ == "__main__":` block runs. Output (stdout, stderr,
   exceptions) is returned to the client and mirrored to FreeCAD's
   **Report view**, so you can watch its output in real time.
-- **`execute_python_file(filepath)`** — read a local `.py` file
+- **`execute_python_file(filepath)`**: read a local `.py` file
   (absolute path) and run its text in the same context, with
   `__file__` set to the path.
-- **`get_output_page(job_token, page_no)`** — fetch the next page of a long-running script's output. The agent calls it while a response says `has_more: true`, as the tool's description tells it to.
+- **`get_output_page(job_token, page_no)`**: fetch the next page of a long-running script's output. The agent calls it while a response says `has_more: true`, as the tool's description tells it to.
 
 A call to `execute_python` or `execute_python_file` waits up to
 **Max response timeout**, dialog included. A run that finishes in that
@@ -151,7 +151,7 @@ bridge on or off.
 
 **Edit → Preferences → MCP Bridge:**
 
-- **Listen addresses** — one list. **+** adds a row, **-** removes the
+- **Listen addresses**: one list. **+** adds a row, **-** removes the
   selected row, the last one included, and **Edit** (or double-clicking
   a row) edits it in place. With nothing saved, the list shows
   `127.0.0.1:39280`. An adapter row listens, at each start, on that
@@ -174,20 +174,20 @@ bridge on or off.
   loopback asks once, and a changed port does not ask again. For an
   adapter row, the warning shows once for each address the adapter
   hasn't had before.
-- **Max response timeout** — how long the bridge waits for a page
+- **Max response timeout**: how long the bridge waits for a page
   (default 15 s). For code or a file an agent sends, that wait
   includes the dialog, counted from the call. Keep it below the
   client's own request limit, about 60 s for Claude Code. The
   preference allows up to 600 s. The agent fetches the rest with
   `get_output_page`.
-- **Max page size** — the most one page may be, as the JSON the agent
+- **Max page size**: the most one page may be, as the JSON the agent
   reads, in units of 1,024 characters (default 32, that is 32,768). A
   newline counts as two characters. Larger output is split into pages
   the agent fetches with `get_output_page`.
-- **Page history retention** — starts when the job finishes running
+- **Page history retention**: starts when the job finishes running
   (default 5 min). Each page your agent reads restarts that interval;
   after a gap that long without a fetch, unread output is gone.
-- **Bearer token** — every listener requires
+- **Bearer token**: every listener requires
   `Authorization: Bearer <token>`. Whenever you click **Generate new
   token**, FreeCAD generates a random token and shows it once. It
   keeps a SHA-256 hash in preferences, not the token. **Set token**
@@ -196,7 +196,7 @@ bridge on or off.
   not show it again. Nothing is written for the extension to read. A
   bridge that is already running reads the hash again before it
   refuses a token that does not match.
-- **Certificate (PEM)** and **Private key (PEM)** — your own certificate
+- **Certificate (PEM)** and **Private key (PEM)**: your own certificate
   and private key files. When both are set, every listener serves HTTPS,
   loopback included, and each start writes a copy of the certificate to
   `<home>/.freecad-mcp-bridge/serving-cert.pem` so the Claude Desktop
@@ -209,7 +209,7 @@ bridge on or off.
   machine needs a copy of the certificate file, not the private
   key. The extension on this machine reads `serving-cert.pem` and
   pins that file's certificate by its SHA-256 fingerprint.
-- **Generate self-signed certificate** — an optional convenience for
+- **Generate self-signed certificate**: an optional convenience for
   when you have no certificate of your own. This button creates
   `tls-cert.pem` and `tls-key.pem` (the key readable by you only) in
   `<home>/.freecad-mcp-bridge`, covering `127.0.0.1`, `localhost`, each
@@ -228,14 +228,14 @@ bridge on or off.
   an entry beyond loopback. A listener whose address is not in
   the certificate draws a Report view warning when the certificate
   names no host, and the start still proceeds.
-- **Permission mode** — **Ask** (the default) shows you an agent's
+- **Permission mode**: **Ask** (the default) shows you an agent's
   code before it runs. **Unrestricted** runs it unseen, with your
   full permissions. [Permission modes](#permission-modes) has
   the rest.
-- **Show** — under **MCP Bridge status bar widget**, shows or hides the
+- **Show**: under **MCP Bridge status bar widget**, shows or hides the
   bridge's On/Off button on FreeCAD's status bar (on by default). The
   **MCP Bridge** toolbar button stays either way.
-- **Position** — where the On/Off button sits among the right-hand
+- **Position**: where the On/Off button sits among the right-hand
   status-bar items: right of FreeCAD's items (default) or left.
 
 ---
@@ -244,7 +244,7 @@ bridge on or off.
 
 Besides the Addon Manager ([Quick start](README.md#quick-start) in the README):
 
-### Addon Manager — custom repository
+### Addon Manager: custom repository
 
 1. FreeCAD → Edit → Preferences → Addon Manager → **Custom repositories** → **+**.
 2. Enter `https://github.com/CREATeNG/freecad-mcp-bridge`, branch `release`. For the latest `main`, use the manual install below.
