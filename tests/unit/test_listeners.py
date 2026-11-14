@@ -801,6 +801,27 @@ class ListenListTests(unittest.TestCase):
             self.assertEqual(changed.host, "192.168.1.50")
             self.assertEqual(changed.port, 4300)
 
+            # 3b. Add refuses a row already in the list, as Edit does,
+            # and stays open; a new row then adds.
+            def add_duplicate_then_new(dlg):
+                self.assertEqual(dlg.title, "MCP Bridge: Add to Addresses")
+                error = dlg.widgets[3]
+                dlg.kind_box.setCurrentIndex(1)
+                dlg.address_box.setText("127.0.0.1")
+                dlg.port_box.setValue(39280)
+                dlg.button_box.accept_button.clicked.emit()
+                self.assertEqual(error.text(), DUPLICATE_ROW_REFUSAL)
+                self.assertFalse(dlg._closed)
+                dlg.port_box.setValue(4400)
+                dlg.button_box.accept_button.clicked.emit()
+                self.assertTrue(dlg._closed)
+
+            on_exec.append(add_duplicate_then_new)
+            added = pref_pages.ask_add(None, choices, "my-pc", rows)
+            self.assertEqual(added.kind, KIND_ADDRESS)
+            self.assertEqual(added.host, "127.0.0.1")
+            self.assertEqual(added.port, 4400)
+
             # 4. An "Old entry" row does not open the dialog at all.
             opened.clear()
             self.assertIsNone(

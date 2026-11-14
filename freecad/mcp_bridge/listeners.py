@@ -293,8 +293,8 @@ def add_refusal(
 ) -> str:
     """Why Add refuses, or '' when the row may be added.
 
-    A row already in the list is not a refusal: adding it changes
-    nothing, and the caller checks that itself.
+    A row already in the list is checked by the caller, with
+    already_listed, and refused with DUPLICATE_ROW_REFUSAL.
     """
     if kind == KIND_NAME:
         name = (value or "").strip()
