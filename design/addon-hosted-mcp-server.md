@@ -1,9 +1,12 @@
 # Addon-Hosted MCP Server
 
-A FreeCAD addon that lets AI agents drive a live FreeCAD session over the
-[Model Context Protocol](https://modelcontextprotocol.io) (MCP). The MCP server provides tools to run jobs
-inside FreeCAD's bundled Python: no binary ships with the
-addon, and there are no user-side dependencies beyond the addon itself.
+A FreeCAD addon that lets AI agents drive a live FreeCAD session over
+the [Model Context Protocol](https://modelcontextprotocol.io) (MCP). The
+MCP server provides tools to run jobs inside FreeCAD's bundled Python:
+no binary ships with the addon, and there are no user-side dependencies
+beyond the addon itself. For the Addon Index's rules "Ask before sending
+anything" and "No default service": the bridge selects no AI service and
+sends nothing to one. The agent's service is set in its MCP client.
 
 ---
 
@@ -38,17 +41,21 @@ The MCP server exposes three tools (schemas in `tools.py`).
   returns a notice and a `job_token`, and `get_output_page`
   collects the output or the decline. Stdout and stderr are
   captured as tagged chunks.
-- **`execute_python_file(filepath)`** — reads a local file
-  (absolute path) once and shows that path and the whole text
-  in the same dialog, with the same timing and the same
-  permission mode. **Run** runs that text, with `__file__` set
-  to the path. **Don't run** is the default and comes back as
-  an error. **Unrestricted!** asks again. Only **Yes** switches
-  the mode to Unrestricted, and the shown text then runs. The
-  dialog counts against **Max response timeout**. If the file
-  cannot be read, the tool returns `has_more: false`, an `error`
-  message, and `page: []` — no job, no page history, and no
-  `job_token`.
+- **`execute_python_file(filepath)`** — reads a local file (absolute
+  path) once and shows that path and the whole text in the same dialog,
+  with the same timing and the same permission mode. **Run** runs that
+  text, with `__file__` set to the path. **Don't run** is the default
+  and comes back as an error. **Unrestricted!** asks again. Only **Yes**
+  switches the mode to Unrestricted, and the shown text then runs. In
+  Unrestricted, the file runs without FreeCAD showing it. That is the
+  setting the Addon Index's rule "Automatic approval is opt-in" allows:
+  "a setting, off by default, that warns in the interface itself (not
+  just in a tooltip or the documentation) that the model's code will run
+  with the user's full permissions". Ask is the default, and switching
+  to Unrestricted shows that warning first. The dialog counts against
+  **Max response timeout**. If the file cannot be read, the tool returns
+  `has_more: false`, an `error` message, and `page: []` — no job, no
+  page history, and no `job_token`.
 - **`get_output_page(job_token, page_no)`** — fetches the requested page from a job's page
   history. Both arguments are required.
 
@@ -623,23 +630,26 @@ a line in the Report view naming where it listens.
 
 **Authentication on every listener, TLS with a certificate**
 
-Every request on every listener must carry
-`Authorization: Bearer <token>` or is rejected with `401 Unauthorized`
-and `WWW-Authenticate: Bearer`. FreeCAD keeps only a SHA-256 hash
-of the bearer token in `TokenHash` and shows the token once. It does
-not write a token file, and nothing is shared as a file. **Generate
-new token** stores a new hash and shows the new token once. **Set
-token** stores a pasted bearer token the same way, of any length
-when it uses letters, digits and - . _ ~ + /, with = at the end,
+Every POST on every listener must carry `Authorization: Bearer <token>`
+or is rejected with `401 Unauthorized` and `WWW-Authenticate: Bearer`. A
+GET or DELETE gets `405` before this check, and runs nothing. FreeCAD
+keeps only a SHA-256 hash of the bearer token in `TokenHash` and shows
+the token once. It does not write a token file, and nothing is shared as
+a file. **Generate new token** stores a new hash and shows the new token
+once. **Set token** stores a pasted bearer token the same way, of any
+length when it uses letters, digits and - . _ ~ + /, with = at the end,
 and does not show it back. `RequireToken`, `RequireTls` and
-`RequireOnLoopback` stay unread. A running bridge hashes the
-request's token and reads `TokenHash` again before refusing.
+`RequireOnLoopback` stay unread. A running bridge hashes the request's
+token and reads `TokenHash` again before refusing.
 
-The Claude Desktop extension takes the token only from its Bearer
-token setting, on this machine and for another host. It reads no
-token file and writes nothing. With no token set, or with a paste
-that is not a bearer token, the tool result says so and the call
-is not sent. A refused token says the pasted token was refused.
+The Claude Desktop extension takes the token only from its Bearer token
+setting, on this machine and for another host. It reads no token file
+and writes nothing. With no token set, or with a paste that is not a
+bearer token, the tool result says so and the call is not sent. A
+refused token says the pasted token was refused. For the Addon Index's
+rule "Credentials go in secure storage", `manifest.json` marks that
+setting `sensitive`, which the MCPB manifest specification defines as
+"mask input and store securely".
 
 - **TLS (`TlsCertFile`, `TlsKeyFile`, `serving-cert.pem`)** — when a
   certificate file (`TlsCertFile`) and private key file (`TlsKeyFile`)
@@ -714,13 +724,13 @@ only after the user has accepted it once.
 
 **Origin and Host — required**
 
-Any request that carries an `Origin` header is refused with `403`. A
-request is also refused when its `Host` header, port aside, names
-neither the address that listener is bound to, nor a name its
-certificate covers, nor a host name in **Addresses**. A missing
-`Host` is refused. A loopback listener accepts the address it is bound
-to, `127.0.0.1`, `localhost` and `[::1]`, but not a name its certificate
-covers.
+Any POST that carries an `Origin` header is refused with `403`. A GET or
+DELETE gets `405` before this check, and runs nothing. A request is also
+refused when its `Host` header, port aside, names neither the address
+that listener is bound to, nor a name its certificate covers, nor a host
+name in **Addresses**. A missing `Host` is refused. A loopback listener
+accepts the address it is bound to, `127.0.0.1`, `localhost` and
+`[::1]`, but not a name its certificate covers.
 
 ---
 
@@ -870,9 +880,12 @@ developer can test directly with `curl`.
 
 **No binary ships with the addon**
 
-No prebuilt machine-code binary is distributed, and nothing is compiled. The only
-non-Python code is the shim's plain, readable `index.js`, whose source ships in the addon
-repo (`mcp-stdio-shim/`).
+No prebuilt machine-code binary is distributed, and nothing is compiled.
+The non-Python code is plain, readable source that ships in the addon
+repo: the shim's `index.js` (`mcp-stdio-shim/`), and
+`freecad/mcp_bridge/Resources/generate_cert.ps1`, the Windows PowerShell
+script that **Generate self-signed certificate** runs when Windows
+PowerShell is the chosen tool.
 
 **`.mcpb` distribution and the Index binary ban**
 
