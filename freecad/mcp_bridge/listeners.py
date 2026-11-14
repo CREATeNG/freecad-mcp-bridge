@@ -630,9 +630,9 @@ def difference_text(
     listen_s = ", ".join(listening) if listening else "no address"
     return (
         f"The bridge is listening on {listen_s}. "
-        f"Turned off and on again, it would listen on {page_s}. "
-        "Click OK, then turn the bridge off and on again, "
-        "to apply the change."
+        f"With these rows it would listen on {page_s}. "
+        "To apply the change, click OK, then turn the bridge off and "
+        "on again."
     )
 
 

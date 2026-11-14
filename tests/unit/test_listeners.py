@@ -262,8 +262,8 @@ class ListenListTests(unittest.TestCase):
         from freecad.mcp_bridge.listeners import difference_text
 
         text = difference_text([], ["127.0.0.1:39280"])
-        self.assertIn("it would listen on no address.", text)
-        self.assertNotIn("it would listen on 127", text)
+        self.assertIn("With these rows it would listen on no address.", text)
+        self.assertNotIn("With these rows it would listen on 127", text)
 
     def test_a_host_name_only_list_would_listen_on_no_address(self):
         """A host-name row opens no listener, so the running line says
@@ -275,9 +275,9 @@ class ListenListTests(unittest.TestCase):
         page = bind_entries(rows, {}, {"127.0.0.1"})
         self.assertEqual(
             difference_text(page, ["127.0.0.1:39280"]),
-            "The bridge is listening on 127.0.0.1:39280. Turned off and "
-            "on again, it would listen on no address. Click OK, then "
-            "turn the bridge off and on again, to apply the change.",
+            "The bridge is listening on 127.0.0.1:39280. With these rows "
+            "it would listen on no address. To apply the change, click "
+            "OK, then turn the bridge off and on again.",
         )
 
     def test_a_skipped_row_is_left_out_of_what_it_would_listen_on(self):
@@ -293,10 +293,10 @@ class ListenListTests(unittest.TestCase):
         page = bind_entries(rows, {}, {"127.0.0.1"})
         self.assertEqual(
             difference_text(page, ["127.0.0.1:39280"]),
-            "The bridge is listening on 127.0.0.1:39280. Turned off and "
-            "on again, it would listen on 127.0.0.1:39280, "
-            "127.0.0.1:39281. Click OK, then turn the bridge off and on "
-            "again, to apply the change.",
+            "The bridge is listening on 127.0.0.1:39280. With these rows "
+            "it would listen on 127.0.0.1:39280, 127.0.0.1:39281. To "
+            "apply the change, click OK, then turn the bridge off and on "
+            "again.",
         )
 
     def test_add_refuses_a_bad_ipv6_address_and_a_spaced_name(self):
