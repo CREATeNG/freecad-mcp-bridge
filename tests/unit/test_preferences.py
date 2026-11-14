@@ -3679,6 +3679,7 @@ class TlsCertificateTests(unittest.TestCase):
 
         from freecad.mcp_bridge import cert_tools
 
+        _restore_package_after(self)
         config, _, _ = fresh_config()
 
         def when(text):
