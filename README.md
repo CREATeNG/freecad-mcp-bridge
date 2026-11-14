@@ -35,11 +35,11 @@ your own machine.
      - **Header:** `Authorization: Bearer <token>`, with the token
        from step 2
 
-     That's the whole setup for most clients.
+That's the whole setup for most clients.
 
-     For HTTPS and the stdio shim, see
-     [Other MCP clients](https://github.com/CREATeNG/freecad-mcp-bridge/blob/main/USER_GUIDE.md#other-mcp-clients)
-     in the user guide.
+For HTTPS and the stdio shim, see
+[Other MCP clients](https://github.com/CREATeNG/freecad-mcp-bridge/blob/main/USER_GUIDE.md#other-mcp-clients)
+in the user guide.
 
 The server is off until you toggle it on, each session. Click the button again to stop it.
 
@@ -66,11 +66,11 @@ The server is off until you toggle it on, each session. Click the button again t
      [Claude Desktop extension](https://github.com/CREATeNG/freecad-mcp-bridge/blob/main/USER_GUIDE.md#claude-desktop-extension)
      in the user guide.
 
-   Reinstalling the extension clears the **Bearer token** setting,
-   so paste the token again. After you paste or change the token,
-   quit Claude Desktop fully and start it again: the extension reads
-   the token only when it starts. Closing its window can leave Claude
-   Desktop running in the tray, so quit it from the tray icon's menu.
+Reinstalling the extension clears the **Bearer token** setting,
+so paste the token again. After you paste or change the token,
+quit Claude Desktop fully and start it again: the extension reads
+the token only when it starts. Closing its window can leave Claude
+Desktop running in the tray, so quit it from the tray icon's menu.
 
 ---
 
@@ -87,12 +87,13 @@ Each run of `execute_python` or `execute_python_file` is one step
 in **Edit → Undo**, named "MCP Bridge: run", across every document
 it changes.
 
-For both `execute_python` and `execute_python_file`: in the **Ask**
-permission mode, the default, FreeCAD shows the code in a dialog
-before it runs, and for a file its path and whole text. The dialog
-has **Unrestricted!**, **Run** and **Don't run**. **Run** runs the
-text shown. **Don't run** is the default, and comes back to the
-agent as an error.
+### Permission mode
+
+**Ask** permission mode is the default. FreeCAD shows you the code
+in a dialog, and it runs only if you allow it.
+
+**Unrestricted** permission mode skips that dialog. Switching to it
+first shows a warning about the risk, which you must accept.
 
 ### Example prompts
 

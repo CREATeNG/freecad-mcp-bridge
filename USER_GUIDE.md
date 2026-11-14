@@ -123,8 +123,12 @@ Opening, closing and saving documents aren't undone.
 
 ## Permission modes
 
-The dialog FreeCAD shows in the **Ask** mode is described in
-[What the AI can do](README.md#what-the-ai-can-do) in the README.
+For both `execute_python` and `execute_python_file`: in the **Ask**
+permission mode, the default, FreeCAD shows the code in a dialog
+before it runs, and for a file its path and whole text. The dialog
+has **Unrestricted!**, **Run** and **Don't run**. **Run** runs the
+text shown. **Don't run** is the default, and comes back to the
+agent as an error.
 
 The dialog's **Unrestricted!** button asks if you are really sure. Only
 **Yes** switches to the **Unrestricted** mode, in which any code an
