@@ -85,12 +85,7 @@ Once connected, the agent has these tools:
 
 Each run of `execute_python` or `execute_python_file` is one step
 in **Edit → Undo**, named "MCP Bridge: run", across every document
-it changes. Code that opens its own transactions makes the run a
-chain of named steps, so an agent's code should leave transactions
-alone. What the code changes after either of two things, in the same
-run, can't be undone: turning a document's undo off, or closing
-FreeCAD's active transaction before the run has changed anything.
-Opening, closing and saving documents aren't undone.
+it changes.
 
 For both `execute_python` and `execute_python_file`: in the **Ask**
 permission mode, the default, FreeCAD shows the code in a dialog
