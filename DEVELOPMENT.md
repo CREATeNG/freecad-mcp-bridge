@@ -4,7 +4,7 @@ Developer tips and guidelines for coding and local testing.
 
 | If you are… | Read |
 |-------------|------|
-| **Installing and using the addon** | [README.md](README.md) |
+| **Installing and using the addon** | [README.md](README.md), then [USER_GUIDE.md](USER_GUIDE.md) |
 | **Cutting releases, versioning, Index** | [MAINTAINING.md](MAINTAINING.md) |
 | **Running tests locally or in CI** | [TESTING.md](TESTING.md) |
 | **Developers** | This document |
@@ -12,6 +12,8 @@ Developer tips and guidelines for coding and local testing.
 For general guidelines on FreeCAD addon development setup—such as cloning, symlinking, or copying files into FreeCAD's versioned `Mod/` directory—please refer to the [FreeCAD Addon Academy](https://freecad.github.io/Addon-Academy/).
 
 This is a small addon. Start with `http_server.py` and `executor.py` to see the request lifecycle. For the architecture and its rationale, see [design/addon-hosted-mcp-server.md](design/addon-hosted-mcp-server.md); for a walkthrough of how execution behaves, [design/job-lifecycle.md](design/job-lifecycle.md).
+
+**Repository layout:** [`freecad/mcp_bridge/`](freecad/mcp_bridge/) (the addon), [`mcp-stdio-shim/`](mcp-stdio-shim/) (the Claude Desktop connector source), `package.xml` (Addon Manager metadata). Tagged releases (`v0.1.x`) are complete snapshots; `main` may be ahead.
 
 ---
 

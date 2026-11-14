@@ -16,8 +16,15 @@ import ipaddress
 import json
 import re
 import secrets
-import ssl
 import time
+
+try:
+    import ssl
+except ImportError:
+    # Some Python builds ship without the _ssl extension module, as
+    # reported for FreeCAD's official snap (#67). Only TLS needs it, so the
+    # addon still loads, and a start that needs TLS says why it can't.
+    ssl = None
 
 import FreeCAD
 
@@ -138,13 +145,19 @@ def parse_listen_addresses(
 
 def migrate_legacy_port() -> str:
     """Migrate a customized legacy `Port` into `ListenAddress` when
-    `ListenAddress` has no entries, and return the default entry."""
+    `ListenAddress` has no entries and the list has never been saved,
+    and return the default entry. A saved list, empty or holding only
+    adapters or host names, stays as saved."""
     params = _params()
     raw = params.GetString("ListenAddress", "")
     legacy_port = params.GetInt("Port", DEFAULT_PORT)
     default_entry = f"{DEFAULT_LISTEN_HOST}:{legacy_port}"
+    saved = getattr(params, "GetBool", lambda *_args: False)(
+        "ListenListSaved", False
+    )
     if (
-        not any(re.split(r"[\s,;]+", (raw or "").strip()))
+        not saved
+        and not any(re.split(r"[\s,;]+", (raw or "").strip()))
         and legacy_port != DEFAULT_PORT
     ):
         if hasattr(params, "RemInt"):
@@ -202,10 +215,12 @@ def save_listen_rows(rows) -> None:
     )
 
     params = _params()
+    # First, so an observer that runs on the writes below already
+    # finds the list saved and migrates no legacy Port into it.
+    params.SetBool("ListenListSaved", True)
     params.SetString("ListenAddress", dump_addresses(rows))
     params.SetString("ListenAdapters", dump_adapters(rows))
     params.SetString("HostNames", dump_names(rows))
-    params.SetBool("ListenListSaved", True)
 
 
 def accepted_listen_addresses() -> list[str]:
@@ -594,18 +609,35 @@ def certificate_covers_host(
     return False
 
 
+NO_TLS_MESSAGE = (
+    "TLS isn't available: this FreeCAD's Python has no ssl module, so a "
+    "start that needs TLS can't happen here. Loopback listen addresses "
+    "still work over HTTP, as long as Certificate (PEM) and Private key "
+    "(PEM) aren't both set. Listen addresses and both fields are in Edit → "
+    "Preferences → MCP Bridge."
+)
+
+
+def tls_available() -> bool:
+    """Whether this Python has the ssl module that TLS needs."""
+    return ssl is not None
+
+
 def build_ssl_context(
     cert_file: str,
     key_file: str,
     addresses: list[str] | None = None,
-) -> ssl.SSLContext:
+) -> "ssl.SSLContext":
     """Build a server SSLContext from `cert_file` and `key_file`.
 
     `cert_file` must be valid now: not before `notBefore`, and not
     past `notAfter`. A listener whose address the certificate does
     not cover is not a reason to refuse. `addresses` is accepted
-    for older callers and is not checked.
+    for older callers and is not checked. Without the ssl module it
+    refuses with NO_TLS_MESSAGE.
     """
+    if ssl is None:
+        raise ValueError(NO_TLS_MESSAGE)
     cert = (cert_file or "").strip()
     key = (key_file or "").strip()
     if not cert or not key:

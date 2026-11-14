@@ -252,7 +252,7 @@ Addon Manager installs from the repository URL with `branch=main`. Used by the *
 
 ### `branch`
 
-Addon Manager installs from the repository URL with `branch` set to a named branch, as a user's custom repository does. The branch is the workflow's `branch` input (`install_branch` under `workflow_call`), or, when that is empty, the branch the run is on, so a branch can be installed and verified before anything from it is merged into `main`. With `branch` set to `release`, this is the README's custom-repository route. The branch must be pushed: Addon Manager fetches it from the repository, not from the run's checkout. `RELEASE_INSTALL_TAG` names the version the branch's `package.xml` is expected to hold.
+Addon Manager installs from the repository URL with `branch` set to a named branch, as a user's custom repository does. The branch is the workflow's `branch` input (`install_branch` under `workflow_call`), or, when that is empty, the branch the run is on, so a branch can be installed and verified before anything from it is merged into `main`. With `branch` set to `release`, this is the user guide's [custom-repository route](USER_GUIDE.md#addon-manager-custom-repository). The branch must be pushed: Addon Manager fetches it from the repository, not from the run's checkout. `RELEASE_INSTALL_TAG` names the version the branch's `package.xml` is expected to hold.
 
 ### `index`
 

@@ -76,14 +76,19 @@ client that keeps only the start can still continue.
 - **`page_no`** — 0-based index of this page in the job's page history; present exactly
   when the response is a stored page (it carries content, or is the job's final page).
   Page 0 is the job's first stored page — usually in the response of the initiating
-  call. Empty non-final responses and tool-level `error` responses carry no `page_no`.
-- **`job_token`** — present while the job's page history exists, except on an `error`
-  response. Pass it to `get_output_page`. The token names the history for replay and for sub-agents
-  that read the same job.
+  call. Empty non-final responses and tool-level `error` responses carry no `page_no`,
+  except the final page of a run that never ran (see `error`).
+- **`job_token`** — present while the job's page history exists, except on a tool-level
+  `error` response other than the final page of a run that never ran (see `error`).
+  Pass it to `get_output_page`. The token names the history for replay and for
+  sub-agents that read the same job.
 - **`error`** — present when the tool cannot return exec output: `execute_python_file`
   when the bridge cannot read the file (human-readable message), and `get_output_page`
-  with `"unknown or expired job_token"` or `"page_no out of range"`. Python failures
-  inside a running job are not `error` — they appear as `stderr` chunks in `page`.
+  with `"unknown or expired job_token"` or `"page_no out of range"`, and the final
+  page of a run that never ran: one declined with **Don't run**, or whose code or
+  file dialog failed (`"The code dialog failed: …"`, `"The file dialog failed: …"`).
+  That page keeps its `page_no` and `job_token`. Python failures inside a running job
+  are not `error` — they appear as `stderr` chunks in `page`.
 - **`page`** — an ordered array of `{stream, text}` chunks captured from the running
   job's stdout and stderr. Read the array in order; concatenate `text` values for a flat
   transcript. Empty when the response is a tool-level `error` (no exec output).
@@ -284,8 +289,9 @@ Otherwise, keep `job_token` and apply one rule: call `get_output_page` with `pag
 equal to the last `page_no` received plus one — 0 if none has been received yet — until
 `has_more` is `false`. Empty non-final responses carry no `page_no`, so the same request
 naturally repeats; the final page may arrive with an empty `page` array. To retry or
-replay a page, request its `page_no` again. `error` is never how a job finishes: on
-`get_output_page` it means a dead token or an out-of-range `page_no`.
+replay a page, request its `page_no` again. On `get_output_page`, `error` means a dead
+token, an out-of-range `page_no`, or, on the final page, a run that never ran: one
+declined with **Don't run**, or whose code or file dialog failed.
 
 **Rejected alternative**
 
@@ -419,25 +425,25 @@ is no silent port increment. A dynamic port is rejected: an HTTP
 client configures the endpoint URL directly, and a changing port
 would require reconfiguration each session.
 
-**+** opens **MCP Bridge: Add to Listen addresses**, **-**
-removes the selected row, and **Edit** or double-clicking a row
-opens **MCP Bridge: Edit row** filled with that row (**Save**
-replaces it in place and refuses a duplicate or anything **Add**
-refuses; an **Old entry** row cannot be edited, only removed).
-An adapter row stores the port and the adapter's name, and at
-each start the bridge listens on that adapter's IPv4 address. A
-fixed IP address listens on exactly that address. A host name
-has no port and adds no listener of its own: it is accepted on
-every listener, so a client can connect by name and keep working
-when the address changes, and **Generate self-signed
-certificate** covers it. An empty saved
-list stays empty. A fixed address this machine does not have
-is skipped. The page marks that row, and the start names it in
-the status bar and in one Report view warning, then listens on
-the rest. An adapter that is down or has no IPv4 address, and a
-wildcard, are named the same way. A port another program has
-taken fails the whole start, and the reason is shown. While
-the bridge is on, the page compares its rows, an empty list
+**+** opens **MCP Bridge: Add to Listen addresses**, **-** removes the
+selected row, and **Edit** or double-clicking a row opens **MCP Bridge:
+Edit row** filled with that row (**Save** replaces it in place and
+refuses a duplicate or anything **Add** refuses; an **Old entry** row
+cannot be edited, only removed). An adapter row stores the port and the
+adapter's name, and at each start the bridge listens on that adapter's
+first IPv4 address that isn't 169.254.x.x. A fixed IP address listens on
+exactly that address. A host name has no port and adds no listener of
+its own: it is accepted on every listener, so a client can connect by
+name and keep working when the address changes, and **Generate
+self-signed certificate** covers it. The Host check reads the saved host
+names on every request, so a saved host name is accepted at once, while
+address and adapter rows take effect at the next start. An empty saved
+list stays empty. A fixed address this machine does not have is skipped.
+The page marks that row, and the start names it in the status bar and in
+one Report view warning, then listens on the rest. An adapter that is
+down or has no such address, and a wildcard, are named the same way. A
+port another program has taken fails the whole start, and the reason is
+shown. While the bridge is on, the page compares its rows, an empty list
 included, with what the bridge is listening on.
 
 **Session management**
@@ -555,24 +561,23 @@ state. If the capability belongs anywhere, it is upstream
 By default, the server binds to `127.0.0.1:39280` only. It starts only
 when the user activates the toggle, and stops when they deactivate it.
 
-In Preferences, **Listen addresses** is one list. With nothing
-saved it shows `127.0.0.1:39280`. Rows are added, edited in
-place, or removed. An adapter row listens on that adapter's IPv4
-address. A fixed IP address listens on exactly that address. A
-host name has no port and adds no listener of its own: it is
-accepted on every listener, so a client can connect by name and
-keep working when the address changes. A saved wildcard opens no
-listener. A fixed address this machine
-does not have is skipped, and the bridge listens on the rest.
-The page marks that row, and the start names it in the status
-bar and in one Report view warning. An adapter that is down or
-has no IPv4 address is named the same way. If a listener
-cannot be bound, the bound listeners are closed and the bridge
-stays off. The server binds one listener for each address it
-can open and shares a single main-thread execution queue across
-them. Loopback is
-bound only when it is in the list. The Claude Desktop shim
-connects to `127.0.0.1` on its configured port.
+In Preferences, **Listen addresses** is one list. With nothing saved it
+shows `127.0.0.1:39280`. Rows are added, edited in place, or removed. An
+adapter row listens on that adapter's first IPv4 address that isn't
+169.254.x.x. A fixed IP address listens on exactly that address. A host
+name has no port and adds no listener of its own: it is accepted on
+every listener, so a client can connect by name and keep working when
+the address changes. It is accepted as soon as it is saved, while other
+rows wait for the next start. A saved wildcard opens no listener. A
+fixed address this machine does not have is skipped, and the bridge
+listens on the rest. The page marks that row, and the start names it in
+the status bar and in one Report view warning. An adapter that is down
+or has no such address is named the same way. If a listener cannot be
+bound, the bound listeners are closed and the bridge stays off. The
+server binds one listener for each address it can open and shares a
+single main-thread execution queue across them. Loopback is bound only
+when it is in the list. The Claude Desktop shim connects to `127.0.0.1`
+on its configured port.
 
 The first time the bridge starts at all, loopback included, one modal
 dialog says that connected agents can run Python code in FreeCAD with
@@ -618,41 +623,50 @@ is not sent. A refused token says the pasted token was refused.
   are set, every listener serves HTTPS, loopback included, using
   Python's standard-library `ssl` module, and each start writes a
   user-only copy of the certificate to `serving-cert.pem` in the
-  bridge's folder. When they are not set, loopback listeners serve HTTP,
-  each start removes `serving-cert.pem`, and a start with an entry
-  beyond loopback fails. In the TLS certificate group the page
-  states that an MCP client must trust this certificate.
-  **Certificate (PEM)** and **Private key (PEM)** sit side by side,
-  with **Generate self-signed certificate**. That button calls
-  `cert_tools.find_tools()` to find certificate tools on the machine
-  (such as `openssl`, including Git for Windows' copy on Windows).
-  Where tools are found, it offers a choice of tool and key type
-  (`RSA 4096` or `ECDSA P-256`) and calls `cert_tools.generate()`.
-  Where none is found, it makes nothing and says where to install
-  openssl for the platform. The certificate is
+  bridge's folder. If that write fails, the bridge still listens and
+  warns in the Report view that the Claude Desktop extension on this
+  machine may not connect. When they are not set, loopback listeners
+  serve HTTP, each start removes `serving-cert.pem`, and a start with an
+  entry beyond loopback fails. In the TLS certificate group the page
+  states that an MCP client must trust this certificate. The user sets
+  their own certificate and private key in **Certificate (PEM)** and
+  **Private key (PEM)**. Beside them, **Generate self-signed
+  certificate** is an optional convenience for a user who has no
+  certificate. That button calls `cert_tools.find_tools()` to find
+  certificate tools on the machine (such as `openssl`, including Git for
+  Windows' copy on Windows). Where tools are found, it offers a choice
+  of tool and key type (`RSA 4096` or `ECDSA P-256`) and calls
+  `cert_tools.generate()`. Where none is found, it makes nothing and
+  says where to install openssl for the platform. The certificate is
   self-signed (825-day validity, `CA:FALSE`, `digitalSignature` and
   `keyEncipherment`, `serverAuth`), covers `127.0.0.1`, `localhost`,
-  every listed address, and each host name, writes `tls-cert.pem` and
-  `tls-key.pem` (`tls-key.pem` readable by the user only) in
+  each fixed address and host name in the list, and, for each listed
+  adapter that is up when the button is clicked, its first IPv4 address
+  that isn't 169.254.x.x, writes `tls-cert.pem` and `tls-key.pem`
+  (`tls-key.pem` readable by the user only) in
   `<home>/.freecad-mcp-bridge` (or `FREECAD_MCP_TOKEN_DIR`), fills in
   the `TlsCertFile` and `TlsKeyFile` fields (asking first when either
   field is already set or either file already exists), and shows the
-  certificate file path, covered addresses, and expiry date. If an
-  entry beyond loopback is configured without readable, valid
-  certificate and key files, if a configured certificate is not yet
-  valid or has expired, startup fails with an error naming the
-  problem and directing the user to select or generate the files
-  in Edit → Preferences → MCP Bridge, and the bridge stays off.
-  A listener whose address is not in the certificate draws a
-  Report view warning when the certificate names no host, and the
-  start still proceeds.
+  certificate file path, covered addresses, and expiry date. If an entry
+  beyond loopback is configured without readable, valid certificate and
+  key files, if a configured certificate is not yet valid or has
+  expired, startup fails with an error naming the problem and directing
+  the user to select or generate the files in Edit → Preferences → MCP
+  Bridge, and the bridge stays off. A listener whose address is not in
+  the certificate draws a Report view warning when the certificate names
+  no host, and the start still proceeds. On a FreeCAD whose Python has
+  no `ssl` module, as reported for FreeCAD's snap (#67), the addon still
+  loads: a start that needs TLS, for an address beyond loopback or with
+  both certificate fields set, stops before the set-up dialog with a
+  message saying the `ssl` module is missing, and loopback listeners
+  still start over HTTP.
 
 **Security posture — noted trade-offs**
 
 FreeCAD's Python has no library that creates a certificate, so
 **Generate self-signed certificate** needs a certificate tool on the
-machine. Where none is found, the user installs one or enters their
-own certificate files.
+machine. Where none is found, the user enters their own certificate
+files, or installs one.
 
 Rejected: an addon generator of its own, in pure Python. Keys and
 certificates are made by a maintained tool, not by the addon's code.
@@ -673,13 +687,13 @@ only after the user has accepted it once.
 
 **Origin and Host — required**
 
-Any request that carries an `Origin` header is refused with `403`.
-A request is also refused when its `Host` header, port aside, names
+Any request that carries an `Origin` header is refused with `403`. A
+request is also refused when its `Host` header, port aside, names
 neither the address that listener is bound to, nor a name its
-certificate covers, nor a name in **Host names**. A missing `Host`
-is refused.
-A loopback listener accepts the address it is bound to, `127.0.0.1`,
-`localhost` and `[::1]`, but not a name its certificate covers.
+certificate covers, nor a host name in **Listen addresses**. A missing
+`Host` is refused. A loopback listener accepts the address it is bound
+to, `127.0.0.1`, `localhost` and `[::1]`, but not a name its certificate
+covers.
 
 ---
 
@@ -862,7 +876,7 @@ in Edit → Preferences → MCP Bridge. FreeCAD calls its save and load.
 | ListenAdapters | `""` | One adapter a line: the port, a tab, then the adapter's name. |
 | ListenListSaved | false | Set when the page is saved, so an empty list stays empty. |
 | Bearer token hash | Preferences `TokenHash` | Every listener requires `Authorization: Bearer <token>`; FreeCAD stores only the SHA-256 hash, shows a generated token once, and reads the hash again before refusing a mismatch |
-| Certificate (PEM) / Private key (PEM) | `""` | When both `TlsCertFile` and `TlsKeyFile` are set, every listener serves HTTPS. Without them, loopback is HTTP and a start beyond loopback fails. **Generate self-signed certificate** writes `tls-cert.pem` and `tls-key.pem` in `<home>/.freecad-mcp-bridge` and fills both fields |
+| Certificate (PEM) / Private key (PEM) | `""` | When both `TlsCertFile` and `TlsKeyFile` are set, every listener serves HTTPS. Without them, loopback is HTTP and a start beyond loopback fails. The optional **Generate self-signed certificate**, for a user with no certificate, writes `tls-cert.pem` and `tls-key.pem` in `<home>/.freecad-mcp-bridge` and fills both fields |
 | Permission mode | `0` (Ask) | `PermissionMode`, `0` for Ask and `1` for Unrestricted: in Ask, FreeCAD shows an agent's code, and a file's path with it, before it runs; in Unrestricted the code runs unseen; switched in Preferences or from the On/Off button's menu, with a confirmation to go Unrestricted; each switch writes it at once, and the Preferences box has no preference entry of its own, so FreeCAD's own OK writes nothing for it |
 | Max response timeout (s) | 15 | Max wait for the first answer of `execute_python` and `execute_python_file`, dialog included, and for each later page, before returning with `has_more: true` |
 | Max page size (K characters) | 32 | Character length of the JSON tool result for one page, measured with `has_more` false. A saved value is kept. |

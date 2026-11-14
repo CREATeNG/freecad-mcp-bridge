@@ -344,7 +344,7 @@ class ListenListTests(unittest.TestCase):
         with mock.patch.object(
             pref_pages, "load_form", return_value=Form()
         ):
-            first = pref_pages.PreferencesPage()
+            first = pref_pages.MCPBridgePreferencesPage()
             first._show_mode = lambda: None
             first.loadSettings()
             self.assertEqual(first.rows[0].host, "127.0.0.1")
@@ -369,13 +369,13 @@ class ListenListTests(unittest.TestCase):
             self.assertEqual(first.rows[0].port, 4500)
             first.remove_listen()
             self.assertEqual(len(first.rows), 1)
-            second = pref_pages.PreferencesPage()
+            second = pref_pages.MCPBridgePreferencesPage()
             second._show_mode = lambda: None
             second.loadSettings()
             self.assertEqual(second.rows[0].host, "127.0.0.1")
             second.rows = [adapter_row("Ethernet 2", 4000)]
             second.saveSettings()
-            third = pref_pages.PreferencesPage()
+            third = pref_pages.MCPBridgePreferencesPage()
             third._show_mode = lambda: None
             third.loadSettings()
         self.assertEqual(third.rows[0].adapter, "Ethernet 2")
@@ -787,7 +787,7 @@ class ListenListTests(unittest.TestCase):
             with mock.patch.object(
                 pref_pages, "load_form", return_value=Form()
             ):
-                page = pref_pages.PreferencesPage()
+                page = pref_pages.MCPBridgePreferencesPage()
                 page._show_mode = lambda: None
                 page._choices = lambda: choices
                 page._own_name = lambda: "my-pc"
@@ -816,7 +816,7 @@ class ListenListTests(unittest.TestCase):
                 )
                 page.edit_listen(False)
                 self.assertEqual(page.rows[0].port, 4900)
-                reopened = pref_pages.PreferencesPage()
+                reopened = pref_pages.MCPBridgePreferencesPage()
                 reopened._show_mode = lambda: None
                 reopened.loadSettings()
                 self.assertEqual(reopened.rows[0].port, 39280)

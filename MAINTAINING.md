@@ -2,7 +2,7 @@
 
 Instructions for **maintainers of this repository** who cut releases and manage versioning.
 
-Developers should read **[DEVELOPMENT.md](DEVELOPMENT.md)**. End users should read **[README.md](README.md)**.
+Developers should read **[DEVELOPMENT.md](DEVELOPMENT.md)**. End users should read **[README.md](README.md)**, then **[USER_GUIDE.md](USER_GUIDE.md)**.
 
 For install-verify CI details (scripts, logs, triggers), see **[TESTING.md](TESTING.md)**.
 
@@ -193,24 +193,37 @@ from anything attached to the release page.
    - Merge the pull request into `main` only after each look
      that applies to it is done, and the check that applies to
      it and the pull request's checks have passed.
-2. Once every change for the release is on `main`, on a branch
+2. Before the version bump, a reader who didn't build the work checks
+   `main` against the design each change was approved against, and
+   against the rules that design answers, such as the FreeCAD Addon
+   Index Qualities. The reader lists each difference, and each behaviour
+   that no design sentence covers. The agent holding the coordinator
+   seat on the agent hub collates the list for the maintainer. Where
+   none does, you collate it. A fix that only brings code or docs into
+   line with what was approved goes ahead, and is reported to the
+   maintainer with the list. Everything else comes to the maintainer at
+   once, as one list ranked by what the release needs, each item on its
+   own line with a lean. The version bump waits until the maintainer has
+   answered every item, and each fix those answers call for is on
+   `main`.
+3. Once every change for the release is on `main`, on a branch
    run [`scripts/bump-package-z.sh`](scripts/bump-package-z.sh),
    or edit the version files and `CHANGELOG.md` to the version
    you intend to ship. The version files are `package.xml`,
    `mcp-stdio-shim/manifest.json`, and
    `mcp-stdio-shim/package.json`. The script starts the new
    changelog section with a placeholder.
-3. Replace that placeholder with the release notes, then open
+4. Replace that placeholder with the release notes, then open
    a pull request into `main` that changes only the version
    files and `CHANGELOG.md`, and nothing else. It runs every
    test a pull request runs.
-4. Merge the version pull request only after you have read the
+5. Merge the version pull request only after you have read the
    release notes, the Claude Desktop check has passed without a
    flag (see The Claude Desktop check routine, below), and the
    version pull request's checks have passed. `release.yml`
    tags that commit, verifies it, and moves `release`. It does
    not push to `main`.
-5. If that run fails after the merge, GitHub → **Actions** →
+6. If that run fails after the merge, GitHub → **Actions** →
    **Release Orchestrator** → **Run workflow**, on `main`.
    That retries the current `main`. Index users get the
    release once the FreeCAD Addon Index cache refreshes,
@@ -218,7 +231,7 @@ from anything attached to the release page.
 
 **The Claude Desktop check routine.** For a pull request that the check
 covers (a change pull request that step 1's second sub-step names, or
-the version pull request of step 3), the agent holding the
+the version pull request of step 4), the agent holding the
 `freecad-desktop-checker` seat on the agent hub runs the check as a
 routine when the pull request opens and again on every push from the
 GitHub account the routine watches, and comments the result on the pull
@@ -226,7 +239,7 @@ request. On a change pull request (step 1), the routine takes the
 `.mcpb` that the pull request's checks packed, installs it in Claude
 Desktop, and installs the pull request's addon in FreeCAD. The routine
 then runs a hello call (`print('hello')` in FreeCAD) through both
-together. A version pull request (step 3) gets a lighter check: the
+together. A version pull request (step 4) gets a lighter check: the
 routine installs the `.mcpb`, runs the hello call, and flags anything in
 the pull request beyond the version files and `CHANGELOG.md`. In both,
 the routine leaves the permission mode at Ask and chooses **Run** in

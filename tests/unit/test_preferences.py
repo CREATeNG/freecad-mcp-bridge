@@ -310,6 +310,215 @@ class UnsetPreferenceTests(unittest.TestCase):
         )
 
 
+class UpgradedProfileStore(EmptyParams):
+    """A parameter store as 0.1.27 left it: a customized Port and a
+    saved ListenAddress."""
+
+    def __init__(self, values):
+        super().__init__()
+        self.values = dict(values)
+
+    def GetInt(self, name, default):
+        self.read.add(name)
+        return self.values.get(name, default)
+
+    def RemInt(self, name):
+        self.values.pop(name, None)
+
+
+class SavedListenListTests(unittest.TestCase):
+    def _upgraded_config(self):
+        config, params, _groups = fresh_config()
+        store = UpgradedProfileStore(
+            {"Port": 40111, "ListenAddress": "127.0.0.1:40222"}
+        )
+        return config, store
+
+    def test_a_list_saved_empty_stays_empty_on_an_upgraded_profile(self):
+        """On a profile upgraded from 0.1.27 with Port and ListenAddress
+        set, a list saved empty reads back empty, and the old Port does
+        not come back as a listener."""
+        config, store = self._upgraded_config()
+        with mock.patch.object(config, "_params", return_value=store):
+            config.save_listen_rows([])
+            self.assertEqual(config.saved_listen_rows(), [])
+            self.assertEqual(config.listen_addresses(), [])
+            config.migrate_legacy_port()
+        self.assertEqual(store.values["ListenAddress"], "")
+        self.assertIs(store.values["ListenListSaved"], True)
+
+    def test_a_list_saved_with_only_an_adapter_gains_no_fixed_address(self):
+        """On a profile upgraded from 0.1.27 with Port set, a list saved
+        with only an adapter row reads back with only that row."""
+        from freecad.mcp_bridge.listeners import KIND_ADAPTER, ListenRow
+
+        config, store = self._upgraded_config()
+        adapter = ListenRow(KIND_ADAPTER, port=39280, adapter="Wi-Fi")
+        with mock.patch.object(config, "_params", return_value=store):
+            config.save_listen_rows([adapter])
+            rows = config.saved_listen_rows()
+            self.assertEqual(config.listen_addresses(), [])
+        self.assertEqual([row.kind for row in rows], [KIND_ADAPTER])
+        self.assertEqual(store.values["ListenAddress"], "")
+
+    def test_a_first_save_stays_as_saved_while_freecad_notifies_observers(
+        self,
+    ):
+        """On a profile upgraded from 0.1.27, the first save of the list,
+        empty, adapter-only or names-only, stays as saved while FreeCAD
+        calls the bridge's preference observer on each write, as it
+        does, inline."""
+        from freecad.mcp_bridge.listeners import (
+            KIND_ADAPTER,
+            KIND_NAME,
+            ListenRow,
+        )
+
+        import freecad.mcp_bridge as package
+
+        class NotifyingStore(UpgradedProfileStore):
+            def __init__(self, values):
+                super().__init__(values)
+                self.observers = []
+
+            def _notify(self, name):
+                for observer in list(self.observers):
+                    observer.onChange(self, name)
+
+            def SetString(self, name, value):
+                super().SetString(name, value)
+                self._notify(name)
+
+            def SetBool(self, name, value):
+                super().SetBool(name, value)
+                self._notify(name)
+
+        cases = {
+            "empty": [],
+            "adapter-only": [
+                ListenRow(KIND_ADAPTER, port=39280, adapter="Wi-Fi")
+            ],
+            "names-only": [ListenRow(KIND_NAME, host="cad.example")],
+        }
+        for label, rows in cases.items():
+            with self.subTest(label):
+                config, _ = self._upgraded_config()
+                store = NotifyingStore(
+                    {"Port": 40111, "ListenAddress": "127.0.0.1:40222"}
+                )
+                init_gui = _fresh_init_gui()
+                store.observers.append(init_gui._StatusBarPrefObserver())
+                with (
+                    mock.patch.dict(
+                        sys.modules, {"freecad.mcp_bridge.config": config}
+                    ),
+                    mock.patch.object(package, "config", config),
+                    mock.patch.object(config, "_params", return_value=store),
+                ):
+                    config.save_listen_rows(rows)
+                    self.assertEqual(config.listen_addresses(), [])
+                self.assertEqual(store.values["ListenAddress"], "")
+
+    def test_an_unsaved_upgraded_list_still_takes_the_old_port(self):
+        """On a profile upgraded from 0.1.27 whose list has never been
+        saved and holds no address, the old Port becomes the one entry,
+        as before."""
+        config, store = self._upgraded_config()
+        store.values["ListenAddress"] = ""
+        with mock.patch.object(config, "_params", return_value=store):
+            self.assertEqual(
+                config.listen_addresses(), ["127.0.0.1:40111"]
+            )
+        self.assertEqual(store.values["ListenAddress"], "127.0.0.1:40111")
+
+
+class WithoutSslModuleTests(unittest.TestCase):
+    """The addon on a Python without the ssl module, as reported for
+    FreeCAD's official snap. Reported, with the approach used here, by
+    lplaurin in #67 and #68."""
+
+    def _config_without_ssl(self, store):
+        import freecad.mcp_bridge as package
+
+        freecad = types.SimpleNamespace(
+            ParamGet=lambda _group: store,
+            Console=types.SimpleNamespace(PrintWarning=lambda *_: None),
+        )
+        with mock.patch.dict(sys.modules, {"FreeCAD": freecad, "ssl": None}):
+            sys.modules.pop("freecad.mcp_bridge.config", None)
+            config = importlib.import_module("freecad.mcp_bridge.config")
+        # The import left the ssl-less module on the package; put back
+        # what was there, so later tests get the real one.
+        original = sys.modules.get("freecad.mcp_bridge.config")
+        if original is not None:
+            self.addCleanup(setattr, package, "config", original)
+        return config, package
+
+    def test_the_addon_loads_without_ssl_and_a_tls_start_says_why(self):
+        """config loads with no ssl module, the Preferences page's
+        certificate reads find nothing, and building a TLS context
+        refuses with the message that names the missing ssl module."""
+        store = UpgradedProfileStore({})
+        config, _ = self._config_without_ssl(store)
+        self.assertIsNone(config.ssl)
+        self.assertIs(config.tls_available(), False)
+        self.assertIsNone(config.certificate_expiry_date("cert.pem"))
+        self.assertEqual(config.certificate_hosts("cert.pem"), set())
+        with self.assertRaises(ValueError) as caught:
+            config.build_ssl_context("cert.pem", "key.pem")
+        self.assertEqual(str(caught.exception), config.NO_TLS_MESSAGE)
+        self.assertIn("has no ssl module", config.NO_TLS_MESSAGE)
+        self.assertIn(
+            "a start that needs TLS can't happen here", config.NO_TLS_MESSAGE
+        )
+        self.assertIn("aren't both set", config.NO_TLS_MESSAGE)
+        self.assertIn("Edit → Preferences → MCP Bridge", config.NO_TLS_MESSAGE)
+
+    def test_turning_the_bridge_on_with_a_certificate_says_why_not(self):
+        """With a certificate set and no ssl module, turning the bridge
+        on stops with that message, before any set-up dialog."""
+        store = UpgradedProfileStore(
+            {
+                "ListenAddress": "127.0.0.1:39280",
+                "ListenListSaved": True,
+                "TlsCertFile": "cert.pem",
+                "TlsKeyFile": "key.pem",
+            }
+        )
+        config, package = self._config_without_ssl(store)
+        init_gui = _fresh_init_gui()
+        freecad = types.SimpleNamespace(
+            ParamGet=lambda _group: store,
+            Console=types.SimpleNamespace(PrintWarning=lambda *_: None),
+        )
+        with (
+            mock.patch.dict(
+                sys.modules,
+                {
+                    "FreeCAD": freecad,
+                    "FreeCADGui": types.SimpleNamespace(),
+                    "freecad.mcp_bridge.config": config,
+                },
+            ),
+            mock.patch.object(package, "config", config),
+            mock.patch.object(
+                init_gui, "_qt_interface_records", return_value=[]
+            ),
+            mock.patch(
+                "freecad.mcp_bridge.pref_pages._machine",
+                return_value={"127.0.0.1"},
+            ),
+            mock.patch.object(
+                init_gui,
+                "_show_setup_dialog",
+                side_effect=AssertionError("set-up dialog shown"),
+            ),
+        ):
+            with self.assertRaises(ValueError) as caught:
+                init_gui._turn_bridge_on()
+        self.assertEqual(str(caught.exception), config.NO_TLS_MESSAGE)
+
+
 def _fresh_init_gui():
     """Import init_gui.py against stand-in FreeCAD and Qt modules."""
     freecad = types.SimpleNamespace(
@@ -337,6 +546,57 @@ def _fresh_init_gui():
         module = importlib.import_module("freecad.mcp_bridge.init_gui")
         sys.modules.pop("freecad.mcp_bridge.init_gui", None)
     return module
+
+
+class PreferencePageRegistrationTests(unittest.TestCase):
+    def test_the_registered_page_class_has_a_name_only_we_use(self):
+        """FreeCAD keeps a Python preference page class by its __name__, so
+        a name another module also registers, such as Assembly's
+        PreferencesPage, takes over the MCP Bridge page (#70)."""
+        registered = []
+        freecad = types.SimpleNamespace(
+            Console=types.SimpleNamespace(PrintWarning=lambda *_: None)
+        )
+        gui = types.SimpleNamespace(
+            addIconPath=lambda *_: None,
+            listCommands=lambda: [],
+            addCommand=lambda *_: None,
+            addPreferencePage=lambda cls, group: registered.append(
+                (cls, group)
+            ),
+            addWorkbenchManipulator=lambda *_: None,
+        )
+        qtcore = types.SimpleNamespace(
+            QTimer=types.SimpleNamespace(singleShot=lambda *_: None)
+        )
+        stubs = {
+            "FreeCAD": freecad,
+            "FreeCADGui": gui,
+            "PySide": types.SimpleNamespace(QtCore=qtcore),
+            "PySide.QtCore": qtcore,
+            "freecad.mcp_bridge.bridge": types.SimpleNamespace(),
+        }
+        # patch.dict puts sys.modules back, but an import also sets each
+        # new submodule as an attribute of the package. Put those back too,
+        # so a later import doesn't get this test's stand-in-backed module.
+        package = sys.modules["freecad.mcp_bridge"]
+        before = dict(vars(package))
+        try:
+            with mock.patch.dict(sys.modules, stubs):
+                sys.modules.pop("freecad.mcp_bridge.init_gui", None)
+                importlib.import_module("freecad.mcp_bridge.init_gui")
+                sys.modules.pop("freecad.mcp_bridge.init_gui", None)
+        finally:
+            for name in set(vars(package)) - set(before):
+                delattr(package, name)
+            for name, value in before.items():
+                if vars(package).get(name, object()) is not value:
+                    setattr(package, name, value)
+
+        self.assertEqual(len(registered), 1)
+        page_class, group = registered[0]
+        self.assertEqual(page_class.__name__, "MCPBridgePreferencesPage")
+        self.assertEqual(group, DISPLAY_NAME)
 
 
 def _hex_to_rgb(hex_color):
