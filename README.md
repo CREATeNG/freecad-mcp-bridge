@@ -71,7 +71,7 @@ in the user guide.
    Extensions list. **FreeCAD host** is `127.0.0.1` by default
    (`localhost`, `::1`, and `127.x.x.x` count as the local machine
    too), and **port** is `39280` by default. Set them to match the
-   entry you connect to in the MCP Bridge addon **Addresses**,
+   entry you connect to in the MCP Bridge addon's **Addresses** list,
    and check that the extension is **Enabled**.
    - The extension's tools default to **Needs approval**.
    - Paste the authorization bearer token from Quick start's step 2

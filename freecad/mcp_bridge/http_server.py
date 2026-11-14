@@ -463,8 +463,8 @@ class HttpServer:
             ]
         except ValueError as exc:
             FreeCAD.Console.PrintDeveloperError(
-                f"{LOG_PREFIX} {exc} Change Addresses in Edit → "
-                "Preferences → MCP Bridge.\n"
+                f"{LOG_PREFIX} {exc} Change it in Edit → "
+                "Preferences → MCP Bridge → Addresses.\n"
             )
             raise
         non_loopback = [
@@ -519,8 +519,8 @@ class HttpServer:
             self._listen_entries = []
             FreeCAD.Console.PrintDeveloperError(
                 f"{LOG_PREFIX} Could not bind {failed_entry} ({exc}). "
-                "Change Addresses in Edit → Preferences → "
-                "MCP Bridge.\n"
+                "Change it in Edit → Preferences → "
+                "MCP Bridge → Addresses.\n"
             )
             raise
 

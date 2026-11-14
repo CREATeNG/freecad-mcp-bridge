@@ -418,7 +418,7 @@ Tool-call results and paging are otherwise identical on both
 transports: each waits up to the configured timeout for the first
 page, then polls via `get_output_page` if needed.
 
-**Addresses and ports**
+**Listen addresses and ports**
 
 **Addresses** is one list in FreeCAD preferences. With
 nothing saved, the list shows one fixed row, `127.0.0.1:39280`.

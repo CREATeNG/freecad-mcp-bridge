@@ -343,8 +343,8 @@ def _setup_dialog_text(
         )
     if need_tls:
         lines.append(
-            "• A TLS certificate and private key, for the addresses "
-            "beyond loopback in Addresses. Enter your own "
+            "• A TLS certificate and private key, for the rows "
+            "beyond loopback in the Addresses list. Enter your own "
             "certificate files, or click Generate self-signed "
             "certificate."
         )
@@ -1068,8 +1068,8 @@ class MCPBridgeCommand:
             warning = status
             if bad_listen:
                 warning += (
-                    ". Change Addresses in Edit → "
-                    "Preferences → MCP Bridge."
+                    ". Change it in Edit → "
+                    "Preferences → MCP Bridge → Addresses."
                 )
             App.Console.PrintWarning(warning + "\n")
 
