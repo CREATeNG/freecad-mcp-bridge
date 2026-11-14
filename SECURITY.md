@@ -35,8 +35,10 @@ bridge's certificate by its SHA-256 fingerprint against **TLS
 certificate file (PEM)** when that setting is set, or against
 `serving-cert.pem` on this machine when it is empty, and sends no
 request bytes (the bearer token included) until they match. With that
-setting set, the extension never uses HTTP. When they are not set,
-loopback entries use HTTP, and a start with a non-loopback entry fails.
+setting set, the extension never uses HTTP. With neither
+**Certificate (PEM)** nor **Private key (PEM)** set, loopback entries
+use HTTP, and a start with a non-loopback entry fails. With only one
+set, the bridge doesn't start, loopback included.
 If you have no certificate, the optional **Generate self-signed
 certificate** creates `tls-cert.pem` and `tls-key.pem` in
 `<home>/.freecad-mcp-bridge/`, with `tls-key.pem` readable by you only,

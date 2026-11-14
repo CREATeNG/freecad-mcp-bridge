@@ -165,9 +165,10 @@ MCP Bridge is designed for **local** control of FreeCAD.
   can reach the open loopback port, not only your MCP client. The
   bridge listens on every entry in **Listen addresses**. Every
   listener requires the bearer token. When a certificate and private
-  key are set, every listener serves HTTPS, loopback included; without
-  them, loopback entries use HTTP and non-loopback entries are
-  refused. The first start asks you to accept that connected agents
+  key are set, every listener serves HTTPS, loopback included. With
+  neither set, loopback entries use HTTP and non-loopback entries are
+  refused. With only one set, the bridge doesn't start, loopback
+  included. The first start asks you to accept that connected agents
   can run code with your full permissions. Once you accept a
   non-loopback entry, the bridge listens on it too. Any client that
   can reach one, with the bearer token, can run Python code in FreeCAD
