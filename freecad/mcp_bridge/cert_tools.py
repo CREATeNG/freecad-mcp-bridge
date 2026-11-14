@@ -21,11 +21,15 @@ import tempfile
 from pathlib import Path
 
 from freecad.mcp_bridge import token_file
+from freecad.mcp_bridge.constants import (
+    CERT_VALID_DAYS_DEFAULT,
+    CERT_VALID_DAYS_MAX,
+    CERT_VALID_DAYS_MIN,
+)
 
 KEY_RSA = "rsa-4096"
 KEY_ECDSA = "ecdsa-p256"
 _KEY_TYPES = (KEY_RSA, KEY_ECDSA)
-_VALIDITY_DAYS = "825"
 
 _GIT_OPENSSL = (
     Path(r"C:\Program Files\Git\usr\bin\openssl.exe"),
@@ -73,13 +77,24 @@ def generate(
     hosts: list[str],
     cert_path: str,
     key_path: str,
+    days: int = CERT_VALID_DAYS_DEFAULT,
 ) -> None:
     """Write a self-signed pair for ``hosts`` with ``tool``.
 
     Names become dNSName entries and addresses become iPAddress
-    entries. The certificate lasts 825 days and cannot sign other
-    certificates. The key file is readable by the user only.
+    entries. The certificate is valid for ``days`` days from now,
+    1 to 3650, and cannot sign other certificates. The key file is
+    readable by the user only.
     """
+    if (
+        isinstance(days, bool)
+        or not isinstance(days, int)
+        or not CERT_VALID_DAYS_MIN <= days <= CERT_VALID_DAYS_MAX
+    ):
+        raise CertToolError(
+            f"Valid for must be {CERT_VALID_DAYS_MIN} to "
+            f"{CERT_VALID_DAYS_MAX} days."
+        )
     if key_type not in _KEY_TYPES:
         raise CertToolError(
             f"Unknown key type {key_type}. Use rsa-4096 or ecdsa-p256."
@@ -95,7 +110,9 @@ def generate(
     key_tmp = _temporary_output(key)
     try:
         token_file._user_only(key_tmp, is_dir=False)
-        _generate_with(tool, key_type, cleaned, cert_tmp, key_tmp)
+        _generate_with(
+            tool, key_type, cleaned, cert_tmp, key_tmp, days
+        )
         token_file._replace_file(cert_tmp, cert)
         token_file._replace_file(key_tmp, key)
     except Exception:
@@ -125,22 +142,25 @@ def _generate_with(
     hosts: list[str],
     cert: Path,
     key: Path,
+    days: int = CERT_VALID_DAYS_DEFAULT,
 ) -> None:
     if tool == "openssl":
         binary = shutil.which("openssl")
         if not binary:
             raise CertToolError("openssl is not on PATH.")
-        _openssl_generate(binary, key_type, hosts, cert, key)
+        _openssl_generate(binary, key_type, hosts, cert, key, days)
     elif tool == "git-openssl":
         binary = _git_openssl()
         if binary is None:
             raise CertToolError("Git for Windows openssl was not found.")
-        _openssl_generate(str(binary), key_type, hosts, cert, key)
+        _openssl_generate(
+            str(binary), key_type, hosts, cert, key, days
+        )
     elif tool == "powershell":
         exe = _powershell_exe()
         if exe is None:
             raise CertToolError("Windows PowerShell was not found.")
-        _powershell_generate(exe, key_type, hosts, cert, key)
+        _powershell_generate(exe, key_type, hosts, cert, key, days)
     else:
         raise CertToolError(f"Unknown certificate tool {tool}.")
 
@@ -261,6 +281,7 @@ def _openssl_generate(
     hosts: list[str],
     cert: Path,
     key: Path,
+    days: int = CERT_VALID_DAYS_DEFAULT,
 ) -> None:
     with tempfile.TemporaryDirectory() as folder:
         config = Path(folder) / "cert.cnf"
@@ -291,7 +312,7 @@ def _openssl_generate(
                 "-out",
                 str(cert),
                 "-days",
-                _VALIDITY_DAYS,
+                str(days),
                 "-config",
                 str(config),
             ]
@@ -308,7 +329,7 @@ def _openssl_generate(
                 "-out",
                 str(cert),
                 "-days",
-                _VALIDITY_DAYS,
+                str(days),
                 "-config",
                 str(config),
             ]
@@ -321,6 +342,7 @@ def _powershell_generate(
     hosts: list[str],
     cert: Path,
     key: Path,
+    days: int = CERT_VALID_DAYS_DEFAULT,
 ) -> None:
     kind = "RSA" if key_type == KEY_RSA else "ECDSA"
     _run(
@@ -339,5 +361,7 @@ def _powershell_generate(
             str(cert),
             "-KeyPath",
             str(key),
+            "-ValidDays",
+            str(days),
         ]
     )

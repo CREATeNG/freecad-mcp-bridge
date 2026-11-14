@@ -34,6 +34,10 @@ DEFAULT_STATUS_BUTTON_POSITION = STATUS_BUTTON_RIGHT
 PERMISSION_MODE_ASK = 0
 PERMISSION_MODE_UNRESTRICTED = 1
 DEFAULT_PERMISSION_MODE = PERMISSION_MODE_ASK
+# Generate self-signed certificate: the Valid for field, in days.
+CERT_VALID_DAYS_DEFAULT = 825
+CERT_VALID_DAYS_MIN = 1
+CERT_VALID_DAYS_MAX = 3650
 
 # FreeCAD preference group backing config.py
 PREF_GROUP = "User parameter:BaseApp/Preferences/Mod/freecad-mcp-bridge"

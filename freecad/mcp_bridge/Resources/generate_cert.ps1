@@ -11,7 +11,10 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$CertPath,
     [Parameter(Mandatory = $true)]
-    [string]$KeyPath
+    [string]$KeyPath,
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(1, 3650)]
+    [int]$ValidDays
 )
 
 $ErrorActionPreference = "Stop"
@@ -117,8 +120,11 @@ try {
     )
     $request.CertificateExtensions.Add($eku)
 
-    $start = [DateTimeOffset]::UtcNow.AddDays(-1)
-    $end = $start.AddDays(825)
+    # A day early, against clock skew. The end is $ValidDays from
+    # now, as openssl's -days is.
+    $now = [DateTimeOffset]::UtcNow
+    $start = $now.AddDays(-1)
+    $end = $now.AddDays($ValidDays)
     $cert = $request.CreateSelfSigned($start, $end)
 
     $pkcs8 = $cng.Export(

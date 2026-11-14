@@ -206,5 +206,113 @@ class RunWindowTests(unittest.TestCase):
         )
 
 
+class ValidDaysTests(unittest.TestCase):
+    """Generate self-signed certificate's Valid for: 825 days unless
+    chosen, 1 to 3650, reaching each tool's command."""
+
+    def _commands(self, tool, key_type, **kwargs):
+        """Run generate with `_run` caught; return the commands it ran."""
+        commands = []
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            with (
+                mock.patch(
+                    "freecad.mcp_bridge.cert_tools.shutil.which",
+                    return_value="openssl",
+                ),
+                mock.patch.object(
+                    cert_tools,
+                    "_powershell_exe",
+                    return_value=Path("powershell.exe"),
+                ),
+                mock.patch.object(
+                    cert_tools, "_run", side_effect=commands.append
+                ),
+            ):
+                cert_tools.generate(
+                    tool,
+                    key_type,
+                    ["127.0.0.1"],
+                    str(root / "cert.pem"),
+                    str(root / "key.pem"),
+                    **kwargs,
+                )
+        return commands
+
+    def test_the_default_is_825_days(self):
+        """Without a choice, the certificate is valid for 825 days."""
+        from freecad.mcp_bridge.constants import (
+            CERT_VALID_DAYS_DEFAULT,
+            CERT_VALID_DAYS_MAX,
+            CERT_VALID_DAYS_MIN,
+        )
+
+        self.assertEqual(CERT_VALID_DAYS_DEFAULT, 825)
+        self.assertEqual((CERT_VALID_DAYS_MIN, CERT_VALID_DAYS_MAX), (1, 3650))
+        command = self._commands("openssl", cert_tools.KEY_RSA)[-1]
+        self.assertEqual(command[command.index("-days") + 1], "825")
+
+    def test_openssl_gets_the_chosen_days(self):
+        """openssl's -days is the chosen number, for both key types."""
+        for key_type in (cert_tools.KEY_RSA, cert_tools.KEY_ECDSA):
+            with self.subTest(key_type=key_type):
+                command = self._commands("openssl", key_type, days=30)[-1]
+                self.assertEqual(command[command.index("-days") + 1], "30")
+
+    def test_powershell_gets_the_chosen_days(self):
+        """The PowerShell script is given the chosen number as -ValidDays."""
+        command = self._commands(
+            "powershell", cert_tools.KEY_ECDSA, days=3650
+        )[-1]
+        self.assertEqual(command[command.index("-ValidDays") + 1], "3650")
+
+    def test_days_outside_1_to_3650_are_refused_before_any_tool_runs(self):
+        """0, 3651 and a value that isn't a whole number are refused, and
+        no tool runs; 1 and 3650 are taken."""
+        for days in (0, 3651, -5, True, "30", 30.0):
+            with self.subTest(days=days):
+                with self.assertRaises(cert_tools.CertToolError) as caught:
+                    self._commands("openssl", cert_tools.KEY_RSA, days=days)
+                self.assertEqual(
+                    str(caught.exception), "Valid for must be 1 to 3650 days."
+                )
+        for days in (1, 3650):
+            with self.subTest(days=days):
+                command = self._commands(
+                    "openssl", cert_tools.KEY_RSA, days=days
+                )[-1]
+                self.assertEqual(
+                    command[command.index("-days") + 1], str(days)
+                )
+
+    def test_each_tool_here_makes_a_certificate_valid_for_the_days(self):
+        """Each tool on this machine makes a certificate that expires the
+        chosen number of days from now."""
+        import datetime
+
+        tools = cert_tools.find_tools()
+        if not tools:
+            self.skipTest("no certificate tool on this machine")
+        today = datetime.datetime.now(datetime.timezone.utc).date()
+        for tool in tools:
+            with self.subTest(tool=tool["id"]):
+                with tempfile.TemporaryDirectory() as folder:
+                    cert = Path(folder) / "cert.pem"
+                    cert_tools.generate(
+                        tool["id"],
+                        cert_tools.KEY_ECDSA,
+                        ["127.0.0.1"],
+                        str(cert),
+                        str(Path(folder) / "key.pem"),
+                        days=30,
+                    )
+                    decoded = ssl._ssl._test_decode_cert(str(cert))
+                expiry = datetime.datetime.fromtimestamp(
+                    ssl.cert_time_to_seconds(decoded["notAfter"]),
+                    datetime.timezone.utc,
+                ).date()
+                self.assertIn((expiry - today).days, (30, 31))
+
+
 if __name__ == "__main__":
     unittest.main()

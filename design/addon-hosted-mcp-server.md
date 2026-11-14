@@ -660,10 +660,11 @@ is not sent. A refused token says the pasted token was refused.
   certificate. That button calls `cert_tools.find_tools()` to find
   certificate tools on the machine (such as `openssl`, including Git for
   Windows' copy on Windows). Where tools are found, it offers a choice
-  of tool and key type (`RSA 4096` or `ECDSA P-256`) and calls
-  `cert_tools.generate()`. Where none is found, it makes nothing and
-  says where to install openssl for the platform. The certificate is
-  self-signed (825-day validity, `CA:FALSE`, `digitalSignature` and
+  of tool, key type (`RSA 4096` or `ECDSA P-256`) and **Valid for**, in
+  days (825 to start, 1 to 3650), and calls `cert_tools.generate()`.
+  Where none is found, it makes nothing and says where to install
+  openssl for the platform. The certificate is self-signed (valid for
+  the chosen days from now, `CA:FALSE`, `digitalSignature` and
   `keyEncipherment`, `serverAuth`), covers `127.0.0.1`, `localhost`,
   each fixed address and host name in the list, and, for each listed
   adapter that is up when the button is clicked, its first IPv4 address

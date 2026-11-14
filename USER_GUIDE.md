@@ -219,11 +219,12 @@ bridge on or off.
   fixed address and host name in **Addresses**, loopback entries
   such as `::1` included, and one IPv4 address for each listed adapter
   that is up when you click it: its first that isn't 169.254.x.x. It
-  lasts 825 days and fills in both fields. OK in Preferences saves them.
-  It uses a certificate tool on this machine: openssl, Git for Windows'
-  openssl, or Windows PowerShell. You choose the tool and **RSA 4096**
-  or **ECDSA P-256**. Where none is found, it makes nothing and says
-  where to install openssl. It asks before replacing the current
+  lasts the days set in **Valid for** and fills in both fields. OK in
+  Preferences saves them. It uses a certificate tool on this machine:
+  openssl, Git for Windows' openssl, or Windows PowerShell. You choose
+  the tool, **RSA 4096** or **ECDSA P-256**, and **Valid for**, in days,
+  825 to start, from 1 to 3650. Where none is found, it makes nothing
+  and says where to install openssl. It asks before replacing the current
   certificate, then shows the path, the covered addresses, and the
   expiry.
 - A start fails when the certificate is not yet valid or has

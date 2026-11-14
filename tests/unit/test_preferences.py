@@ -646,6 +646,131 @@ class TlsFieldsStartTests(unittest.TestCase):
         coverage.assert_called_once_with("cert.pem", ["127.0.0.1:39280"])
 
 
+class CertificateValidForTests(unittest.TestCase):
+    def test_the_dialog_offers_valid_for_825_days_from_1_to_3650(self):
+        """Generate self-signed certificate's dialog has a Valid for field
+        in days, 825 to start, 1 to 3650, and returns what is chosen."""
+        _restore_package_after(self)
+        init_gui = _fresh_init_gui()
+        made = {}
+
+        class Widget:
+            def __init__(self, *args, **_kwargs):
+                self.args = args
+
+            def setObjectName(self, name):
+                made[name] = self
+
+            def setWordWrap(self, *_args):
+                pass
+
+            def setParent(self, *_args):
+                pass
+
+            def deleteLater(self):
+                pass
+
+        class Signal:
+            def connect(self, _slot):
+                pass
+
+        class Dialog(Widget):
+            Accepted = 1
+
+            def setWindowTitle(self, _title):
+                pass
+
+            def accept(self):
+                pass
+
+            def reject(self):
+                pass
+
+            def exec(self):
+                days_box = made["certValidDaysSpinBox"]
+                self.seen = (days_box.range, days_box.value(), days_box.suffix)
+                days_box.setValue(90)
+                return Dialog.Accepted
+
+        class ComboBox(Widget):
+            def addItem(self, _text):
+                pass
+
+            def currentIndex(self):
+                return 0
+
+            def currentText(self):
+                return "ECDSA P-256"
+
+        class SpinBox(Widget):
+            def setRange(self, low, high):
+                self.range = (low, high)
+
+            def setValue(self, value):
+                self._value = value
+
+            def value(self):
+                return self._value
+
+            def setSuffix(self, suffix):
+                self.suffix = suffix
+
+        class Layout(Widget):
+            def addWidget(self, *_args):
+                pass
+
+            def addLayout(self, *_args):
+                pass
+
+            def addRow(self, *_args):
+                pass
+
+        class ButtonBox(Widget):
+            Ok = 1
+            Cancel = 2
+
+            def __init__(self, *args):
+                super().__init__(*args)
+                self.accepted = Signal()
+                self.rejected = Signal()
+
+        dialogs = []
+
+        def make_dialog(*args):
+            dialog = Dialog(*args)
+            dialogs.append(dialog)
+            return dialog
+
+        make_dialog.Accepted = Dialog.Accepted
+        make_dialog.setWindowTitle = Dialog.setWindowTitle
+        widgets = types.SimpleNamespace(
+            QComboBox=ComboBox,
+            QDialog=make_dialog,
+            QDialogButtonBox=ButtonBox,
+            QFormLayout=Layout,
+            QLabel=Widget,
+            QSpinBox=SpinBox,
+            QVBoxLayout=Layout,
+            QWidget=Widget,
+        )
+        gui = types.SimpleNamespace(getMainWindow=lambda: None)
+        with mock.patch.dict(
+            sys.modules,
+            {
+                "FreeCADGui": gui,
+                "PySide": types.SimpleNamespace(QtWidgets=widgets),
+                "PySide.QtWidgets": widgets,
+            },
+        ):
+            chosen = init_gui._choose_cert_tool_and_key_type(
+                [{"id": "openssl", "label": "openssl"}]
+            )
+        self.assertEqual(dialogs[0].seen, ((1, 3650), 825, " days"))
+        self.assertEqual(
+            chosen, ({"id": "openssl", "label": "openssl"}, "ECDSA P-256", 90)
+        )
+
+
 class HttpServerRefusalTests(unittest.TestCase):
     """HttpServer.start refuses before anything starts: no Executor is
     made and nothing is bound."""
@@ -3917,7 +4042,9 @@ class TlsCertificateTests(unittest.TestCase):
             lambda parent=None: replace_answers.pop(0)
         )
 
-        def write_pair(tool, key_type, hosts, cert_path, key_path):
+        def write_pair(
+            tool, key_type, hosts, cert_path, key_path, days=825
+        ):
             generated_hosts.append(list(hosts))
             Path(cert_path).write_text(self.cert_pem, encoding="utf-8")
             Path(key_path).write_text(self.key_pem, encoding="utf-8")
@@ -3927,7 +4054,7 @@ class TlsCertificateTests(unittest.TestCase):
             generate=write_pair,
         )
         init_gui._choose_cert_tool_and_key_type = (
-            lambda tools, parent=None: (tools[0], "ECDSA P-256")
+            lambda tools, parent=None: (tools[0], "ECDSA P-256", 825)
         )
         expiry = self.expiry
 
@@ -4130,7 +4257,7 @@ class TlsCertificateTests(unittest.TestCase):
                 tool_calls = []
 
                 def stub_generate(
-                    tool, key_type, hosts, cert_path, key_path
+                    tool, key_type, hosts, cert_path, key_path, days=825
                 ):
                     self.assertIn(
                         key_type,
@@ -4144,6 +4271,7 @@ class TlsCertificateTests(unittest.TestCase):
                             list(hosts),
                             cert_path,
                             key_path,
+                            days,
                         )
                     )
                     Path(cert_path).write_text(
@@ -4170,17 +4298,27 @@ class TlsCertificateTests(unittest.TestCase):
                     sys.modules,
                     {"freecad.mcp_bridge.cert_tools": stub_cert_tools},
                 ):
-                    for chosen_idx, chosen_key_type, expected_id, expected_kt in (
-                        (0, "RSA 4096", "openssl", "rsa-4096"),
-                        (1, "ECDSA P-256", "git-openssl", "ecdsa-p256"),
-                        (2, "RSA 4096", "powershell", "rsa-4096"),
+                    # The Valid for days reach generate() and the
+                    # finished dialog: the default, the lowest, the
+                    # highest.
+                    for (
+                        chosen_idx,
+                        chosen_key_type,
+                        chosen_days,
+                        expected_id,
+                        expected_kt,
+                    ) in (
+                        (0, "RSA 4096", 825, "openssl", "rsa-4096"),
+                        (1, "ECDSA P-256", 1, "git-openssl", "ecdsa-p256"),
+                        (2, "RSA 4096", 3650, "powershell", "rsa-4096"),
                     ):
                         messages.clear()
                         replace_answers.append(True)
                         init_gui._choose_cert_tool_and_key_type = (
-                            lambda tools, parent=None, idx=chosen_idx, kt=chosen_key_type: (
+                            lambda tools, parent=None, idx=chosen_idx, kt=chosen_key_type, days=chosen_days: (
                                 tools[idx],
                                 kt,
+                                days,
                             )
                         )
                         res = init_gui.generate_and_show_certificate(
@@ -4199,6 +4337,7 @@ class TlsCertificateTests(unittest.TestCase):
                                 ],
                                 expected_cert,
                                 expected_key,
+                                chosen_days,
                             ),
                         )
                         if os.name == "nt":
@@ -4216,7 +4355,8 @@ class TlsCertificateTests(unittest.TestCase):
                             messages[-1][1],
                         )
                         self.assertIn(
-                            f"{expiry} (825 days)", messages[-1][1]
+                            f"{expiry} ({chosen_days} days)",
+                            messages[-1][1],
                         )
 
             # 5. End-to-end check against real cert_tools module: the button's
@@ -4245,6 +4385,7 @@ class TlsCertificateTests(unittest.TestCase):
                         lambda tools, parent=None: (
                             tools[0],
                             "ECDSA P-256",
+                            825,
                         )
                     )
                     res_real = init_gui.generate_and_show_certificate(
@@ -4263,6 +4404,7 @@ class TlsCertificateTests(unittest.TestCase):
                         ],
                         expected_cert,
                         expected_key,
+                        days=825,
                     )
                     ctx = config.build_ssl_context(
                         expected_cert,
@@ -4294,7 +4436,7 @@ class TlsCertificateTests(unittest.TestCase):
         core.Qt = Qt
         init_gui._cert_would_replace = lambda host: False
 
-        def fail_to_write(*_args):
+        def fail_to_write(*_args, **_kwargs):
             raise OSError("disk full")
 
         init_gui._find_cert_tools = lambda: (
@@ -4302,7 +4444,7 @@ class TlsCertificateTests(unittest.TestCase):
             [{"id": "openssl", "label": "openssl"}],
         )
         init_gui._choose_cert_tool_and_key_type = (
-            lambda tools, parent=None: (tools[0], "RSA 4096")
+            lambda tools, parent=None: (tools[0], "RSA 4096", 825)
         )
 
         def show(*_args, **_kwargs):
