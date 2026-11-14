@@ -332,7 +332,7 @@ def _setup_dialog_text(
     ]
     if need_listen:
         lines.append(
-            "• A listen address. Under Listen addresses, click + "
+            "• A listen address. Under Addresses, click + "
             "and add an adapter or a fixed IP address."
         )
     if need_token:
@@ -344,7 +344,7 @@ def _setup_dialog_text(
     if need_tls:
         lines.append(
             "• A TLS certificate and private key, for the addresses "
-            "beyond loopback in Listen addresses. Enter your own "
+            "beyond loopback in Addresses. Enter your own "
             "certificate files, or click Generate self-signed "
             "certificate."
         )
@@ -1068,7 +1068,7 @@ class MCPBridgeCommand:
             warning = status
             if bad_listen:
                 warning += (
-                    ". Change the listen addresses in Edit → "
+                    ". Change Addresses in Edit → "
                     "Preferences → MCP Bridge."
                 )
             App.Console.PrintWarning(warning + "\n")

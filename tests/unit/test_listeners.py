@@ -262,8 +262,8 @@ class ListenListTests(unittest.TestCase):
         from freecad.mcp_bridge.listeners import difference_text
 
         text = difference_text([], ["127.0.0.1:39280"])
-        self.assertIn("Listen addresses has nothing", text)
-        self.assertNotIn("127.0.0.1:39280. Listen addresses has 127", text)
+        self.assertIn("Addresses has nothing", text)
+        self.assertNotIn("127.0.0.1:39280. Addresses has 127", text)
 
     def test_add_refuses_a_bad_ipv6_address_and_a_spaced_name(self):
         """A bad IPv6 address is unreadable. A name with a space is refused."""

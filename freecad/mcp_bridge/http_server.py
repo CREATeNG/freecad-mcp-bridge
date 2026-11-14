@@ -438,7 +438,7 @@ class HttpServer:
             # Before the Executor, so a refused start holds nothing.
             raise ValueError(
                 "No listen address to open. Add one in Edit → Preferences "
-                "→ MCP Bridge → Listen addresses."
+                "→ MCP Bridge → Addresses."
             )
         cert_file = (
             config.tls_cert_file()
@@ -463,7 +463,7 @@ class HttpServer:
             ]
         except ValueError as exc:
             FreeCAD.Console.PrintDeveloperError(
-                f"{LOG_PREFIX} {exc} Change the listen addresses in Edit → "
+                f"{LOG_PREFIX} {exc} Change Addresses in Edit → "
                 "Preferences → MCP Bridge.\n"
             )
             raise
@@ -519,7 +519,7 @@ class HttpServer:
             self._listen_entries = []
             FreeCAD.Console.PrintDeveloperError(
                 f"{LOG_PREFIX} Could not bind {failed_entry} ({exc}). "
-                "Change the listen addresses in Edit → Preferences → "
+                "Change Addresses in Edit → Preferences → "
                 "MCP Bridge.\n"
             )
             raise

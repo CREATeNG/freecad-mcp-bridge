@@ -17,11 +17,11 @@ bridge serves HTTPS on every listener. Use
 `https://<HOST>:<PORT>/mcp` as the URL, where `<HOST>` is a name
 the bridge accepts and the certificate covers. The bridge accepts
 the listener's address (on loopback, also `127.0.0.1`, `localhost`
-and `[::1]`), a host name in **Listen addresses**, or, for a
+and `[::1]`), a host name in **Addresses**, or, for a
 listener beyond this machine, a name the certificate covers. If you
 have no certificate, **Generate self-signed certificate** makes
 one, covering `127.0.0.1`, `localhost`, each fixed address and host
-name in **Listen addresses**, and one IPv4 address for each listed
+name in **Addresses**, and one IPv4 address for each listed
 adapter that is up when you click it: its first that isn't
 169.254.x.x. An adapter that is down, or has only a 169.254.x.x
 address, adds none. Give the client a copy of the file in
@@ -153,7 +153,7 @@ bridge on or off.
 
 **Edit → Preferences → MCP Bridge:**
 
-- **Listen addresses**: one list. **+** adds a row, **-** removes the
+- **Addresses**: one list. **+** adds a row, **-** removes the
   selected row, the last one included, and **Edit** (or double-clicking
   a row) edits it in place. With nothing saved, the list shows
   `127.0.0.1:39280`. An adapter row listens, at each start, on that
@@ -216,7 +216,7 @@ bridge on or off.
   when you have no certificate of your own. This button creates
   `tls-cert.pem` and `tls-key.pem` (the key readable by you only) in
   `<home>/.freecad-mcp-bridge`, covering `127.0.0.1`, `localhost`, each
-  fixed address and host name in **Listen addresses**, loopback entries
+  fixed address and host name in **Addresses**, loopback entries
   such as `::1` included, and one IPv4 address for each listed adapter
   that is up when you click it: its first that isn't 169.254.x.x. It
   lasts 825 days and fills in both fields. OK in Preferences saves them.

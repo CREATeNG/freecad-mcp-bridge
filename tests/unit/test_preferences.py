@@ -652,7 +652,7 @@ class HttpServerRefusalTests(unittest.TestCase):
 
     NO_ADDRESS = (
         "No listen address to open. Add one in Edit → Preferences → "
-        "MCP Bridge → Listen addresses."
+        "MCP Bridge → Addresses."
     )
 
     def _refused(self, values, **start_kwargs):
@@ -1659,7 +1659,7 @@ class ListenAddressAcceptanceTests(unittest.TestCase):
             # saved list is empty, and when it holds host names only.
             saved_store = dict(store)
             listen_line = (
-                "A listen address. Under Listen addresses, "
+                "A listen address. Under Addresses, "
                 "click + and add an adapter or a fixed IP address."
             )
 

@@ -50,7 +50,7 @@ switch the server On / Off.
      at the bridge with:
      - **Transport:** Streamable HTTP
      - **URL:** `http://127.0.0.1:39280/mcp`, from a loopback entry in
-       **Listen addresses**
+       **Addresses**
      - **Header:** `Authorization: Bearer <token>`, with the token
        from step 2
 
@@ -71,7 +71,7 @@ in the user guide.
    Extensions list. **FreeCAD host** is `127.0.0.1` by default
    (`localhost`, `::1`, and `127.x.x.x` count as the local machine
    too), and **port** is `39280` by default. Set them to match the
-   entry you connect to in the MCP Bridge addon **Listen addresses**,
+   entry you connect to in the MCP Bridge addon **Addresses**,
    and check that the extension is **Enabled**.
    - The extension's tools default to **Needs approval**.
    - Paste the authorization bearer token from Quick start's step 2
@@ -149,7 +149,7 @@ MCP Bridge is designed for **local** control of FreeCAD.
   three things only: to run the requested code in FreeCAD, to mirror
   the output to FreeCAD's **Report view**, and to return the output
   to your MCP client over HTTP (`127.0.0.1:39280` by default, or the
-  entries in **Listen addresses** in Preferences).
+  entries in **Addresses** in Preferences).
 - The bridge's page history keeps output pages in FreeCAD's memory
   only, never on disk, and discards them when **Page history
   retention** expires, when you turn the bridge off, or when FreeCAD
@@ -163,7 +163,7 @@ MCP Bridge is designed for **local** control of FreeCAD.
   (`127.0.0.1:39280`), and only while the bridge is switched on,
   which you do yourself, each session. Any process on your machine
   can reach the open loopback port, not only your MCP client. The
-  bridge listens on every entry in **Listen addresses**. Every
+  bridge listens on every entry in **Addresses**. Every
   listener requires the bearer token. When a certificate and private
   key are set, every listener serves HTTPS, loopback included. With
   neither set, loopback entries use HTTP and non-loopback entries are
@@ -180,8 +180,8 @@ MCP Bridge is designed for **local** control of FreeCAD.
 - The bridge rejects any request that carries an `Origin` header, so a
   browser page cannot reach it. It also rejects a request whose `Host`
   header, port aside, names neither the address that listener is bound
-  to, nor a name its certificate covers, nor a host name in **Listen
-  addresses**. A loopback listener accepts the address it is bound to,
+  to, nor a name its certificate covers, nor a host name in
+  **Addresses**. A loopback listener accepts the address it is bound to,
   `127.0.0.1`, `localhost` and `[::1]`, but not a name its certificate
   covers.
 

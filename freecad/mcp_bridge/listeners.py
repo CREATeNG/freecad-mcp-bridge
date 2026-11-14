@@ -64,7 +64,7 @@ HOST_NAME_LINE = (
     "A host name should resolve to one of the listen addresses, "
     "and a generated self-signed certificate includes it."
 )
-DUPLICATE_ROW_REFUSAL = "That row is already in Listen addresses."
+DUPLICATE_ROW_REFUSAL = "That row is already in Addresses."
 
 
 class ListenRow:
@@ -628,7 +628,7 @@ def difference_text(
     listen_s = ", ".join(listening) if listening else "nothing"
     return (
         f"The bridge is listening on {listen_s}. "
-        f"Listen addresses has {page_s}. "
+        f"Addresses has {page_s}. "
         "Click OK, then turn the bridge off and on again, "
         "to apply the change."
     )

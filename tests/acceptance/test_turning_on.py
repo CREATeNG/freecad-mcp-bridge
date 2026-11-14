@@ -308,7 +308,7 @@ class PortTests(unittest.TestCase):
             seen["status"],
         )
         self.assertIn(f"Could not bind 127.0.0.1:{port}", seen["report"])
-        self.assertIn("Change the listen addresses in Edit", seen["report"])
+        self.assertIn("Change Addresses in Edit", seen["report"])
         self.assertIn("Preferences", seen["report"])
 
 
@@ -1293,7 +1293,7 @@ class ListenAddressTests(unittest.TestCase):
         )
         self.assertIn(
             "A TLS certificate and private key, for the addresses "
-            "beyond loopback in Listen addresses.",
+            "beyond loopback in Addresses.",
             seen.get("no_cert_setup_text", ""),
         )
         self.assertNotIn(

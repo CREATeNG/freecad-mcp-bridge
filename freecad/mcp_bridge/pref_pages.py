@@ -686,7 +686,7 @@ def _ask_row(
     title = (
         f"{DISPLAY_NAME}: Edit row"
         if current is not None
-        else f"{DISPLAY_NAME}: Add to Listen addresses"
+        else f"{DISPLAY_NAME}: Add to Addresses"
     )
     dialog.setWindowTitle(title)
     dialog.setObjectName("MCPBridgeAddListenDialog")

@@ -36,7 +36,7 @@ variable, the token FreeCAD showed when you clicked **Generate new
 token**. Without it the bridge refuses the request. `send_cmd.py` reads
 no token file. It sends plain HTTP to `127.0.0.1` only. So it needs a
 listener on `127.0.0.1`, from a fixed `127.0.0.1` row or a loopback
-adapter row in **Listen addresses**, and it can't connect while
+adapter row in **Addresses**, and it can't connect while
 **Certificate (PEM)** and **Private key (PEM)** are both set.
 
 **Run a code string to test the connection:**

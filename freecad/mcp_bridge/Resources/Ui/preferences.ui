@@ -27,7 +27,7 @@
      <item>
       <widget class="QGroupBox" name="listenGroup">
        <property name="title">
-        <string>Listen addresses</string>
+        <string>Addresses</string>
        </property>
        <layout class="QVBoxLayout" name="listenLayout">
         <item>
