@@ -286,14 +286,11 @@ class ValidDaysTests(unittest.TestCase):
                 )
 
     def test_each_tool_here_makes_a_certificate_valid_for_the_days(self):
-        """Each tool on this machine makes a certificate that expires the
-        chosen number of days from now."""
-        import datetime
-
+        """Each tool on this machine makes a certificate valid for the
+        chosen number of days, from notBefore to notAfter."""
         tools = cert_tools.find_tools()
         if not tools:
             self.skipTest("no certificate tool on this machine")
-        today = datetime.datetime.now(datetime.timezone.utc).date()
         for tool in tools:
             with self.subTest(tool=tool["id"]):
                 with tempfile.TemporaryDirectory() as folder:
@@ -307,11 +304,11 @@ class ValidDaysTests(unittest.TestCase):
                         days=30,
                     )
                     decoded = ssl._ssl._test_decode_cert(str(cert))
-                expiry = datetime.datetime.fromtimestamp(
-                    ssl.cert_time_to_seconds(decoded["notAfter"]),
-                    datetime.timezone.utc,
-                ).date()
-                self.assertIn((expiry - today).days, (30, 31))
+                period = ssl.cert_time_to_seconds(
+                    decoded["notAfter"]
+                ) - ssl.cert_time_to_seconds(decoded["notBefore"])
+                # Certificate times are to the second.
+                self.assertLessEqual(abs(period - 30 * 86400), 1)
 
 
 if __name__ == "__main__":

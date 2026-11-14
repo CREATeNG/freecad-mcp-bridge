@@ -664,7 +664,7 @@ is not sent. A refused token says the pasted token was refused.
   days (825 to start, 1 to 3650), and calls `cert_tools.generate()`.
   Where none is found, it makes nothing and says where to install
   openssl for the platform. The certificate is self-signed (valid for
-  the chosen days from now, `CA:FALSE`, `digitalSignature` and
+  the chosen days, `CA:FALSE`, `digitalSignature` and
   `keyEncipherment`, `serverAuth`), covers `127.0.0.1`, `localhost`,
   each fixed address and host name in the list, and, for each listed
   adapter that is up when the button is clicked, its first IPv4 address

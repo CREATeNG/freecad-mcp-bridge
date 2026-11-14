@@ -82,8 +82,9 @@ def generate(
     """Write a self-signed pair for ``hosts`` with ``tool``.
 
     Names become dNSName entries and addresses become iPAddress
-    entries. The certificate is valid for ``days`` days from now,
-    1 to 3650, and cannot sign other certificates. The key file is
+    entries. The certificate is valid for ``days`` days, 1 to 3650:
+    from now with openssl, from a day ago with PowerShell, against
+    clock skew. It cannot sign other certificates. The key file is
     readable by the user only.
     """
     if (
