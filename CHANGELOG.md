@@ -13,8 +13,17 @@
   FreeCAD 1.1.4 snap on the stable channel (revision 2904). Loopback
   listen addresses work there over HTTP, and a start that needs TLS says
   why it can't. Thanks to @lplaurin (#67, #68).
-- **An emptied Listen addresses list stays empty:** it no longer refills
-  from an older profile's **Port** setting, the first save included.
+- **Fixed: a start with only one of Certificate (PEM) and Private key
+  (PEM) set fell back to HTTP.** It now refuses, loopback included, and
+  says which field is missing.
+- **The list of listen addresses is now titled Addresses,** since it
+  also holds host names, which don't listen.
+- **An emptied Addresses list stays empty:** it no longer refills from
+  an older profile's **Port** setting, the first save included.
+
+### The Claude Desktop extension
+
+- **Error results put the output last,** as every other result does.
 
 ### Documentation
 
@@ -22,8 +31,8 @@
   Desktop and for other MCP clients. The full reference, with HTTPS,
   every preference and other ways to install, is in the new **User
   guide**.
-
-The Claude Desktop extension is unchanged.
+- **The Addon Manager shows the released README,** from the `release`
+  branch, not the one in progress on `main`.
 
 Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini (Google) and Codex (OpenAI).
 
