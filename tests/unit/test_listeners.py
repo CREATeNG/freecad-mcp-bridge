@@ -71,6 +71,13 @@ RECORDS = [
 
 
 class ListenListTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from tests.unit.test_preferences import _restore_package_after
+
+        super().setUpClass()
+        _restore_package_after(cls)
+
     def test_a_new_user_sees_one_fixed_row(self):
         """Nothing saved is 127.0.0.1:39280, a fixed IP address."""
         rows = rows_from_store("", "", "", False)

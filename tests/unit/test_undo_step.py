@@ -130,6 +130,13 @@ def load_executor(app):
 
 
 class UndoStepTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from tests.unit.test_preferences import _restore_package_after
+
+        super().setUpClass()
+        _restore_package_after(cls)
+
     def run_job(self, code, app=None):
         """Run `code` as one job. Return the app and what stderr got."""
         app = app if app is not None else StandInApp()

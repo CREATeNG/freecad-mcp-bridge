@@ -306,6 +306,11 @@ class PreferencePageTests(unittest.TestCase):
 
 
 class UnsetPreferenceTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        _restore_package_after(cls)
+
     def test_with_nothing_saved_the_bridge_uses_the_documented_defaults(self):
         """With nothing saved: 127.0.0.1:39280, 15 s, 32,768 chars, 5 min,
         button shown on the right."""
@@ -348,6 +353,11 @@ class UpgradedProfileStore(EmptyParams):
 
 
 class SavedListenListTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        _restore_package_after(cls)
+
     def _upgraded_config(self):
         config, params, _groups = fresh_config()
         store = UpgradedProfileStore(
@@ -458,6 +468,11 @@ class WithoutSslModuleTests(unittest.TestCase):
     FreeCAD's official snap. Reported, with the approach used here, by
     lplaurin in #67 and #68."""
 
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        _restore_package_after(cls)
+
     def _config_without_ssl(self, store):
         import freecad.mcp_bridge as package
 
@@ -545,8 +560,8 @@ class WithoutSslModuleTests(unittest.TestCase):
 
 def _restore_package_after(test):
     """Put freecad.mcp_bridge's attributes back as they are now, when
-    test ends: an import sets each new submodule on the package, and
-    patch.dict on sys.modules doesn't undo that."""
+    test (or a test class) ends: an import sets each new submodule on
+    the package, and patch.dict on sys.modules doesn't undo that."""
     import freecad.mcp_bridge as package
 
     before = dict(vars(package))
@@ -554,11 +569,17 @@ def _restore_package_after(test):
     def restore_package():
         for name in set(vars(package)) - set(before):
             delattr(package, name)
+            sys.modules.pop(f"freecad.mcp_bridge.{name}", None)
         for name, value in before.items():
             if vars(package).get(name, object()) is not value:
                 setattr(package, name, value)
+                if f"freecad.mcp_bridge.{name}" in sys.modules:
+                    sys.modules[f"freecad.mcp_bridge.{name}"] = value
 
-    test.addCleanup(restore_package)
+    if isinstance(test, type):
+        test.addClassCleanup(restore_package)
+    else:
+        test.addCleanup(restore_package)
     return package
 
 
@@ -1030,6 +1051,11 @@ def _contrast_ratio(rgb_a, rgb_b):
 
 
 class StatusButtonColorTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        _restore_package_after(cls)
+
     def test_on_green_suits_dark_and_light_status_bar_themes(self):
         """The 'On' button picks a brighter green on dark status bars and a
         darker green on light ones, reaching at least 4.5:1 on each."""
@@ -1059,6 +1085,11 @@ class StatusButtonColorTests(unittest.TestCase):
 
 
 class StatusBarWidgetsTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        _restore_package_after(cls)
+
     def test_status_bar_widgets_splits_at_stretch_and_rejects_unknown_schema(
         self,
     ):
@@ -1180,6 +1211,11 @@ class StatusBarWidgetsTests(unittest.TestCase):
 
 
 class ToolbarVisibilityTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        _restore_package_after(cls)
+
     def test_manipulator_appends_toolbar_and_command_except_on_none_workbench(
         self,
     ):
@@ -1418,6 +1454,11 @@ class ToolbarVisibilityTests(unittest.TestCase):
 
 
 class ListenAddressAcceptanceTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        _restore_package_after(cls)
+
     def test_listen_addresses_and_loopback_detection(self):
         """ListenAddress splits on whitespace, commas, and semicolons (with
         colons marking ports), deduplicates in order, inherits an upgraded
@@ -3105,6 +3146,11 @@ class TokenFileTests(unittest.TestCase):
 
 
 class PermissionModeTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        _restore_package_after(cls)
+
     def test_the_acceptance_client_puts_ask_back_only_where_it_found_ask(
         self,
     ):
@@ -3489,6 +3535,11 @@ class StatusButtonShowTests(unittest.TestCase):
     chosen in the button's menu, in Preferences or in the code dialog,
     a theme change, and the bridge's start and stop messages."""
 
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        _restore_package_after(cls)
+
     def _run(self, show, unrestricted, button_present, action):
         """Run `action(init_gui, file_prompt, mode)` against a stand-in
         status bar. `mode` holds the permission mode, as a one-item
@@ -3644,6 +3695,8 @@ class TlsCertificateTests(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        super().setUpClass()
+        _restore_package_after(cls)
         import datetime
 
         config, _, _ = fresh_config()
@@ -4542,6 +4595,11 @@ class TlsCertificateTests(unittest.TestCase):
         self.assertEqual(events, ["set", "restore", "dialog"])
 
 class SetTokenDialogTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        _restore_package_after(cls)
+
     def test_set_token_stores_a_hash_refuses_a_bad_one_and_cancel(self):
         """A bearer token of any length is stored as a hash. One that
         is not a bearer token is refused. Cancel stores nothing."""
