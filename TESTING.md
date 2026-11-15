@@ -413,11 +413,12 @@ Tests append lines via `test_install_common._write_ci_log()`:
 | `GROUP` | Phase section markers (`=== title ===`) | Echoed inside `::group::` |
 | `INFO` | Informational | Echoed as plain log lines |
 | `PASS` | Checkpoint passed | `::notice::` annotation |
+| `WARN` | A problem that doesn't fail the test | `::warning::` annotation; step doesn't fail |
 | `FAIL` | Assertion failed | `::error::` annotation; step fails |
 
-[publish_ci_log.sh](scripts/publish_ci_log.sh) reads the log file, prints a collapsible `::group::` block with all lines, emits notices/errors for `PASS`/`FAIL` lines, and exits non-zero if any `FAIL` line was seen.
+[publish_ci_log.sh](scripts/publish_ci_log.sh) reads the log file, prints a collapsible `::group::` block with all lines, emits notices, warnings and errors for `PASS`, `WARN` and `FAIL` lines, and exits non-zero if any `FAIL` line was seen.
 
-**Do not** emit `::notice::` / `::error::` from inside FreeCAD Python. Use the file + shell wrapper instead.
+**Do not** emit `::notice::` / `::warning::` / `::error::` from inside FreeCAD Python. Use the file + shell wrapper instead.
 
 ---
 

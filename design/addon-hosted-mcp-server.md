@@ -438,26 +438,25 @@ is no silent port increment. A dynamic port is rejected: an HTTP
 client configures the endpoint URL directly, and a changing port
 would require reconfiguration each session.
 
-**+** opens **MCP Bridge: Add to Addresses**, **-** removes the
-selected row, and **Edit** or double-clicking a row opens **MCP Bridge:
-Edit row** filled with that row (**Save** replaces it in place and
-refuses anything **Add** refuses; an **Old entry** row
-cannot be edited, only removed). **Add** refuses a row already in the
-list, with "That row is already in the list." An
-adapter row stores the port and the adapter's name, and at each start
-the bridge listens on that adapter's
-first IPv4 address that isn't 169.254.x.x. A fixed IP address listens on
-exactly that address. A host name has no port and adds no listener of
-its own: it is accepted on every listener, so a client can connect by
-name and keep working when the address changes, and **Generate
-self-signed certificate** covers it. The Host check reads the saved host
-names on every request, so a saved host name is accepted at once, while
-address and adapter rows take effect at the next start. An empty saved
-list stays empty. A fixed address this machine does not have is skipped.
-The page marks that row, and the start names it in the status bar and in
-one Report view warning, then listens on the rest. An adapter that is
-down or has no such address, and a wildcard, are named the same way. A
-port another program has taken fails the whole start, and the reason is
+**+** opens **MCP Bridge: Add to Addresses**, **-** removes the selected
+row, and **Edit** or double-clicking a row opens **MCP Bridge: Edit
+row** filled with that row (**Save** replaces it in place and refuses
+anything **Add** refuses; an **Old entry** row cannot be edited, only
+removed). **Add** refuses a row already in the list, with "That row is
+already in the list." An adapter row stores the port and the adapter's
+name, and at each start the bridge listens on that adapter's first IPv4
+address that isn't 169.254.x.x. A fixed IP address listens on exactly
+that address. A host name has no port and adds no listener of its own:
+it is accepted on every listener, so a client can connect by name and
+keep working when the address changes, and **Generate self-signed
+certificate** covers it. The Host check reads the saved host names on
+every request, so a saved host name is accepted at once, while address
+and adapter rows take effect at the next start. An empty saved list
+stays empty. A fixed address this machine does not have is skipped. The
+page marks that row, and the start names it in the status bar and in one
+Report view warning, then listens on the rest. An adapter that is down
+or has no such address, and a wildcard, are named the same way. A port
+another program has taken fails the whole start, and the reason is
 shown. While the bridge is on, the page compares its rows, an empty list
 included, with what the bridge is listening on.
 
@@ -830,20 +829,19 @@ loopback, where the rule applies, the traffic is encrypted by those
 libraries, and the client verifies the server with a pinned
 certificate.
 
-Notifications (no `id`)
-get no reply and are not sent on. The shim answers `initialize`
-itself with `protocolVersion` `2025-11-25` and a tools capability
-only, and `tools/list` from `tools.json`, a copy of the addon's tool
-list that release preparation checks against `tools.py`. It does not
-contact the bridge for either, whether or not FreeCAD is up. Only a
-`tools/call` is sent on. When the extension lacks a certificate or
-token for another machine, or when that call finds the bridge
-unreachable, serving HTTPS with no certificate set, returning 401,
-or failing TLS, the tool result's `error` names that case and what
-to change, the bridge's toggle in FreeCAD or the extension's
-settings. A `ping` is answered locally with an empty result and is
-not sent on. Any other method gets a JSON-RPC method-not-found
-error, code `-32601`, and is not sent on.
+Notifications (no `id`) get no reply and are not sent on. The shim
+answers `initialize` itself with `protocolVersion` `2025-11-25` and a
+tools capability only, and `tools/list` from `tools.json`, a copy of the
+addon's tool list that release preparation checks against `tools.py`. It
+does not contact the bridge for either, whether or not FreeCAD is up.
+Only a `tools/call` is sent on. When the extension lacks a certificate
+or token for another machine, or when that call finds the bridge
+unreachable, serving HTTPS with no certificate set, returning 401, or
+failing TLS, the tool result's `error` names that case and what to
+change, the bridge's toggle in FreeCAD or the extension's settings. A
+`ping` is answered locally with an empty result and is not sent on. Any
+other method gets a JSON-RPC method-not-found error, code `-32601`, and
+is not sent on.
 
 **Shim: no SDK**
 

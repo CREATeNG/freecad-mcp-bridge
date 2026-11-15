@@ -31,6 +31,10 @@ while IFS= read -r line || [ -n "$line" ]; do
       msg="$(escape_github_message "${line#PASS }")"
       echo "::notice title=${group_title}::${msg}"
       ;;
+    WARN\ *)
+      msg="$(escape_github_message "${line#WARN }")"
+      echo "::warning title=${group_title}::${msg}"
+      ;;
     FAIL\ *)
       msg="$(escape_github_message "${line#FAIL }")"
       echo "::error title=${group_title}::${msg}"
