@@ -15,11 +15,11 @@ This is a small addon. Start with `http_server.py` and `executor.py` to see the 
 
 **Repository layout:** [`freecad/mcp_bridge/`](freecad/mcp_bridge/)
 (the addon), [`mcp-stdio-shim/`](mcp-stdio-shim/) (the Claude Desktop
-connector source), `package.xml` (Addon Manager metadata). A tagged
-release (`v0.1.x`) is a commit on the `release` branch that holds only
+connector source), `package.xml` (Addon Manager metadata). From 0.1.30,
+a tagged release is a commit on the `release` branch that holds only
 what users install. Its message names the `main` commit it was built
-from, which also holds the tests, scripts and design documents. `main`
-may be ahead.
+from, which also holds the tests, scripts and design documents. Earlier
+tags name a commit on `main`. `main` may be ahead.
 
 ---
 

@@ -45,16 +45,16 @@ whatever pull requests have merged since the last release; see
 - **Every component in a release carries the same version.** Matching numbers across `package.xml`, `manifest.json`, and `package.json` are what make "version X" mean one coherent thing, not a mismatched patchwork.
 - **Version numbers only increase.** A newer version must always sort higher than an older one, or "is this an update" becomes unanswerable: for Addon Manager, for users, for anyone comparing releases.
 - **The release pipeline is automated and gated, to help ensure the above.**
-- **What we verify is what we tag.** The prepare job pins the
-  release-candidate commit; publish refuses to go on if `main` has moved
-  since, builds the release commit from it and tags that; the tag is
-  then re-verified by installing it, and only then does `release` move.
-  The Addon Index listing, which follows `release`, can therefore never
-  point at an untested snapshot.
+- **What ships has been verified.** The prepare job pins the
+  release-candidate commit, and publish refuses to go on if `main` has
+  moved since. Publish builds the release commit from it and tags that,
+  and the tag is then verified again by installing it. Only then does
+  `release` move, so the Addon Index listing, which follows `release`,
+  can never point at an untested snapshot.
 - **`release` only moves forward.** Each release commit's parent is the
-  previous one, and promote pushes without force, so GitHub refuses any
-  move that isn't a fast-forward; what Index users already have is never
-  rewritten.
+  `release` branch's tip, the release before it, and promote pushes
+  without force, so GitHub refuses any move that isn't a fast-forward;
+  what Index users already have is never rewritten.
 - **The tag's zip is the tag.** GitHub archives the same tree the tag names, so the two install forms can never differ in content, only in install-layout mechanics. Verifying the zip form is about layout handling, never a second content gate.
 
 ---
@@ -69,16 +69,24 @@ tag, then the **`release`** branch moves to that release commit.
 Manual tags are fine for experiments or other uses; only
 **`release.yml`** moves `release`.
 
-**The release commit** holds only what users install: the paths
+**The release commit.** From 0.1.30, each release is a release commit
+that holds only what users install: the paths
 [`build_release_commit.sh`](scripts/build_release_commit.sh) lists,
-taken from the verified `main` commit. Its parent is the previous
-release commit, and its message names the version and the `main`
-commit it was built from. Tests, scripts, workflows, design documents,
-`send_cmd.py` and the developer guides stay on `main`. To see what a
-release of the current `main` would ship, run
-`bash scripts/build_release_commit.sh "$(git rev-parse origin/main)" "$(git rev-parse origin/release)" x.y.z`
-and list the printed commit with `git ls-tree -r --name-only`. That
-creates a commit object and nothing else: no branch or tag moves.
+taken from the verified `main` commit. Its parent is the `release`
+branch's tip, the release before it, and its message names the version
+and the `main` commit it was built from. Tests, scripts, workflows,
+design documents, `send_cmd.py` and the developer guides stay on
+`main`. Earlier tags name a commit on `main`.
+
+To see what a release of the current `main` would ship, run:
+
+```bash
+bash scripts/build_release_commit.sh "$(git rev-parse origin/main)" "$(git rev-parse origin/release)" x.y.z
+```
+
+Then list the printed commit with `git ls-tree -r --name-only`. The
+script creates a commit object and nothing else: no branch or tag
+moves.
 
 **FreeCAD Addon Index Qualities:** A listed `git_ref` must point at a complete, installable snapshot per the [FreeCAD Addon Index Qualities](https://freecad.github.io/Addon-Academy/Topics/Addon-Index/Index/Qualities.html): Python sources and `package.xml`, nothing else required. The addon ships no prebuilt binaries at all; verify runs before the tag specifically to confirm the snapshot actually installs.
 
@@ -87,12 +95,12 @@ creates a commit object and nothing else: no branch or tag moves.
 ## Branches, tags, and the FreeCAD Addon Index
 
 * **`main`** is the development branch. It may be ahead of the latest shipped release.
-* **`release`** is the latest verified release, a line of release
-  commits that each hold only what users install. Only `release.yml`
-  moves it, and only forward (a plain push, never forced), so undoing a
-  bad release means shipping a new one.
-* **Version tags** (`v{x.y.z}`) mark each release commit, for history
-  and the GitHub Release with its `.mcpb`.
+* **`release`** is the latest verified release (see
+  [Release tags](#release-tags)). Only `release.yml` moves it, and only
+  forward (a plain push, never forced), so undoing a bad release means
+  shipping a new one.
+* **Version tags** (`v{x.y.z}`) mark each release, for history and the
+  GitHub Release with its `.mcpb`.
 * Listed on the [FreeCAD Addon Index](https://github.com/FreeCAD/Addons) as **`freecad-mcp-bridge`** with `git_ref` **`release`**: Index users follow `release`, and a release reaches them without an Index PR.
 
 ---
@@ -179,11 +187,11 @@ flowchart TD
    that bridge is still up. **No tag if this fails.**
 3. **Publish**: check the changelog section and the tested
    bundle's sha256, build the release commit from the verified
-   commit on the `release` branch's tip
+   commit, with the `release` branch's tip as its parent
    ([`build_release_commit.sh`](scripts/build_release_commit.sh)),
    push the matching tag (`v{x.y.z}`) on that release commit,
-   create a **GitHub Release** from that section, and upload
-   that same file. Uses
+   create a **GitHub Release** from the changelog section, and
+   upload the tested bundle. Uses
    [`release-publish-orchestrator.sh`](scripts/release-publish-orchestrator.sh)
    (`RELEASE_PUBLISH_AUTHORIZED=true`; not runnable standalone).
    `release` does not move here.
@@ -261,8 +269,8 @@ zip), not from anything attached to the release page.
    release notes, the Claude Desktop check has passed without a
    flag (see The Claude Desktop check routine, below), and the
    version pull request's checks have passed. `release.yml`
-   verifies that commit, builds and tags the release commit
-   from it, verifies that, and moves `release`. It does not
+   verifies that commit, builds the release commit from it and
+   tags it, verifies the tag, and moves `release`. It does not
    push to `main`.
 6. If that run fails after the merge, GitHub → **Actions** →
    **Release Orchestrator** → **Run workflow**, on `main`.
