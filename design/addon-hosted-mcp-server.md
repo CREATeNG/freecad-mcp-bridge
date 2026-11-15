@@ -678,7 +678,7 @@ defines as "mask input and store securely".
   calls `cert_tools.find_tools()` to find certificate tools on the
   machine (such as `openssl`, including Git for Windows' copy on
   Windows). Where none is found, it makes nothing and says where to
-  install openssl for the platform. Where tools are found, it first asks
+  install openssl for the platform. Where tools are found, it asks
   before replacing a certificate, when either field is already set or
   either file already exists, since every client that trusts the old one
   needs the new one. It then offers a choice of tool, key type
@@ -687,34 +687,34 @@ defines as "mask input and store securely".
   certificate is valid for the chosen number of days from now, and its
   validity starts a day earlier with PowerShell and with openssl 3.4 or
   later. It is self-signed (`CA:FALSE`, `digitalSignature` and
-  `keyEncipherment`, `serverAuth`), covers `127.0.0.1`, `localhost`,
+  `keyEncipherment`, `serverAuth`) and covers `127.0.0.1`, `localhost`,
   each fixed address and host name in the list, and, for each listed
   adapter that is up when the button is clicked, its first IPv4 address
-  that isn't 169.254.x.x, writes `tls-cert.pem` and `tls-key.pem`
-  (`tls-key.pem` readable by the user only) in
+  that isn't 169.254.x.x. The button writes `tls-cert.pem` and
+  `tls-key.pem` (`tls-key.pem` readable by the user only) in
   `<home>/.freecad-mcp-bridge` (or `FREECAD_MCP_TOKEN_DIR`), fills in
   the `TlsCertFile` and `TlsKeyFile` fields, which OK in Preferences
   saves, and shows the certificate file path, covered addresses, and
   expiry date. It prints a Report view line with the time, the file and
   the addresses covered. If an entry beyond loopback is configured
-  without readable, valid certificate and key files, if a configured
+  without readable, valid certificate and key files, or if a configured
   certificate is not yet valid or has expired, startup fails with an
   error naming the problem and directing the user to select or generate
   the files in Edit → Preferences → MCP Bridge, and the bridge stays
   off. Coverage takes the forms clients accept: names and IP addresses
   in the Subject Alternative Name, a wildcard name, and the common name
-  when the Subject Alternative Name holds no name or IP address. A
+  when the Subject Alternative Name holds no DNS name or IP address. A
   listener whose address is not in the certificate draws a Report view
   warning when the certificate names no host, and the start still
   proceeds. Reading the certificate uses `ssl._ssl._test_decode_cert`, a
   function inside Python that isn't part of its public interface. If
-  it's missing, or can't read the certificate, the start goes ahead
-  without the date and coverage checks and says so in the Report view.
-  On a FreeCAD whose Python has no `ssl` module, as reported for
-  FreeCAD's snap (#67), the addon still loads: a start that needs TLS,
-  for an address beyond loopback or with both certificate fields set,
-  stops before the set-up dialog with a message saying the `ssl` module
-  is missing, and loopback listeners still start over HTTP.
+  it's missing, or can't decode a certificate that `ssl` has loaded, the
+  start goes ahead without the date and coverage checks and says so in
+  the Report view. On a FreeCAD whose Python has no `ssl` module, as
+  reported for FreeCAD's snap (#67), the addon still loads: a start that
+  needs TLS, for an address beyond loopback or with both certificate
+  fields set, stops before the set-up dialog with a message saying the
+  `ssl` module is missing, and loopback listeners still start over HTTP.
 
 **Security posture: noted trade-offs**
 
@@ -748,10 +748,12 @@ address that listener is bound to, nor a name its certificate covers,
 nor a host name in **Addresses**. A missing `Host` is refused. A
 loopback listener accepts the address it is bound to, `127.0.0.1`,
 `localhost` and `[::1]`, but not a name its certificate covers. When
-Python's certificate reader is missing, or can't read the certificate
-(see the TLS bullet above), the Host check accepts the bound address, on
-loopback also `127.0.0.1`, `localhost` and `[::1]`, and each host name
-in **Addresses**. A name the certificate covers adds nothing to these.
+Python's certificate reader is missing, or can't decode a certificate
+that `ssl` has loaded (see the **TLS (`TlsCertFile`, `TlsKeyFile`,
+`serving-cert.pem`)** bullet), the Host check accepts the bound address,
+on loopback also `127.0.0.1`, `localhost` and `[::1]`, and each host
+name in **Addresses**. A name the certificate covers adds nothing to
+these.
 
 ---
 
