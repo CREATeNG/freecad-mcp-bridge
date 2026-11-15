@@ -295,7 +295,7 @@ twice:
    final sanity check that install works from the tag ref. From
    0.1.30, the tag names the release commit, which holds only what
    users install, so the run's checkout of `main` supplies the test
-   scripts; earlier tags name a commit on `main`. The release workflow
+   scripts. Earlier tags name a commit on `main`. The release workflow
    fails before `release` moves if any OS fails.
 
 Runs queue rather than overlap, so a second release run waits for the

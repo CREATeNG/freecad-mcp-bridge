@@ -53,8 +53,8 @@ whatever pull requests have merged since the last release; see
   can never point at an untested snapshot.
 - **`release` only moves forward.** Each release commit's parent is the
   `release` branch's tip, the release before it, and promote pushes
-  without force, so GitHub refuses any move that isn't a fast-forward;
-  what Index users already have is never rewritten.
+  without force, so GitHub refuses any move that isn't a fast-forward.
+  What Index users already have is never rewritten.
 - **The tag's zip is the tag.** GitHub archives the same tree the tag names, so the two install forms can never differ in content, only in install-layout mechanics. Verifying the zip form is about layout handling, never a second content gate.
 
 ---
