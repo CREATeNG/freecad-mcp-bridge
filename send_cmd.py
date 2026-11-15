@@ -10,7 +10,7 @@ and the output comes once they choose Run. In Unrestricted mode the
 code runs at once.
 Requests are sent as MCP protocol version 2026-07-28, with the bearer
 token from FREECAD_MCP_TOKEN. The program reads no token file.
-Stdlib only — runs on any Python 3, no FreeCAD or pip dependencies.
+Stdlib only: runs on any Python 3, no FreeCAD or pip dependencies.
 """
 
 import json

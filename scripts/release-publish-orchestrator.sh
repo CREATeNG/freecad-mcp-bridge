@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Release publish step — INTERNAL to .github/workflows/release.yml only.
+# Release publish step: INTERNAL to .github/workflows/release.yml only.
 #
 # Runs only after install-verify has passed on main. Checks the
 # changelog section and the tested bundle prepare retrieved, then pushes the

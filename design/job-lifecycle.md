@@ -4,7 +4,7 @@ A **job** is what one `execute_python` call, or one `execute_python_file` call
 whose file was read, creates: the Python code to run, a private output channel, and
 the job token that names it. This walks the whole lifecycle from the job's point of
 view. Terms are collected at the bottom.
-Why it works this way — trade-offs and rejected alternatives — lives in
+Why it works this way (trade-offs and rejected alternatives) lives in
 [addon-hosted-mcp-server.md](addon-hosted-mcp-server.md). Agent-facing output
 vocabulary (chunk, page, page history) is defined there.
 
@@ -28,14 +28,14 @@ identical to *running but quiet*.
 
 The dispatcher's loop reaches the job: it is removed from the queue and
 handed to the job runner. This happens only after the job ahead of it has
-fully returned — never nested inside it. (If a running job refreshes the
+fully returned, never nested inside it. (If a running job refreshes the
 GUI, that can trigger a mid-job wake-up of the dispatcher; the busy latch
 makes that wake-up do nothing, so the order still holds.)
 
 ## 4. Running
 
 The job owns the main thread. Everything printed while it runs flows
-into its output queue — and the Report View — as it is produced. The
+into its output queue (and the Report View) as it is produced. The
 redirect of `sys.stdout` and `sys.stderr` is process-wide while a job
 runs, so the job's queue also takes anything else written to them in
 that time, from any thread. A thread the job started can outlive it:
@@ -56,8 +56,8 @@ how.
 
 Success or error, the same ending: a failure becomes traceback text on the
 job's stderr stream, and the runner's final act is placing the sentinel on
-the queue — the job's last word. That sentinel is later consumed by
-whichever fetch drains it, closing the job's final page — possibly empty —
+the queue: the job's last word. That sentinel is later consumed by
+whichever fetch drains it, closing the job's final page (possibly empty)
 with `has_more: false`; the sentinel itself never appears in a page.
 Control returns to the dispatcher's loop, and the next job in line gets its
 turn.
@@ -86,9 +86,9 @@ die.
 
 If the bridge is stopped while the job is in line, it dies unstarted: its
 output queue and history are cleared, and a client polling its token gets
-`"unknown or expired job_token"` — indistinguishable from any other dead
+`"unknown or expired job_token"`, indistinguishable from any other dead
 token. If the bridge is stopped while the job is running, the job itself
-cannot be interrupted — it runs to completion — but its page history is
+cannot be interrupted (it runs to completion), but its page history is
 cleared at stop, so undelivered output is lost and its token dies the same
 way.
 
@@ -99,22 +99,22 @@ interval.
 
 ## Terms
 
-- **Main thread** — the one thread allowed to touch FreeCAD; also runs the
+- **Main thread**: the one thread allowed to touch FreeCAD; also runs the
   GUI. Jobs execute here.
-- **Request thread** — a short-lived thread the HTTP server creates per
+- **Request thread**: a short-lived thread the HTTP server creates per
   incoming request. Jobs are *born* here but never *run* here.
-- **Job queue** — the single FIFO line all jobs wait in. The only route a
+- **Job queue**: the single FIFO line all jobs wait in. The only route a
   job ever travels.
-- **Dispatcher** — the loop on the main thread that takes jobs from the
+- **Dispatcher**: the loop on the main thread that takes jobs from the
   queue one at a time, each running to completion before the next starts.
-- **Busy latch** — a flag meaning "a job is running right now"; it makes a
+- **Busy latch**: a flag meaning "a job is running right now"; it makes a
   mid-job wake-up of the dispatcher a harmless no-op.
-- **Output queue** — the job's private channel for everything it prints;
+- **Output queue**: the job's private channel for everything it prints;
   forward fetches at `page_no == max + 1` drain this into the next page of
   the history.
-- **Sentinel** — the end-of-output marker the runner places on the output
+- **Sentinel**: the end-of-output marker the runner places on the output
   queue as the job's final act; "no more output will ever come." Consumed
-  by the drain that closes the job's final page — it never appears in a
+  by the drain that closes the job's final page. It never appears in a
   page.
-- **Job token** — the public name of a job's page history; the client
+- **Job token**: the public name of a job's page history; the client
   presents it to `get_output_page` to read or replay pages.

@@ -11,17 +11,17 @@ nothing to one.
 
 ## Terms
 
-- **Job** — one Python run inside the live FreeCAD session, initiated by a tool call.
+- **Job**: one Python run inside the live FreeCAD session, initiated by a tool call.
   See [job-lifecycle.md](job-lifecycle.md).
 
-- **Chunk** — one `write()` of the job's stdout or stderr. A page
+- **Chunk**: one `write()` of the job's stdout or stderr. A page
   joins adjacent chunks of the same stream into one entry. A chunk
   longer than the page size cap continues on the next page.
 
-- **Page** — a capped array of `{stream, text}` entries from the
+- **Page**: a capped array of `{stream, text}` entries from the
   job's stdout and stderr.
 
-- **Page history** — the append-only record of every page a job emits.
+- **Page history**: the append-only record of every page a job emits.
   It stays readable for a configured period after the job finishes
   running.
 
@@ -31,7 +31,7 @@ nothing to one.
 
 The MCP server exposes three tools (schemas in `tools.py`).
 
-- **`execute_python(code)`** — runs Python in the live FreeCAD
+- **`execute_python(code)`**: runs Python in the live FreeCAD
   session, with `App`/`Gui` pre-bound and `__name__` set to
   `"__main__"`. The permission mode is **Ask**, the default, or
   **Unrestricted**. Unless it is Unrestricted, FreeCAD shows the
@@ -40,7 +40,7 @@ The MCP server exposes three tools (schemas in `tools.py`).
   returns a notice and a `job_token`, and `get_output_page`
   collects the output or the decline. Stdout and stderr are
   captured as tagged chunks.
-- **`execute_python_file(filepath)`** — reads a local file (absolute
+- **`execute_python_file(filepath)`**: reads a local file (absolute
   path) once and shows that path and the whole text in the same dialog,
   with the same timing and the same permission mode. **Run** runs that
   text, with `__file__` set to the path. **Don't run** is the default
@@ -48,14 +48,14 @@ The MCP server exposes three tools (schemas in `tools.py`).
   switches the mode to Unrestricted, and the shown text then runs. The
   dialog counts against **Max response timeout**. If the file cannot be
   read, the tool returns `has_more: false`, an `error` message, and
-  `page: []` — no job, no page history, and no `job_token`. Once the
+  `page: []` (no job, no page history, and no `job_token`). Once the
   mode is Unrestricted, a file an agent names runs without FreeCAD
   showing it. That is the setting the Addon Index's rule "Automatic
   approval is opt-in" allows: "a setting, off by default, that warns in
   the interface itself (not just in a tooltip or the documentation) that
   the model's code will run with the user's full permissions". Ask is
   the default, and switching to Unrestricted shows that warning first.
-- **`get_output_page(job_token, page_no)`** — fetches the requested page from a job's page
+- **`get_output_page(job_token, page_no)`**: fetches the requested page from a job's page
   history. Both arguments are required.
 
 The On/Off button on the status bar shows the permission mode
@@ -76,30 +76,30 @@ Every call of the three tools returns a response with the same shape.
 The fields are serialized in this order, with `page` last, so a
 client that keeps only the start can still continue.
 
-- **`has_more`** — always present. When `true`, at least one
+- **`has_more`**: always present. When `true`, at least one
   higher-numbered page exists or will exist for this job, while its
   history remains readable.
-- **`page_no`** — 0-based index of this page in the job's page history;
+- **`page_no`**: 0-based index of this page in the job's page history;
   present exactly when the response is a stored page (it carries
   content, or is the job's final page). Page 0 is the job's first stored
-  page — usually in the response of the initiating call. Empty non-final
+  page, usually in the response of the initiating call. Empty non-final
   responses and tool-level `error` responses carry no `page_no`, except
   the final page of a run that never ran (see `error`).
-- **`job_token`** — present while the job's page history exists, except
+- **`job_token`**: present while the job's page history exists, except
   on a tool-level `error` response other than the final page of a run
   that never ran (see `error`). Pass it to `get_output_page`. The token
   names the history for replay and for sub-agents that read the same
   job.
-- **`error`** — present when the tool cannot return exec output:
+- **`error`**: present when the tool cannot return exec output:
   `execute_python_file` when the bridge cannot read the file
   (human-readable message), and `get_output_page` with
   `"unknown or expired job_token"` or `"page_no out of range"`, and the
   final page of a run that never ran: one declined with **Don't run**,
   or whose code or file dialog failed (`"The code dialog failed: …"`,
   `"The file dialog failed: …"`). That page keeps its `page_no` and
-  `job_token`. Python failures inside a running job are not `error` —
+  `job_token`. Python failures inside a running job are not `error`:
   they appear as `stderr` chunks in `page`.
-- **`page`** — an ordered array of `{stream, text}` chunks captured from the running
+- **`page`**: an ordered array of `{stream, text}` chunks captured from the running
   job's stdout and stderr. Read the array in order; concatenate `text` values for a flat
   transcript. Empty when the response is a tool-level `error` (no exec output).
 
@@ -107,8 +107,8 @@ client that keeps only the start can still continue.
 
 `execute_python` and `execute_python_file`, once the user has
 answered or in the **Unrestricted** mode, queue a job for the Qt
-main thread, then return a response
-— even if the job is still queued or running. The response carries the
+main thread, then return a response,
+even if the job is still queued or running. The response carries the
 job's first page when the job has produced output or finished; a quiet
 job's first response is empty and unnumbered (see *Page history*). The
 agent polls for remaining output via `get_output_page`. FreeCAD
@@ -127,16 +127,16 @@ at once and does not drain.
 
 A page is closed when either **Response timeout** or **Page size cap**
 is reached, or when the job has no more output to deliver. Both bounds
-apply to `execute_python`, `execute_python_file`, and `get_output_page`
-— whichever comes first closes the page. Without an error, a newly
+apply to `execute_python`, `execute_python_file`, and `get_output_page`.
+Whichever comes first closes the page. Without an error, a newly
 collected page has `has_more: false` only when its drain consumes the
 sentinel.
 
-- **Response timeout** — each drain waits up to the configured max response timeout
+- **Response timeout**: each drain waits up to the configured max response timeout
   (default 15 s) for more output or for the job to finish before returning. A quiet or
   slow job may therefore yield `has_more: true` with little or no output once the timeout
   elapses.
-- **Page size cap** — the character length of the JSON tool result
+- **Page size cap**: the character length of the JSON tool result
   the agent reads (`json.dumps` of `has_more`, `page_no`,
   `job_token` and `page`). Configurable, default 32 K
   characters, that is 32,768.
@@ -154,7 +154,7 @@ sentinel.
 **Paging**
 
 When the job has finished and its combined output chunks fit within a single page, the
-initiating call returns `has_more: false` and the agent need not poll — no `page_no`
+initiating call returns `has_more: false` and the agent need not poll: no `page_no`
 cursor to track.
 
 Large or slow job output is delivered over multiple pages. The first page (`page_no: 0`)
@@ -175,7 +175,7 @@ the stdio shim.
     ]
   }
 
-// forward fetch — page_no required
+// forward fetch: page_no required
 { "tool": "get_output_page", "job_token": "abc123", "page_no": 1 }
 → {
     "has_more": true,
@@ -187,7 +187,7 @@ the stdio shim.
     ]
   }
 
-// final page — job output complete; history readable until expiry
+// final page: job output complete; history readable until expiry
 → {
     "has_more": false,
     "page_no": 2,
@@ -197,7 +197,7 @@ the stdio shim.
     ]
   }
 
-// execute_python_file — bridge cannot read filepath (no job started)
+// execute_python_file: bridge cannot read filepath (no job started)
 { "tool": "execute_python_file", "filepath": "/missing.py" }
 → {
     "has_more": false,
@@ -213,7 +213,7 @@ is stored as an immutable snapshot (`page_no`, `page`, and the `has_more` value 
 time) before the response is returned. The live output queue feeds forward fetches while
 the job is still running; stored snapshots serve replay.
 
-Only pages with content — and the job's final page — are stored
+Only pages with content (and the job's final page) are stored
 and numbered. An empty non-final drain is not stored and
 consumes no page number: the response returns `has_more: true`
 and `page: []`, and no `page_no`. `page_no` therefore counts
@@ -260,7 +260,7 @@ footprint can shorten the retention period; users needing longer to read
 can lengthen it.
 
 Requesting an unknown or expired `job_token` returns
-`{"has_more": false, "error": "unknown or expired job_token", "page": []}` — never an
+`{"has_more": false, "error": "unknown or expired job_token", "page": []}`, never an
 exception.
 
 **Fetching pages**
@@ -268,19 +268,19 @@ exception.
 `get_output_page` requires `job_token` and `page_no`. Let `max` be the highest `page_no` currently in
 the history for that job.
 
-- **`page_no` in the history** — return the stored snapshot
+- **`page_no` in the history**: return the stored snapshot
   (idempotent replay).
-- **`page_no == max + 1`** and page delivery is not yet complete —
+- **`page_no == max + 1`** and page delivery is not yet complete:
   drain forward; if the drain yields content or the sentinel, store
   and return the new page; otherwise return an unstored empty response
   (`page: []`, `has_more: true`, no `page_no`).
-- **`page_no > max`** and page delivery is complete — error.
-- **`page_no > max + 1`** and page delivery is not yet complete — error.
+- **`page_no > max`** and page delivery is complete: error.
+- **`page_no > max + 1`** and page delivery is not yet complete: error.
 - Out-of-range `page_no` (either case above) returns `"page_no out of range"`.
 
 Because page-delivery completion is recorded only by the drain that
 produces the final page, an agent following `has_more` with a readable
-token never receives `"page_no out of range"` — that error indicates an
+token never receives `"page_no out of range"`. That error indicates an
 out-of-range request.
 
 While page delivery is incomplete and the token is readable, only one
@@ -291,13 +291,13 @@ values to read from the history.
 **Agent loop**
 
 Append each response's `page` chunks in order. If `error` is present,
-read it and stop (tool-level failure — no job output to collect). If the
+read it and stop (tool-level failure: no job output to collect). If the
 initiating call returns `has_more: false` without `error`, page delivery
-is complete — no polling.
+is complete: no polling.
 
 Otherwise, keep `job_token` and apply one rule: call `get_output_page`
-with `page_no` equal to the last `page_no` received plus one — 0 if none
-has been received yet — until `has_more` is `false`. Empty non-final
+with `page_no` equal to the last `page_no` received plus one (0 if none
+has been received yet) until `has_more` is `false`. Empty non-final
 responses carry no `page_no`, so the same request naturally repeats; the
 final page may arrive with an empty `page` array. To retry or replay a
 page, request its `page_no` again. On `get_output_page`, `error` means a
@@ -314,7 +314,7 @@ data access, but tool support is universal while resource support varies by clie
 
 ## Connection
 
-**Transport — Streamable HTTP, MCP 2026-07-28 and 2025-11-25**
+**Transport: Streamable HTTP, MCP 2026-07-28 and 2025-11-25**
 
 The in-process server uses the Streamable HTTP transport and speaks
 exactly two MCP protocol versions: 2026-07-28, in which every request
@@ -372,7 +372,7 @@ failure decides the reply, with `400`.
 A 2025-11-25 request carries no `_meta` version, method or name
 headers, and none are checked.
 
-**Methods — 2026-07-28**
+**Methods: 2026-07-28**
 
 - `server/discover` answers with
   `supportedVersions: ["2026-07-28", "2025-11-25"]`,
@@ -386,7 +386,7 @@ headers, and none are checked.
 - Any other method, `ping` among them, gets `404 Not Found` and
   method-not-found (`-32601`).
 
-**Methods — 2025-11-25**
+**Methods: 2025-11-25**
 
 - `initialize` answers with `protocolVersion: "2025-11-25"`,
   `capabilities: {"tools": {}}` and the server's name and version in
@@ -417,7 +417,7 @@ by executed code is not a failed tool call: its traceback is ordinary
 output. An unknown tool name is a protocol error, invalid params
 (`-32602`).
 
-**Transport distinction — direct HTTP clients vs stdio clients**
+**Transport distinction: direct HTTP clients vs stdio clients**
 
 HTTP-capable clients connect to the endpoint directly. Stdio clients
 (via the shim) receive each JSON-RPC message as one line on stdout.
@@ -463,7 +463,7 @@ included, with what the bridge is listening on.
 
 **Session management**
 
-Stateless at the MCP transport layer — each POST is independent. The server does not assign
+Stateless at the MCP transport layer: each POST is independent. The server does not assign
 `Mcp-Session-Id`. Page history is keyed by `job_token` and is shared among any client that
 holds the token.
 
@@ -474,13 +474,13 @@ holds the token.
 **Threading model**
 
 The HTTP server runs in a background thread; work crosses to the Qt main thread via
-queued signal dispatch — a standard Qt/PySide pattern.
+queued signal dispatch, a standard Qt/PySide pattern.
 
 Only execution crosses threads; every other request is answered on the HTTP request
 thread:
 
 - **Lifecycle messages** (`initialize`, `tools/list`) are answered directly on the
-  HTTP request thread as plain JSON, not SSE — pure protocol logic, no FreeCAD state
+  HTTP request thread as plain JSON, not SSE: pure protocol logic, no FreeCAD state
   involved, so no main-thread hop is needed.
 
 - **Notifications** (requests with no `id`) get an empty `202` reply on the request
@@ -495,26 +495,26 @@ thread:
   read failure returns a tool-level `error` on the request thread without queueing a job.
   Otherwise the job is queued to the main-thread dispatcher (see *Exec
   serialization* below); when the job runs, the main thread redirects `sys.stdout`
-  and `sys.stderr` to a `TeeWriter` — not before, and not in the HTTP handler.
+  and `sys.stderr` to a `TeeWriter`, not before, and not in the HTTP handler.
   The HTTP handler then drains the output queue into the first page and returns it
   (bounds: *Page bounds*; storage and completion: *Page history*). The output queue
   persists as the live buffer, keyed by `job_token`; exec keeps running on the Qt main
   thread, pushing chunks to the queue (a *chunk* is one `{stream, text}` entry from a
   `write()` call, of arbitrary size), and later `get_output_page` calls drain it.
   Draining works while exec still holds the main thread because Python
-  releases the GIL periodically during execution — the HTTP thread reads the queue in
+  releases the GIL periodically during execution: the HTTP thread reads the queue in
   those gaps.
 
-**Exec serialization — dispatcher gate**
+**Exec serialization: dispatcher gate**
 
 Exec jobs travel only through a single FIFO job queue owned by the Executor; the Qt
 signal carries no payload and serves purely as a wake-up. The main-thread dispatcher holds a busy latch and drains
 the queue one job at a time, each job running to completion before the next is taken.
 The latch makes nested dispatcher invocations no-ops. It is required because executed
-code can ask Qt to process pending events mid-run — "pumping" the event loop, which is
-what `Gui.updateGui()`, `processEvents()`, and modal dialogs do — and delivering
+code can ask Qt to process pending events mid-run ("pumping" the event loop, which is
+what `Gui.updateGui()`, `processEvents()`, and modal dialogs do), and delivering
 pending events includes starting the next queued exec. That delivery re-enters the
-dispatcher on the same call stack — recursion — so without the latch the next job
+dispatcher on the same call stack (recursion), so without the latch the next job
 would run nested inside the current one. Strict FIFO
 and one-at-a-time are enforced by the structure (single queue, single consumer loop)
 rather than assumed of Qt's queued-signal delivery. Sequential execution remains the
@@ -555,10 +555,10 @@ ends the job's transaction without FreeCAD calling
 `slotCloseTransaction`, so the observer opens no other. Creating,
 opening or closing a document, and saving one, are not undone.
 
-A plain-language walkthrough of execution — the life of a job from submission through
-page history retention — is in [job-lifecycle.md](job-lifecycle.md).
+A plain-language walkthrough of execution (the life of a job from submission through
+page history retention) is in [job-lifecycle.md](job-lifecycle.md).
 
-**Cancellation of a running exec — out of scope**
+**Cancellation of a running exec: out of scope**
 
 The concept is bigger than this project alone. Stock FreeCAD freezes identically on a
 runaway macro, and the AI agent's own recovery loop (spot the stuck process, kill it,
@@ -660,7 +660,7 @@ rule "Credentials go in secure storage", `manifest.json` marks the
 Bearer token setting `sensitive`, which the MCPB manifest specification
 defines as "mask input and store securely".
 
-- **TLS (`TlsCertFile`, `TlsKeyFile`, `serving-cert.pem`)** — when a
+- **TLS (`TlsCertFile`, `TlsKeyFile`, `serving-cert.pem`)**: when a
   certificate file (`TlsCertFile`) and private key file (`TlsKeyFile`)
   are set, every listener serves HTTPS, loopback included, using
   Python's standard-library `ssl` module, and each start writes a
@@ -707,7 +707,7 @@ defines as "mask input and store securely".
   set-up dialog with a message saying the `ssl` module is missing, and
   loopback listeners still start over HTTP.
 
-**Security posture — noted trade-offs**
+**Security posture: noted trade-offs**
 
 FreeCAD's Python has no library that creates a certificate, so
 **Generate self-signed certificate** needs a certificate tool on the
@@ -731,7 +731,7 @@ FreeCAD session as the user. The first start asks the user to accept
 that, and each later start warns. An address beyond loopback is bound
 only after the user has accepted it once.
 
-**Origin and Host — required**
+**Origin and Host: required**
 
 Any POST that carries an `Origin` header is refused with `403`. A POST
 is also refused when its `Host` header, port aside, names neither the
@@ -845,7 +845,7 @@ settings. A `ping` is answered locally with an empty result and is
 not sent on. Any other method gets a JSON-RPC method-not-found
 error, code `-32601`, and is not sent on.
 
-**Shim — no SDK**
+**Shim: no SDK**
 
 The shim is hand-rolled. `@modelcontextprotocol/sdk` was considered and rejected:
 the forwarding job (read line → POST → unwrap → write line) is small enough that
@@ -861,11 +861,11 @@ the `.mcpb` bundle trivial and auditable.
 The HTTP server uses Python stdlib only (`http.server` (on `socketserver`), `threading`).
 No pip installs required. FreeCAD's bundled Python provides everything needed.
 
-The Python `mcp` package was considered — it would handle MCP protocol, Streamable HTTP
+The Python `mcp` package was considered: it would handle MCP protocol, Streamable HTTP
 transport, and SSE on the server side, analogous to the Node.js SDK on the shim side.
-Rejected: the package is built on asyncio, which conflicts with Qt's event loop —
-running it in a background thread with its own event loop is possible but significantly
-complicates the Qt dispatch boundary — and its dependency chain would need adding to
+Rejected: the package is built on asyncio, which conflicts with Qt's event loop
+(running it in a background thread with its own event loop is possible but significantly
+complicates the Qt dispatch boundary), and its dependency chain would need adding to
 the Addon Manager allowed packages list. The stdlib implementation is simpler and the
 MCP protocol surface for this server is small enough to hand-roll cleanly.
 
@@ -874,12 +874,12 @@ MCP protocol surface for this server is small enough to hand-roll cleanly.
 `http.server.ThreadingHTTPServer` + background thread (stdlib).
 Each request gets its own thread, allowing concurrent handling of `execute_python` and
 `get_output_page`. Socket handling and HTTP parsing need no Qt; only the hand-off to the
-main thread goes through the Qt-based Executor. `QTcpServer` was considered — more
+main thread goes through the Qt-based Executor. `QTcpServer` was considered: more
 Qt-idiomatic but requires implementing HTTP parsing manually with no clear benefit.
 
 **Local socket**
 
-Not used. HTTP is the only listener — one endpoint, simpler architecture, and any
+Not used. HTTP is the only listener: one endpoint, simpler architecture, and any
 developer can test directly with `curl`.
 
 ---
@@ -898,7 +898,7 @@ PowerShell is the chosen tool.
 
 **`.mcpb` distribution and the Index binary ban**
 
-The packed `.mcpb` is treated as if the Addon Index binary ban applies to it — a
+The packed `.mcpb` is treated as if the Addon Index binary ban applies to it, a
 working assumption. The safer path is taken regardless: the Addon Manager package contains
 only source, and the packed `.mcpb` is distributed separately as a GitHub release
 asset for Claude Desktop users.
