@@ -2,10 +2,13 @@
 # Release publish step: INTERNAL to .github/workflows/release.yml only.
 #
 # Runs only after install-verify has passed on main. Checks the
-# changelog section and the tested bundle prepare retrieved, then pushes the
-# release tag on the verified commit, creates a GitHub Release from
+# changelog section and the tested bundle prepare retrieved, then builds
+# the release commit from the verified commit (build_release_commit.sh:
+# only what users install, its parent the release branch's tip), pushes
+# the release tag on that release commit, creates a GitHub Release from
 # that section, and uploads the bundle as the release's one asset
-# (freecad-mcp-bridge.mcpb).
+# (freecad-mcp-bridge.mcpb). It does not move the release branch:
+# promote does, after the install check on the tag.
 #
 # Does not change package.xml. No standalone entry point.
 
@@ -48,7 +51,8 @@ if [[ "$current" != "$VERIFIED_SHA" ]]; then
 fi
 
 # The pre-tag verify installed main as it stood when it ran, so main must
-# still be the recorded commit; otherwise the verified and tagged commits differ.
+# still be the recorded commit; otherwise the release commit would be
+# built from a commit other than the one verified.
 remote_main=$(git ls-remote origin refs/heads/main | cut -f1)
 if [[ "$remote_main" != "$VERIFIED_SHA" ]]; then
   echo "main moved since prepare (now ${remote_main}, verified ${VERIFIED_SHA}); not tagging." >&2
@@ -85,10 +89,18 @@ python3 tests/unit/test_version_files.py --body > "$notes_file"
 echo "Checking the Desktop-tested bundle prepare retrieved"
 printf '%s  %s\n' "$BUNDLE_SHA" "$BUNDLE_PATH" | sha256sum -c -
 
-git tag -a "$RELEASE_TAG" -m "Release ${RELEASE_TAG}"
+# The release commit's parent is the release branch as it stands, so
+# promote's plain push is a fast-forward.
+git fetch origin refs/heads/release
+release_parent=$(git rev-parse FETCH_HEAD)
+release_commit=$(bash scripts/build_release_commit.sh \
+  "$VERIFIED_SHA" "$release_parent" "$version")
+echo "Built release commit ${release_commit} from ${VERIFIED_SHA} on ${release_parent}"
+
+git tag -a "$RELEASE_TAG" "$release_commit" -m "Release ${RELEASE_TAG}"
 git push origin "$RELEASE_TAG"
 
-echo "Created and pushed tag ${RELEASE_TAG} at ${VERIFIED_SHA}"
+echo "Created and pushed tag ${RELEASE_TAG} at ${release_commit}"
 
 gh release create "$RELEASE_TAG" \
   --title "$RELEASE_TAG" \
@@ -101,4 +113,5 @@ echo "Uploaded freecad-mcp-bridge.mcpb to ${RELEASE_TAG}"
 
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   printf 'release_tag=%s\n' "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+  printf 'release_commit=%s\n' "$release_commit" >> "$GITHUB_OUTPUT"
 fi
