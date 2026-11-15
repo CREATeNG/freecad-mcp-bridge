@@ -315,7 +315,7 @@ def serialized_page_length(page, page_no, job_token) -> int:
 
 def tool_call_response(req_id, result, version) -> dict:
     """Wrap a tool result ({page, has_more, [page_no], [job_token], [error]})
-    as an MCP tools/call result in `version` — a single JSON text content
+    as an MCP tools/call result in `version`: a single JSON text content
     block. A result carrying an `error` is a failed tool call, flagged
     isError."""
     payload = tool_result_payload(result)

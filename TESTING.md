@@ -57,7 +57,7 @@ for every push and pull request, with Node's experimental test coverage
 enabled. These tests use the checkout's shim and a stand-in bridge;
 they do not install a packed `.mcpb` or run a Claude Desktop chat.
 For manual Desktop setup, see
-[DEVELOPMENT.md — Claude Desktop shim](DEVELOPMENT.md#2-claude-desktop-shim-mcp-stdio-shim).
+[DEVELOPMENT.md: Claude Desktop shim](DEVELOPMENT.md#2-claude-desktop-shim-mcp-stdio-shim).
 
 ## Acceptance tests against FreeCAD
 
@@ -136,7 +136,7 @@ defaults to it but can turn it off. Index mode skips the suite.
 ## Manual bridge testing
 
 For code-string and script-file probes with `send_cmd.py`, use
-[DEVELOPMENT.md — Direct CLI testing utility](DEVELOPMENT.md#1-direct-cli-testing-utility-send_cmdpy).
+[DEVELOPMENT.md: Direct CLI testing utility](DEVELOPMENT.md#1-direct-cli-testing-utility-send_cmdpy).
 Those instructions remain there; the automated suites above provide
 repeatable checks.
 
@@ -170,8 +170,8 @@ The FreeCAD version is set once, as `FREECAD_VERSION` in the workflow. The AppIm
 Each matrix job launches **two separate FreeCAD processes** for install
 and restart verification:
 
-1. **Install** — [scripts/test_install.py](scripts/test_install.py) via `scripts/ci_run_freecad.sh install`
-2. **Verify** — [scripts/test_verify.py](scripts/test_verify.py) via `scripts/ci_run_freecad.sh verify` (fresh process, same profile; isolation enabled on Linux and Windows,
+1. **Install**: [scripts/test_install.py](scripts/test_install.py) via `scripts/ci_run_freecad.sh install`
+2. **Verify**: [scripts/test_verify.py](scripts/test_verify.py) via `scripts/ci_run_freecad.sh verify` (fresh process, same profile; isolation enabled on Linux and Windows,
    not on macOS)
 
 When acceptance is enabled, a third process serves the installed bridge
@@ -201,9 +201,9 @@ install-source and timing variables, and the scripts (`test_install.py`,
 script's module docstring (overridable when debugging) fall into three
 groups:
 
-- **Install source** — which tag/repo/mode/Mod-folder-name to install.
-- **Timing** — how long to wait for GUI startup, toolbar injection, the HTTP exec round-trip, and overall install completion.
-- **Expected strings** (verify phase only) — the probe code sent over HTTP, the expected output substring, and the expected Report-view message after stopping the bridge.
+- **Install source**: which tag/repo/mode/Mod-folder-name to install.
+- **Timing**: how long to wait for GUI startup, toolbar injection, the HTTP exec round-trip, and overall install completion.
+- **Expected strings** (verify phase only): the probe code sent over HTTP, the expected output substring, and the expected Report-view message after stopping the bridge.
 
 ### Coverage reports
 
@@ -248,7 +248,7 @@ Use this mode to validate the archive the FreeCAD Addon Index serves via `zip_ur
 
 ### `main`
 
-Addon Manager installs from the repository URL with `branch=main`. Used by the **[release.yml](.github/workflows/release.yml) verify gate**: install-verify installs `main` as it stands when the leg runs, **before** the release tag is created, and publish then refuses to tag unless `main` is still the commit prepare recorded — the last chance to catch a broken install before an irreversible tag gets cut (tags are permanent; see [MAINTAINING.md — Why these rules exist](MAINTAINING.md#why-these-rules-exist)). `RELEASE_INSTALL_TAG` still supplies the expected `package.xml` version for on-disk checks.
+Addon Manager installs from the repository URL with `branch=main`. Used by the **[release.yml](.github/workflows/release.yml) verify gate**: install-verify installs `main` as it stands when the leg runs, **before** the release tag is created, and publish then refuses to tag unless `main` is still the commit prepare recorded: the last chance to catch a broken install before an irreversible tag gets cut (tags are permanent; see [MAINTAINING.md: Why these rules exist](MAINTAINING.md#why-these-rules-exist)). `RELEASE_INSTALL_TAG` still supplies the expected `package.xml` version for on-disk checks.
 
 ### `branch`
 
@@ -289,9 +289,9 @@ checks that the shim's bundled tool list matches the addon's
 then calls [install-verify](.github/workflows/install-verify.yml)
 twice:
 
-1. **Pre-tag** (`install_mode: main`) — hard gate before tag creation.
+1. **Pre-tag** (`install_mode: main`): hard gate before tag creation.
    The release workflow fails if any OS fails.
-2. **Tag path** (`install_mode: tag`) — after tag and release notes;
+2. **Tag path** (`install_mode: tag`): after tag and release notes;
    final sanity check that install works from the tag ref. The release
    workflow fails before `release` moves if any OS fails.
 
@@ -299,7 +299,7 @@ Runs queue rather than overlap, so a second release run waits for the
 first.
 
 For the release job order, see
-[MAINTAINING.md — release job order](MAINTAINING.md#the-release-orchestrator-workflow-releaseyml).
+[MAINTAINING.md: release job order](MAINTAINING.md#the-release-orchestrator-workflow-releaseyml).
 
 ---
 
@@ -307,9 +307,9 @@ For the release job order, see
 
 The [after-release Index workflow](.github/workflows/index-after-release.yml) checks what Index users receive. Nothing waits on it. Every three hours, and on `workflow_dispatch`, it compares the version `release`'s `package.xml` names with the version the live catalog states for our entry ([`index_catalog_version.py`](scripts/index_catalog_version.py)):
 
-- **Catalog version differs** — exits quietly, or fails once the release
+- **Catalog version differs**: exits quietly, or fails once the release
   has been published for 7 days.
-- **Catalog caught up** — calls **[install-verify.yml](.github/workflows/install-verify.yml)** with `install_mode: index` on all three OSes, then uploads an artifact named `index-checked-{version}`. That artifact marks the version as checked, and later runs skip it; the `force` input repeats the install when the catalog matches, even if a marker exists.
+- **Catalog caught up**: calls **[install-verify.yml](.github/workflows/install-verify.yml)** with `install_mode: index` on all three OSes, then uploads an artifact named `index-checked-{version}`. That artifact marks the version as checked, and later runs skip it; the `force` input repeats the install when the catalog matches, even if a marker exists.
 
 ---
 
@@ -340,13 +340,13 @@ On success, the script exits via `quit_freecad(0)` and CI launches verify in a n
 ## Phase 2: Verify after restart
 
 Run [test_verify.py](scripts/test_verify.py) inside the **second**
-FreeCAD process after restart. Does **not** call `App.MCPBridgeInjectUi()` — it relies on the addon's own `init_gui.py` startup hooks.
+FreeCAD process after restart. Does **not** call `App.MCPBridgeInjectUi()`: it relies on the addon's own `init_gui.py` startup hooks.
 
 **Checklist:**
 
 | Step | Proves |
 |------|--------|
-| Auto-registration | The addon's command registers on startup under the `MCP_Bridge` category in **Tools → Customize**, with no manual injection — `init_gui.py`'s own startup hooks ran |
+| Auto-registration | The addon's command registers on startup under the `MCP_Bridge` category in **Tools → Customize**, with no manual injection: `init_gui.py`'s own startup hooks ran |
 | Install dir | The installed addon directory exists |
 | Preferences page | The installed `preferences.ui` contains the line telling the user how to start or stop the bridge |
 | Toolbar injection | The **MCP Bridge On/Off** toolbar action is found without manual injection |
@@ -358,7 +358,7 @@ FreeCAD process after restart. Does **not** call `App.MCPBridgeInjectUi()` — i
 | Hide toolbar | Unchecking **MCP Bridge** (`toggleViewAction().trigger()`) hides the toolbar and keeps it hidden across a workbench switch, with `False` saved in FreeCAD's `MainWindow/Toolbars` parameters and the status-bar button still shown. Checking **MCP Bridge** again shows the toolbar and keeps it shown across a workbench switch, with `True` saved in `MainWindow/Toolbars` |
 | Start bridge | First toolbar click starts the HTTP server |
 | Listening status | The status bar shows the configured listen addresses and ports |
-| HTTP round-trip | A client-shaped request — `tools/call` → `execute_python` over HTTP, sent from a worker thread while the main thread pumps the Qt event loop, paginating via `get_output_page` if the response is chunked — returns the expected probe output. Same code path a real MCP client uses. |
+| HTTP round-trip | A client-shaped request (`tools/call` → `execute_python` over HTTP, sent from a worker thread while the main thread pumps the Qt event loop, paginating via `get_output_page` if the response is chunked) returns the expected probe output. Same code path a real MCP client uses. |
 | Stop bridge | Clicking the status-bar button's `MCP On` text, not its arrow, stops the HTTP server |
 | Report view | Shows the expected "stopped" message (`RELEASE_INSTALL_STOP_MESSAGE`, defaults to the bridge's own stop log line) |
 | Status bar | Shows `MCP Bridge: Offline` |
@@ -418,7 +418,7 @@ Tests append lines via `test_install_common._write_ci_log()`:
 
 [publish_ci_log.sh](scripts/publish_ci_log.sh) reads the log file, prints a collapsible `::group::` block with all lines, emits notices, warnings and errors for `PASS`, `WARN` and `FAIL` lines, and exits non-zero if any `FAIL` line was seen.
 
-**Do not** emit `::notice::` / `::warning::` / `::error::` from inside FreeCAD Python — use the file + shell wrapper instead.
+**Do not** emit `::notice::` / `::warning::` / `::error::` from inside FreeCAD Python. Use the file + shell wrapper instead.
 
 ---
 
@@ -440,10 +440,10 @@ export RELEASE_INSTALL_TAG=v0.1.22   # set to the tested source's version
 export RELEASE_INSTALL_MODE=main
 export RELEASE_INSTALL_REPO=https://github.com/CREATeNG/freecad-mcp-bridge
 
-# Phase 1 — install (replace with your FreeCAD binary)
+# Phase 1: install (replace with your FreeCAD binary)
 freecad scripts/test_install.py
 
-# Phase 2 — verify (new FreeCAD process)
+# Phase 2: verify (new FreeCAD process)
 freecad scripts/test_verify.py
 ```
 

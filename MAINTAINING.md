@@ -1,4 +1,4 @@
-# Maintainer guide — releases & CI
+# Maintainer guide: releases & CI
 
 Instructions for **maintainers of this repository** who cut releases and manage versioning.
 
@@ -12,7 +12,7 @@ For install-verify CI details (scripts, logs, triggers), see **[TESTING.md](TEST
 
 ## Versioning at a glance
 
-The version number format is `x.y.z`; tags are named `v{x.y.z}` — e.g. shipping version `0.1.42` creates tag `v0.1.42`.
+The version number format is `x.y.z`; tags are named `v{x.y.z}` (e.g. shipping version `0.1.42` creates tag `v0.1.42`).
 
 | Part | Meaning | Who changes it |
 |------|---------|----------------|
@@ -41,13 +41,13 @@ whatever pull requests have merged since the last release; see
 
 ## Why these rules exist
 
-- **Tags are permanent.** A tag names a fixed install source — once `v{x.y.z}` exists, its content must never change, or every install/reference pointing at it silently breaks.
+- **Tags are permanent.** A tag names a fixed install source. Once `v{x.y.z}` exists, its content must never change, or every install/reference pointing at it silently breaks.
 - **Every component in a release carries the same version.** Matching numbers across `package.xml`, `manifest.json`, and `package.json` are what make "version X" mean one coherent thing, not a mismatched patchwork.
-- **Version numbers only increase.** A newer version must always sort higher than an older one, or "is this an update" becomes unanswerable — for Addon Manager, for users, for anyone comparing releases.
+- **Version numbers only increase.** A newer version must always sort higher than an older one, or "is this an update" becomes unanswerable: for Addon Manager, for users, for anyone comparing releases.
 - **The release pipeline is automated and gated, to help ensure the above.**
 - **What we verify is what we tag.** The prepare job pins the release-candidate commit; publish refuses to tag if `main` has moved since; the tag is then re-verified by installing it, and only then does `release` move. The Addon Index listing, which follows `release`, can therefore never point at an untested snapshot.
 - **`release` only moves forward.** Promote pushes without force, so GitHub refuses any move that isn't a fast-forward; what Index users already have is never rewritten.
-- **The tag's zip is the tag.** GitHub archives the same tree the tag names, so the two install forms can never differ in content — only in install-layout mechanics. Verifying the zip form is about layout handling, never a second content gate.
+- **The tag's zip is the tag.** GitHub archives the same tree the tag names, so the two install forms can never differ in content, only in install-layout mechanics. Verifying the zip form is about layout handling, never a second content gate.
 
 ---
 
@@ -55,7 +55,7 @@ whatever pull requests have merged since the last release; see
 
 **Releases** are created by the **release orchestrator workflow** (`release.yml`). It produces a verified snapshot: install-verify green on three OSes, then tag (with release notes on GitHub), then a second install-verify from the tag, then the **`release`** branch moves to that commit. Manual tags are fine for experiments or other uses; only **`release.yml`** moves `release`.
 
-**FreeCAD Addon Index Qualities:** A listed `git_ref` must point at a complete, installable snapshot per the [FreeCAD Addon Index Qualities](https://freecad.github.io/Addon-Academy/Topics/Addon-Index/Index/Qualities.html) — Python sources and `package.xml`, nothing else required. The addon ships no prebuilt binaries at all; verify runs before the tag specifically to confirm the snapshot actually installs.
+**FreeCAD Addon Index Qualities:** A listed `git_ref` must point at a complete, installable snapshot per the [FreeCAD Addon Index Qualities](https://freecad.github.io/Addon-Academy/Topics/Addon-Index/Index/Qualities.html): Python sources and `package.xml`, nothing else required. The addon ships no prebuilt binaries at all; verify runs before the tag specifically to confirm the snapshot actually installs.
 
 ---
 
@@ -103,19 +103,19 @@ after the tag, and moves `release`. It pushes nothing to `main`.
 ```mermaid
 flowchart TD
   R[release.yml]
-  R --> prep[prepare — version gate, validate, retrieve tested .mcpb]
+  R --> prep[prepare: version gate, validate, retrieve tested .mcpb]
   prep -->|not a version push| skip[Stop. main unchanged]
-  prep -->|version pull request, or a retry| verify[install_verify pre-tag — main and the bundle]
+  prep -->|version pull request, or a retry| verify[install_verify pre-tag: main and the bundle]
   verify -->|fail| stop[No tag / no GitHub Release]
-  verify -->|pass| pub[publish — check sha, tag, upload .mcpb]
+  verify -->|pass| pub[publish: check sha, tag, upload .mcpb]
   pub --> postverify[install_verify tag path]
   postverify -->|fail| stop2[release unchanged]
-  postverify -->|pass| promote[promote — fast-forward release]
+  postverify -->|pass| promote[promote: fast-forward release]
 ```
 
 **`release.yml` job order:**
 
-1. **Prepare** — on a push, compare `package.xml`'s version with
+1. **Prepare**: on a push, compare `package.xml`'s version with
    the previous tip (`github.event.before`) and fail the run
    unless its diff is the version files and `CHANGELOG.md`.
    On **Run workflow**, take the current `main`. Either way,
@@ -141,22 +141,22 @@ flowchart TD
    The gate uses the report's run and artifact identity. If a
    rerun makes that run fail or replaces the artifact, retry after
    a successful PR run and a new Desktop report.
-2. **Install-verify** (pre-tag) —
+2. **Install-verify** (pre-tag):
    [`install-verify.yml`](.github/workflows/install-verify.yml)
    with `install_mode: main` and `verify_bundle: true`: full
    Addon Manager install and restart verify on all three OSes
    against `main`, then the packed shim called over stdio while
    that bridge is still up. **No tag if this fails.**
-3. **Publish** — check the changelog section and the tested
+3. **Publish**: check the changelog section and the tested
    bundle's sha256, push the matching tag (`v{x.y.z}`) on the
    verified commit, create a **GitHub Release** from that
    section, and upload that same file. Uses
    [`release-publish-orchestrator.sh`](scripts/release-publish-orchestrator.sh)
    (`RELEASE_PUBLISH_AUTHORIZED=true`; not runnable standalone).
-4. **Install-verify** (tag path) — same workflow with
+4. **Install-verify** (tag path): same workflow with
    `install_mode: tag`: final sanity check that install works
    from the tag ref. **`release` does not move if this fails.**
-5. **Promote** — push the verified commit to **`release`** as a plain push, which GitHub refuses unless it fast-forwards. This is the step that ships to Index users.
+5. **Promote**: push the verified commit to **`release`** as a plain push, which GitHub refuses unless it fast-forwards. This is the step that ships to Index users.
 
 A push whose version is unchanged stops in prepare without
 releasing. Running the workflow by hand while that version's tag
@@ -167,11 +167,11 @@ already exists fails at prepare.
 ## Release assets
 
 Each GitHub Release carries one uploaded asset:
-**`freecad-mcp-bridge.mcpb`** — the Claude Desktop bundle packed
+**`freecad-mcp-bridge.mcpb`**, the Claude Desktop bundle packed
 by the version pull request's checks and tested in Claude
 Desktop. Prepare retrieves that artifact, and publish attaches
 the same bytes after checking its sha256. The addon itself isn't a
-release asset — it ships as plain Python source, installed
+release asset: it ships as plain Python source, installed
 directly from the repo tree (via the tag or its zip), not
 from anything attached to the release page.
 
@@ -259,7 +259,7 @@ not release.
 
 ## FreeCAD Addon Index
 
-How **this repo's maintainers** update the **`freecad-mcp-bridge`** listing on the FreeCAD Addon Index. **FreeCAD Addon Index maintainers** (the [FreeCAD/Addons](https://github.com/FreeCAD/Addons) team) review and merge changes to [`Data/Index.json`](https://github.com/FreeCAD/Addons/blob/master/Data/Index.json) on FreeCAD/Addons — not in this repository — a different maintainer role.
+How **this repo's maintainers** update the **`freecad-mcp-bridge`** listing on the FreeCAD Addon Index. **FreeCAD Addon Index maintainers** (the [FreeCAD/Addons](https://github.com/FreeCAD/Addons) team) review and merge changes to [`Data/Index.json`](https://github.com/FreeCAD/Addons/blob/master/Data/Index.json) on FreeCAD/Addons (not in this repository), a different maintainer role.
 
 Guides: [Updating](https://freecad.github.io/Addon-Academy/Guides/Maintaining/Updating), [FreeCAD Addon Index Qualities](https://freecad.github.io/Addon-Academy/Topics/Addon-Index/Index/Qualities.html).
 

@@ -5,7 +5,7 @@ so Executor bridges the gap: submit() puts the job on a FIFO job queue and
 emits an argument-less wake-up signal; the dispatcher slot runs on the main
 thread and drains the queue one job at a time, each job running to
 completion before the next is taken. A busy latch makes nested dispatcher
-invocations no-ops — executed code that pumps the Qt event loop would
+invocations no-ops: executed code that pumps the Qt event loop would
 otherwise have the next queued exec delivered nested inside the current one.
 Stopping the bridge shuts the executor down: jobs still in the queue are
 dropped and never run; a job already running finishes.
