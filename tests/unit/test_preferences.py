@@ -285,6 +285,25 @@ class PreferencePageTests(unittest.TestCase):
             ],
         )
 
+    def test_the_claude_desktop_note_links_to_the_release_bundle(self):
+        """The Claude Desktop note links to the latest release's .mcpb
+        bundle."""
+        claude_note = next(
+            widget
+            for widget in ET.parse(PAGE).iter("widget")
+            if widget.get("name") == "clientClaudeNote"
+        )
+        claude_text = next(
+            prop[0].text
+            for prop in claude_note.findall("property")
+            if prop.get("name") == "text"
+        )
+        self.assertIn(
+            "https://github.com/CREATeNG/freecad-mcp-bridge/"
+            "releases/latest/download/freecad-mcp-bridge.mcpb",
+            claude_text,
+        )
+
 
 class UnsetPreferenceTests(unittest.TestCase):
     def test_with_nothing_saved_the_bridge_uses_the_documented_defaults(self):
