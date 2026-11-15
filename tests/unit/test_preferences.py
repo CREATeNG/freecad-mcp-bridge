@@ -299,8 +299,8 @@ class PreferencePageTests(unittest.TestCase):
             if prop.get("name") == "text"
         )
         self.assertIn(
-            "https://github.com/CREATeNG/freecad-mcp-bridge/"
-            "releases/latest/download/freecad-mcp-bridge.mcpb",
+            'href="https://github.com/CREATeNG/freecad-mcp-bridge/'
+            'releases/latest/download/freecad-mcp-bridge.mcpb"',
             claude_text,
         )
 
