@@ -213,7 +213,7 @@ is stored as an immutable snapshot (`page_no`, `page`, and the `has_more` value 
 time) before the response is returned. The live output queue feeds forward fetches while
 the job is still running; stored snapshots serve replay.
 
-Only pages with content (and the job's final page) are stored
+Only pages with content, and the job's final page, are stored
 and numbered. An empty non-final drain is not stored and
 consumes no page number: the response returns `has_more: true`
 and `page: []`, and no `page_no`. `page_no` therefore counts
@@ -480,8 +480,8 @@ Only execution crosses threads; every other request is answered on the HTTP requ
 thread:
 
 - **Lifecycle messages** (`initialize`, `tools/list`) are answered directly on the
-  HTTP request thread as plain JSON, not SSE: pure protocol logic, no FreeCAD state
-  involved, so no main-thread hop is needed.
+  HTTP request thread as plain JSON, not SSE. They are pure protocol logic, with no
+  FreeCAD state involved, so no main-thread hop is needed.
 
 - **Notifications** (requests with no `id`) get an empty `202` reply on the request
   thread.
