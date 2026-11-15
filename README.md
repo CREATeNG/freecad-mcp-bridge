@@ -130,8 +130,7 @@ change a model. For example:
 ## User guide
 
 Other MCP clients, HTTPS and certificates, the tools in full, the
-permission modes, every preference and other ways to install are in
-the
+permission modes, every preference and other ways to install are in the
 [User guide](https://github.com/CREATeNG/freecad-mcp-bridge/blob/release/USER_GUIDE.md).
 
 Developing or maintaining the addon: see
