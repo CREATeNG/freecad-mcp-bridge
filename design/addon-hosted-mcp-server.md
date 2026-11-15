@@ -703,18 +703,18 @@ defines as "mask input and store securely".
   the files in Edit → Preferences → MCP Bridge, and the bridge stays
   off. Coverage takes the forms clients accept: names and IP addresses
   in the Subject Alternative Name, a wildcard name, and the common name
-  when there is no SAN. A listener whose address is not in the
-  certificate draws a Report view warning when the certificate names no
-  host, and the start still proceeds. Reading the certificate uses
-  `ssl._ssl._test_decode_cert`, a function inside Python that isn't part
-  of its public interface. If it's missing, or can't read the
-  certificate, the start goes ahead without the date and coverage checks
-  and says so in the Report view. On a FreeCAD whose Python has no `ssl`
-  module, as reported for FreeCAD's snap (#67), the addon still loads: a
-  start that needs TLS, for an address beyond loopback or with both
-  certificate fields set, stops before the set-up dialog with a message
-  saying the `ssl` module is missing, and loopback listeners still start
-  over HTTP.
+  when the Subject Alternative Name holds no name or IP address. A
+  listener whose address is not in the certificate draws a Report view
+  warning when the certificate names no host, and the start still
+  proceeds. Reading the certificate uses `ssl._ssl._test_decode_cert`, a
+  function inside Python that isn't part of its public interface. If
+  it's missing, or can't read the certificate, the start goes ahead
+  without the date and coverage checks and says so in the Report view.
+  On a FreeCAD whose Python has no `ssl` module, as reported for
+  FreeCAD's snap (#67), the addon still loads: a start that needs TLS,
+  for an address beyond loopback or with both certificate fields set,
+  stops before the set-up dialog with a message saying the `ssl` module
+  is missing, and loopback listeners still start over HTTP.
 
 **Security posture: noted trade-offs**
 
@@ -748,10 +748,10 @@ address that listener is bound to, nor a name its certificate covers,
 nor a host name in **Addresses**. A missing `Host` is refused. A
 loopback listener accepts the address it is bound to, `127.0.0.1`,
 `localhost` and `[::1]`, but not a name its certificate covers. When
-Python's certificate reader is missing (see the TLS bullet above), the
-Host check accepts the bound address, on loopback also `127.0.0.1`,
-`localhost` and `[::1]`, and each host name in **Addresses**. A name the
-certificate covers adds nothing to these.
+Python's certificate reader is missing, or can't read the certificate
+(see the TLS bullet above), the Host check accepts the bound address, on
+loopback also `127.0.0.1`, `localhost` and `[::1]`, and each host name
+in **Addresses**. A name the certificate covers adds nothing to these.
 
 ---
 
