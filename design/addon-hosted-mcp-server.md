@@ -666,45 +666,55 @@ defines as "mask input and store securely".
   user-only copy of the certificate to `serving-cert.pem` in the
   bridge's folder. If that write fails, the bridge still listens and
   warns in the Report view that the Claude Desktop extension on this
-  machine may not connect. When neither is set, loopback listeners
-  serve HTTP, each start removes `serving-cert.pem`, and a start with an
-  entry beyond loopback fails. When only one is set, the start refuses,
+  machine may not connect. When neither is set, loopback listeners serve
+  HTTP, each start removes `serving-cert.pem`, and a start with an entry
+  beyond loopback fails. When only one is set, the start refuses,
   loopback included, naming the field that isn't set, and never falls
-  back to HTTP. In the TLS certificate group the page
-  states that an MCP client must trust this certificate. The user sets
-  their own certificate and private key in **Certificate (PEM)** and
-  **Private key (PEM)**. Beside them, **Generate self-signed
-  certificate** is an optional convenience for a user who has no
-  certificate. That button calls `cert_tools.find_tools()` to find
-  certificate tools on the machine (such as `openssl`, including Git for
-  Windows' copy on Windows). Where tools are found, it offers a choice
-  of tool, key type (`RSA 4096` or `ECDSA P-256`) and **Valid for**, in
-  days (365 by default, 1 to 3650), and calls `cert_tools.generate()`.
-  Where none is found, it makes nothing and says where to install
-  openssl for the platform. The certificate is valid for the chosen
-  number of days from now, and its validity starts a day earlier with
-  PowerShell and with openssl 3.4 or later. It is self-signed
-  (`CA:FALSE`, `digitalSignature` and `keyEncipherment`, `serverAuth`),
-  covers `127.0.0.1`, `localhost`, each fixed address and host name in
-  the list, and, for each listed adapter that is up when the button is
-  clicked, its first IPv4 address that isn't 169.254.x.x, writes
-  `tls-cert.pem` and `tls-key.pem` (`tls-key.pem` readable by the user
-  only) in `<home>/.freecad-mcp-bridge` (or `FREECAD_MCP_TOKEN_DIR`),
-  fills in the `TlsCertFile` and `TlsKeyFile` fields (asking first when
-  either field is already set or either file already exists), and shows
-  the certificate file path, covered addresses, and expiry date. If an
-  entry beyond loopback is configured without readable, valid
-  certificate and key files, if a configured certificate is not yet
-  valid or has expired, startup fails with an error naming the problem
-  and directing the user to select or generate the files in Edit →
-  Preferences → MCP Bridge, and the bridge stays off. A listener whose
-  address is not in the certificate draws a Report view warning when the
-  certificate names no host, and the start still proceeds. On a FreeCAD
-  whose Python has no `ssl` module, as reported for FreeCAD's snap
-  (#67), the addon still loads: a start that needs TLS, for an address
-  beyond loopback or with both certificate fields set, stops before the
-  set-up dialog with a message saying the `ssl` module is missing, and
-  loopback listeners still start over HTTP.
+  back to HTTP. In the TLS certificate group the page states that an MCP
+  client must trust this certificate. The user sets their own
+  certificate and private key in **Certificate (PEM)** and **Private key
+  (PEM)**. Beside them, **Generate self-signed certificate** is an
+  optional convenience for a user who has no certificate. That button
+  calls `cert_tools.find_tools()` to find certificate tools on the
+  machine (such as `openssl`, including Git for Windows' copy on
+  Windows). Where none is found, it makes nothing and says where to
+  install openssl for the platform. Where tools are found, it first asks
+  before replacing a certificate, when either field is already set or
+  either file already exists, since every client that trusts the old one
+  needs the new one. It then offers a choice of tool, key type
+  (`RSA 4096` or `ECDSA P-256`) and **Valid for**, in days (365 by
+  default, 1 to 3650), and calls `cert_tools.generate()`. The
+  certificate is valid for the chosen number of days from now, and its
+  validity starts a day earlier with PowerShell and with openssl 3.4 or
+  later. It is self-signed (`CA:FALSE`, `digitalSignature` and
+  `keyEncipherment`, `serverAuth`), covers `127.0.0.1`, `localhost`,
+  each fixed address and host name in the list, and, for each listed
+  adapter that is up when the button is clicked, its first IPv4 address
+  that isn't 169.254.x.x, writes `tls-cert.pem` and `tls-key.pem`
+  (`tls-key.pem` readable by the user only) in
+  `<home>/.freecad-mcp-bridge` (or `FREECAD_MCP_TOKEN_DIR`), fills in
+  the `TlsCertFile` and `TlsKeyFile` fields, which OK in Preferences
+  saves, and shows the certificate file path, covered addresses, and
+  expiry date. It prints a Report view line with the time, the file and
+  the addresses covered. If an entry beyond loopback is configured
+  without readable, valid certificate and key files, if a configured
+  certificate is not yet valid or has expired, startup fails with an
+  error naming the problem and directing the user to select or generate
+  the files in Edit → Preferences → MCP Bridge, and the bridge stays
+  off. Coverage takes the forms clients accept: names and IP addresses
+  in the Subject Alternative Name, a wildcard name, and the common name
+  when there is no SAN. A listener whose address is not in the
+  certificate draws a Report view warning when the certificate names no
+  host, and the start still proceeds. Reading the certificate uses
+  `ssl._ssl._test_decode_cert`, a function inside Python that isn't part
+  of its public interface. If it's missing, or can't read the
+  certificate, the start goes ahead without the date and coverage checks
+  and says so in the Report view. On a FreeCAD whose Python has no `ssl`
+  module, as reported for FreeCAD's snap (#67), the addon still loads: a
+  start that needs TLS, for an address beyond loopback or with both
+  certificate fields set, stops before the set-up dialog with a message
+  saying the `ssl` module is missing, and loopback listeners still start
+  over HTTP.
 
 **Security posture: noted trade-offs**
 
@@ -737,7 +747,11 @@ is also refused when its `Host` header, port aside, names neither the
 address that listener is bound to, nor a name its certificate covers,
 nor a host name in **Addresses**. A missing `Host` is refused. A
 loopback listener accepts the address it is bound to, `127.0.0.1`,
-`localhost` and `[::1]`, but not a name its certificate covers.
+`localhost` and `[::1]`, but not a name its certificate covers. When
+Python's certificate reader is missing (see the TLS bullet above), the
+Host check accepts the bound address, on loopback also `127.0.0.1`,
+`localhost` and `[::1]`, and each host name in **Addresses**. A name the
+certificate covers adds nothing to these.
 
 ---
 
