@@ -1,3 +1,21 @@
+## 0.1.30
+
+**What's new since 0.1.29**
+
+### The MCP Bridge addon
+
+- **A smaller install.** From this release, the `release` branch, which
+  the Addon Manager installs from, holds only the addon, the Claude
+  Desktop extension's source and the user documents. Each release's tag
+  holds the same. The project's tests, scripts and developer documents
+  stay on `main`. Nothing changes in how the addon works.
+
+### The Claude Desktop extension
+
+- Unchanged.
+
+Built by a team: @zewpo and the AI agents Claude (Anthropic), Grok (xAI), Gemini (Google) and Codex (OpenAI).
+
 ## 0.1.29
 
 **What's new since 0.1.28**
