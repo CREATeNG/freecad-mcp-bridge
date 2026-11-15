@@ -18,7 +18,7 @@ SUPPORTED_PROTOCOL_VERSIONS = (PROTOCOL_VERSION, LEGACY_PROTOCOL_VERSION)
 # HTTP endpoint path the MCP server answers on
 ENDPOINT_PATH = "/mcp"
 
-# Network / timing / UI defaults — overridable via FreeCAD preferences
+# Network / timing / UI defaults, overridable via FreeCAD preferences
 # (see config.py)
 DEFAULT_LISTEN_HOST = "127.0.0.1"
 DEFAULT_PORT = 39280

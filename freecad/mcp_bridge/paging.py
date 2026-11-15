@@ -10,7 +10,7 @@ the JSON tool result (page_size_chars). Adjacent chunks of the same
 stream are joined as the page is built. A chunk that does not fit is
 held in "pending", with its stream, and continued on the next page.
 
-Only pages with content — and the job's final page — are stored and numbered;
+Only pages with content, and the job's final page, are stored and numbered;
 an empty non-final drain is not stored and consumes no page number. Page
 delivery is complete once SENTINEL has been drained into a page; that final
 page carries has_more=False. The retention clock starts when execution
