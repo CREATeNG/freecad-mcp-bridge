@@ -113,6 +113,13 @@ class DecideTests(unittest.TestCase):
 
 
 class FileRequestTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from tests.unit.test_preferences import _restore_package_after
+
+        super().setUpClass()
+        _restore_package_after(cls)
+
     def setUp(self):
         paging.clear_all()
 

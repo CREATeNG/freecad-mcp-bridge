@@ -226,6 +226,13 @@ def page_code():
 
 
 class PreferenceWidgetTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from tests.unit.test_preferences import _restore_package_after
+
+        super().setUpClass()
+        _restore_package_after(cls)
+
     def test_a_profile_with_nothing_saved_shows_the_forms_defaults(self):
         """With nothing saved, each widget keeps the form's default."""
         with page_code() as (pref_pages, _params, groups, warnings):
