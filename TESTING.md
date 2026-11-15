@@ -292,7 +292,9 @@ twice:
 1. **Pre-tag** (`install_mode: main`): hard gate before tag creation.
    The release workflow fails if any OS fails.
 2. **Tag path** (`install_mode: tag`): after tag and release notes;
-   final sanity check that install works from the tag ref. The release
+   final sanity check that install works from the tag ref. The tag
+   names the release commit, which holds only what users install, so
+   the run's checkout of `main` supplies the test scripts. The release
    workflow fails before `release` moves if any OS fails.
 
 Runs queue rather than overlap, so a second release run waits for the

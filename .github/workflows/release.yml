@@ -193,10 +193,12 @@ jobs:
       verify_bundle: true
 
   publish:
-    name: Tag and publish release notes
+    name: Build the release commit, tag it, publish release notes
     needs: [prepare, install_verify]
     runs-on: ubuntu-24.04
     if: github.ref == 'refs/heads/main' && needs.prepare.outputs.do_release == 'true'
+    outputs:
+      release_commit: ${{ steps.publish.outputs.release_commit }}
     steps:
       - name: Checkout release candidate
         uses: actions/checkout@v7
@@ -227,6 +229,8 @@ jobs:
           RELEASE_BUNDLE_SHA256: ${{ needs.prepare.outputs.bundle_sha256 }}
         run: bash "${GITHUB_WORKSPACE}/scripts/release-publish-orchestrator.sh"
 
+  # The tag names the release commit, so this installs what users get,
+  # checked by main's own test scripts from the run's checkout.
   install_verify_tag:
     name: Install verify (tag path)
     needs: [prepare, publish]
@@ -239,8 +243,8 @@ jobs:
       acceptance: true
 
   promote:
-    name: Move the release branch to the verified commit
-    needs: [prepare, install_verify_tag]
+    name: Move the release branch to the release commit
+    needs: [prepare, publish, install_verify_tag]
     runs-on: ubuntu-24.04
     if: github.ref == 'refs/heads/main' && needs.prepare.outputs.do_release == 'true'
     steps:
@@ -253,7 +257,17 @@ jobs:
 
       - name: Fast-forward release
         env:
-          RELEASE_SHA: ${{ needs.prepare.outputs.commit_sha }}
-        # A plain push: GitHub refuses it unless release is an ancestor of the
-        # verified commit, so release only ever moves forward.
-        run: git push origin "${RELEASE_SHA}:refs/heads/release"
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_COMMIT: ${{ needs.publish.outputs.release_commit }}
+        # The tag must still name the release commit publish built. A plain
+        # push: GitHub refuses it unless release is an ancestor of the
+        # release commit, so release only ever moves forward.
+        run: |
+          set -euo pipefail
+          git fetch origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          tagged=$(git rev-parse "${RELEASE_TAG}^{commit}")
+          if [ "$tagged" != "$RELEASE_COMMIT" ]; then
+            echo "${RELEASE_TAG} names ${tagged}, not the release commit ${RELEASE_COMMIT}."
+            exit 1
+          fi
+          git push origin "${RELEASE_COMMIT}:refs/heads/release"
