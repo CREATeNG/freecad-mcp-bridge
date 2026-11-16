@@ -359,7 +359,33 @@ class MCPBridgePreferencesPage:
         self.rows = []
         self._prepare_table()
         self._square_buttons()
+        self._fit_wrapped_notes()
         bind_page(self.form, self)
+
+    def _fit_wrapped_notes(self) -> None:
+        """Keep the Addresses group's two notes as tall as their wrapped
+        text. FreeCAD's Preferences dialog holds the page in stacked
+        widgets that don't pass height-for-width on, so the page gets its
+        minimum height, and a word-wrapped label's minimum is one line."""
+        from PySide.QtWidgets import QLabel
+
+        labels = [
+            (name, form_child(self.form, QLabel, name))
+            for name in ("listenRowNote", "listeningDifferenceLabel")
+        ]
+        labels = [
+            (name, label) for name, label in labels if label is not None
+        ]
+        if not labels:
+            return
+        self._note_fit = _height_for_width_filter()
+        for name, label in labels:
+            try:
+                label.installEventFilter(self._note_fit)
+            except RuntimeError as exc:
+                report_wiring(name, exc)
+            except Exception as exc:
+                report_wiring(name, exc, with_trace=True)
 
     def _square_buttons(self) -> None:
         """Keep +, - and Edit compact so a layout does not stretch them."""
@@ -835,7 +861,37 @@ def _machine(records) -> set[str]:
 
 def _set_label(label, text: str) -> None:
     label.setText(text)
+    _fit_height(label)
     label.setVisible(bool(text))
+
+
+def _fit_height(label) -> None:
+    """Make `label`'s minimum height what its text needs at its width.
+    A label's height-for-width is never less than its minimum height, so
+    the minimum is cleared to measure, or the label could only grow."""
+    try:
+        old = label.minimumHeight()
+        label.setMinimumHeight(0)
+        needed = label.heightForWidth(label.width())
+        label.setMinimumHeight(needed if needed > 0 else old)
+    except RuntimeError:
+        pass
+
+
+def _height_for_width_filter():
+    """An event filter that refits a label's height on each resize."""
+    from PySide.QtCore import QEvent, QObject
+
+    class _FitHeight(QObject):
+        def eventFilter(self, watched, event):
+            try:
+                if event.type() == QEvent.Resize:
+                    _fit_height(watched)
+            except Exception:
+                pass
+            return False
+
+    return _FitHeight()
 
 
 def _set_warning_mark(item) -> None:

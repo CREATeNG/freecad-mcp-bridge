@@ -440,5 +440,58 @@ class PreferenceWidgetTests(unittest.TestCase):
                 self.assertIn(kind, pref_pages._PREF_KINDS)
 
 
+class Note:
+    """A word-wrapped QLabel, as far as the page sizes it. `needs`
+    gives the height its text needs at a width. As in Qt, its
+    height-for-width is never less than its minimum height."""
+
+    def __init__(self, width, needs):
+        self.current_width = width
+        self._needs = needs
+        self.min_height = 0
+        self.text = ""
+        self.visible = False
+
+    def width(self):
+        return self.current_width
+
+    def heightForWidth(self, width):
+        return max(self._needs(width), self.min_height)
+
+    def minimumHeight(self):
+        return self.min_height
+
+    def setMinimumHeight(self, height):
+        self.min_height = height
+
+    def setText(self, text):
+        self.text = text
+
+    def setVisible(self, visible):
+        self.visible = visible
+
+
+class WrappedNoteTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        from tests.unit.test_preferences import _restore_package_after
+
+        super().setUpClass()
+        _restore_package_after(cls)
+
+    def test_a_note_is_as_tall_as_its_wrapped_text(self):
+        """A note's minimum height is what its wrapped text needs at its
+        width, when its text is set and again when its width changes,
+        shrinking as well as growing."""
+        with page_code() as (pref_pages, _params, _groups, _warnings):
+            note = Note(177, lambda width: 52 if width < 300 else 26)
+            pref_pages._set_label(note, "The bridge is listening on …")
+            self.assertEqual(note.min_height, 52)
+            self.assertTrue(note.visible)
+            note.current_width = 605
+            pref_pages._fit_height(note)
+            self.assertEqual(note.min_height, 26)
+
+
 if __name__ == "__main__":
     unittest.main()
